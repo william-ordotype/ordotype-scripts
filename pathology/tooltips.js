@@ -6,6 +6,7 @@
   'use strict';
 
   var currentCloseHandler = null;
+  var initialized = false;
 
   function handleTooltip(e, type) {
     e.stopPropagation();
@@ -45,8 +46,13 @@
   }
 
   function init() {
+    if (initialized) return true;
+
     var rcWrapper = document.querySelector('.rc-wrapper');
     if (!rcWrapper) return false;
+
+    var tooltips = rcWrapper.querySelectorAll('.tooltip-ipp, .tooltip-hbpm');
+    if (tooltips.length === 0) return false;
 
     rcWrapper.querySelectorAll('.tooltip-ipp').forEach(function(trigger) {
       trigger.onclick = function(e) {
@@ -60,13 +66,16 @@
       };
     });
 
-    console.log('[Tooltips] Initialized');
-    return rcWrapper.querySelectorAll('.tooltip-ipp, .tooltip-hbpm').length > 0;
+    initialized = true;
+    console.log('[Tooltips] Initialized with', tooltips.length, 'tooltip(s)');
+    return true;
   }
 
   // Watch for rc-wrapper to appear
   var observer = new MutationObserver(function() {
-    if (init()) observer.disconnect();
+    if (init()) {
+      observer.disconnect();
+    }
   });
 
   if (!init()) {
