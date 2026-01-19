@@ -38,13 +38,20 @@ ordotype-scripts/
 │   ├── hash-tabs.js
 │   ├── stripe-checkout.js
 │   └── tabs-bg.js
-└── pricing-v2/       # Pricing V2 page scripts (/nos-offres-v2)
+├── pricing-v2/       # Pricing V2 page scripts (/nos-offres-v2)
+│   ├── loader.js
+│   ├── core.js
+│   ├── geo-redirect.js
+│   ├── belgium-redirect.js
+│   ├── stripe-checkout.js
+│   └── tabs-bg.js
+└── ordonnances/      # Ordonnances (prescriptions) page scripts
     ├── loader.js
-    ├── core.js
-    ├── geo-redirect.js
-    ├── belgium-redirect.js
-    ├── stripe-checkout.js
-    └── tabs-bg.js
+    ├── opacity-reveal.js
+    ├── urgent-handler.js
+    ├── duplicates-cleaner.js
+    ├── print-handler.js
+    └── copy-handler.js
 ```
 
 ---
@@ -250,6 +257,41 @@ This is the B variant of the A/B test. Main differences from V1:
 
 ---
 
+## Ordonnances Page (Prescriptions)
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts in correct order |
+| `opacity-reveal.js` | Reveals hidden elements on load |
+| `urgent-handler.js` | Handles urgent prescriptions, stomach-empty/le-matin |
+| `duplicates-cleaner.js` | Removes duplicate items, DataLayer tracking |
+| `print-handler.js` | Print prescription functionality |
+| `copy-handler.js` | Copy as rich text (multiple methods) |
+
+### Usage in Webflow
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/tools@c0f2e0e29c03308b04d4a15911ed47b3d94b9fb2/toast.js" type="module"></script>
+```
+
+### Dependencies
+
+- jQuery
+
+### Console Prefixes
+
+- `[OrdoOrdonnances]` - Loader
+- `[OpacityReveal]` - Element reveal
+- `[UrgentHandler]` - Urgent prescriptions
+- `[DuplicatesCleaner]` - Duplicate removal
+- `[PrintHandler]` - Print functionality
+- `[CopyHandler]` - Copy functionality
+
+---
+
 ## Keep Crisp Separate
 
 ```html
@@ -274,4 +316,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/lo
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js
 ```
