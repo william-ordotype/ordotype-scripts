@@ -12,11 +12,10 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing';
 
   // Scripts to load (in order)
+  // Note: ab-test.js, geo-redirect.js, belgium-redirect.js must be loaded
+  // separately in the header (before page renders) for redirects to work
   const scripts = [
     'core.js',
-    'ab-test.js',
-    'geo-redirect.js',
-    'belgium-redirect.js',
     'hash-tabs.js',
     'stripe-checkout.js',
     'tabs-bg.js'
