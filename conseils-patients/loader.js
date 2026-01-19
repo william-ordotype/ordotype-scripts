@@ -1,0 +1,49 @@
+/**
+ * Ordotype Conseils Patients - Loader
+ * Loads all conseils-patients page scripts in the correct order.
+ *
+ * Usage in Webflow:
+ * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/loader.js"></script>
+ */
+(function() {
+  'use strict';
+
+  // Base URL
+  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients';
+
+  // Scripts to load (in order)
+  const scripts = [
+    'opacity-reveal.js',
+    'html-cleaner.js',
+    'tracking.js',
+    'print-handler.js',
+    'copy-handler.js'
+  ];
+
+  // Load a single script
+  function loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error(`Failed to load: ${url}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  // Load all scripts in order
+  async function loadAll() {
+    console.log('[OrdoConseils] Loading...');
+
+    try {
+      for (const file of scripts) {
+        await loadScript(`${BASE}/${file}`);
+      }
+      console.log('[OrdoConseils] All scripts loaded');
+    } catch (err) {
+      console.error('[OrdoConseils] Load error:', err);
+    }
+  }
+
+  loadAll();
+})();

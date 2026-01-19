@@ -45,11 +45,18 @@ ordotype-scripts/
 │   ├── belgium-redirect.js
 │   ├── stripe-checkout.js
 │   └── tabs-bg.js
-└── ordonnances/      # Ordonnances (prescriptions) page scripts
+├── ordonnances/      # Ordonnances (prescriptions) page scripts
+│   ├── loader.js
+│   ├── opacity-reveal.js
+│   ├── urgent-handler.js
+│   ├── duplicates-cleaner.js
+│   ├── print-handler.js
+│   └── copy-handler.js
+└── conseils-patients/  # Patient recommendations page scripts
     ├── loader.js
     ├── opacity-reveal.js
-    ├── urgent-handler.js
-    ├── duplicates-cleaner.js
+    ├── html-cleaner.js
+    ├── tracking.js
     ├── print-handler.js
     └── copy-handler.js
 ```
@@ -292,6 +299,41 @@ This is the B variant of the A/B test. Main differences from V1:
 
 ---
 
+## Conseils Patients Page (Patient Recommendations)
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts in correct order |
+| `opacity-reveal.js` | Reveals hidden elements on load |
+| `html-cleaner.js` | Cleans zero-width characters, removes empty paragraphs |
+| `tracking.js` | DataLayer tracking for custom recommendations |
+| `print-handler.js` | Print with banner (French + Arabic support) |
+| `copy-handler.js` | Copy as rich text with QR code table conversion |
+
+### Usage in Webflow
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/loader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/tools@c0f2e0e29c03308b04d4a15911ed47b3d94b9fb2/toast.js" type="module"></script>
+```
+
+### Dependencies
+
+- jQuery
+
+### Console Prefixes
+
+- `[OrdoConseils]` - Loader
+- `[OpacityReveal]` - Element reveal
+- `[HTMLCleaner]` - HTML cleaning
+- `[Tracking]` - DataLayer tracking
+- `[PrintHandler]` - Print functionality
+- `[CopyHandler]` - Copy functionality
+
+---
+
 ## Keep Crisp Separate
 
 ```html
@@ -317,4 +359,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/l
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/loader.js
 ```
