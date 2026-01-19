@@ -136,5 +136,10 @@
     console.log('[TabsManager] Initialized');
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  // Run init - DOMContentLoaded may have already fired by the time this script loads
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
