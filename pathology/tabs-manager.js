@@ -6,10 +6,11 @@
   'use strict';
 
   function init() {
+    // Wait longer for Webflow tabs to initialize
     setTimeout(function() {
       handleSpecialTab();
       handleTabGroups();
-    }, 100);
+    }, 500);
   }
 
   function handleSpecialTab() {
