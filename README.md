@@ -18,17 +18,26 @@ ordotype-scripts/
 │   ├── loader.js
 │   ├── core.js
 │   └── cgu-modal.js
-└── pathology/        # Pathology page scripts
+├── pathology/        # Pathology page scripts
+│   ├── loader.js
+│   ├── core.js
+│   ├── clipboard.js
+│   ├── date-french.js
+│   ├── sources-list.js
+│   ├── opacity-reveal.js
+│   ├── tabs-manager.js
+│   ├── scroll-anchor.js
+│   ├── iframe-handler.js
+│   └── tooltips.js
+└── pricing/          # Pricing page scripts
     ├── loader.js
     ├── core.js
-    ├── clipboard.js
-    ├── date-french.js
-    ├── sources-list.js
-    ├── opacity-reveal.js
-    ├── tabs-manager.js
-    ├── scroll-anchor.js
-    ├── iframe-handler.js
-    └── tooltips.js
+    ├── ab-test.js
+    ├── geo-redirect.js
+    ├── belgium-redirect.js
+    ├── hash-tabs.js
+    ├── stripe-checkout.js
+    └── tabs-bg.js
 ```
 
 ---
@@ -143,16 +152,57 @@ The pathology page requires these external scripts (loaded separately):
 
 ---
 
+## Pricing Page
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts in correct order |
+| `core.js` | Stores URL for tracking |
+| `ab-test.js` | A/B test redirect (10% to /nos-offres-v2) |
+| `geo-redirect.js` | Geographic redirection |
+| `belgium-redirect.js` | Belgium users redirect to /nos-offres-belgique |
+| `hash-tabs.js` | URL hash-based tab selection |
+| `stripe-checkout.js` | Stripe checkout session handling |
+| `tabs-bg.js` | Animated tab background |
+
+### Usage in Webflow
+
+**Header (for redirects - must run early):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/ab-test.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/geo-redirect.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/belgium-redirect.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js"></script>
+```
+
+### External Scripts (keep separate)
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.7/dist/accordion.js" type="module"></script>
+```
+
+### Console Prefixes
+
+- `[OrdoPricing]` - Loader
+- `[ABTest]` - A/B test
+- `[GeoRedirect]` - Geographic redirect
+- `[BelgiumRedirect]` - Belgium redirect
+- `[HashTabs]` - Hash-based tabs
+- `[StripeCheckout]` - Stripe checkout
+- `[TabsBg]` - Tab background animation
+
+---
+
 ## Keep Crisp Separate
 
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
-```
-
-## Keep hideElementOnClick Separate
-
-```html
-<script defer src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.24/dist/hideElementOnClick.js" type="module" crossorigin="anonymous"></script>
 ```
 
 ---
@@ -171,4 +221,5 @@ jsDelivr caches files. To force an update after pushing changes:
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
 ```
