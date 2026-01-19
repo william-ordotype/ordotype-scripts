@@ -1,8 +1,37 @@
-# Ordotype Account Scripts
+# Ordotype Scripts
 
-Modular scripts for the account page. Each file handles one feature.
+Modular scripts for Ordotype pages. Each folder contains scripts for a specific page.
 
-## Files
+## Structure
+
+```
+ordotype-scripts/
+├── account/          # Account page scripts
+│   ├── loader.js
+│   ├── core.js
+│   ├── subscriptions.js
+│   ├── status-selectors.js
+│   ├── delete-account.js
+│   ├── billing-portal.js
+│   └── phone-input.js
+└── pathology/        # Pathology page scripts
+    ├── loader.js
+    ├── core.js
+    ├── clipboard.js
+    ├── date-french.js
+    ├── sources-list.js
+    ├── opacity-reveal.js
+    ├── tabs-manager.js
+    ├── scroll-anchor.js
+    ├── iframe-handler.js
+    └── tooltips.js
+```
+
+---
+
+## Account Page
+
+### Files
 
 | File | Purpose |
 |------|---------|
@@ -14,53 +43,14 @@ Modular scripts for the account page. Each file handles one feature.
 | `billing-portal.js` | Stripe billing portal access |
 | `phone-input.js` | International phone formatting |
 
-## Setup
-
-### 1. Create GitHub repo
-
-Create a new repo (e.g., `ordotype-scripts`) and upload the `account` folder.
-
-### 2. Update loader.js
-
-Change the `BASE` URL to match your repo:
-
-```javascript
-const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account';
-```
-
-### 3. Add to Webflow
-
-Replace all your current `<script>` tags with one line in the page's custom code (before `</body>`):
+### Usage in Webflow
 
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js"></script>
 ```
 
-### 4. Keep Crisp separate
+### Console Prefixes
 
-Your Crisp loader is already external, keep it as-is:
-
-```html
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
-```
-
-## Cache Busting
-
-jsDelivr caches files. To force an update after pushing changes:
-
-**Option A:** Use a version tag
-```html
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@v1.0.1/account/loader.js"></script>
-```
-
-**Option B:** Purge cache manually
-```
-https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
-```
-
-## Debugging
-
-Each script logs to console with a prefix:
 - `[OrdoAccount]` - Core/loader
 - `[Subscriptions]` - Subscription status
 - `[StatusSelectors]` - Form field visibility
@@ -68,21 +58,78 @@ Each script logs to console with a prefix:
 - `[BillingPortal]` - Stripe portal
 - `[PhoneInput]` - Phone formatting
 
-Open browser DevTools → Console to see what's happening.
+---
 
-## Adding a New Plan
+## Pathology Page
 
-Edit `subscriptions.js` and add to the `plans` array:
+### Files
 
-```javascript
-{
-  id: "pln_your-new-plan-id",
-  prefix: "sub-newplan"  // Matches your Webflow element IDs
-}
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts in correct order |
+| `core.js` | Stores URL, handles page unload behavior |
+| `clipboard.js` | Copy prescription with ClipboardJS |
+| `date-french.js` | Translates English dates to French |
+| `sources-list.js` | "Sources et recommandations" with show more |
+| `opacity-reveal.js` | Reveals hidden elements on load |
+| `tabs-manager.js` | Tab visibility and auto-selection |
+| `scroll-anchor.js` | Smooth scrolling to anchors |
+| `iframe-handler.js` | Prescription/recommendation iframe loading |
+| `tooltips.js` | IPP and HBPM tooltip popups |
+
+### Usage in Webflow
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js"></script>
 ```
 
-Then add elements in Webflow with IDs:
-- `sub-newplan-already-not-canceled-btn`
-- `sub-newplan-already-not-canceled-tag`
-- `sub-newplan-already-canceled-btn`
-- `sub-newplan-already-canceled-tag`
+### Dependencies
+
+The pathology page requires these external scripts (loaded separately):
+- jQuery
+- ClipboardJS
+- Alpine.js (for toaster notifications)
+- Webflow.js
+
+### Console Prefixes
+
+- `[OrdoPathology]` - Loader
+- `[Clipboard]` - Copy functionality
+- `[DateFrench]` - Date translation
+- `[SourcesList]` - Sources section
+- `[OpacityReveal]` - Element reveal
+- `[TabsManager]` - Tab management
+- `[ScrollAnchor]` - Smooth scrolling
+- `[IframeHandler]` - Iframe loading
+- `[Tooltips]` - Tooltip popups
+
+---
+
+## Keep Crisp Separate
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+## Keep hideElementOnClick Separate
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.24/dist/hideElementOnClick.js" type="module" crossorigin="anonymous"></script>
+```
+
+---
+
+## Cache Busting
+
+jsDelivr caches files. To force an update after pushing changes:
+
+**Option A:** Use a version tag
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@v1.0.0/account/loader.js"></script>
+```
+
+**Option B:** Purge cache manually
+```
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
+```
