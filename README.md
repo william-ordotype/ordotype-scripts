@@ -14,6 +14,10 @@ ordotype-scripts/
 │   ├── delete-account.js
 │   ├── billing-portal.js
 │   └── phone-input.js
+├── homepage/         # Homepage scripts
+│   ├── loader.js
+│   ├── core.js
+│   └── cgu-modal.js
 └── pathology/        # Pathology page scripts
     ├── loader.js
     ├── core.js
@@ -57,6 +61,40 @@ ordotype-scripts/
 - `[DeleteAccount]` - Account deletion
 - `[BillingPortal]` - Stripe portal
 - `[PhoneInput]` - Phone formatting
+
+---
+
+## Homepage
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts in correct order |
+| `core.js` | Stores URL for tracking |
+| `cgu-modal.js` | CGU acceptance modal with 90-day expiration |
+
+### Usage in Webflow
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js"></script>
+```
+
+### External Scripts (keep separate)
+
+```html
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.16/dist/accordion.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.16/src/toggleSwitch.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.23/src/cookiesManager.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.18/dist/showElementAfterDelay.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.24/dist/hideElementOnClick.js" type="module"></script>
+<script async crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@finsweet/cookie-consent@1/fs-cc.js" fs-cc-mode="opt-in" fs-cc-endpoint="https://ccl.ordotype.workers.dev/"></script>
+```
+
+### Console Prefixes
+
+- `[OrdoHomepage]` - Loader
+- `[CGUModal]` - CGU acceptance modal
 
 ---
 
@@ -131,5 +169,6 @@ jsDelivr caches files. To force an update after pushing changes:
 **Option B:** Purge cache manually
 ```
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
 ```
