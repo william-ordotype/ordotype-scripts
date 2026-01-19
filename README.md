@@ -29,13 +29,20 @@ ordotype-scripts/
 │   ├── scroll-anchor.js
 │   ├── iframe-handler.js
 │   └── tooltips.js
-└── pricing/          # Pricing page scripts
+├── pricing/          # Pricing page scripts (/nos-offres)
+│   ├── loader.js
+│   ├── core.js
+│   ├── ab-test.js
+│   ├── geo-redirect.js
+│   ├── belgium-redirect.js
+│   ├── hash-tabs.js
+│   ├── stripe-checkout.js
+│   └── tabs-bg.js
+└── pricing-v2/       # Pricing V2 page scripts (/nos-offres-v2)
     ├── loader.js
     ├── core.js
-    ├── ab-test.js
     ├── geo-redirect.js
     ├── belgium-redirect.js
-    ├── hash-tabs.js
     ├── stripe-checkout.js
     └── tabs-bg.js
 ```
@@ -199,6 +206,50 @@ The pathology page requires these external scripts (loaded separately):
 
 ---
 
+## Pricing V2 Page (`/nos-offres-v2`)
+
+This is the B variant of the A/B test. Main differences from V1:
+- No A/B test script (this IS the B variant)
+- No hash-tabs (not needed on V2)
+- Different geo-redirect ID
+- Payment methods include both `card` and `sepa_debit`
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts in correct order |
+| `core.js` | Stores URL for tracking |
+| `geo-redirect.js` | Geographic redirection (different ID than V1) |
+| `belgium-redirect.js` | Belgium users redirect to /nos-offres-belgique |
+| `stripe-checkout.js` | Stripe checkout with card + SEPA |
+| `tabs-bg.js` | Animated tab background |
+
+### Usage in Webflow
+
+**Header (for redirects - must run early):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/geo-redirect.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/belgium-redirect.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.7/dist/accordion.js" type="module"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Console Prefixes
+
+- `[OrdoPricingV2]` - Loader
+- `[GeoRedirectV2]` - Geographic redirect
+- `[BelgiumRedirect]` - Belgium redirect
+- `[StripeCheckoutV2]` - Stripe checkout
+- `[TabsBg]` - Tab background animation
+
+---
+
 ## Keep Crisp Separate
 
 ```html
@@ -222,4 +273,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loa
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js
 ```
