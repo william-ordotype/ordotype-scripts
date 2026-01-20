@@ -1,0 +1,59 @@
+/**
+ * Ordotype Global Styles
+ *
+ * Non-critical CSS used across the site.
+ *
+ * Usage in Webflow header:
+ * <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-styles.css">
+ */
+
+/* Form Styles */
+form#wf-form-mutateDocument {
+    width: 100% !important;
+}
+
+.wf-form-search-bar-form {
+    position: relative;
+    display: inline-block;
+}
+
+/* Button Styles */
+.reset-button {
+    border: none;
+    background: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #555;
+}
+
+.reset-button-navbar {
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+/* View Styles */
+.drawer_view,
+.modal_view {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* Autocomplete Styles */
+.autocomplete-active {
+    background-color: rgb(240, 243, 255) !important;
+    color: #ffffff;
+}
+
+/* Alpine.js cloak */
+[x-cloak] {
+    display: none;
+}
+
+/* Decode HTML flex container */
+.decode-html {
+    display: flex;
+}

@@ -77,7 +77,9 @@ ordotype-scripts/
 ├── inscription-offre-speciale/  # Special offer signup pages
 │   └── loader.js
 └── shared/             # Shared scripts used across pages
-    └── stripe-checkout.js
+    ├── stripe-checkout.js
+    ├── global-styles.css
+    └── global-utils.js
 ```
 
 ---
@@ -404,6 +406,42 @@ window.STRIPE_CHECKOUT_CONFIG = {
 
 ---
 
+### global-styles.css
+
+Non-critical CSS styles used across the site.
+
+```html
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-styles.css">
+```
+
+Includes:
+- Form styles
+- Button styles (reset-button, reset-button-navbar)
+- Drawer/modal view positioning
+- Autocomplete active state
+- Alpine.js cloak
+- Decode HTML flex container
+
+---
+
+### global-utils.js
+
+Global utilities loaded on all pages.
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-utils.js"></script>
+```
+
+Includes:
+- **Skeleton loader**: Removes skeleton-loader divs after delay (via `ms-code-skeleton` attribute)
+- **Rich text decoder**: Decodes HTML entities in `.w-richtext p` and `.decode-html` elements
+
+### Console Prefix
+
+- `[GlobalUtils]` - Global utilities
+
+---
+
 ## Signup Rempla Page (`/membership/signup-rempla-6months`)
 
 ### Files
@@ -610,4 +648,6 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-remp
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-en-cours/auto-checkout.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/styles.css
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-styles.css
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-utils.js
 ```
