@@ -1,10 +1,26 @@
 /**
  * Ordotype Inscription Offre Speciale - Loader
- * Loads stripe-checkout with config from CMS fields stored in localStorage
- *
- * IMPORTANT: Place this script AFTER the CMS script that stores values in localStorage
+ * Loads stripe-checkout with config from window.CMS_CHECKOUT_CONFIG (set by Webflow)
  *
  * Usage in Webflow:
+ *
+ * <script>
+ * // Set config from CMS fields (only Webflow can access these)
+ * window.CMS_CHECKOUT_CONFIG = {
+ *     priceId: "{{wf stripepriceid}}",
+ *     couponId: "{{wf code-promo}}",
+ *     successUrl: window.location.origin + "/membership/mes-informations",
+ *     cancelUrl: window.location.href,
+ *     paymentMethods: ['card', 'sepa_debit'],
+ *     option: 'offre-speciale'
+ * };
+ *
+ * // Also store in localStorage for new user redirect flow
+ * localStorage.setItem('signup-price-id', "{{wf stripepriceid}}");
+ * localStorage.setItem('signup-coupon-id', "{{wf code-promo}}");
+ * localStorage.setItem('signup-success-url', window.location.origin + "/membership/mes-informations");
+ * localStorage.setItem('signup-cancel-url', window.location.href);
+ * </script>
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js"></script>
  */
 (function() {
@@ -24,19 +40,21 @@
     }
 
     function init() {
-        // Read config from localStorage (set by CMS script)
+        const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
+
+        // Use CMS config, with defaults
         window.STRIPE_CHECKOUT_CONFIG = {
-            priceId: localStorage.getItem('signup-price-id') || '',
-            couponId: localStorage.getItem('signup-coupon-id') || '',
-            successUrl: localStorage.getItem('signup-success-url') || `${window.location.origin}/membership/mes-informations`,
-            cancelUrl: localStorage.getItem('signup-cancel-url') || window.location.href,
-            paymentMethods: ['card', 'sepa_debit'],
-            option: 'offre-speciale'
+            priceId: cmsConfig.priceId || '',
+            couponId: cmsConfig.couponId || '',
+            successUrl: cmsConfig.successUrl || `${window.location.origin}/membership/mes-informations`,
+            cancelUrl: cmsConfig.cancelUrl || window.location.href,
+            paymentMethods: cmsConfig.paymentMethods || ['card', 'sepa_debit'],
+            option: cmsConfig.option || 'offre-speciale'
         };
 
-        console.log(PREFIX, 'Config from CMS:', {
+        console.log(PREFIX, 'Config:', {
             priceId: window.STRIPE_CHECKOUT_CONFIG.priceId,
-            couponId: window.STRIPE_CHECKOUT_CONFIG.couponId ? '***' : '',
+            hasCooupon: !!window.STRIPE_CHECKOUT_CONFIG.couponId,
             option: window.STRIPE_CHECKOUT_CONFIG.option
         });
 
