@@ -75,8 +75,7 @@ ordotype-scripts/
 │   └── core.js
 ├── moyen-de-paiement/  # Payment method setup page
 │   ├── loader.js
-│   ├── ab-test.js
-│   └── setup-session.js
+│   └── ab-test.js
 ├── inscription-en-cours/  # Auto-checkout for in-progress signups
 │   ├── auto-checkout.js
 │   └── redirect-guard.js
@@ -84,6 +83,7 @@ ordotype-scripts/
 │   └── loader.js
 └── shared/             # Shared scripts used across pages
     ├── stripe-checkout.js
+    ├── stripe-setup-session.js
     ├── global-styles.css
     └── global-utils.js
 ```
@@ -440,6 +440,30 @@ window.STRIPE_CHECKOUT_CONFIG = {
 
 ---
 
+### stripe-setup-session.js
+
+Shared Stripe setup session script for adding payment methods. Configure via `window.STRIPE_SETUP_CONFIG`:
+
+```javascript
+window.STRIPE_SETUP_CONFIG = {
+  // Button IDs (optional, these are the defaults)
+  btnNoStripeId: 'setupBtnNoStripeId',
+  btnStripeId: 'setupBtnStripeId',
+
+  // Setup config
+  successUrl: '/membership/moyen-de-paiement-ajoute',
+  cancelUrl: window.location.href,  // optional, defaults to current page
+  paymentMethods: ['sepa_debit'],   // or ['card'] or ['card', 'sepa_debit']
+  option: 'setup'                   // for webhook tracking
+};
+```
+
+### Console Prefix
+
+- `[StripeSetup]` - Shared setup session script
+
+---
+
 ### global-styles.css
 
 Non-critical CSS styles used across the site.
@@ -567,9 +591,8 @@ Payment method setup page for adding SEPA payment methods.
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads setup-session.js, stores URL for tracking |
+| `loader.js` | Loads shared/stripe-setup-session.js with SEPA config, stores URL |
 | `ab-test.js` | A/B test redirect (10% to /membership/ajouter-un-moyen-de-paiement-cb) |
-| `setup-session.js` | Creates Stripe setup session, handles button visibility |
 
 ### Usage in Webflow
 
@@ -593,7 +616,7 @@ The page needs two buttons with specific IDs:
 ### Console Prefixes
 
 - `[OrdoMoyenPaiement]` - Loader
-- `[SetupSession]` - Setup session handling
+- `[StripeSetup]` - Setup session handling (from shared script)
 
 ---
 
@@ -726,5 +749,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/ab-test.js
-https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/setup-session.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/stripe-setup-session.js
 ```
