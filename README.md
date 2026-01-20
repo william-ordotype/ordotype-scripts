@@ -76,7 +76,7 @@ ordotype-scripts/
 ├── moyen-de-paiement/  # Payment method setup page (SEPA)
 │   ├── loader.js
 │   └── ab-test.js
-├── moyen-de-paiement-cb/  # Payment method setup page (Card) - B variant
+├── moyen-de-paiement-cb/  # Payment method setup page (Card + SEPA) - B variant
 │   └── loader.js
 ├── inscription-en-cours/  # Auto-checkout for in-progress signups
 │   ├── auto-checkout.js
@@ -624,13 +624,13 @@ The page needs two buttons with specific IDs:
 
 ## Moyen de Paiement CB Page (`/membership/ajouter-un-moyen-de-paiement-cb`)
 
-Payment method setup page for adding Card payment methods. This is the B variant of the A/B test.
+Payment method setup page offering Card + SEPA payment methods. This is the B variant of the A/B test.
 
 ### Files
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads shared/stripe-setup-session.js with Card config, stores URL |
+| `loader.js` | Loads shared/stripe-setup-session.js with Card + SEPA config, stores URL |
 
 ### Usage in Webflow
 
