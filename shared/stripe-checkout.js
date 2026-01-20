@@ -23,6 +23,12 @@ async function initStripeCheckout() {
     const PREFIX = '[StripeCheckout]';
     const config = window.STRIPE_CHECKOUT_CONFIG || {};
 
+    // Helper to replace ${window.location.origin} placeholder with actual origin
+    const resolveUrl = (url) => {
+        if (!url) return url;
+        return url.replace(/\$\{window\.location\.origin\}/g, window.location.origin);
+    };
+
     console.log(PREFIX, 'Initializing...', config.option || 'default');
 
     // Button IDs with defaults
@@ -52,8 +58,8 @@ async function initStripeCheckout() {
     // Configuration with defaults
     const priceId = config.priceId || 'price_1REohrKEPftl7d7iemVKnl9Y';
     const couponId = config.couponId || 'IJqN4FxB';
-    const successUrl = config.successUrl || `${window.location.origin}/membership/mes-informations-praticien`;
-    const cancelUrl = config.cancelUrl || window.location.href;
+    const successUrl = resolveUrl(config.successUrl) || `${window.location.origin}/membership/mes-informations-praticien`;
+    const cancelUrl = resolveUrl(config.cancelUrl) || window.location.href;
     const paymentMethods = config.paymentMethods || ['sepa_debit'];
     const option = config.option || 'default';
 

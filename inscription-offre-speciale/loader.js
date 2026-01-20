@@ -42,12 +42,18 @@
     function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
 
+        // Helper to replace ${window.location.origin} placeholder with actual origin
+        const resolveUrl = (url) => {
+            if (!url) return url;
+            return url.replace(/\$\{window\.location\.origin\}/g, window.location.origin);
+        };
+
         // Use CMS config, with defaults
         window.STRIPE_CHECKOUT_CONFIG = {
             priceId: cmsConfig.priceId || '',
             couponId: cmsConfig.couponId || '',
-            successUrl: cmsConfig.successUrl || `${window.location.origin}/membership/mes-informations`,
-            cancelUrl: cmsConfig.cancelUrl || window.location.href,
+            successUrl: resolveUrl(cmsConfig.successUrl) || `${window.location.origin}/membership/mes-informations`,
+            cancelUrl: resolveUrl(cmsConfig.cancelUrl) || window.location.href,
             paymentMethods: cmsConfig.paymentMethods || ['card', 'sepa_debit'],
             option: cmsConfig.option || 'offre-speciale'
         };
