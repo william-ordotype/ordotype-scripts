@@ -73,9 +73,11 @@ ordotype-scripts/
 │   ├── geo-redirect.js
 │   ├── styles.js
 │   └── core.js
-├── moyen-de-paiement/  # Payment method setup page
+├── moyen-de-paiement/  # Payment method setup page (SEPA)
 │   ├── loader.js
 │   └── ab-test.js
+├── moyen-de-paiement-cb/  # Payment method setup page (Card) - B variant
+│   └── loader.js
 ├── inscription-en-cours/  # Auto-checkout for in-progress signups
 │   ├── auto-checkout.js
 │   └── redirect-guard.js
@@ -620,6 +622,37 @@ The page needs two buttons with specific IDs:
 
 ---
 
+## Moyen de Paiement CB Page (`/membership/ajouter-un-moyen-de-paiement-cb`)
+
+Payment method setup page for adding Card payment methods. This is the B variant of the A/B test.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads shared/stripe-setup-session.js with Card config, stores URL |
+
+### Usage in Webflow
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement-cb/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `setupBtnNoStripeId` - Shown for non-Stripe users
+- `setupBtnStripeId` - Shown for existing Stripe customers
+
+### Console Prefixes
+
+- `[OrdoMoyenPaiementCB]` - Loader
+- `[StripeSetup]` - Setup session handling (from shared script)
+
+---
+
 ## Inscription En Cours Page (`/inscription-en-cours/[item-slug]`)
 
 Auto-checkout page for users who started signup but didn't complete payment. Creates a Stripe checkout session and redirects immediately.
@@ -750,4 +783,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-pa
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/ab-test.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/stripe-setup-session.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement-cb/loader.js
 ```
