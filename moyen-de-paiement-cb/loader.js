@@ -22,7 +22,7 @@
         btnStripeId: 'setupBtnStripeId',
         successUrl: window.location.origin + '/membership/moyen-de-paiement-ajoute',
         cancelUrl: window.location.href,
-        paymentMethods: ['card'],
+        paymentMethods: ['card', 'sepa_debit'],
         option: 'setup-card'
     };
 
