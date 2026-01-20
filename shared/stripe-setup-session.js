@@ -159,6 +159,10 @@
                 .then(() => console.log(PREFIX, 'webhook fetch(no-cors) sent'))
                 .catch(err => console.error(PREFIX, 'webhook fetch error:', err));
 
+                // Set justPaidTs for grace period (prevents redirect loop after payment)
+                localStorage.setItem('justPaidTs', Date.now());
+                console.log(PREFIX, 'Set justPaidTs for grace period');
+
                 // redirect to Stripe
                 console.log(PREFIX, 'Redirecting to Stripe Checkout:', checkoutUrl);
                 window.location.href = checkoutUrl;
