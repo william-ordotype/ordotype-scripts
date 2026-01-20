@@ -17,6 +17,8 @@ ordotype-scripts/
 ├── homepage/         # Homepage scripts
 │   ├── loader.js
 │   ├── core.js
+│   ├── countdown.js
+│   ├── member-redirects.js
 │   └── cgu-modal.js
 ├── pathology/        # Pathology page scripts
 │   ├── loader.js
@@ -136,6 +138,8 @@ ordotype-scripts/
 |------|---------|
 | `loader.js` | Loads all scripts in correct order |
 | `core.js` | Stores URL for tracking |
+| `countdown.js` | Countdown timers based on member's date-de-switch |
+| `member-redirects.js` | Member state checks, banner display, and redirections |
 | `cgu-modal.js` | CGU acceptance modal with 90-day expiration |
 
 ### Usage in Webflow
@@ -143,6 +147,10 @@ ordotype-scripts/
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js"></script>
 ```
+
+### Dependencies
+
+- jQuery (required for countdown and member-redirects)
 
 ### External Scripts (keep separate)
 
@@ -158,6 +166,8 @@ ordotype-scripts/
 ### Console Prefixes
 
 - `[OrdoHomepage]` - Loader
+- `[Countdown]` - Countdown timers
+- `[MemberRedirects]` - Member state and redirections
 - `[CGUModal]` - CGU acceptance modal
 
 ---
@@ -856,6 +866,8 @@ jsDelivr caches files. To force an update after pushing changes:
 ```
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/member-redirects.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js
