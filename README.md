@@ -70,6 +70,11 @@ ordotype-scripts/
 │   ├── geo-redirect.js
 │   ├── styles.js
 │   └── core.js
+├── inscription-en-cours/  # Auto-checkout for in-progress signups
+│   ├── auto-checkout.js
+│   └── redirect-guard.js
+├── inscription-offre-speciale/  # Special offer signup pages
+│   └── loader.js
 └── shared/             # Shared scripts used across pages
     └── stripe-checkout.js
 ```
@@ -458,6 +463,98 @@ The page needs two buttons with specific IDs:
 
 ---
 
+## Inscription En Cours Page (`/inscription-en-cours/[item-slug]`)
+
+Auto-checkout page for users who started signup but didn't complete payment. Creates a Stripe checkout session and redirects immediately.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `auto-checkout.js` | Creates checkout session and auto-redirects to Stripe |
+| `redirect-guard.js` | Redirects non-logged users to /nos-offres |
+
+### Usage in Webflow
+
+**Header (must run early to redirect non-logged users):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-en-cours/redirect-guard.js"></script>
+```
+
+**Footer:**
+```html
+<script>
+window.CMS_CHECKOUT_CONFIG = {
+    priceId: "{{wf priceid}}",
+    couponId: "{{wf couponid}}",
+    successUrl: "${window.location.origin}/membership/mes-informations-praticien",
+    cancelUrl: "${window.location.origin}/nos-offres",
+    paymentMethods: "{{wf payment-method-types}}".split(','),
+    option: "{{wf option}}"
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-en-cours/auto-checkout.js"></script>
+```
+
+### Features
+
+- Reads config from `window.CMS_CHECKOUT_CONFIG` (set by Webflow CMS)
+- Falls back to localStorage values if CMS values are empty
+- **Supports `${window.location.origin}` placeholder** in URLs (resolved at runtime)
+- Sends abandon-cart webhook before redirect
+- Shows fallback button if checkout session creation fails
+
+### Console Prefixes
+
+- `[AutoCheckout]` - Auto-checkout script
+
+---
+
+## Inscription Offre Speciale Page (`/inscription-offre-speciale/[item-slug]`)
+
+Special offer signup pages with CMS-driven pricing and coupons.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads shared/stripe-checkout.js with CMS config |
+
+### Usage in Webflow
+
+```html
+<script>
+window.CMS_CHECKOUT_CONFIG = {
+    priceId: "{{wf stripepriceid}}",
+    couponId: "{{wf code-promo}}",
+    successUrl: window.location.origin + "/membership/mes-informations",
+    cancelUrl: window.location.href,
+    paymentMethods: ['card', 'sepa_debit'],
+    option: 'offre-speciale'
+};
+
+// Also store in localStorage for new user redirect flow
+localStorage.setItem('signup-price-id', "{{wf stripepriceid}}");
+localStorage.setItem('signup-coupon-id', "{{wf code-promo}}");
+localStorage.setItem('signup-success-url', window.location.origin + "/membership/mes-informations");
+localStorage.setItem('signup-cancel-url', window.location.href);
+</script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js"></script>
+```
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `signup-rempla-from-decouverte` - Shown for non-Stripe users
+- `signup-rempla-stripe-customer` - Shown for existing Stripe customers
+
+### Console Prefixes
+
+- `[OrdoOffreSpeciale]` - Loader
+- `[StripeCheckout]` - Checkout
+
+---
+
 ## Keep Crisp Separate
 
 ```html
@@ -486,4 +583,6 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla-v2/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-en-cours/auto-checkout.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js
 ```
