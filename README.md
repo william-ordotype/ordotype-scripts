@@ -52,7 +52,8 @@ ordotype-scripts/
 │   ├── urgent-handler.js
 │   ├── duplicates-cleaner.js
 │   ├── print-handler.js
-│   └── copy-handler.js
+│   ├── copy-handler.js
+│   └── styles.css
 ├── conseils-patients/  # Patient recommendations page scripts
 │   ├── loader.js
 │   ├── opacity-reveal.js
@@ -320,9 +321,23 @@ This is the B variant of the A/B test. Main differences from V1:
 | `duplicates-cleaner.js` | Removes duplicate items, DataLayer tracking |
 | `print-handler.js` | Print prescription functionality |
 | `copy-handler.js` | Copy as rich text (multiple methods) |
+| `styles.css` | Non-critical CSS (tables, print styles, responsive) |
 
 ### Usage in Webflow
 
+**Header (critical CSS - keep inline to prevent FOUC):**
+```html
+<style>
+.ordo-for-members, .reco-rich-text, .qr-codes-wrapper {
+    opacity: 0;
+    transition: opacity 450ms;
+}
+</style>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/styles.css">
+```
+
+**Footer:**
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/william-ordotype/tools@c0f2e0e29c03308b04d4a15911ed47b3d94b9fb2/toast.js" type="module"></script>
@@ -650,4 +665,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-utils.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/styles.css
 ```
