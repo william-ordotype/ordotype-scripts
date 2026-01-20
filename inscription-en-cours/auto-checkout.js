@@ -53,8 +53,11 @@
     const couponId = config.couponId || localStorage.getItem('signup-coupon-id') || '';
     const successUrl = config.successUrl || localStorage.getItem('signup-success-url') || `${window.location.origin}/membership/mes-informations`;
     const cancelUrl = config.cancelUrl || localStorage.getItem('signup-cancel-url') || window.location.href;
-    const paymentMethods = config.paymentMethods || ['card', 'sepa_debit'];
-    const option = config.option || 'inscription-en-cours';
+    const paymentMethodsStorage = localStorage.getItem('signup-payment-methods');
+    const paymentMethods = (config.paymentMethods && config.paymentMethods.length)
+        ? config.paymentMethods
+        : (paymentMethodsStorage ? paymentMethodsStorage.split(',') : ['card', 'sepa_debit']);
+    const option = config.option || localStorage.getItem('signup-option') || 'inscription-en-cours';
 
     console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option });
 
