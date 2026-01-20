@@ -355,9 +355,15 @@ Shared Stripe checkout script used by signup pages. Configure via `window.STRIPE
 
 ```javascript
 window.STRIPE_CHECKOUT_CONFIG = {
+  // Button IDs (optional, these are the defaults)
+  btnNoStripeId: 'signup-rempla-from-decouverte',
+  btnStripeId: 'signup-rempla-stripe-customer',
+
+  // Checkout config
   priceId: 'price_xxx',           // Stripe price ID
   couponId: 'xxx',                // Stripe coupon ID
   successUrl: '/membership/success',
+  cancelUrl: window.location.href, // optional, defaults to current page
   paymentMethods: ['card', 'sepa_debit'],  // or just ['sepa_debit']
   option: 'rempla'                // for GTM tracking
 };

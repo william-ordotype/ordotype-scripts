@@ -5,9 +5,15 @@
  *
  * <script>
  * window.STRIPE_CHECKOUT_CONFIG = {
+ *   // Button IDs
+ *   btnNoStripeId: 'signup-rempla-from-decouverte',
+ *   btnStripeId: 'signup-rempla-stripe-customer',
+ *
+ *   // Checkout config
  *   priceId: 'price_xxx',
  *   couponId: 'xxx',
  *   successUrl: '/membership/success',
+ *   cancelUrl: window.location.href,  // optional, defaults to current page
  *   paymentMethods: ['card', 'sepa_debit'],  // or just ['sepa_debit']
  *   option: 'rempla'  // for GTM tracking
  * };
@@ -19,8 +25,12 @@ async function initStripeCheckout() {
 
     console.log(PREFIX, 'Initializing...', config.option || 'default');
 
-    const signupBtnNoStripe = document.getElementById('signup-rempla-from-decouverte');
-    const signupBtnStripe = document.getElementById('signup-rempla-stripe-customer');
+    // Button IDs with defaults
+    const btnNoStripeId = config.btnNoStripeId || 'signup-rempla-from-decouverte';
+    const btnStripeId = config.btnStripeId || 'signup-rempla-stripe-customer';
+
+    const signupBtnNoStripe = document.getElementById(btnNoStripeId);
+    const signupBtnStripe = document.getElementById(btnStripeId);
 
     // Memberstack data
     const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
@@ -43,7 +53,7 @@ async function initStripeCheckout() {
     const priceId = config.priceId || 'price_1REohrKEPftl7d7iemVKnl9Y';
     const couponId = config.couponId || 'IJqN4FxB';
     const successUrl = config.successUrl || `${window.location.origin}/membership/mes-informations-praticien`;
-    const cancelUrl = window.location.href;
+    const cancelUrl = config.cancelUrl || window.location.href;
     const paymentMethods = config.paymentMethods || ['sepa_debit'];
     const option = config.option || 'default';
 
