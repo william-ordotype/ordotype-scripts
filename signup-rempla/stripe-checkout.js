@@ -7,6 +7,7 @@
  */
 async function initRemplaCheckout() {
     const PREFIX = '[RemplaCheckout]';
+    console.log(PREFIX, 'Initializing...');
 
     const signupBtnNoStripe = document.getElementById('signup-rempla-from-decouverte');
     const signupBtnStripe = document.getElementById('signup-rempla-stripe-customer');
@@ -24,6 +25,7 @@ async function initRemplaCheckout() {
         return;
     }
 
+    console.log(PREFIX, 'Stripe customer found:', stripeCustomerId);
     if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
     if (signupBtnStripe) signupBtnStripe.style.display = 'flex';
 
@@ -68,6 +70,7 @@ async function initRemplaCheckout() {
         }
         sessionId = data.sessionId;
         checkoutUrl = data.url;
+        console.log(PREFIX, 'Checkout session ready');
 
     } catch (err) {
         console.error(PREFIX, 'Error creating checkout session:', err);
