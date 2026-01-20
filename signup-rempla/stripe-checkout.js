@@ -7,17 +7,33 @@
  */
 document.addEventListener('DOMContentLoaded', async () => {
     const PREFIX = '[RemplaCheckout]';
-    console.log(PREFIX, 'DOMContentLoaded');
+    console.log(PREFIX, 'DOMContentLoaded - script started');
 
     const signupBtnNoStripe = document.getElementById('signup-rempla-from-decouverte');
     const signupBtnStripe = document.getElementById('signup-rempla-stripe-customer');
 
+    console.log(PREFIX, 'Button elements found:', {
+        signupBtnNoStripe: !!signupBtnNoStripe,
+        signupBtnStripe: !!signupBtnStripe
+    });
+
     // Memberstack data
-    const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
-    console.log(PREFIX, 'memData:', memData);
+    const rawMemData = localStorage.getItem('_ms-mem');
+    console.log(PREFIX, 'Raw _ms-mem from localStorage:', rawMemData);
+
+    const memData = JSON.parse(rawMemData || '{}');
+    console.log(PREFIX, 'Parsed memData:', memData);
+    console.log(PREFIX, 'memData keys:', Object.keys(memData));
+
     const stripeCustomerId = memData.stripeCustomerId;
     const memberstackUserId = memData.id || memData.userId;
     const memberstackEmail = memData.auth?.email || memData.email;
+
+    console.log(PREFIX, 'Extracted values:', {
+        stripeCustomerId,
+        memberstackUserId,
+        memberstackEmail
+    });
 
     if (!stripeCustomerId) {
         console.warn(PREFIX, 'No Stripe customer – showing non-Stripe flow');
@@ -62,27 +78,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
         console.log(PREFIX, 'Fetching checkout session with payload:', payload);
 
+        console.log(PREFIX, 'Sending fetch to:', fnUrl);
         const resp = await fetch(fnUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
+        console.log(PREFIX, 'Fetch response status:', resp.status, resp.statusText);
+        console.log(PREFIX, 'Fetch response ok:', resp.ok);
+
         const data = await resp.json();
         console.log(PREFIX, 'Response from create-checkout-session:', data);
+        console.log(PREFIX, 'Response keys:', Object.keys(data));
 
         if (!data.sessionId || !data.url) {
-            console.error(PREFIX, 'Invalid response:', data);
+            console.error(PREFIX, 'Invalid response - missing sessionId or url:', data);
+            console.error(PREFIX, 'sessionId:', data.sessionId);
+            console.error(PREFIX, 'url:', data.url);
             alert('Une erreur est survenue lors du chargement de la page.');
             return;
         }
         sessionId = data.sessionId;
         checkoutUrl = data.url;
+        console.log(PREFIX, 'Checkout session created successfully:', { sessionId, checkoutUrl });
 
     } catch (err) {
         console.error(PREFIX, 'Network/error during session fetch:', err);
+        console.error(PREFIX, 'Error name:', err.name);
+        console.error(PREFIX, 'Error message:', err.message);
+        console.error(PREFIX, 'Error stack:', err.stack);
         alert('Erreur réseau lors du chargement de la page.');
         return;
     }
+
+    console.log(PREFIX, 'Ready - click listener will be attached to button');
 
     // Helper to send abandon-cart payload
     function notifyAbandonCart(payload) {
