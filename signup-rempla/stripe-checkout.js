@@ -5,9 +5,9 @@
  * - Sends abandon-cart webhook on click
  * - Pushes GTM event before redirect
  */
-document.addEventListener('DOMContentLoaded', async () => {
+async function initRemplaCheckout() {
     const PREFIX = '[RemplaCheckout]';
-    console.log(PREFIX, 'DOMContentLoaded - script started');
+    console.log(PREFIX, 'Script started');
 
     const signupBtnNoStripe = document.getElementById('signup-rempla-from-decouverte');
     const signupBtnStripe = document.getElementById('signup-rempla-stripe-customer');
@@ -168,4 +168,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log(PREFIX, 'Redirecting to:', checkoutUrl);
         window.location.href = checkoutUrl;
     });
-});
+}
+
+// Run immediately if DOM is ready, otherwise wait for DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRemplaCheckout);
+} else {
+    initRemplaCheckout();
+}
