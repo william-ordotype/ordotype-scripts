@@ -83,6 +83,11 @@ ordotype-scripts/
 │   └── redirect-guard.js
 ├── inscription-offre-speciale/  # Special offer signup pages
 │   └── loader.js
+├── probleme-de-paiement/  # Payment problem page (past-due accounts, SEPA only)
+│   ├── access-guard.js
+│   └── loader.js
+├── probleme-de-paiement-cb/  # Payment problem page (Card + SEPA variant)
+│   └── loader.js
 └── shared/             # Shared scripts used across pages
     ├── stripe-checkout.js
     ├── stripe-setup-session.js
@@ -745,6 +750,91 @@ The page needs two buttons with specific IDs:
 
 ---
 
+## Probleme de Paiement Page (`/membership/probleme-de-paiement`)
+
+Payment problem page for users with past-due subscriptions. Allows them to add a new payment method.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `access-guard.js` | Redirects non-members and users without payment issues |
+| `loader.js` | Loads shared/stripe-setup-session.js with SEPA config |
+
+### Usage in Webflow
+
+**Header (must run early for access control):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement/access-guard.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Access Control Logic
+
+The `access-guard.js` script:
+1. Redirects non-logged users to homepage
+2. Checks if any plan has `REQUIRES_PAYMENT` status
+3. Checks if user has SEPA temporary plan (`pln_sepa-temporary-lj4w0oky`)
+4. If no payment issue OR has SEPA temporary plan:
+   - Adds past-due plan (`pln_brique-past-due-os1c808ai`)
+   - Redirects to homepage
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `setupBtnNoStripeId` - Shown for non-Stripe users
+- `setupBtnStripeId` - Shown for existing Stripe customers
+
+### Console Prefixes
+
+- `[AccessGuard]` - Access control
+- `[OrdoProblemePaiement]` - Loader
+- `[StripeSetup]` - Setup session handling (from shared script)
+
+---
+
+## Probleme de Paiement CB Page (`/membership/probleme-de-paiement-cb`)
+
+Payment problem page variant offering Card + SEPA payment methods. This is the CB (Card) variant.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads shared/stripe-setup-session.js with Card + SEPA config |
+
+### Usage in Webflow
+
+**Header (uses same access-guard as SEPA variant):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement/access-guard.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement-cb/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `setupBtnNoStripeId` - Shown for non-Stripe users
+- `setupBtnStripeId` - Shown for existing Stripe customers
+
+### Console Prefixes
+
+- `[AccessGuard]` - Access control (from probleme-de-paiement)
+- `[OrdoProblemePaiementCB]` - Loader
+- `[StripeSetup]` - Setup session handling (from shared script)
+
+---
+
 ## Keep Crisp Separate
 
 ```html
@@ -784,4 +874,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-pa
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/ab-test.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/stripe-setup-session.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement-cb/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement/access-guard.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement-cb/loader.js
 ```
