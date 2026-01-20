@@ -59,9 +59,15 @@ ordotype-scripts/
 │   ├── tracking.js
 │   ├── print-handler.js
 │   └── copy-handler.js
-└── signup-rempla/      # Signup Rempla 6 months page scripts
+├── signup-rempla/      # Signup Rempla 6 months page scripts
+│   ├── loader.js
+│   ├── ab-test.js
+│   ├── geo-redirect.js
+│   ├── styles.js
+│   ├── core.js
+│   └── stripe-checkout.js
+└── signup-rempla-v2/   # Signup Rempla 6 months V2 (B variant)
     ├── loader.js
-    ├── ab-test.js
     ├── geo-redirect.js
     ├── styles.js
     ├── core.js
@@ -388,6 +394,54 @@ Optional data attributes on `signup-rempla-stripe-customer`:
 
 ---
 
+## Signup Rempla V2 Page (`/membership/signup-rempla-6months-new-v2`)
+
+This is the B variant of the A/B test. Main differences from V1:
+- No A/B test script (this IS the B variant)
+- Payment methods include both `card` and `sepa_debit`
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts in correct order |
+| `geo-redirect.js` | Geographic redirection |
+| `styles.js` | Custom CSS for font-size inheritance |
+| `core.js` | Stores URL, adds background class for non-members |
+| `stripe-checkout.js` | Stripe checkout with Card + SEPA, abandon-cart webhook, GTM events |
+
+### Usage in Webflow
+
+**Header (for redirects and styles - must run early):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla-v2/geo-redirect.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla-v2/styles.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla-v2/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `signup-rempla-from-decouverte` - Shown for non-Stripe users
+- `signup-rempla-stripe-customer` - Shown for existing Stripe customers
+
+Optional data attributes on `signup-rempla-stripe-customer`:
+- `data-price-id` - Override default price ID
+- `data-coupon-id` - Override default coupon ID
+- `data-success-url` - Override success redirect URL
+
+### Console Prefixes
+
+- `[OrdoSignupRemplaV2]` - Loader
+- `[RemplaCheckoutV2]` - Stripe checkout
+
+---
+
 ## Keep Crisp Separate
 
 ```html
@@ -415,4 +469,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla-v2/loader.js
 ```
