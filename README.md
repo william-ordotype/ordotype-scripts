@@ -73,6 +73,10 @@ ordotype-scripts/
 │   ├── geo-redirect.js
 │   ├── styles.js
 │   └── core.js
+├── moyen-de-paiement/  # Payment method setup page
+│   ├── loader.js
+│   ├── ab-test.js
+│   └── setup-session.js
 ├── inscription-en-cours/  # Auto-checkout for in-progress signups
 │   ├── auto-checkout.js
 │   └── redirect-guard.js
@@ -555,6 +559,44 @@ The page needs two buttons with specific IDs:
 
 ---
 
+## Moyen de Paiement Page (`/membership/moyen-de-paiement`)
+
+Payment method setup page for adding SEPA payment methods.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads setup-session.js, stores URL for tracking |
+| `ab-test.js` | A/B test redirect (10% to /membership/ajouter-un-moyen-de-paiement-cb) |
+| `setup-session.js` | Creates Stripe setup session, handles button visibility |
+
+### Usage in Webflow
+
+**Header (for A/B test redirect - must run early):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/ab-test.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `setupBtnNoStripeId` - Shown for non-Stripe users
+- `setupBtnStripeId` - Shown for existing Stripe customers
+
+### Console Prefixes
+
+- `[OrdoMoyenPaiement]` - Loader
+- `[SetupSession]` - Setup session handling
+
+---
+
 ## Inscription En Cours Page (`/inscription-en-cours/[item-slug]`)
 
 Auto-checkout page for users who started signup but didn't complete payment. Creates a Stripe checkout session and redirects immediately.
@@ -682,4 +724,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/glob
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-utils.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/styles.css
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/ab-test.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/setup-session.js
 ```
