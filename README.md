@@ -64,13 +64,13 @@ ordotype-scripts/
 │   ├── ab-test.js
 │   ├── geo-redirect.js
 │   ├── styles.js
-│   ├── core.js
-│   └── stripe-checkout.js
-└── signup-rempla-v2/   # Signup Rempla 6 months V2 (B variant)
-    ├── loader.js
-    ├── geo-redirect.js
-    ├── styles.js
-    ├── core.js
+│   └── core.js
+├── signup-rempla-v2/   # Signup Rempla 6 months V2 (B variant)
+│   ├── loader.js
+│   ├── geo-redirect.js
+│   ├── styles.js
+│   └── core.js
+└── shared/             # Shared scripts used across pages
     └── stripe-checkout.js
 ```
 
@@ -347,18 +347,39 @@ This is the B variant of the A/B test. Main differences from V1:
 
 ---
 
+## Shared Scripts
+
+### stripe-checkout.js
+
+Shared Stripe checkout script used by signup pages. Configure via `window.STRIPE_CHECKOUT_CONFIG`:
+
+```javascript
+window.STRIPE_CHECKOUT_CONFIG = {
+  priceId: 'price_xxx',           // Stripe price ID
+  couponId: 'xxx',                // Stripe coupon ID
+  successUrl: '/membership/success',
+  paymentMethods: ['card', 'sepa_debit'],  // or just ['sepa_debit']
+  option: 'rempla'                // for GTM tracking
+};
+```
+
+### Console Prefix
+
+- `[StripeCheckout]` - Shared checkout script
+
+---
+
 ## Signup Rempla Page (`/membership/signup-rempla-6months`)
 
 ### Files
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order |
+| `loader.js` | Loads core.js + shared/stripe-checkout.js, sets config (SEPA only) |
 | `ab-test.js` | A/B test redirect (10% to signup-rempla-6months-new-v2) |
 | `geo-redirect.js` | Geographic redirection |
 | `styles.js` | Custom CSS for font-size inheritance |
 | `core.js` | Stores URL, adds background class for non-members |
-| `stripe-checkout.js` | Stripe checkout with SEPA, abandon-cart webhook, GTM events |
 
 ### Usage in Webflow
 
@@ -381,16 +402,11 @@ The page needs two buttons with specific IDs:
 - `signup-rempla-from-decouverte` - Shown for non-Stripe users
 - `signup-rempla-stripe-customer` - Shown for existing Stripe customers
 
-Optional data attributes on `signup-rempla-stripe-customer`:
-- `data-price-id` - Override default price ID
-- `data-coupon-id` - Override default coupon ID
-- `data-success-url` - Override success redirect URL
-
 ### Console Prefixes
 
-- `[OrdoSignupRempla]` - Loader/Core
+- `[OrdoSignupRempla]` - Loader
 - `[ABTestRempla]` - A/B test
-- `[RemplaCheckout]` - Stripe checkout
+- `[StripeCheckout]` - Checkout
 
 ---
 
@@ -404,11 +420,10 @@ This is the B variant of the A/B test. Main differences from V1:
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order |
+| `loader.js` | Loads core.js + shared/stripe-checkout.js, sets config (Card + SEPA) |
 | `geo-redirect.js` | Geographic redirection |
 | `styles.js` | Custom CSS for font-size inheritance |
 | `core.js` | Stores URL, adds background class for non-members |
-| `stripe-checkout.js` | Stripe checkout with Card + SEPA, abandon-cart webhook, GTM events |
 
 ### Usage in Webflow
 
@@ -430,15 +445,10 @@ The page needs two buttons with specific IDs:
 - `signup-rempla-from-decouverte` - Shown for non-Stripe users
 - `signup-rempla-stripe-customer` - Shown for existing Stripe customers
 
-Optional data attributes on `signup-rempla-stripe-customer`:
-- `data-price-id` - Override default price ID
-- `data-coupon-id` - Override default coupon ID
-- `data-success-url` - Override success redirect URL
-
 ### Console Prefixes
 
 - `[OrdoSignupRemplaV2]` - Loader
-- `[RemplaCheckoutV2]` - Stripe checkout
+- `[StripeCheckout]` - Checkout
 
 ---
 

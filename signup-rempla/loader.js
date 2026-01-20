@@ -12,11 +12,19 @@
     'use strict';
 
     const PREFIX = '[OrdoSignupRempla]';
-    const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla';
+    const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+
+    // Set config for V1: SEPA only
+    window.STRIPE_CHECKOUT_CONFIG = {
+        priceId: 'price_1REohrKEPftl7d7iemVKnl9Y',
+        couponId: 'IJqN4FxB',
+        paymentMethods: ['sepa_debit'],
+        option: 'rempla'
+    };
 
     const scripts = [
-        'core.js',
-        'stripe-checkout.js'
+        'signup-rempla/core.js',
+        'shared/stripe-checkout.js'
     ];
 
     function loadScript(url) {

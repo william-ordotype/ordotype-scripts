@@ -1,13 +1,23 @@
 /**
- * Stripe Checkout for Rempla 6 Months V2
- * - Detects Stripe customer from Memberstack
- * - Creates checkout session with Card + SEPA payment
- * - Sends abandon-cart webhook on click
- * - Pushes GTM event before redirect
+ * Shared Stripe Checkout Script
+ *
+ * Configure via window.STRIPE_CHECKOUT_CONFIG before loading:
+ *
+ * <script>
+ * window.STRIPE_CHECKOUT_CONFIG = {
+ *   priceId: 'price_xxx',
+ *   couponId: 'xxx',
+ *   successUrl: '/membership/success',
+ *   paymentMethods: ['card', 'sepa_debit'],  // or just ['sepa_debit']
+ *   option: 'rempla'  // for GTM tracking
+ * };
+ * </script>
  */
-async function initRemplaCheckoutV2() {
-    const PREFIX = '[RemplaCheckoutV2]';
-    console.log(PREFIX, 'Initializing...');
+async function initStripeCheckout() {
+    const PREFIX = '[StripeCheckout]';
+    const config = window.STRIPE_CHECKOUT_CONFIG || {};
+
+    console.log(PREFIX, 'Initializing...', config.option || 'default');
 
     const signupBtnNoStripe = document.getElementById('signup-rempla-from-decouverte');
     const signupBtnStripe = document.getElementById('signup-rempla-stripe-customer');
@@ -29,19 +39,14 @@ async function initRemplaCheckoutV2() {
     if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
     if (signupBtnStripe) signupBtnStripe.style.display = 'flex';
 
-    // Default configuration
-    const defaultPriceId = 'price_1REohrKEPftl7d7iemVKnl9Y';
-    const defaultCouponId = 'IJqN4FxB';
-    const defaultSuccess = `${window.location.origin}/membership/mes-informations-praticien`;
-
-    // Pull dynamic parameters from data-attributes (set these on your button)
-    const priceId = signupBtnStripe?.dataset.priceId || defaultPriceId;
-    const couponId = signupBtnStripe?.dataset.couponId || defaultCouponId;
-    const successUrl = signupBtnStripe?.dataset.successUrl || defaultSuccess;
+    // Configuration with defaults
+    const priceId = config.priceId || 'price_1REohrKEPftl7d7iemVKnl9Y';
+    const couponId = config.couponId || 'IJqN4FxB';
+    const successUrl = config.successUrl || `${window.location.origin}/membership/mes-informations-praticien`;
     const cancelUrl = window.location.href;
+    const paymentMethods = config.paymentMethods || ['sepa_debit'];
+    const option = config.option || 'default';
 
-    // V2 supports both card and SEPA
-    const paymentMethods = ['card', 'sepa_debit'];
     const fnUrl = 'https://ordotype-stripe-checkout-sessions.netlify.app/.netlify/functions/create-checkout-session';
 
     // Fetch sessionId + URL
@@ -103,7 +108,7 @@ async function initRemplaCheckoutV2() {
             stripeCustomerId,
             memberstackUserId,
             memberstackEmail,
-            option: 'rempla-v2',
+            option,
             priceId,
             couponId,
             successUrl,
@@ -118,7 +123,7 @@ async function initRemplaCheckoutV2() {
         window.dataLayer = window.dataLayer || [];
         window.dataLayer.push({
             event: 'stripe_signup_click',
-            option: 'rempla-v2',
+            option,
             checkoutSessionId: sessionId
         });
 
@@ -129,7 +134,7 @@ async function initRemplaCheckoutV2() {
 
 // Run immediately if DOM is ready, otherwise wait for DOMContentLoaded
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initRemplaCheckoutV2);
+    document.addEventListener('DOMContentLoaded', initStripeCheckout);
 } else {
-    initRemplaCheckoutV2();
+    initStripeCheckout();
 }
