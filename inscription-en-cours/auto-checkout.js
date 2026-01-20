@@ -49,10 +49,16 @@
     // Get config from CMS or localStorage fallback
     const config = window.CMS_CHECKOUT_CONFIG || {};
 
+    // Helper to replace ${window.location.origin} placeholder with actual origin
+    const resolveUrl = (url) => {
+        if (!url) return url;
+        return url.replace(/\$\{window\.location\.origin\}/g, window.location.origin);
+    };
+
     const priceId = config.priceId || localStorage.getItem('signup-price-id') || '';
     const couponId = config.couponId || localStorage.getItem('signup-coupon-id') || '';
-    const successUrl = config.successUrl || localStorage.getItem('signup-success-url') || `${window.location.origin}/membership/mes-informations`;
-    const cancelUrl = config.cancelUrl || localStorage.getItem('signup-cancel-url') || window.location.href;
+    const successUrl = resolveUrl(config.successUrl) || localStorage.getItem('signup-success-url') || `${window.location.origin}/membership/mes-informations`;
+    const cancelUrl = resolveUrl(config.cancelUrl) || localStorage.getItem('signup-cancel-url') || window.location.href;
     const paymentMethodsStorage = localStorage.getItem('signup-payment-methods');
     const paymentMethods = (config.paymentMethods && config.paymentMethods.length)
         ? config.paymentMethods
