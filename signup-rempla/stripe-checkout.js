@@ -7,42 +7,23 @@
  */
 async function initRemplaCheckout() {
     const PREFIX = '[RemplaCheckout]';
-    console.log(PREFIX, 'Script started');
 
     const signupBtnNoStripe = document.getElementById('signup-rempla-from-decouverte');
     const signupBtnStripe = document.getElementById('signup-rempla-stripe-customer');
 
-    console.log(PREFIX, 'Button elements found:', {
-        signupBtnNoStripe: !!signupBtnNoStripe,
-        signupBtnStripe: !!signupBtnStripe
-    });
-
     // Memberstack data
-    const rawMemData = localStorage.getItem('_ms-mem');
-    console.log(PREFIX, 'Raw _ms-mem from localStorage:', rawMemData);
-
-    const memData = JSON.parse(rawMemData || '{}');
-    console.log(PREFIX, 'Parsed memData:', memData);
-    console.log(PREFIX, 'memData keys:', Object.keys(memData));
-
+    const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
     const stripeCustomerId = memData.stripeCustomerId;
     const memberstackUserId = memData.id || memData.userId;
     const memberstackEmail = memData.auth?.email || memData.email;
 
-    console.log(PREFIX, 'Extracted values:', {
-        stripeCustomerId,
-        memberstackUserId,
-        memberstackEmail
-    });
-
     if (!stripeCustomerId) {
-        console.warn(PREFIX, 'No Stripe customer – showing non-Stripe flow');
+        console.log(PREFIX, 'No Stripe customer – showing non-Stripe flow');
         if (signupBtnStripe) signupBtnStripe.style.display = 'none';
         if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
         return;
     }
 
-    console.log(PREFIX, 'Stripe customer detected:', stripeCustomerId);
     if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
     if (signupBtnStripe) signupBtnStripe.style.display = 'flex';
 
@@ -56,11 +37,6 @@ async function initRemplaCheckout() {
     const couponId = signupBtnStripe?.dataset.couponId || defaultCouponId;
     const successUrl = signupBtnStripe?.dataset.successUrl || defaultSuccess;
     const cancelUrl = window.location.href;
-
-    console.log(PREFIX, 'Using priceId:', priceId);
-    console.log(PREFIX, 'Using couponId:', couponId);
-    console.log(PREFIX, 'Using successUrl:', successUrl);
-    console.log(PREFIX, 'Using cancelUrl:', cancelUrl);
 
     const paymentMethods = ['sepa_debit'];
     const fnUrl = 'https://ordotype-stripe-checkout-sessions.netlify.app/.netlify/functions/create-checkout-session';
@@ -76,59 +52,41 @@ async function initRemplaCheckout() {
             priceId,
             couponId
         };
-        console.log(PREFIX, 'Fetching checkout session with payload:', payload);
 
-        console.log(PREFIX, 'Sending fetch to:', fnUrl);
         const resp = await fetch(fnUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        console.log(PREFIX, 'Fetch response status:', resp.status, resp.statusText);
-        console.log(PREFIX, 'Fetch response ok:', resp.ok);
 
         const data = await resp.json();
-        console.log(PREFIX, 'Response from create-checkout-session:', data);
-        console.log(PREFIX, 'Response keys:', Object.keys(data));
 
         if (!data.sessionId || !data.url) {
-            console.error(PREFIX, 'Invalid response - missing sessionId or url:', data);
-            console.error(PREFIX, 'sessionId:', data.sessionId);
-            console.error(PREFIX, 'url:', data.url);
+            console.error(PREFIX, 'Invalid response:', data);
             alert('Une erreur est survenue lors du chargement de la page.');
             return;
         }
         sessionId = data.sessionId;
         checkoutUrl = data.url;
-        console.log(PREFIX, 'Checkout session created successfully:', { sessionId, checkoutUrl });
 
     } catch (err) {
-        console.error(PREFIX, 'Network/error during session fetch:', err);
-        console.error(PREFIX, 'Error name:', err.name);
-        console.error(PREFIX, 'Error message:', err.message);
-        console.error(PREFIX, 'Error stack:', err.stack);
+        console.error(PREFIX, 'Error creating checkout session:', err);
         alert('Erreur réseau lors du chargement de la page.');
         return;
     }
 
-    console.log(PREFIX, 'Ready - click listener will be attached to button');
-
     // Helper to send abandon-cart payload
     function notifyAbandonCart(payload) {
-        console.log(PREFIX, 'Sending abandon-cart payload:', payload);
         fetch('https://hook.eu1.make.com/jjwdfcdpudi0gv30z4838ckwruk77ffo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             keepalive: true,
             body: JSON.stringify(payload)
-        }).catch(err => {
-            console.warn(PREFIX, 'Abandon webhook failed:', err);
-        });
+        }).catch(() => {});
     }
 
     signupBtnStripe.addEventListener('click', e => {
         e.preventDefault();
-        console.log(PREFIX, 'Stripe button clicked');
 
         const timestamp = new Date().toISOString();
         const originPage = window.location.href;
@@ -159,13 +117,8 @@ async function initRemplaCheckout() {
             option: 'rempla',
             checkoutSessionId: sessionId
         });
-        console.log(PREFIX, 'GTM event pushed (rempla)', {
-            event: 'stripe_signup_click',
-            sessionId
-        });
 
         // Redirect to Stripe Checkout
-        console.log(PREFIX, 'Redirecting to:', checkoutUrl);
         window.location.href = checkoutUrl;
     });
 }
