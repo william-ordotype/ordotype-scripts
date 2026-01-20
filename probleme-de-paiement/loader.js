@@ -17,6 +17,10 @@
     // Store URL for tracking
     localStorage.setItem('locat', location.href);
 
+    // Mark as just paid (for redirect prevention after payment)
+    localStorage.setItem('justPaidTs', Date.now());
+    setTimeout(() => localStorage.removeItem('justPaidTs'), 60000);
+
     // Set config for shared stripe-setup-session.js
     window.STRIPE_SETUP_CONFIG = {
         btnNoStripeId: 'setupBtnNoStripeId',
