@@ -1,0 +1,446 @@
+/**
+ * Ordotype Pathology Page - Non-critical Styles
+ *
+ * These styles can load after the initial render.
+ * Critical styles (like .template, .opacity-0) should remain inline in Webflow.
+ *
+ * Usage in Webflow:
+ * <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/styles.css">
+ */
+
+/* Clickable icon tooltips */
+.clickable-icon {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+}
+
+.custom-tooltip {
+    display: none;
+    position: absolute;
+    z-index: 999;
+    background-color: #f9f9f9;
+    padding: 10px;
+    width: 600px;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+}
+
+.clickable-icon:focus .custom-tooltip,
+.clickable-icon:hover .custom-tooltip {
+    display: block;
+}
+
+.clickable-icon:focus {
+    outline: none;
+}
+
+/* Content item styles */
+.content-item_name p,
+.content-item_name strong {
+    font: inherit;
+}
+
+.content-item.is-active {
+    background-color: var(--primary-400);
+    color: var(--inverted-900);
+}
+
+.content-item.is-active .tab_right-icon {
+    filter: invert(1);
+}
+
+/* Mobile iframe */
+.mobile-iframe {
+    display: none;
+}
+
+@media screen and (max-width: 768px) {
+    .mobile-iframe {
+        display: block;
+        width: 100%;
+        height: 600px;
+        border: none;
+    }
+}
+
+@media screen and (min-width: 767px) {
+    .pathologies_tab_col-left .rc_hidden_warning_wrapper {
+        display: none;
+    }
+}
+
+/* Tooltip styles */
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 150px;
+    background-color: rgba(12, 14, 22, 1);
+    color: #fff;
+    text-align: center;
+    border-radius: 4px;
+    padding: 4px 4px;
+    position: absolute;
+    z-index: 1;
+    top: 150%;
+    left: 50%;
+    margin-left: -100px;
+}
+
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    margin-left: 10px;
+    margin-right: 10px;
+    border-width: 10px;
+    border-style: solid;
+    border-color: transparent transparent rgba(12, 14, 22, 1) transparent;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+}
+
+/* Rich text list overflow */
+.w-richtext ol,
+.w-richtext ul {
+    overflow: visible;
+}
+
+/* Abbreviation tooltips */
+abbr {
+    position: relative;
+    text-decoration: none;
+    border-bottom: 1px dotted black;
+    cursor: help;
+    z-index: 10;
+}
+
+abbr:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 1.5em;
+    padding: 0.3em 0.6em;
+    transform: translateX(-50%);
+    color: white;
+    background-color: black;
+    border-radius: 0.2em;
+    font-size: 0.9em;
+    white-space: nowrap;
+    z-index: 20;
+}
+
+/* Hide scrollbars */
+.notice-rappels-wrapper::-webkit-scrollbar,
+.career20_tabs-menu::-webkit-scrollbar {
+    display: none;
+}
+
+/* Print styles */
+@media print {
+    .drawer-footer {
+        display: none !important;
+    }
+}
+
+/* Select appearance reset */
+select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+}
+
+/* Ordo name rich text */
+.ordo-name-rich-text p {
+    font-size: inherit;
+}
+
+/* Quill editor styles */
+.ql-container.ql-snow {
+    border: none;
+}
+
+.ql-code-block {
+    display: none !important;
+}
+
+/* Quill header labels (French) */
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value="1"]::before,
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value="1"]::before {
+    content: 'Titre 1';
+}
+
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value="2"]::before,
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value="2"]::before {
+    content: 'Titre 2';
+}
+
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value="3"]::before,
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value="3"]::before {
+    content: 'Titre 3';
+}
+
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value="4"]::before,
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value="4"]::before {
+    content: 'Titre 4';
+}
+
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value="5"]::before,
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value="5"]::before {
+    content: 'Titre 5';
+}
+
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value="6"]::before,
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value="6"]::before {
+    content: 'Titre 6';
+}
+
+.ql-editor a {
+    color: inherit;
+    text-decoration: inherit;
+}
+
+.ql-editor .w-embed::before,
+.ql-editor .w-embed::after,
+.ql-editor .w-richtext::before,
+.ql-editor .w-richtext::after {
+    content: none;
+}
+
+/* RC HTML table styles */
+.rc-html table {
+    border-style: hidden;
+    border-collapse: collapse;
+    box-shadow: 0 0 0 1px var(--base-200);
+    margin: 0.5em;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.rc-html td {
+    border: 1px solid var(--base-200);
+    padding: .75em;
+}
+
+th {
+    font-weight: bold;
+    text-align: center;
+    border: 1px solid var(--base-200);
+    font-size: 110%;
+    padding: .75em;
+}
+
+tr th:only-child,
+tr th:not(:only-of-type) {
+    background-color: var(--primary-100);
+    color: var(--base-900);
+    font-weight: bold;
+    text-align: center;
+    margin: .25em;
+    padding-bottom: 1em;
+    padding-top: 1em;
+}
+
+table caption {
+    font-weight: bold;
+    padding-bottom: .75em;
+}
+
+caption.rc-html {
+    font-size: 24px;
+    font-weight: bold;
+    padding-bottom: .5em;
+    margin: .25em;
+}
+
+.rc-html a {
+    color: inherit !important;
+    text-decoration: underline 0.1rem solid #016FB2 !important;
+}
+
+strong.rc-html {
+    background-color: transparent !important;
+}
+
+p.rc-html {
+    font-weight: 400 !important;
+}
+
+/* List styles */
+ul {
+    padding-left: 1.5em;
+}
+
+/* Gradient */
+#rc-wrapper-gradient {
+    z-index: 0;
+    -webkit-mask-image: linear-gradient(to bottom, black 10%, transparent 80%);
+    mask-image: linear-gradient(to bottom, black 10%, transparent 80%);
+}
+
+/* Box styles */
+.box {
+    overflow-x: scroll;
+    width: 100%;
+    overflow: visible;
+}
+
+/* Small screens (max 600px) */
+@media only screen and (max-width: 600px) {
+    strong {
+        font-size: 12px;
+    }
+
+    .rc-html table {
+        min-width: 90%;
+        max-width: 150%;
+        margin-left: 0;
+        margin-right: auto;
+    }
+
+    .iframe-box {
+        height: 600px;
+    }
+}
+
+/* Medium screens (601px - 949px) */
+@media only screen and (min-width: 601px) and (max-width: 949px) {
+    table {
+        width: 100% !important;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .iframe-box {
+        height: 600px;
+    }
+}
+
+/* Large screens (950px+) */
+@media only screen and (min-width: 950px) {
+    div#notice-rappels-wrapper.sidebar-open {
+        justify-content: left;
+    }
+
+    div#notes-notes {
+        flex-basis: 100%;
+        padding-top: 2rem;
+        padding-right: 2rem;
+    }
+
+    .box {
+        overflow-x: scroll;
+        width: 100%;
+        overflow: visible;
+    }
+
+    .rappels-cliniques-content.sidebar-open {
+        margin-left: 1px;
+    }
+
+    .sources-collection-list-wrapper.no-padding-bottom {
+        padding-bottom: 0;
+    }
+
+    div#notice-rappels-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        position: static;
+    }
+
+    .tableau-recap-wrapper {
+        position: relative;
+    }
+
+    .recap-dropdown-container.sidebar-open {
+        display: block;
+    }
+
+    .rc-block-wrapper {
+        flex-basis: 66%;
+        position: static;
+    }
+
+    .rc-html {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .rc-html table {
+        width: 100% !important;
+        min-width: 785px;
+    }
+
+    .file-label {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+    }
+
+    .tooltip {
+        position: relative;
+        display: inline-block;
+    }
+
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        background-color: #0c0e16;
+        color: #fff;
+        text-align: center;
+        border-radius: 4px;
+        position: absolute;
+        z-index: 1;
+        top: 150%;
+        left: 50%;
+        margin-left: -100px;
+    }
+
+    .tooltip .tooltiptext::after {
+        content: "";
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        margin-left: 6px;
+        margin-right: 6px;
+        border-width: 6px;
+        border-style: solid;
+        border-color: transparent transparent #0c0e16 transparent;
+    }
+
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+    }
+}
+
+/* Skeleton loader */
+.skeleton-loader * {
+    visibility: hidden;
+}
+
+/* Extra large screens (1440px+) */
+@media only screen and (min-width: 1440px) {
+    .rc-html table {
+        min-width: 950px;
+    }
+}
+
+/* Ultra wide screens (1920px+) */
+@media only screen and (min-width: 1920px) {
+    .rc-html table {
+        min-width: 1000px;
+    }
+}
+
+/* Body display fix */
+body {
+    display: block !important;
+}

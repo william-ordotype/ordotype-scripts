@@ -28,7 +28,8 @@ ordotype-scripts/
 │   ├── tabs-manager.js
 │   ├── scroll-anchor.js
 │   ├── iframe-handler.js
-│   └── tooltips.js
+│   ├── tooltips.js
+│   └── styles.css
 ├── pricing/          # Pricing page scripts (/nos-offres)
 │   ├── loader.js
 │   ├── core.js
@@ -162,8 +163,31 @@ ordotype-scripts/
 | `scroll-anchor.js` | Smooth scrolling to anchors |
 | `iframe-handler.js` | Prescription/recommendation iframe loading |
 | `tooltips.js` | IPP and HBPM tooltip popups |
+| `styles.css` | Non-critical CSS (tooltips, tables, Quill editor, responsive) |
 
 ### Usage in Webflow
+
+**Header (critical CSS - keep inline to prevent FOUC):**
+```html
+<style>
+.template {
+    display: none !important;
+}
+
+.tableau-recap.hidden-if-not-mobile.opacity-0,
+.rc-html.opacity-0,
+.redac-and-ref.patho,
+.rc_hidden_warning_wrapper,
+.rappels-cliniques_row {
+    opacity: 0;
+    transition: opacity 50ms;
+}
+</style>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/styles.css">
+```
+
+**Footer:**
 
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js"></script>
@@ -585,4 +609,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-remp
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla-v2/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-en-cours/auto-checkout.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/styles.css
 ```
