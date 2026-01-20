@@ -23,6 +23,8 @@ ordotype-scripts/
 ├── pathology/        # Pathology page scripts
 │   ├── loader.js
 │   ├── core.js
+│   ├── countdown.js
+│   ├── member-redirects.js
 │   ├── clipboard.js
 │   ├── date-french.js
 │   ├── sources-list.js
@@ -180,6 +182,8 @@ ordotype-scripts/
 |------|---------|
 | `loader.js` | Loads all scripts in correct order |
 | `core.js` | Stores URL, handles page unload behavior |
+| `countdown.js` | Countdown timers based on member's date-de-switch |
+| `member-redirects.js` | Member state checks, banner display, and redirections |
 | `clipboard.js` | Copy prescription with ClipboardJS |
 | `date-french.js` | Translates English dates to French |
 | `sources-list.js` | "Sources et recommandations" with show more |
@@ -229,6 +233,8 @@ The pathology page requires these external scripts (loaded separately):
 ### Console Prefixes
 
 - `[OrdoPathology]` - Loader
+- `[Countdown]` - Countdown timers
+- `[MemberRedirects]` - Member state and redirections
 - `[Clipboard]` - Copy functionality
 - `[DateFrench]` - Date translation
 - `[SourcesList]` - Sources section
@@ -878,6 +884,8 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-remp
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-en-cours/auto-checkout.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/styles.css
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/countdown.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/member-redirects.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-utils.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/styles.css

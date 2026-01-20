@@ -14,6 +14,8 @@
   // Scripts to load (in order)
   const scripts = [
     'core.js',
+    'countdown.js',
+    'member-redirects.js',
     'clipboard.js',
     'date-french.js',
     'sources-list.js',
