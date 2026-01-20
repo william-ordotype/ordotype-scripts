@@ -60,7 +60,8 @@ ordotype-scripts/
 │   ├── html-cleaner.js
 │   ├── tracking.js
 │   ├── print-handler.js
-│   └── copy-handler.js
+│   ├── copy-handler.js
+│   └── styles.css
 ├── signup-rempla/      # Signup Rempla 6 months page scripts
 │   ├── loader.js
 │   ├── ab-test.js
@@ -370,9 +371,23 @@ This is the B variant of the A/B test. Main differences from V1:
 | `tracking.js` | DataLayer tracking for custom recommendations |
 | `print-handler.js` | Print with banner (French + Arabic support) |
 | `copy-handler.js` | Copy as rich text with QR code table conversion |
+| `styles.css` | Non-critical CSS (tables, print styles, Arabic RTL, responsive) |
 
 ### Usage in Webflow
 
+**Header (critical CSS - keep inline to prevent FOUC):**
+```html
+<style>
+.rc-html-fcp, .qr-code-fcp-div-block-wrapper {
+    opacity: 0;
+    transition: opacity 450ms;
+}
+</style>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/styles.css">
+```
+
+**Footer:**
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/loader.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/william-ordotype/tools@c0f2e0e29c03308b04d4a15911ed47b3d94b9fb2/toast.js" type="module"></script>
@@ -666,4 +681,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/s
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-utils.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/styles.css
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/styles.css
 ```

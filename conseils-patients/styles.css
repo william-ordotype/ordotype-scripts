@@ -1,0 +1,240 @@
+/**
+ * Ordotype Conseils Patients Page - Non-critical Styles
+ *
+ * These styles can load after the initial render.
+ * Critical styles (.rc-html-fcp, .qr-code-fcp-div-block-wrapper opacity)
+ * should remain inline in Webflow.
+ *
+ * Usage in Webflow:
+ * <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/styles.css">
+ */
+
+/* Paragraph spacing */
+p:not(table p) {
+    margin-bottom: 10px !important;
+}
+
+/* Arabic text direction */
+.rich-text-ar {
+    direction: rtl;
+}
+
+/* Print button area */
+.print-btn-area {
+    background-color: #153cf5;
+    color: white;
+    padding: 7px;
+    border-radius: 4px;
+}
+
+/* Print styles */
+@media print {
+    @page {
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+
+    body {
+        margin-top: 0;
+        margin-bottom: 0;
+        font-size: 20pt;
+        line-height: 1.3;
+    }
+
+    .rich-text-ar {
+        font-size: 20pt;
+        line-height: 1.3;
+        direction: rtl;
+        unicode-bidi: bidi-override;
+    }
+
+    table {
+        border-collapse: collapse;
+        width: 100%;
+    }
+
+    td,
+    th {
+        border: 1px solid black !important;
+        padding: 8px;
+        background-color: #ffffff !important;
+    }
+
+    td[style*="background-color: #2bc48a"] {
+        background-color: #2bc48a !important;
+    }
+
+    td[style*="background-color: #fcb151"] {
+        background-color: #fcb151 !important;
+    }
+
+    td[style*="background-color: #e03623"] {
+        background-color: #e03623 !important;
+    }
+}
+
+/* Desktop and tablet (480px+) */
+@media only screen and (min-width: 480px) {
+    table {
+        border-style: hidden;
+        border-collapse: collapse;
+        border-radius: 6px;
+        box-shadow: 0 0 0 1px #CCC;
+        margin: 0.5em;
+        width: 90% !important;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    td {
+        border: 1px solid #ccc;
+        padding: .75em;
+    }
+
+    th {
+        font-weight: bold;
+        text-align: center;
+        border: 1px solid #ccc;
+    }
+
+    tr:first-child td:first-child,
+    tr:first-child th:first-child {
+        border-top-left-radius: 6px;
+    }
+
+    tr:first-child td:last-child,
+    tr:first-child th:last-child {
+        border-top-right-radius: 6px;
+    }
+
+    tr:last-child th:first-child {
+        border-bottom-left-radius: 6px;
+    }
+
+    tr:last-child th:last-child {
+        border-bottom-right-radius: 6px;
+    }
+
+    tr th:only-child {
+        background-color: #d8f2ff;
+        color: black;
+        font-weight: bold;
+        text-align: center;
+        margin: .25em;
+        padding-bottom: 1em;
+        padding-top: 1em;
+    }
+
+    tr th:not(:only-of-type) {
+        background-color: #d8f2ff;
+        color: black;
+        font-weight: bold;
+        text-align: center;
+        margin: .25em;
+        padding-bottom: .5em;
+        padding-top: .5em;
+    }
+
+    table caption {
+        font-weight: bold;
+        padding-bottom: .75em;
+    }
+
+    span:not(.tooltiptext):not([style*="underline"]) {
+        text-decoration: none !important;
+        background-color: transparent !important;
+    }
+
+    strong.rc-html {
+        background-color: transparent !important;
+    }
+
+    ul {
+        padding-left: 1.5em;
+    }
+}
+
+/* Mobile (max 479px) */
+@media only screen and (max-width: 479px) {
+    strong {
+        font-size: 12px;
+    }
+
+    table {
+        border-style: hidden;
+        border-collapse: collapse;
+        border-radius: 6px;
+        box-shadow: 0 0 0 1px #ccc;
+        margin: 0.25em;
+        width: 90% !important;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    td {
+        border: 1px solid #ccc;
+        padding: .5em;
+    }
+
+    th {
+        font-weight: bold;
+        text-align: center;
+        border: 1px solid #ccc;
+    }
+
+    tr:first-child td:first-child,
+    tr:first-child th:first-child {
+        border-top-left-radius: 6px;
+    }
+
+    tr:first-child td:last-child,
+    tr:first-child th:last-child {
+        border-top-right-radius: 6px;
+    }
+
+    tr:last-child th:first-child {
+        border-bottom-left-radius: 6px;
+    }
+
+    tr:last-child th:last-child {
+        border-bottom-right-radius: 6px;
+    }
+
+    tr th:only-child {
+        background-color: #d8f2ff;
+        color: black;
+        font-weight: bold;
+        text-align: center;
+        margin: .25em;
+        padding-bottom: 1em;
+        padding-top: 1em;
+    }
+
+    tr th:not(:only-of-type) {
+        background-color: #d8f2ff;
+        color: black;
+        font-weight: bold;
+        text-align: center;
+        margin: .25em;
+        padding-bottom: .5em;
+        padding-top: .5em;
+    }
+
+    table caption {
+        font-weight: bold;
+        padding-bottom: .5em;
+    }
+
+    span:not(.tooltiptext) {
+        text-decoration: none !important;
+        background-color: transparent !important;
+    }
+
+    strong.rc-html {
+        background-color: transparent !important;
+    }
+
+    ul {
+        padding-left: 1.5em;
+    }
+}
