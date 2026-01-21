@@ -899,7 +899,8 @@ The page needs two buttons with specific IDs:
 These pages all use the shared `redeem-cancel-forms.js` script:
 - `/membership/annulation-abonnement` - Main subscription cancellation
 - `/membership/offre-annulation` - Retention offer with countdown
-- `/membership/desabonnement-module-ordotype` - Module unsubscription
+- `/membership/desabonnement-module-ordotype` - Module unsubscription (Soins palliatifs)
+- `/membership/desabonnement-module-rhumato` - Module unsubscription (Rhumatologie)
 
 ### Shared Script
 
