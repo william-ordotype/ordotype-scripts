@@ -1,17 +1,20 @@
 /**
- * Ordotype - Redeem & Cancel Forms
- * Handles retention offer (50% discount) and cancellation flows.
+ * Ordotype - Redeem & Cancel Forms (Shared)
+ * Handles redeem offer and cancellation form submissions with Stripe Customer ID injection.
  *
- * Page: /membership/offre-annulation
+ * Used on:
+ * - /membership/annulation-abonnement
+ * - /membership/offre-annulation
+ * - /membership/desabonnement-module-ordotype
  *
  * Required DOM elements:
- * - Forms: #redeem-form, #cancel-form
+ * - Forms: #redeem-form (optional), #cancel-form (optional)
  * - Hidden inputs: #stripeCustomerId (in redeem-form), #stripeCustomerIdCancel (in cancel-form)
  * - Messages: #waiting-message-redeem, #success-message-redeem, #error-message-redeem
  * - Messages: #waiting-message-cancel, #success-message-cancel, #error-message-cancel
  *
  * Usage in Webflow footer:
- * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/redeem-cancel-forms.js"></script>
+ * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
  */
 (function() {
   'use strict';
@@ -51,21 +54,24 @@
     }
 
     // Setup each form
+    let formsFound = 0;
     Object.entries(FORMS).forEach(([name, config]) => {
-      setupForm(name, config);
+      if (setupForm(name, config)) formsFound++;
     });
 
-    console.log(PREFIX, 'Initialized');
+    if (formsFound > 0) {
+      console.log(PREFIX, `Initialized (${formsFound} form(s))`);
+    }
   }
 
   /**
    * Setup a form with its event handlers
+   * @returns {boolean} true if form was found and setup
    */
   function setupForm(name, config) {
     const form = document.getElementById(config.formId);
     if (!form) {
-      console.log(PREFIX, `Form not found: ${config.formId}`);
-      return;
+      return false;
     }
 
     const elements = {
@@ -78,6 +84,7 @@
 
     form.addEventListener('submit', (e) => handleSubmit(e, elements, name));
     console.log(PREFIX, `Form setup: ${name}`);
+    return true;
   }
 
   /**

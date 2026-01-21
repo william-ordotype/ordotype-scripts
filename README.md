@@ -92,16 +92,14 @@ ordotype-scripts/
 │   └── loader.js
 ├── probleme-de-paiement-cb/  # Payment problem page (Card + SEPA variant)
 │   └── loader.js
-├── annulation-abonnement/  # Subscription cancellation page
-│   └── cancel-subscription.js
+├── annulation-abonnement/  # Subscription cancellation page (uses shared/redeem-cancel-forms.js)
 ├── offre-annulation/     # Cancellation retention offer page (50% discount)
-│   ├── countdown.js
-│   └── redeem-cancel-forms.js
-├── desabonnement-module/  # Module unsubscription page
-│   └── cancel-module.js
+│   └── countdown.js
+├── desabonnement-module/  # Module unsubscription page (uses shared/redeem-cancel-forms.js)
 └── shared/             # Shared scripts used across pages
     ├── stripe-checkout.js
     ├── stripe-setup-session.js
+    ├── redeem-cancel-forms.js
     ├── global-styles.css
     └── global-utils.js
 ```
@@ -858,130 +856,37 @@ The page needs two buttons with specific IDs:
 
 ---
 
-## Annulation Abonnement Page (`/membership/annulation-abonnement`)
+## Cancellation Pages (Shared Script)
 
-Subscription cancellation page with cancel form.
+These pages all use the shared `redeem-cancel-forms.js` script:
+- `/membership/annulation-abonnement` - Main subscription cancellation
+- `/membership/offre-annulation` - Retention offer with countdown
+- `/membership/desabonnement-module-ordotype` - Module unsubscription
 
-### Files
+### Shared Script
 
 | File | Purpose |
 |------|---------|
-| `cancel-subscription.js` | Handles cancel form submission with Stripe Customer ID injection |
+| `shared/redeem-cancel-forms.js` | Handles redeem and cancel form submissions with Stripe Customer ID injection |
 
 ### Usage in Webflow
 
-**Footer:**
+**For annulation-abonnement and desabonnement-module (no countdown):**
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/annulation-abonnement/cancel-subscription.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
 ```
 
-### Required DOM Elements
-
-```html
-<!-- Cancel Form -->
-<form id="cancel-form" action="YOUR_MAKE_WEBHOOK_URL" method="POST">
-    <input type="hidden" id="stripeCustomerIdCancel" name="stripeCustomerId" value="">
-    <input class="button red" type="submit" value="Résilier mon abonnement">
-</form>
-
-<div id="waiting-message-cancel" style="display: none;">Patientez...</div>
-<div id="success-message-cancel" style="display: none;">Votre abonnement a été résilié. Vous allez être redirigé...</div>
-<div id="error-message-cancel" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
-```
-
-### Console Prefixes
-
-- `[CancelSubscription]` - Form handling
-
----
-
-## Offre Annulation Page (`/membership/offre-annulation`)
-
-Cancellation retention offer page with countdown timer and redeem/cancel forms.
-
-### Files
-
-| File | Purpose |
-|------|---------|
-| `countdown.js` | User-specific countdown timer (persists in localStorage) |
-| `redeem-cancel-forms.js` | Handles redeem (50% offer) and cancel form submissions |
-
-### Usage in Webflow
-
-**Footer:**
+**For offre-annulation (with countdown):**
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/countdown.js"></script>
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/redeem-cancel-forms.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
 ```
 
 ### Required DOM Elements
 
-**Countdown (attributes set duration):**
-```html
-<div ms-code-time-hour="0">00</div>
-<div ms-code-time-minute="15">00</div>
-<div ms-code-time-second="0">00</div>
-<div ms-code-time-millisecond="0">00</div>
-
-<!-- Optional: elements to hide/show when countdown ends -->
-<div ms-code-countdown="hide-on-end">This will be removed when timer ends</div>
-<div ms-code-countdown="show-on-end" style="display: none;">This will show when timer ends</div>
-```
-
-**Redeem Form (50% offer):**
-```html
-<form id="redeem-form" action="YOUR_MAKE_WEBHOOK_URL" method="POST">
-    <input type="hidden" id="stripeCustomerId" name="stripeCustomerId" value="">
-    <input class="button is-gradient" type="submit" value="Profiter de 50% de réduction">
-</form>
-
-<div id="waiting-message-redeem" style="display: none;">Patientez...</div>
-<div id="success-message-redeem" style="display: none;">Merci ! Vous bénéficiez de 50% de réduction pendant 6 mois.</div>
-<div id="error-message-redeem" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
-```
-
-**Cancel Form:**
-```html
-<form id="cancel-form" action="YOUR_MAKE_WEBHOOK_URL" method="POST">
-    <input type="hidden" id="stripeCustomerIdCancel" name="stripeCustomerId" value="">
-    <input class="button red" type="submit" value="Refuser cette offre et annuler">
-</form>
-
-<div id="waiting-message-cancel" style="display: none;">Patientez...</div>
-<div id="success-message-cancel" style="display: none;">Votre abonnement a été résilié. Vous allez être redirigé...</div>
-<div id="error-message-cancel" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
-```
-
-### Console Prefixes
-
-- `[Countdown]` - Countdown timer
-- `[RedeemCancelForms]` - Form handling
-
----
-
-## Desabonnement Module Page (`/membership/desabonnement-module-ordotype`)
-
-Module unsubscription page (e.g., Soins palliatifs module) with redeem offer and cancel forms.
-
-### Files
-
-| File | Purpose |
-|------|---------|
-| `cancel-module.js` | Handles redeem (offer) and cancel form submissions with Stripe Customer ID injection |
-
-### Usage in Webflow
-
-**Footer:**
-```html
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/desabonnement-module/cancel-module.js"></script>
-```
-
-### Required DOM Elements
-
-**Redeem Form (offer):**
+**Redeem Form (optional - for retention offers):**
 ```html
 <form id="redeem-form" action="YOUR_MAKE_WEBHOOK_URL" method="POST">
     <input type="hidden" id="stripeCustomerId" name="stripeCustomerId" value="">
@@ -993,21 +898,34 @@ Module unsubscription page (e.g., Soins palliatifs module) with redeem offer and
 <div id="error-message-redeem" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
 ```
 
-**Cancel Form:**
+**Cancel Form (optional):**
 ```html
 <form id="cancel-form" action="YOUR_MAKE_WEBHOOK_URL" method="POST">
     <input type="hidden" id="stripeCustomerIdCancel" name="stripeCustomerId" value="">
-    <input class="button red" type="submit" value="Résilier le module">
+    <input class="button red" type="submit" value="Résilier">
 </form>
 
 <div id="waiting-message-cancel" style="display: none;">Patientez...</div>
-<div id="success-message-cancel" style="display: none;">Votre module a été résilié. Vous allez être redirigé...</div>
+<div id="success-message-cancel" style="display: none;">Votre abonnement a été résilié. Vous allez être redirigé...</div>
 <div id="error-message-cancel" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
+```
+
+**Countdown (offre-annulation only):**
+```html
+<div ms-code-time-hour="0">00</div>
+<div ms-code-time-minute="15">00</div>
+<div ms-code-time-second="0">00</div>
+<div ms-code-time-millisecond="0">00</div>
+
+<!-- Optional: elements to hide/show when countdown ends -->
+<div ms-code-countdown="hide-on-end">This will be removed when timer ends</div>
+<div ms-code-countdown="show-on-end" style="display: none;">This will show when timer ends</div>
 ```
 
 ### Console Prefixes
 
-- `[CancelModule]` - Form handling
+- `[RedeemCancelForms]` - Form handling
+- `[Countdown]` - Countdown timer (offre-annulation only)
 
 ---
 
@@ -1057,8 +975,6 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-pa
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement/access-guard.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement-cb/loader.js
-https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/annulation-abonnement/cancel-subscription.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/countdown.js
-https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/redeem-cancel-forms.js
-https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/desabonnement-module/cancel-module.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js
 ```
