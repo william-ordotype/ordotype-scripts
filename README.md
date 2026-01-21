@@ -97,6 +97,8 @@ ordotype-scripts/
 ├── offre-annulation/     # Cancellation retention offer page (50% discount)
 │   ├── countdown.js
 │   └── redeem-cancel-forms.js
+├── desabonnement-module/  # Module unsubscription page
+│   └── cancel-module.js
 └── shared/             # Shared scripts used across pages
     ├── stripe-checkout.js
     ├── stripe-setup-session.js
@@ -959,6 +961,56 @@ Cancellation retention offer page with countdown timer and redeem/cancel forms.
 
 ---
 
+## Desabonnement Module Page (`/membership/desabonnement-module-ordotype`)
+
+Module unsubscription page (e.g., Soins palliatifs module) with redeem offer and cancel forms.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `cancel-module.js` | Handles redeem (offer) and cancel form submissions with Stripe Customer ID injection |
+
+### Usage in Webflow
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/desabonnement-module/cancel-module.js"></script>
+```
+
+### Required DOM Elements
+
+**Redeem Form (offer):**
+```html
+<form id="redeem-form" action="YOUR_MAKE_WEBHOOK_URL" method="POST">
+    <input type="hidden" id="stripeCustomerId" name="stripeCustomerId" value="">
+    <input class="button is-gradient" type="submit" value="Profiter de l'offre">
+</form>
+
+<div id="waiting-message-redeem" style="display: none;">Patientez...</div>
+<div id="success-message-redeem" style="display: none;">Merci ! Votre offre a été appliquée.</div>
+<div id="error-message-redeem" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
+```
+
+**Cancel Form:**
+```html
+<form id="cancel-form" action="YOUR_MAKE_WEBHOOK_URL" method="POST">
+    <input type="hidden" id="stripeCustomerIdCancel" name="stripeCustomerId" value="">
+    <input class="button red" type="submit" value="Résilier le module">
+</form>
+
+<div id="waiting-message-cancel" style="display: none;">Patientez...</div>
+<div id="success-message-cancel" style="display: none;">Votre module a été résilié. Vous allez être redirigé...</div>
+<div id="error-message-cancel" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
+```
+
+### Console Prefixes
+
+- `[CancelModule]` - Form handling
+
+---
+
 ## Keep Crisp Separate
 
 ```html
@@ -1008,4 +1060,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/annulation-abonnement/cancel-subscription.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/countdown.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/redeem-cancel-forms.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/desabonnement-module/cancel-module.js
 ```
