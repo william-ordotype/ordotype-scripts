@@ -82,6 +82,8 @@ ordotype-scripts/
 │   └── ab-test.js
 ├── moyen-de-paiement-cb/  # Payment method setup page (Card + SEPA) - B variant
 │   └── loader.js
+├── moyen-de-paiement-ajoute/  # Payment method success page
+│   └── success.js
 ├── inscription-en-cours/  # Auto-checkout for in-progress signups
 │   ├── auto-checkout.js
 │   └── redirect-guard.js
@@ -679,6 +681,42 @@ The page needs two buttons with specific IDs:
 
 ---
 
+## Moyen de Paiement Ajoute Page (`/membership/moyen-de-paiement-ajoute`)
+
+Success page after payment method is added. Creates billing portal session and redirects user.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `success.js` | Handles success page, creates billing portal session, sends tracking webhook |
+
+### Usage in Webflow
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement-ajoute/success.js"></script>
+```
+
+### Required DOM Elements
+
+```html
+<span id="countdown">2</span> <span id="label">secondes</span>
+```
+
+### Features
+
+- Sets `justPaidTs` in localStorage for 2-minute grace period
+- Creates Stripe billing portal session
+- Sends tracking webhook to Make with setup session details
+- Countdown redirect to billing portal (or homepage on error)
+
+### Console Prefixes
+
+- `[PaymentSuccess]` - Success page handling
+
+---
+
 ## Inscription En Cours Page (`/inscription-en-cours/[item-slug]`)
 
 Auto-checkout page for users who started signup but didn't complete payment. Creates a Stripe checkout session and redirects immediately.
@@ -977,4 +1015,5 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de-paiement-cb/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/countdown.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement-ajoute/success.js
 ```
