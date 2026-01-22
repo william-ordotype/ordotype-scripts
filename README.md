@@ -87,6 +87,10 @@ ordotype-scripts/
 ├── inscription-en-cours/  # Auto-checkout for in-progress signups
 │   ├── auto-checkout.js
 │   └── redirect-guard.js
+├── inscription/             # Inscription signup pages
+│   ├── loader.js
+│   ├── background-handler.js
+│   └── date-french.js
 ├── inscription-offre-speciale/  # Special offer signup pages
 │   ├── loader.js
 │   ├── countdown.js
@@ -776,6 +780,47 @@ window.CMS_CHECKOUT_CONFIG = {
 ### Console Prefixes
 
 - `[AutoCheckout]` - Auto-checkout script
+
+---
+
+## Inscription Page (`/inscription/[item-slug]`)
+
+Signup pages with CMS-driven configuration and French date conversion.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads all scripts, stores CMS config in localStorage |
+| `background-handler.js` | Adds background class for non-logged users |
+| `date-french.js` | Converts English dates to French format |
+
+### Usage in Webflow
+
+```html
+<script>
+window.INSCRIPTION_CONFIG = {
+    comment: "{{wf {&quot;path&quot;:&quot;commentaire&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
+    typeDeCompte: "{{wf {&quot;path&quot;:&quot;type-de-compte&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
+    partnershipCity: "{{wf {&quot;path&quot;:&quot;partnership-city&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
+    dureeOffre: "{{wf {&quot;path&quot;:&quot;duree-de-l-offre-en-mois&quot;,&quot;type&quot;:&quot;Option&quot;\} }}"
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Features
+
+- Stores CMS config in localStorage for signup flow
+- Adds `background-avif` class for non-logged users
+- Converts CMS dates from English to French format ("Valable jusqu'au DD mois YYYY")
+
+### Console Prefixes
+
+- `[OrdoInscription]` - Loader
+- `[BackgroundHandler]` - Background class handler
+- `[DateFrench]` - Date conversion
 
 ---
 
