@@ -98,6 +98,8 @@ ordotype-scripts/
 ├── offre-annulation/     # Cancellation retention offer page (50% discount)
 │   └── countdown.js
 ├── desabonnement-module/  # Module unsubscription page (uses shared/redeem-cancel-forms.js)
+├── connexion-2fa/      # 2FA login page scripts
+│   └── crisp.js
 └── shared/             # Shared scripts used across pages
     ├── stripe-checkout.js
     ├── stripe-setup-session.js
@@ -965,6 +967,35 @@ These pages all use the shared `redeem-cancel-forms.js` script:
 
 - `[RedeemCancelForms]` - Form handling
 - `[Countdown]` - Countdown timer (offre-annulation only)
+
+---
+
+## Connexion 2FA Page (`/membership/connexion-2fa`)
+
+Crisp chat integration with Memberstack data and custom button handler.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `crisp.js` | Loads Crisp, extracts Memberstack data, handles chat button |
+
+### Usage in Webflow
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/connexion-2fa/crisp.js"></script>
+```
+
+### Features
+
+- Reads Memberstack data from `localStorage` (`_ms-mem` key)
+- Pushes member ID and email to Crisp session
+- Custom button handler for `#openCrispChatBot` element
+- Sends webhook to Make when chat is opened via button
+
+### Console Prefixes
+
+- `[Crisp]` - Crisp integration
 
 ---
 
