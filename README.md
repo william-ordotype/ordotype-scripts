@@ -94,7 +94,6 @@ ordotype-scripts/
 ├── inscription-offre-speciale/  # Special offer signup pages
 │   ├── loader.js
 │   ├── not-connected-handler.js
-│   ├── opacity-reveal.js
 │   └── countdown.js
 ├── probleme-de-paiement/  # Payment problem page (past-due accounts, SEPA only)
 │   ├── access-guard.js
@@ -104,7 +103,6 @@ ordotype-scripts/
 ├── annulation-abonnement/  # Subscription cancellation page (uses shared/redeem-cancel-forms.js)
 ├── offre-annulation/     # Cancellation retention offer page (50% discount)
 │   ├── loader.js
-│   ├── opacity-reveal.js
 │   └── countdown.js
 ├── desabonnement-module/  # Module unsubscription page (uses shared/redeem-cancel-forms.js)
 ├── fin-internat/        # End of internship page (subscription upgrade)
@@ -124,6 +122,7 @@ ordotype-scripts/
     ├── stripe-checkout.js
     ├── stripe-setup-session.js
     ├── redeem-cancel-forms.js
+    ├── opacity-reveal.js
     ├── global-styles.css
     └── global-utils.js
 ```
@@ -552,6 +551,37 @@ Includes:
 
 ---
 
+### opacity-reveal.js
+
+Shared script to reveal elements by setting opacity to 1 on page load.
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/opacity-reveal.js"></script>
+```
+
+**Required CSS (add to Webflow header):**
+```html
+<style>
+#js-clock {
+    opacity: 0;
+    transition: opacity 450ms;
+}
+</style>
+```
+
+**Configuration (optional):**
+```javascript
+window.OPACITY_REVEAL_CONFIG = {
+    selectors: ['#js-clock', '.other-element']  // default: ['#js-clock']
+};
+```
+
+### Console Prefix
+
+- `[OpacityReveal]` - Opacity reveal
+
+---
+
 ## Signup Rempla Page (`/membership/signup-rempla-6months`)
 
 ### Files
@@ -835,9 +865,8 @@ Special offer signup pages with CMS-driven pricing, coupons, and countdown timer
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order |
+| `loader.js` | Loads all scripts in correct order (includes shared/opacity-reveal.js) |
 | `not-connected-handler.js` | Handles connected/not-connected view toggle |
-| `opacity-reveal.js` | Reveals #js-clock on page load |
 | `countdown.js` | Countdown timer with localStorage persistence |
 
 ### Usage in Webflow
@@ -915,9 +944,9 @@ The page needs two buttons with specific IDs:
 
 - `[OrdoOffreSpeciale]` - Loader
 - `[NotConnectedHandler]` - View toggle
-- `[OpacityReveal]` - Clock reveal
+- `[OpacityReveal]` - Clock reveal (from shared)
 - `[Countdown]` - Countdown timer
-- `[StripeCheckout]` - Checkout
+- `[StripeCheckout]` - Checkout (from shared)
 
 ---
 
@@ -1090,9 +1119,9 @@ Footer:
 ### Console Prefixes
 
 - `[OrdoOffreAnnulation]` - Loader (offre-annulation only)
-- `[RedeemCancelForms]` - Form handling
-- `[OpacityReveal]` - Clock reveal (offre-annulation only)
+- `[OpacityReveal]` - Clock reveal (from shared)
 - `[Countdown]` - Countdown timer (offre-annulation only)
+- `[RedeemCancelForms]` - Form handling (from shared)
 
 ---
 

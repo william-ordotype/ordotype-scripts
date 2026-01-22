@@ -13,7 +13,7 @@
 
     // Scripts to load in order
     const scripts = [
-        'offre-annulation/opacity-reveal.js',
+        'shared/opacity-reveal.js',
         'offre-annulation/countdown.js',
         'shared/redeem-cancel-forms.js'
     ];
