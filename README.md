@@ -779,35 +779,65 @@ window.CMS_CHECKOUT_CONFIG = {
 
 ## Inscription Offre Speciale Page (`/inscription-offre-speciale/[item-slug]`)
 
-Special offer signup pages with CMS-driven pricing and coupons.
+Special offer signup pages with CMS-driven pricing, coupons, and countdown timers.
 
 ### Files
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads shared/stripe-checkout.js with CMS config |
+| `loader.js` | Loads all scripts in correct order |
+| `not-connected-handler.js` | Handles connected/not-connected view toggle |
+| `countdown.js` | Countdown timer with localStorage persistence |
 
 ### Usage in Webflow
 
 ```html
 <script>
+// Countdown config
+window.COUNTDOWN_CONFIG = {
+    slug: "{{wf slug}}",
+    expiresAutomatically: {{wf offre-qui-expire-automatiquement}}
+};
+
+// Checkout config from CMS fields
 window.CMS_CHECKOUT_CONFIG = {
     priceId: "{{wf stripepriceid}}",
     couponId: "{{wf code-promo}}",
     successUrl: window.location.origin + "/membership/mes-informations",
-    cancelUrl: window.location.href,
-    paymentMethods: ['card', 'sepa_debit'],
+    cancelUrl: window.location.origin + "/inscription-offre-speciale/{{wf slug}}",
+    paymentMethods: "{{wf payment-method-types}}".split(','),
     option: 'offre-speciale'
 };
 
-// Also store in localStorage for new user redirect flow
+// Store in localStorage for new user redirect flow
+localStorage.setItem('locat', location.href);
+localStorage.setItem('signup-type-de-compte', "{{wf type-de-compte}}");
+localStorage.setItem('signup-comment', "{{wf commentaire}}");
+localStorage.setItem('signup-partnership-city', "{{wf partnership-city}}");
 localStorage.setItem('signup-price-id', "{{wf stripepriceid}}");
 localStorage.setItem('signup-coupon-id', "{{wf code-promo}}");
+localStorage.setItem('signup-cancel-url', window.location.origin + "/inscription-offre-speciale/{{wf slug}}");
 localStorage.setItem('signup-success-url', window.location.origin + "/membership/mes-informations");
-localStorage.setItem('signup-cancel-url', window.location.href);
+localStorage.setItem('signup-payment-methods', "{{wf payment-method-types}}");
 </script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
 ```
+
+### Required DOM Elements
+
+**Not Connected Handler:**
+- `#not-connected-animation` - Button to trigger view switch
+- `#page-wrapper-connected` - Container for connected users
+- `#page-wrapper-not-connected` - Container for non-connected users
+
+**Countdown Timer:**
+- `[ms-code-time-day]` - Days display (initial value as attribute)
+- `[ms-code-time-hour]` - Hours display (initial value as attribute)
+- `[ms-code-time-minute]` - Minutes display (initial value as attribute)
+- `[ms-code-time-second]` - Seconds display (initial value as attribute)
+- `[ms-code-countdown="hide-on-end"]` - Elements to remove when timer ends (optional)
+- `[ms-code-countdown="display-on-end"]` - Elements to show when timer ends (optional)
 
 ### Button Requirements
 
@@ -818,6 +848,8 @@ The page needs two buttons with specific IDs:
 ### Console Prefixes
 
 - `[OrdoOffreSpeciale]` - Loader
+- `[NotConnectedHandler]` - View toggle
+- `[Countdown]` - Countdown timer
 - `[StripeCheckout]` - Checkout
 
 ---

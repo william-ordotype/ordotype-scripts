@@ -1,25 +1,35 @@
 /**
  * Ordotype Inscription Offre Speciale - Loader
- * Loads stripe-checkout with config from window.CMS_CHECKOUT_CONFIG (set by Webflow)
+ * Loads countdown and stripe-checkout with config from Webflow CMS.
  *
  * Usage in Webflow:
  *
  * <script>
- * // Set config from CMS fields (only Webflow can access these)
+ * // Countdown config
+ * window.COUNTDOWN_CONFIG = {
+ *     slug: "{{wf slug}}",
+ *     expiresAutomatically: {{wf offre-qui-expire-automatiquement}}
+ * };
+ *
+ * // Checkout config from CMS fields
  * window.CMS_CHECKOUT_CONFIG = {
  *     priceId: "{{wf stripepriceid}}",
  *     couponId: "{{wf code-promo}}",
  *     successUrl: window.location.origin + "/membership/mes-informations",
- *     cancelUrl: window.location.href,
- *     paymentMethods: ['card', 'sepa_debit'],
+ *     cancelUrl: window.location.origin + "/inscription-offre-speciale/{{wf slug}}",
+ *     paymentMethods: "{{wf payment-method-types}}".split(','),
  *     option: 'offre-speciale'
  * };
  *
- * // Also store in localStorage for new user redirect flow
+ * // Store in localStorage for new user redirect flow
+ * localStorage.setItem('signup-type-de-compte', "{{wf type-de-compte}}");
+ * localStorage.setItem('signup-comment', "{{wf commentaire}}");
+ * localStorage.setItem('signup-partnership-city', "{{wf partnership-city}}");
  * localStorage.setItem('signup-price-id', "{{wf stripepriceid}}");
  * localStorage.setItem('signup-coupon-id', "{{wf code-promo}}");
+ * localStorage.setItem('signup-cancel-url', window.location.origin + "/inscription-offre-speciale/{{wf slug}}");
  * localStorage.setItem('signup-success-url', window.location.origin + "/membership/mes-informations");
- * localStorage.setItem('signup-cancel-url', window.location.href);
+ * localStorage.setItem('signup-payment-methods', "{{wf payment-method-types}}");
  * </script>
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-offre-speciale/loader.js"></script>
  */
@@ -28,6 +38,13 @@
 
     const PREFIX = '[OrdoOffreSpeciale]';
     const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+
+    // Scripts to load in order
+    const scripts = [
+        'inscription-offre-speciale/not-connected-handler.js',
+        'inscription-offre-speciale/countdown.js',
+        'shared/stripe-checkout.js'
+    ];
 
     function loadScript(url) {
         return new Promise((resolve, reject) => {
@@ -39,7 +56,7 @@
         });
     }
 
-    function init() {
+    async function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
 
         // Helper to replace ${window.location.origin} placeholder with actual origin
@@ -60,13 +77,19 @@
 
         console.log(PREFIX, 'Config:', {
             priceId: window.STRIPE_CHECKOUT_CONFIG.priceId,
-            hasCooupon: !!window.STRIPE_CHECKOUT_CONFIG.couponId,
+            hasCoupon: !!window.STRIPE_CHECKOUT_CONFIG.couponId,
             option: window.STRIPE_CHECKOUT_CONFIG.option
         });
 
-        loadScript(`${BASE}/shared/stripe-checkout.js`).catch(err => {
+        // Load scripts in order
+        try {
+            for (const file of scripts) {
+                await loadScript(`${BASE}/${file}`);
+            }
+            console.log(PREFIX, 'All scripts loaded');
+        } catch (err) {
             console.error(PREFIX, 'Load error:', err);
-        });
+        }
     }
 
     // Wait for DOMContentLoaded to ensure CMS script has run
