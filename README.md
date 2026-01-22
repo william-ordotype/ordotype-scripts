@@ -28,7 +28,6 @@ ordotype-scripts/
 │   ├── clipboard.js
 │   ├── date-french.js
 │   ├── sources-list.js
-│   ├── opacity-reveal.js
 │   ├── tabs-manager.js
 │   ├── scroll-anchor.js
 │   ├── iframe-handler.js
@@ -208,14 +207,13 @@ ordotype-scripts/
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order |
+| `loader.js` | Loads all scripts in correct order (includes shared/opacity-reveal.js) |
 | `core.js` | Stores URL, handles page unload behavior |
 | `countdown.js` | Countdown timers based on member's date-de-switch |
 | `member-redirects.js` | Member state checks, banner display, and redirections |
 | `clipboard.js` | Copy prescription with ClipboardJS |
 | `date-french.js` | Translates English dates to French |
 | `sources-list.js` | "Sources et recommandations" with show more |
-| `opacity-reveal.js` | Reveals hidden elements on load |
 | `tabs-manager.js` | Tab visibility and auto-selection |
 | `scroll-anchor.js` | Smooth scrolling to anchors |
 | `iframe-handler.js` | Prescription/recommendation iframe loading |
@@ -266,7 +264,7 @@ The pathology page requires these external scripts (loaded separately):
 - `[Clipboard]` - Copy functionality
 - `[DateFrench]` - Date translation
 - `[SourcesList]` - Sources section
-- `[OpacityReveal]` - Element reveal
+- `[OpacityReveal]` - Element reveal (from shared)
 - `[TabsManager]` - Tab management
 - `[ScrollAnchor]` - Smooth scrolling
 - `[IframeHandler]` - Iframe loading

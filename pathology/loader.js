@@ -8,22 +8,34 @@
 (function() {
   'use strict';
 
-  // Base URL
+  // Base URLs
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology';
+  const SHARED = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
 
-  // Scripts to load (in order)
+  // Configure opacity reveal for pathology selectors
+  window.OPACITY_REVEAL_CONFIG = {
+    selectors: [
+      '.rc-html.opacity-0',
+      '.redac-and-ref.patho',
+      '.premium-content-component.new-paywall',
+      '.rc_hidden_warning_wrapper',
+      '.rappels-cliniques_row'
+    ]
+  };
+
+  // Scripts to load (in order) - use full URLs for shared scripts
   const scripts = [
-    'core.js',
-    'countdown.js',
-    'member-redirects.js',
-    'clipboard.js',
-    'date-french.js',
-    'sources-list.js',
-    'opacity-reveal.js',
-    'tabs-manager.js',
-    'scroll-anchor.js',
-    'iframe-handler.js',
-    'tooltips.js'
+    `${BASE}/core.js`,
+    `${BASE}/countdown.js`,
+    `${BASE}/member-redirects.js`,
+    `${BASE}/clipboard.js`,
+    `${BASE}/date-french.js`,
+    `${BASE}/sources-list.js`,
+    `${SHARED}/opacity-reveal.js`,
+    `${BASE}/tabs-manager.js`,
+    `${BASE}/scroll-anchor.js`,
+    `${BASE}/iframe-handler.js`,
+    `${BASE}/tooltips.js`
   ];
 
   // Load a single script
@@ -42,8 +54,8 @@
     console.log('[OrdoPathology] Loading...');
 
     try {
-      for (const file of scripts) {
-        await loadScript(`${BASE}/${file}`);
+      for (const url of scripts) {
+        await loadScript(url);
       }
       console.log('[OrdoPathology] All scripts loaded');
     } catch (err) {
