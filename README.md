@@ -103,6 +103,7 @@ ordotype-scripts/
 │   └── loader.js
 ├── annulation-abonnement/  # Subscription cancellation page (uses shared/redeem-cancel-forms.js)
 ├── offre-annulation/     # Cancellation retention offer page (50% discount)
+│   ├── opacity-reveal.js
 │   └── countdown.js
 ├── desabonnement-module/  # Module unsubscription page (uses shared/redeem-cancel-forms.js)
 ├── fin-internat/        # End of internship page (subscription upgrade)
@@ -1027,8 +1028,21 @@ These pages all use the shared `redeem-cancel-forms.js` script:
 ```
 
 **For offre-annulation (with countdown):**
+
+Header (critical CSS - keep inline to prevent FOUC):
+```html
+<style>
+#js-clock {
+    opacity: 0;
+    transition: opacity 450ms;
+}
+</style>
+```
+
+Footer:
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/opacity-reveal.js"></script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/countdown.js"></script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
 ```
@@ -1059,6 +1073,9 @@ These pages all use the shared `redeem-cancel-forms.js` script:
 <div id="error-message-cancel" style="display: none;">Une erreur est survenue. Veuillez réessayer ou contacter le support à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>
 ```
 
+**Opacity Reveal (offre-annulation only):**
+- `#js-clock` - Countdown clock container (revealed on page load)
+
 **Countdown (offre-annulation only):**
 ```html
 <div ms-code-time-hour="0">00</div>
@@ -1074,6 +1091,7 @@ These pages all use the shared `redeem-cancel-forms.js` script:
 ### Console Prefixes
 
 - `[RedeemCancelForms]` - Form handling
+- `[OpacityReveal]` - Clock reveal (offre-annulation only)
 - `[Countdown]` - Countdown timer (offre-annulation only)
 
 ---
