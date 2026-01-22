@@ -88,7 +88,9 @@ ordotype-scripts/
 │   ├── auto-checkout.js
 │   └── redirect-guard.js
 ├── inscription-offre-speciale/  # Special offer signup pages
-│   └── loader.js
+│   ├── loader.js
+│   ├── countdown.js
+│   └── not-connected-handler.js
 ├── probleme-de-paiement/  # Payment problem page (past-due accounts, SEPA only)
 │   ├── access-guard.js
 │   └── loader.js
