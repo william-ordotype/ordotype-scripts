@@ -42,6 +42,7 @@
     // Scripts to load in order
     const scripts = [
         'inscription-offre-speciale/not-connected-handler.js',
+        'inscription-offre-speciale/opacity-reveal.js',
         'inscription-offre-speciale/countdown.js',
         'shared/stripe-checkout.js'
     ];
