@@ -98,6 +98,17 @@ ordotype-scripts/
 ├── offre-annulation/     # Cancellation retention offer page (50% discount)
 │   └── countdown.js
 ├── desabonnement-module/  # Module unsubscription page (uses shared/redeem-cancel-forms.js)
+├── fin-internat/        # End of internship page (subscription upgrade)
+│   ├── loader.js
+│   ├── ab-test.js
+│   ├── geo-redirect.js
+│   ├── styles.js
+│   └── core.js
+├── fin-internat-v2/     # End of internship V2 (B variant, Card + SEPA)
+│   ├── loader.js
+│   ├── geo-redirect.js
+│   ├── styles.js
+│   └── core.js
 ├── connexion-2fa/      # 2FA login page scripts
 │   └── crisp.js
 └── shared/             # Shared scripts used across pages
@@ -970,6 +981,110 @@ These pages all use the shared `redeem-cancel-forms.js` script:
 
 ---
 
+## Fin Internat Page (`/membership/fin-internat`)
+
+Subscription upgrade page for interns finishing their internship. Offers a discounted subscription to continue access.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads core.js + shared/stripe-checkout.js, sets config (SEPA only) |
+| `ab-test.js` | A/B test redirect (10% to /membership/fin-internat-v2) |
+| `geo-redirect.js` | Geographic redirection |
+| `styles.js` | Custom CSS for heading font weight |
+| `core.js` | Stores URL, sets grace period to prevent redirect loops |
+
+### Usage in Webflow
+
+**Header (for redirects and styles - must run early):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/geo-redirect.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/ab-test.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/styles.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `signup-rempla-from-decouverte` - Shown for non-Stripe users
+- `signup-rempla-stripe-customer` - Shown for existing Stripe customers
+
+### Configuration
+
+The loader sets up `window.STRIPE_CHECKOUT_CONFIG`:
+- `priceId`: `price_1REohrKEPftl7d7iemVKnl9Y`
+- `couponId`: `IJqN4FxB`
+- `paymentMethods`: `['sepa_debit']`
+- `option`: `fin-internat`
+
+### Console Prefixes
+
+- `[OrdoFinInternat]` - Loader
+- `[ABTestFinInternat]` - A/B test
+- `[FinInternatCore]` - Core
+- `[StripeCheckout]` - Checkout (from shared script)
+
+---
+
+## Fin Internat V2 Page (`/membership/fin-internat-v2`)
+
+This is the B variant of the A/B test. Main differences from V1:
+- No A/B test script (this IS the B variant)
+- Payment methods include both `card` and `sepa_debit`
+- Different geo-redirect ID
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `loader.js` | Loads core.js + shared/stripe-checkout.js, sets config (Card + SEPA) |
+| `geo-redirect.js` | Geographic redirection (different ID than V1) |
+| `styles.js` | Custom CSS for heading font weight |
+| `core.js` | Stores URL, sets grace period to prevent redirect loops |
+
+### Usage in Webflow
+
+**Header (for redirects and styles - must run early):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/geo-redirect.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/styles.js"></script>
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/loader.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+### Button Requirements
+
+The page needs two buttons with specific IDs:
+- `signup-rempla-from-decouverte` - Shown for non-Stripe users
+- `signup-rempla-stripe-customer` - Shown for existing Stripe customers
+
+### Configuration
+
+The loader sets up `window.STRIPE_CHECKOUT_CONFIG`:
+- `priceId`: `price_1REohrKEPftl7d7iemVKnl9Y`
+- `couponId`: `IJqN4FxB`
+- `paymentMethods`: `['sepa_debit', 'card']`
+- `option`: `fin-internat-v2`
+
+### Console Prefixes
+
+- `[OrdoFinInternatV2]` - Loader
+- `[FinInternatV2Core]` - Core
+- `[StripeCheckout]` - Checkout (from shared script)
+
+---
+
 ## Connexion 2FA Page (`/membership/connexion-2fa`)
 
 Crisp chat integration with Memberstack data and custom button handler.
@@ -1048,4 +1163,13 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/probleme-de
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/countdown.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement-ajoute/success.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/ab-test.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/geo-redirect.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/styles.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat/core.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/geo-redirect.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/styles.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/core.js
 ```
