@@ -6,11 +6,29 @@
 (function() {
   'use strict';
 
+  // Helper to safely access localStorage (may fail in private browsing)
+  function safeGetItem(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      console.warn('[OrdoAccount] localStorage not available:', e.message);
+      return null;
+    }
+  }
+
+  function safeSetItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('[OrdoAccount] localStorage not available:', e.message);
+    }
+  }
+
   // Store current URL for tracking
-  localStorage.setItem('locat', location.href);
+  safeSetItem('locat', location.href);
 
   // Parse member data once
-  const memberData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
+  const memberData = JSON.parse(safeGetItem('_ms-mem') || '{}');
 
   // Configuration
   const config = {
