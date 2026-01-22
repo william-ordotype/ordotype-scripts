@@ -233,6 +233,7 @@ ordotype-scripts/
 .rc-html.opacity-0,
 .redac-and-ref.patho,
 .rc_hidden_warning_wrapper,
+#update-clock,
 .rappels-cliniques_row {
     opacity: 0;
     transition: opacity 50ms;
