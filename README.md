@@ -103,6 +103,7 @@ ordotype-scripts/
 │   └── loader.js
 ├── annulation-abonnement/  # Subscription cancellation page (uses shared/redeem-cancel-forms.js)
 ├── offre-annulation/     # Cancellation retention offer page (50% discount)
+│   ├── loader.js
 │   ├── opacity-reveal.js
 │   └── countdown.js
 ├── desabonnement-module/  # Module unsubscription page (uses shared/redeem-cancel-forms.js)
@@ -1041,10 +1042,8 @@ Header (critical CSS - keep inline to prevent FOUC):
 
 Footer:
 ```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/loader.js"></script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/opacity-reveal.js"></script>
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/offre-annulation/countdown.js"></script>
-<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
 ```
 
 ### Required DOM Elements
@@ -1090,6 +1089,7 @@ Footer:
 
 ### Console Prefixes
 
+- `[OrdoOffreAnnulation]` - Loader (offre-annulation only)
 - `[RedeemCancelForms]` - Form handling
 - `[OpacityReveal]` - Clock reveal (offre-annulation only)
 - `[Countdown]` - Countdown timer (offre-annulation only)
