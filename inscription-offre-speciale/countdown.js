@@ -34,14 +34,23 @@
         const slug = config.slug || '';
         const expiresAutomatically = config.expiresAutomatically || false;
 
+        console.log(PREFIX, 'Config:', { slug, expiresAutomatically });
+
         // Get countdown elements
         const dayEl = document.querySelector('[ms-code-time-day]');
         const hourEl = document.querySelector('[ms-code-time-hour]');
         const minuteEl = document.querySelector('[ms-code-time-minute]');
         const secondEl = document.querySelector('[ms-code-time-second]');
 
+        console.log(PREFIX, 'Elements found:', {
+            day: !!dayEl,
+            hour: !!hourEl,
+            minute: !!minuteEl,
+            second: !!secondEl
+        });
+
         if (!dayEl || !hourEl || !minuteEl || !secondEl) {
-            console.warn(PREFIX, 'Missing countdown elements');
+            console.warn(PREFIX, 'Missing countdown elements, aborting');
             return;
         }
 
