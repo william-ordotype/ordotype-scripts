@@ -93,8 +93,9 @@ ordotype-scripts/
 │   └── date-french.js
 ├── inscription-offre-speciale/  # Special offer signup pages
 │   ├── loader.js
-│   ├── countdown.js
-│   └── not-connected-handler.js
+│   ├── not-connected-handler.js
+│   ├── opacity-reveal.js
+│   └── countdown.js
 ├── probleme-de-paiement/  # Payment problem page (past-due accounts, SEPA only)
 │   ├── access-guard.js
 │   └── loader.js
@@ -834,9 +835,22 @@ Special offer signup pages with CMS-driven pricing, coupons, and countdown timer
 |------|---------|
 | `loader.js` | Loads all scripts in correct order |
 | `not-connected-handler.js` | Handles connected/not-connected view toggle |
+| `opacity-reveal.js` | Reveals #js-clock on page load |
 | `countdown.js` | Countdown timer with localStorage persistence |
 
 ### Usage in Webflow
+
+**Header (critical CSS - keep inline to prevent FOUC):**
+```html
+<style>
+#js-clock {
+    opacity: 0;
+    transition: opacity 450ms;
+}
+</style>
+```
+
+**Footer:**
 
 ```html
 <script>
@@ -878,6 +892,9 @@ localStorage.setItem('signup-payment-methods', "{{wf payment-method-types}}");
 - `#page-wrapper-connected` - Container for connected users
 - `#page-wrapper-not-connected` - Container for non-connected users
 
+**Opacity Reveal:**
+- `#js-clock` - Countdown clock container (revealed on page load)
+
 **Countdown Timer:**
 - `[ms-code-time-day]` - Days display (initial value as attribute)
 - `[ms-code-time-hour]` - Hours display (initial value as attribute)
@@ -896,6 +913,7 @@ The page needs two buttons with specific IDs:
 
 - `[OrdoOffreSpeciale]` - Loader
 - `[NotConnectedHandler]` - View toggle
+- `[OpacityReveal]` - Clock reveal
 - `[Countdown]` - Countdown timer
 - `[StripeCheckout]` - Checkout
 
