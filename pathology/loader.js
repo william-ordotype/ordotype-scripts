@@ -19,7 +19,8 @@
       '.redac-and-ref.patho',
       '.premium-content-component.new-paywall',
       '.rc_hidden_warning_wrapper',
-      '.rappels-cliniques_row'
+      '.rappels-cliniques_row',
+      '#update-clock'
     ]
   };
 
