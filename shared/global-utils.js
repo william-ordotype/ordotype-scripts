@@ -57,8 +57,8 @@
      * Handles .w-richtext p and .decode-html elements
      */
     function initRichTextDecoder() {
-        window.Webflow = window.Webflow || [];
-        window.Webflow.push(function() {
+        // Use $(document).ready() instead of Webflow.push() to avoid being blocked by Webflow errors
+        $(document).ready(function() {
             // Decode .w-richtext p elements that contain escaped HTML tags
             // Webflow sometimes escapes HTML content, sometimes not
             // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
