@@ -75,6 +75,14 @@
                     : html;
             });
 
+            // Handler for .urine-24h
+            $('.urine-24h').html(function() {
+                var html = $(this).html();
+                return html.indexOf('&lt;') === 0 && html.indexOf('&gt;') > 3
+                    ? $(this).text()
+                    : html;
+            });
+
             console.log(PREFIX, 'Rich text decoder initialized');
         });
     }
