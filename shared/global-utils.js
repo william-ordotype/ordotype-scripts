@@ -75,12 +75,9 @@
                     : html;
             });
 
-            // Handler for .urine-24h
+            // Handler for .urine-24h - decode all HTML entities
             $('.urine-24h').html(function() {
-                var html = $(this).html();
-                return html.indexOf('&lt;') === 0 && html.indexOf('&gt;') > 3
-                    ? $(this).text()
-                    : html;
+                return $(this).text();
             });
 
             console.log(PREFIX, 'Rich text decoder initialized');
