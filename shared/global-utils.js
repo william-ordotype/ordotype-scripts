@@ -59,11 +59,18 @@
     function initRichTextDecoder() {
         window.Webflow = window.Webflow || [];
         window.Webflow.push(function() {
-            // Original logic for .w-richtext p
+            // Decode .w-richtext p elements that contain escaped HTML tags
+            // Webflow sometimes escapes HTML content, sometimes not
+            // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
             $('.w-richtext p').html(function() {
-                return $(this).html().indexOf('&lt;') === 0 && $(this).html().indexOf('&gt;') > 3
-                    ? $(this).text()
-                    : $(this).html();
+                var html = $(this).html();
+                // Detect escaped HTML tags: &lt; followed by tag name and &gt;
+                var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*[^&]*&gt;/i.test(html);
+
+                if (hasEscapedHtmlTag) {
+                    return $(this).text();
+                }
+                return html;
             });
 
             // Handler for .decode-html that starts with "-&nbsp;&lt;"
