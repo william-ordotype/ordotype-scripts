@@ -87,6 +87,14 @@
           }
         );
         var data = await resp.json();
+
+        // Check for currency mismatch redirect
+        if (data.reason === 'currency_mismatch' && data.redirectUrl) {
+          console.log('[StripeCheckout] Currency mismatch - redirecting to:', data.redirectUrl);
+          window.location.href = data.redirectUrl;
+          return;
+        }
+
         sessionId1 = data.sessionId1;
         url1 = data.url1;
         sessionId2 = data.sessionId2;

@@ -285,7 +285,7 @@ The pathology page requires these external scripts (loaded separately):
 | `geo-redirect.js` | Geographic redirection |
 | `belgium-redirect.js` | Belgium users redirect to /nos-offres-belgique |
 | `hash-tabs.js` | URL hash-based tab selection |
-| `stripe-checkout.js` | Stripe checkout session handling |
+| `stripe-checkout.js` | Stripe checkout session handling (with currency mismatch redirect support) |
 | `tabs-bg.js` | Animated tab background |
 
 ### Usage in Webflow
