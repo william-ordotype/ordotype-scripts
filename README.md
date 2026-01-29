@@ -207,7 +207,7 @@ ordotype-scripts/
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order (includes shared/opacity-reveal.js) |
+| `loader.js` | Loads all scripts with retry logic (3 attempts, 1s delay) and fallback reveal |
 | `core.js` | Stores URL, handles page unload behavior |
 | `countdown.js` | Countdown timers based on member's date-de-switch |
 | `member-redirects.js` | Member state checks, banner display, and redirections |
@@ -256,6 +256,18 @@ The pathology page requires these external scripts (loaded separately):
 - ClipboardJS
 - Alpine.js (for toaster notifications)
 - Webflow.js
+
+### Loader Resilience
+
+The pathology loader includes retry logic and fallback mechanisms:
+
+- **Retry logic**: Failed scripts are retried 3 times with 1 second delay between attempts
+- **Cache busting**: Retries use `?retry=N` query param to bypass cached failures
+- **Fallback reveal**: If all retries fail, content is revealed anyway (prevents stuck pages)
+
+Console messages for retry/fallback:
+- `[OrdoPathology] Retry 1/3 for: <url>` - Script failed, retrying
+- `[OrdoPathology] Fallback reveal triggered` - All retries failed, content revealed via fallback
 
 ### Console Prefixes
 
