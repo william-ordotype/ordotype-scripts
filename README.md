@@ -118,6 +118,7 @@ ordotype-scripts/
 ├── connexion-2fa/      # 2FA login page scripts
 │   └── crisp.js
 └── shared/             # Shared scripts used across pages
+    ├── cookie-consent.js
     ├── stripe-checkout.js
     ├── stripe-setup-session.js
     ├── redeem-cancel-forms.js
@@ -189,7 +190,7 @@ ordotype-scripts/
 <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.23/src/cookiesManager.js" type="module"></script>
 <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.18/dist/showElementAfterDelay.js" type="module"></script>
 <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.24/dist/hideElementOnClick.js" type="module"></script>
-<script async crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@finsweet/cookie-consent@1/fs-cc.js" fs-cc-mode="opt-in" fs-cc-endpoint="https://ccl.ordotype.workers.dev/"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/cookie-consent.js"></script>
 ```
 
 ### Console Prefixes
@@ -559,6 +560,41 @@ Includes:
 ### Console Prefix
 
 - `[GlobalUtils]` - Global utilities
+
+---
+
+### cookie-consent.js
+
+Custom cookie consent manager that replaces Finsweet Cookie Consent. Works with existing Webflow banner HTML using `fs-cc` attributes.
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/cookie-consent.js"></script>
+```
+
+**Features:**
+- Drop-in replacement for Finsweet Cookie Consent
+- Uses existing `fs-cc` attributes in Webflow HTML
+- Saves consent to `fs-cc` cookie (same format as Finsweet)
+- GTM Consent Mode v2 integration via `gtag('consent', 'update', ...)`
+- Microsoft Clarity consent support
+- Granular consent: marketing, analytics, personalization
+
+**Required HTML attributes (already in Webflow):**
+- `[fs-cc="banner"]` - Banner container
+- `[fs-cc="preferences"]` - Preferences panel
+- `[fs-cc="manager"]` - Manager button (cookie icon)
+- `[fs-cc="allow"]` - Accept button
+- `[fs-cc="deny"]` - Refuse button
+- `[fs-cc="submit"]` - Confirm preferences button
+- `[fs-cc="open-preferences"]` - Open preferences link
+- `[fs-cc="close"]` - Close button
+- `[fs-cc-checkbox="marketing"]` - Marketing checkbox
+- `[fs-cc-checkbox="analytics"]` - Analytics checkbox
+- `[fs-cc-checkbox="personalization"]` - Personalization checkbox
+
+### Console Prefix
+
+- `[CookieConsent]` - Cookie consent manager
 
 ---
 
@@ -1306,6 +1342,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/c
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/member-redirects.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/global-utils.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/cookie-consent.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/styles.css
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/moyen-de-paiement/loader.js
