@@ -1,0 +1,1 @@
+function o(){document.querySelectorAll('[x-ordo-utils="hideElementOnClick"]').forEach(t=>{t.addEventListener("click",l=>{const e=t.getAttribute("data-element-to-hide");if(!e){console.error("Missing data-element-to-hide id attribute");return}const n=$(e);n?n.fadeOut():console.error(`Element ID "${e}" not found on the page`)})})}o();

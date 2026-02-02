@@ -1,0 +1,1 @@
+function l(){document.querySelectorAll('[x-ordo-utils="showElementAfterDelay"]').forEach(e=>{const t=parseInt(e.getAttribute("data-delay-milliseconds"),10);if(isNaN(t)){console.error("Invalid or missing data-delay-milliseconds attribute");return}setTimeout(()=>{$(e).fadeIn()},t)})}l();
