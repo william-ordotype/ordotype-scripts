@@ -124,7 +124,16 @@ ordotype-scripts/
     ├── redeem-cancel-forms.js
     ├── opacity-reveal.js
     ├── global-styles.css
-    └── global-utils.js
+    ├── global-utils.js
+    └── external-backups/   # Backups of dndevs/ordotype-front-utils scripts
+        ├── accordion.js
+        ├── cookiesManager.js
+        ├── hideElementOnClick.js
+        ├── showElementAfterDelay.js
+        ├── tabs.js
+        ├── toast.js
+        ├── toggleElementsOnClick.js
+        └── toggleSwitch.js
 ```
 
 ---
@@ -626,6 +635,29 @@ window.OPACITY_REVEAL_CONFIG = {
 ### Console Prefix
 
 - `[OpacityReveal]` - Opacity reveal
+
+---
+
+### external-backups/
+
+Backup copies of scripts from `dndevs/ordotype-front-utils` for independence. All scripts require jQuery and should be loaded in the footer.
+
+| Script | Description | Attribute |
+|--------|-------------|-----------|
+| accordion.js | Accordion expand/collapse | `[x-ordo-utils="accordion"]` |
+| cookiesManager.js | Cookie banner animations (deprecated - use cookie-consent.js) | `[x-ordo-utils="cookieManagerButton"]` |
+| hideElementOnClick.js | Hide element on click | `[x-ordo-utils="hideElementOnClick"]` |
+| showElementAfterDelay.js | Show element after delay | `[x-ordo-utils="showElementAfterDelay"]` |
+| tabs.js | Animated tab background | `[x-ordo-utils="tabs"]` |
+| toast.js | Toast notifications | `[x-ordo-utils*="show-toast"]` |
+| toggleElementsOnClick.js | Toggle show/hide elements | `[x-ordo-utils="toggleElementsOnClick"]` |
+| toggleSwitch.js | Toggle switch component | `[x-ordo-utils="toggleSwitch"]` |
+
+**Usage (footer, ES modules):**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/tabs.js" type="module"></script>
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/toast.js" type="module"></script>
+```
 
 ---
 
@@ -1364,4 +1396,12 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-interna
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/geo-redirect.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/styles.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/core.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/accordion.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/cookiesManager.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/hideElementOnClick.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/showElementAfterDelay.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/tabs.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/toast.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/toggleElementsOnClick.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/toggleSwitch.js
 ```
