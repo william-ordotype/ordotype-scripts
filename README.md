@@ -8,6 +8,7 @@ Modular scripts for Ordotype pages. Each folder contains scripts for a specific 
 ordotype-scripts/
 ├── account/          # Account page scripts
 │   ├── loader.js
+│   ├── styles.js
 │   ├── core.js
 │   ├── subscriptions.js
 │   ├── status-selectors.js
@@ -145,6 +146,7 @@ ordotype-scripts/
 | File | Purpose |
 |------|---------|
 | `loader.js` | Loads all scripts in correct order |
+| `styles.js` | Hides empty Memberstack `data-ms-content` divs via CSS `:empty` |
 | `core.js` | Parses Memberstack data, exposes `window.OrdoAccount` |
 | `subscriptions.js` | Shows canceled/active status for each plan |
 | `status-selectors.js` | Shows/hides form fields based on user status |
@@ -1357,6 +1359,7 @@ jsDelivr caches files. To force an update after pushing changes:
 **Option B:** Purge cache manually
 ```
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/styles.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/member-redirects.js
