@@ -1,1 +1,53 @@
-function l(){document.querySelectorAll('[x-ordo-utils="toggleElementsOnClick"]').forEach(n=>{n.addEventListener("click",r=>{const o=n.getAttribute("data-element-to-show"),i=n.getAttribute("data-element-to-hide");function d(e,t){e&&e.is(":visible")?e.fadeOut(300,()=>{t&&t()}):t&&t()}function s(e){e&&e.fadeIn(300)}if(i){const e=$(i);d(e,()=>{if(o){const t=$(o);s(t)}})}else if(o){const e=$(o);s(e)}else console.error("Missing data-element-to-show or data-element-to-hide id attribute")})})}l();
+function l() {
+  document.querySelectorAll('[x-ordo-utils="toggleElementsOnClick"]').forEach(function(n) {
+    n.addEventListener("click", function() {
+      var showSelector = n.getAttribute("data-element-to-show");
+      var hideSelector = n.getAttribute("data-element-to-hide");
+
+      function fadeOut(el, callback) {
+        if (el && el.style.display !== "none") {
+          el.style.transition = "opacity 0.3s ease";
+          el.style.opacity = "0";
+          setTimeout(function() {
+            el.style.display = "none";
+            el.style.opacity = "";
+            el.style.transition = "";
+            if (callback) callback();
+          }, 300);
+        } else if (callback) {
+          callback();
+        }
+      }
+
+      function fadeIn(el) {
+        if (el) {
+          el.style.opacity = "0";
+          el.style.display = "block";
+          el.style.transition = "opacity 0.3s ease";
+          requestAnimationFrame(function() {
+            el.style.opacity = "1";
+          });
+          setTimeout(function() {
+            el.style.transition = "";
+          }, 300);
+        }
+      }
+
+      if (hideSelector) {
+        var hideEl = document.querySelector(hideSelector);
+        fadeOut(hideEl, function() {
+          if (showSelector) {
+            var showEl = document.querySelector(showSelector);
+            fadeIn(showEl);
+          }
+        });
+      } else if (showSelector) {
+        var showEl = document.querySelector(showSelector);
+        fadeIn(showEl);
+      } else {
+        console.error("Missing data-element-to-show or data-element-to-hide id attribute");
+      }
+    });
+  });
+}
+l();

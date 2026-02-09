@@ -1,64 +1,66 @@
-'use strict';
+function toggleCookiesManager() {
+  var cookieManagerButton = document.querySelector('[x-ordo-utils="cookieManagerButton"]');
+  var cookieManagerClose = document.querySelector('[x-ordo-utils="cookieManagerClose"]');
+  var cookieManagerBannerClose = document.querySelector('[x-ordo-utils="cookieManagerBannerClose"]');
+  var cookieBanner = document.querySelector('[x-ordo-utils="cookieBanner"]');
+  var hasSeenCookieBanner = document.cookie
+    .split("; ")
+    .find(function(row) { return row.startsWith("fs-cc="); });
 
-async function toggleCookiesManager() {
-    const cookieManagerButton = $('[x-ordo-utils="cookieManagerButton"]');
-    const cookieManagerClose = $('[x-ordo-utils="cookieManagerClose"]');
-    const cookieManagerBannerClose = $('[x-ordo-utils="cookieManagerBannerClose"]')
-    const cookieBanner = document.querySelectorAll('[x-ordo-utils="cookieBanner"]');
-    const hasSeenCookieBanner = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("fs-cc="))
-        ?.split("=")[1];
-
-    if(!hasSeenCookieBanner)
-    setTimeout(() => {
-        $(cookieBanner).fadeIn();
-    }, 2000);
-
-    // Open manager
-    cookieManagerButton.on('click', (e) => {
-        $(cookieManagerButton)
-            .css({
-                display: 'block',
-                opacity: 1,
-                bottom: '0'
-            }).animate({
-            opacity: 0,
-            bottom: '-100%'
-        }, 800);
+  function animateOut(el, duration) {
+    if (!el) return;
+    el.style.display = "block";
+    el.style.opacity = "1";
+    el.style.bottom = "0";
+    el.style.transition = "opacity " + duration + "ms ease, bottom " + duration + "ms ease";
+    requestAnimationFrame(function() {
+      el.style.opacity = "0";
+      el.style.bottom = "-100%";
     });
+  }
 
-    // Close manager
-    cookieManagerClose.on('click', (e) => {
-        $(cookieManagerButton).css({
-            display: 'block',
-            opacity: 0,
-            bottom: '-100%'
-        }).animate({
-            opacity: 1,
-            bottom: '0'
-        }, 400);
-    })
+  function animateIn(el, duration) {
+    if (!el) return;
+    el.style.display = "block";
+    el.style.opacity = "0";
+    el.style.bottom = "-100%";
+    el.style.transition = "opacity " + duration + "ms ease, bottom " + duration + "ms ease";
+    requestAnimationFrame(function() {
+      el.style.opacity = "1";
+      el.style.bottom = "0";
+    });
+  }
 
-    cookieManagerBannerClose.on('click', (e) => {
-        $('[fs-cc="banner"]').css({
-            display: 'block',
-            opacity: 1,
-            bottom: '0'
-        }).animate({
-            opacity: 0,
-            bottom: '-100%'
-        }, 800);
+  if (!hasSeenCookieBanner && cookieBanner) {
+    setTimeout(function() {
+      cookieBanner.style.opacity = "0";
+      cookieBanner.style.display = "block";
+      cookieBanner.style.transition = "opacity 0.3s ease";
+      requestAnimationFrame(function() {
+        cookieBanner.style.opacity = "1";
+      });
+    }, 2000);
+  }
 
-        cookieManagerButton.css({
-            display: 'block',
-            opacity: 0,
-            bottom: '-100%'
-        }).animate({
-            opacity: 1,
-            bottom: '0'
-        }, 400);
-    })
+  if (cookieManagerButton) {
+    cookieManagerButton.addEventListener("click", function() {
+      animateOut(cookieManagerButton, 800);
+    });
+  }
+
+  if (cookieManagerClose) {
+    cookieManagerClose.addEventListener("click", function() {
+      animateIn(cookieManagerButton, 400);
+    });
+  }
+
+  if (cookieManagerBannerClose) {
+    cookieManagerBannerClose.addEventListener("click", function() {
+      var banner = document.querySelector('[fs-cc="banner"]');
+      animateOut(banner, 800);
+      animateIn(cookieManagerButton, 400);
+    });
+  }
 }
 
 toggleCookiesManager();
