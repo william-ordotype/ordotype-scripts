@@ -57,38 +57,31 @@
      * Handles .w-richtext p and .decode-html elements
      */
     function initRichTextDecoder() {
-        // Use $(document).ready() instead of Webflow.push() to avoid being blocked by Webflow errors
-        $(document).ready(function() {
-            // Decode .w-richtext p elements that contain escaped HTML tags
-            // Webflow sometimes escapes HTML content, sometimes not
-            // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
-            $('.w-richtext p').html(function() {
-                var html = $(this).html();
-                // Detect escaped HTML tags: &lt; followed by tag name and &gt;
-                var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*[^&]*&gt;/i.test(html);
-
-                if (hasEscapedHtmlTag) {
-                    return $(this).text();
-                }
-                return html;
-            });
-
-            // Handler for .decode-html that starts with "-&nbsp;&lt;"
-            $('.decode-html').html(function() {
-                var html = $(this).html();
-                // Check if it follows the pattern "-&nbsp;&lt;...&gt;"
-                return html.indexOf('-&nbsp;&lt;') === 0 && html.indexOf('&gt;') > 7
-                    ? $(this).text()
-                    : html;
-            });
-
-            // Handler for .urine-24h - decode all HTML entities
-            $('.urine-24h').html(function() {
-                return $(this).text();
-            });
-
-            console.log(PREFIX, 'Rich text decoder initialized');
+        // Decode .w-richtext p elements that contain escaped HTML tags
+        // Webflow sometimes escapes HTML content, sometimes not
+        // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
+        document.querySelectorAll('.w-richtext p').forEach(function(el) {
+            var html = el.innerHTML;
+            var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*[^&]*&gt;/i.test(html);
+            if (hasEscapedHtmlTag) {
+                el.innerHTML = el.textContent;
+            }
         });
+
+        // Handler for .decode-html that starts with "-&nbsp;&lt;"
+        document.querySelectorAll('.decode-html').forEach(function(el) {
+            var html = el.innerHTML;
+            if (html.indexOf('-&nbsp;&lt;') === 0 && html.indexOf('&gt;') > 7) {
+                el.innerHTML = el.textContent;
+            }
+        });
+
+        // Handler for .urine-24h - decode all HTML entities
+        document.querySelectorAll('.urine-24h').forEach(function(el) {
+            el.innerHTML = el.textContent;
+        });
+
+        console.log(PREFIX, 'Rich text decoder initialized');
     }
 
     // Initialize on DOMContentLoaded
