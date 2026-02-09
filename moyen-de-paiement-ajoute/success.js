@@ -18,7 +18,7 @@
   const PREFIX = '[PaymentSuccess]';
   const COUNTDOWN_SECONDS = 2;
   const BILLING_PORTAL_URL = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/create-billing-portal';
-  const WEBHOOK_URL = 'https://hook.eu1.make.com/4zw66riuwuci4vpxf2td1f5vc3s4z7mk';
+  const WEBHOOK_URL = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook';
 
   /**
    * Initialize on DOM ready
@@ -89,6 +89,7 @@
    */
   function sendTrackingWebhook(stripeCustomerId, setupSessionId, portalSessionId, memData) {
     const payload = {
+      type: 'setup-tracking',
       checkoutSessionId: setupSessionId || portalSessionId,
       stripeCustomerId: stripeCustomerId,
       memberstackUserId: memData.id,
@@ -98,11 +99,10 @@
       originPage: window.location.href
     };
 
-    console.log(PREFIX, 'Sending payload to Make:', payload);
+    console.log(PREFIX, 'Sending payload:', payload);
 
     fetch(WEBHOOK_URL, {
       method: 'POST',
-      mode: 'no-cors',
       keepalive: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

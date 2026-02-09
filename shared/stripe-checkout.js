@@ -100,13 +100,13 @@ async function initStripeCheckout() {
         return;
     }
 
-    // Helper to send abandon-cart payload
+    // Helper to send abandon-cart payload via proxy
     function notifyAbandonCart(payload) {
-        fetch('https://hook.eu1.make.com/jjwdfcdpudi0gv30z4838ckwruk77ffo', {
+        fetch('https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             keepalive: true,
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ type: 'abandon-cart', ...payload })
         }).catch(() => {});
     }
 

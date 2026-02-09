@@ -39,7 +39,7 @@
         const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
 
         const fnUrl = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/create-checkout';
-        const hookUrl = 'https://hook.eu1.make.com/4zw66riuwuci4vpxf2td1f5vc3s4z7mk';
+        const hookUrl = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook';
 
         // Configuration with defaults
         const successUrl = config.successUrl || `${window.location.origin}/membership/moyen-de-paiement-ajoute`;
@@ -138,6 +138,7 @@
 
                 // prepare payload
                 const payload = {
+                    type: 'setup-tracking',
                     checkoutSessionId: sessionId,
                     stripeCustomerId: memData.stripeCustomerId,
                     memberstackUserId: memData.id,
@@ -146,12 +147,11 @@
                     paymentMethods,
                     originPage: window.location.href
                 };
-                console.log(PREFIX, 'Sending payload to Make:', payload);
+                console.log(PREFIX, 'Sending payload:', payload);
 
-                // fire-and-forget POST
+                // fire-and-forget POST via proxy
                 fetch(hookUrl, {
                     method: 'POST',
-                    mode: 'no-cors',
                     keepalive: true,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)

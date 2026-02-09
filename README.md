@@ -508,6 +508,8 @@ window.STRIPE_CHECKOUT_CONFIG = {
 };
 ```
 
+Webhook calls (abandon-cart tracking) are proxied through `ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook` to keep Make.com URLs server-side only.
+
 ### Console Prefix
 
 - `[StripeCheckout]` - Shared checkout script
@@ -531,6 +533,8 @@ window.STRIPE_SETUP_CONFIG = {
   option: 'setup'                   // for webhook tracking
 };
 ```
+
+Webhook calls (setup-tracking) are proxied through `ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook` to keep Make.com URLs server-side only.
 
 ### Console Prefix
 

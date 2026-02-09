@@ -108,9 +108,10 @@
         return;
     }
 
-    // Helper to send abandon-cart webhook
+    // Helper to send abandon-cart webhook via proxy
     function notifyAbandonCart() {
         const payload = {
+            type: 'abandon-cart',
             timestamp: new Date().toISOString(),
             checkoutSessionId: sessionId,
             url: checkoutUrl,
@@ -126,19 +127,12 @@
             paymentMethods
         };
 
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(
-                'https://hook.eu1.make.com/jjwdfcdpudi0gv30z4838ckwruk77ffo',
-                JSON.stringify(payload)
-            );
-        } else {
-            fetch('https://hook.eu1.make.com/jjwdfcdpudi0gv30z4838ckwruk77ffo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                keepalive: true,
-                body: JSON.stringify(payload)
-            }).catch(() => {});
-        }
+        fetch('https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            keepalive: true,
+            body: JSON.stringify(payload)
+        }).catch(() => {});
     }
 
     // Send abandon cart and redirect immediately

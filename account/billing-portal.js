@@ -11,7 +11,7 @@
 
   // Endpoints
   const BILLING_PORTAL_URL = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/create-billing-portal';
-  const WEBHOOK_URL = 'https://hook.eu1.make.com/4zw66riuwuci4vpxf2td1f5vc3s4z7mk';
+  const WEBHOOK_URL = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook';
 
   // State
   let portalUrl = null;
@@ -108,8 +108,9 @@
       }
     }
 
-    // Send webhook (fire and forget)
+    // Send webhook (fire and forget) via proxy
     const payload = {
+      type: 'setup-tracking',
       checkoutSessionId: sessionId,
       stripeCustomerId: member.stripeCustomerId,
       memberstackUserId: member.id,
@@ -121,7 +122,6 @@
 
     fetch(WEBHOOK_URL, {
       method: 'POST',
-      mode: 'no-cors',
       keepalive: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
