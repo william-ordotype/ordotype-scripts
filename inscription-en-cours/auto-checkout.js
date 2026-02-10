@@ -130,12 +130,13 @@
             paymentMethods
         };
 
-        fetch('https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            keepalive: true,
-            body: JSON.stringify(payload)
-        }).catch(() => {});
+        var url = 'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook';
+        var data = JSON.stringify(payload);
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));
+        } else {
+            fetch(url, { method: 'POST', keepalive: true, body: data }).catch(() => {});
+        }
     }
 
     // Send abandon cart and redirect immediately

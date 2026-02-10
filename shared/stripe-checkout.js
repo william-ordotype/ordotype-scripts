@@ -105,13 +105,15 @@ async function initStripeCheckout() {
     }
 
     // Helper to send abandon-cart payload via proxy
+    // Uses sendBeacon to survive page navigation (no CORS preflight with text/plain)
     function notifyAbandonCart(payload) {
-        fetch('https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            keepalive: true,
-            body: JSON.stringify({ type: 'abandon-cart', ...payload })
-        }).catch(() => {});
+        var url = 'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook';
+        var data = JSON.stringify({ type: 'abandon-cart', ...payload });
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));
+        } else {
+            fetch(url, { method: 'POST', keepalive: true, body: data }).catch(() => {});
+        }
     }
 
     // Double-click prevention

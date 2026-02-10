@@ -107,15 +107,19 @@
       }
 
       // Fire-and-forget webhook helper via proxy
+      // Uses sendBeacon to survive page navigation (no CORS preflight with text/plain)
       function notifyWebhook(payload) {
-        fetch('https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          keepalive: true,
-          body: JSON.stringify({ type: 'abandon-cart', ...payload })
-        }).catch(function(err) {
-          console.warn('[StripeCheckout] Webhook notify failed:', err);
-        });
+        var url = 'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook';
+        var data = JSON.stringify({ type: 'abandon-cart', ...payload });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));
+        } else {
+          fetch(url, {
+            method: 'POST',
+            keepalive: true,
+            body: data
+          }).catch(function() {});
+        }
       }
 
       // Double-click prevention

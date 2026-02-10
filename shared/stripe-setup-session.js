@@ -171,14 +171,16 @@
                 console.log(PREFIX, 'Sending tracking webhook');
 
                 // Fire-and-forget POST via proxy
-                fetch(hookUrl, {
-                    method: 'POST',
-                    keepalive: true,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                .then(() => console.log(PREFIX, 'webhook sent'))
-                .catch(err => console.error(PREFIX, 'webhook fetch error:', err));
+                // Uses sendBeacon to survive page navigation
+                var webhookData = JSON.stringify(payload);
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon(hookUrl, new Blob([webhookData], { type: 'text/plain' }));
+                    console.log(PREFIX, 'webhook sent (beacon)');
+                } else {
+                    fetch(hookUrl, { method: 'POST', keepalive: true, body: webhookData })
+                    .then(() => console.log(PREFIX, 'webhook sent'))
+                    .catch(err => console.error(PREFIX, 'webhook fetch error:', err));
+                }
 
                 // Set justPaidTs for grace period (prevents redirect loop after payment)
                 localStorage.setItem('justPaidTs', Date.now());
