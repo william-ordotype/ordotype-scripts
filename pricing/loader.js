@@ -10,6 +10,7 @@
 
   // Base URL
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing';
+  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
 
   // Scripts to load (in order)
   // Note: ab-test.js, geo-redirect.js, belgium-redirect.js must be loaded
@@ -37,6 +38,10 @@
     console.log('[OrdoPricing] Loading...');
 
     try {
+      // Load shared utilities first
+      await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
+      await loadScript(`${SHARED_BASE}/error-reporter.js`);
+
       for (const file of scripts) {
         await loadScript(`${BASE}/${file}`);
       }

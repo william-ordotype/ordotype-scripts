@@ -13,6 +13,7 @@
 
   // Base URL - update this after uploading to GitHub
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account';
+  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
 
   // Scripts to load (in order)
   const scripts = [
@@ -64,6 +65,10 @@
     console.log('[OrdoAccount] Loading...');
 
     try {
+      // Load shared utilities first
+      await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
+      await loadScript(`${SHARED_BASE}/error-reporter.js`);
+
       // Load external dependencies (CSS + intl-tel-input)
       await Promise.all(dependencies.map(dep => {
         return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);

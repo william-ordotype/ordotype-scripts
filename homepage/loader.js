@@ -10,6 +10,7 @@
 
   // Base URL
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage';
+  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
 
   // Scripts to load (in order)
   const scripts = [
@@ -35,6 +36,10 @@
     console.log('[OrdoHomepage] Loading...');
 
     try {
+      // Load shared utilities first
+      await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
+      await loadScript(`${SHARED_BASE}/error-reporter.js`);
+
       for (const file of scripts) {
         await loadScript(`${BASE}/${file}`);
       }

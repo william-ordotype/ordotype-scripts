@@ -26,6 +26,8 @@
 
   // Scripts to load (in order) - use full URLs for shared scripts
   const scripts = [
+    `${SHARED}/memberstack-utils.js`,
+    `${SHARED}/error-reporter.js`,
     `${BASE}/core.js`,
     `${BASE}/countdown.js`,
     `${BASE}/member-redirects.js`,

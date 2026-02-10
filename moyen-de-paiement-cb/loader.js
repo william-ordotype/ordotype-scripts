@@ -40,6 +40,10 @@
         console.log(PREFIX, 'Loading...');
 
         try {
+            // Load shared utilities first
+            await loadScript(`${BASE}/shared/memberstack-utils.js`);
+            await loadScript(`${BASE}/shared/error-reporter.js`);
+
             await loadScript(`${BASE}/shared/stripe-setup-session.js`);
             console.log(PREFIX, 'All scripts loaded');
         } catch (err) {

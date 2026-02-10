@@ -1,21 +1,15 @@
 /**
  * Ordotype Account - Core
- * Parses Memberstack data once and exposes it globally.
- * Must load first - other scripts depend on window.OrdoAccount.
+ * Exposes window.OrdoAccount globally for account page scripts.
+ * Delegates to shared/memberstack-utils.js for member data parsing.
+ *
+ * Requires: shared/memberstack-utils.js
+ * Must load before: billing-portal.js, subscriptions.js, etc.
  */
 (function() {
   'use strict';
 
   // Helper to safely access localStorage (may fail in private browsing)
-  function safeGetItem(key) {
-    try {
-      return localStorage.getItem(key);
-    } catch (e) {
-      console.warn('[OrdoAccount] localStorage not available:', e.message);
-      return null;
-    }
-  }
-
   function safeSetItem(key, value) {
     try {
       localStorage.setItem(key, value);
@@ -27,13 +21,14 @@
   // Store current URL for tracking
   safeSetItem('locat', location.href);
 
-  // Parse member data once
-  const memberData = JSON.parse(safeGetItem('_ms-mem') || '{}');
+  // Use shared memberstack utility
+  var ms = window.OrdoMemberstack || {};
+  var memberData = ms.member || {};
 
   // Configuration
-  const config = {
-    baseUrl: window.location.hostname === "ordotype.webflow.io" 
-      ? "https://ordotype.webflow.io" 
+  var config = {
+    baseUrl: window.location.hostname === "ordotype.webflow.io"
+      ? "https://ordotype.webflow.io"
       : "https://www.ordotype.fr",
     isLoggedIn: Boolean(memberData.id)
   };
@@ -42,17 +37,15 @@
   window.OrdoAccount = {
     member: memberData,
     config: config,
-    
+
     // Helper to check if member has a specific plan
     hasPlan: function(planId) {
-      if (!memberData.planConnections) return false;
-      return memberData.planConnections.some(c => c.planId === planId);
+      return ms.hasPlan ? ms.hasPlan(planId) : false;
     },
-    
+
     // Helper to get plan connection
     getPlan: function(planId) {
-      if (!memberData.planConnections) return null;
-      return memberData.planConnections.find(c => c.planId === planId);
+      return ms.getPlan ? ms.getPlan(planId) : null;
     }
   };
 

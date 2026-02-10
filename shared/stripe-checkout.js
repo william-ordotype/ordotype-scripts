@@ -1,6 +1,8 @@
 /**
  * Shared Stripe Checkout Script
  *
+ * Requires: shared/memberstack-utils.js, shared/error-reporter.js
+ *
  * Configure via window.STRIPE_CHECKOUT_CONFIG before loading:
  *
  * <script>
@@ -38,11 +40,11 @@ async function initStripeCheckout() {
     const signupBtnNoStripe = document.getElementById(btnNoStripeId);
     const signupBtnStripe = document.getElementById(btnStripeId);
 
-    // Memberstack data
-    const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
-    const stripeCustomerId = memData.stripeCustomerId;
-    const memberstackUserId = memData.id || memData.userId;
-    const memberstackEmail = memData.auth?.email || memData.email;
+    // Memberstack data (from shared utility)
+    const ms = window.OrdoMemberstack || {};
+    const stripeCustomerId = ms.stripeCustomerId;
+    const memberstackUserId = ms.memberId;
+    const memberstackEmail = ms.email;
 
     if (!stripeCustomerId) {
         console.log(PREFIX, 'No Stripe customer – showing non-Stripe flow');
@@ -51,7 +53,7 @@ async function initStripeCheckout() {
         return;
     }
 
-    console.log(PREFIX, 'Stripe customer found:', stripeCustomerId);
+    console.log(PREFIX, 'Stripe customer found');
     if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
     if (signupBtnStripe) signupBtnStripe.style.display = 'flex';
 
@@ -86,7 +88,8 @@ async function initStripeCheckout() {
         const data = await resp.json();
 
         if (!data.sessionId || !data.url) {
-            console.error(PREFIX, 'Invalid response:', data);
+            console.error(PREFIX, 'Invalid response');
+            if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', 'Invalid checkout session response');
             alert('Une erreur est survenue lors du chargement de la page.');
             return;
         }
@@ -96,6 +99,7 @@ async function initStripeCheckout() {
 
     } catch (err) {
         console.error(PREFIX, 'Error creating checkout session:', err);
+        if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', err);
         alert('Erreur réseau lors du chargement de la page.');
         return;
     }
@@ -110,8 +114,16 @@ async function initStripeCheckout() {
         }).catch(() => {});
     }
 
+    // Double-click prevention
+    let isRedirecting = false;
+
     signupBtnStripe.addEventListener('click', e => {
         e.preventDefault();
+
+        if (isRedirecting) return;
+        isRedirecting = true;
+        signupBtnStripe.innerText = 'Patientez…';
+        signupBtnStripe.disabled = true;
 
         const timestamp = new Date().toISOString();
         const originPage = window.location.href;

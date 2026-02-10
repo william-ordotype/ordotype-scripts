@@ -30,9 +30,9 @@
 
     console.log(PREFIX, 'Payment method added successfully');
 
-    // Get member data
-    const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
-    const stripeCustomerId = memData.stripeCustomerId;
+    // Get member data (from shared utility)
+    const ms = window.OrdoMemberstack || {};
+    const stripeCustomerId = ms.stripeCustomerId;
     const setupSessionId = new URLSearchParams(window.location.search).get('session_id');
 
     if (!stripeCustomerId) {
@@ -42,13 +42,13 @@
     }
 
     // Create billing portal and redirect
-    createBillingPortalAndRedirect(stripeCustomerId, setupSessionId, memData);
+    createBillingPortalAndRedirect(stripeCustomerId, setupSessionId, ms);
   }
 
   /**
    * Create billing portal session and redirect
    */
-  async function createBillingPortalAndRedirect(stripeCustomerId, setupSessionId, memData) {
+  async function createBillingPortalAndRedirect(stripeCustomerId, setupSessionId, ms) {
     const returnUrl = window.location.origin;
 
     try {
@@ -62,7 +62,7 @@
       });
 
       const data = await response.json();
-      console.log(PREFIX, 'Billing portal session created:', data);
+      console.log(PREFIX, 'Billing portal session created');
 
       if (!data.url) {
         throw new Error('No portal URL received');
@@ -72,7 +72,7 @@
       const portalSessionId = data.id || extractSessionIdFromUrl(data.url);
 
       // Send success tracking webhook
-      sendTrackingWebhook(stripeCustomerId, setupSessionId, portalSessionId, memData);
+      sendTrackingWebhook(stripeCustomerId, setupSessionId, portalSessionId, ms);
 
       // Start countdown and redirect to billing portal
       startCountdown(COUNTDOWN_SECONDS, data.url);
@@ -87,19 +87,19 @@
   /**
    * Send tracking webhook to Make
    */
-  function sendTrackingWebhook(stripeCustomerId, setupSessionId, portalSessionId, memData) {
+  function sendTrackingWebhook(stripeCustomerId, setupSessionId, portalSessionId, ms) {
     const payload = {
       type: 'setup-tracking',
       checkoutSessionId: setupSessionId || portalSessionId,
       stripeCustomerId: stripeCustomerId,
-      memberstackUserId: memData.id,
-      memberstackEmail: memData.auth?.email || memData.email,
+      memberstackUserId: ms.memberId,
+      memberstackEmail: ms.email,
       option: 'success_redirect',
       paymentMethods: ['setup_complete'],
       originPage: window.location.href
     };
 
-    console.log(PREFIX, 'Sending payload:', payload);
+    console.log(PREFIX, 'Sending tracking webhook');
 
     fetch(WEBHOOK_URL, {
       method: 'POST',

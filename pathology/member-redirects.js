@@ -3,26 +3,26 @@
  * Handles member state checks and redirections based on subscription status.
  *
  * Requires:
- * - jQuery
- * - Memberstack data in localStorage
+ * - shared/memberstack-utils.js
+ * - jQuery (optional, for banner display)
  */
 (function() {
     'use strict';
 
     const PREFIX = '[MemberRedirects]';
+    const ms = window.OrdoMemberstack || {};
+    const BANNER_DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Grace period check for payment redirect prevention
-    const GRACE_PERIOD = 120 * 1000; // 120 seconds
+    // Grace period check for payment redirect prevention (120 seconds)
+    const GRACE_PERIOD = 120 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
     if (justPaidTs && (Date.now() - justPaidTs) < GRACE_PERIOD) {
-        console.log(PREFIX, '🕒 Within grace period, skipping redirect logic');
+        console.log(PREFIX, 'Within grace period, skipping redirect logic');
         return;
     }
 
-    const memString = localStorage.getItem('_ms-mem');
-    if (!memString) return;
-    const member = JSON.parse(memString);
-    if (!member) return;
+    const member = ms.member;
+    if (!member || !member.id) return;
 
     const $ = typeof jQuery !== 'undefined' ? jQuery : null;
 
@@ -39,99 +39,58 @@
         const element = document.getElementById(elem.id);
         if (element) {
             element.addEventListener("click", () => {
-                const currentDate = new Date();
-                localStorage.setItem(elem.key, currentDate.toISOString());
+                localStorage.setItem(elem.key, new Date().toISOString());
             });
         }
     });
 
-    // Define territories, durations and allowed plan IDs
-    const frenchTerritories = [
-        'French Guiana', 'Guadeloupe', 'Martinique', 'Mayotte', 'Réunion',
-        'Saint Barthélemy', 'Saint Martin', 'Saint Pierre and Miquelon',
-        'French Polynesia', 'Wallis and Futuna', 'New Caledonia',
-        'Clipperton Island', 'The French Southern and Antarctic Lands', 'France'
-    ];
-    const isFrance = frenchTerritories.includes(member.customFields["country"]);
+    // Use shared constants and helpers from memberstack-utils
+    const isFrance = ms.isFrenchTerritory(ms.customFields["country"]);
+    const planConnections = ms.planConnections;
+    const allowedPlanIds = ms.ALLOWED_INTERN_PLAN_IDS;
 
-    const specializationDurations = {
-        6: ["Médecine générale", "Médecine générale ", "Médecine palliative", "Soins palliatifs"],
-        10: ["Anatomie pathologique", "Anesthésiologie", "Anesthésie réanimation", "Cardiologie",
-            "Gastro-entérologie", "Hématologie", "Hépatologie", "Immunologie", "Infectiologie",
-            "Médecine interne", "Néonatologie", "Néphrologie", "Oncologie", "Pédiatrie",
-            "Pneumologie", "Radiologie", "Radiothérapie"],
-        12: ["Chirurgie cardiaque", "Chirurgie générale", "Chirurgie gynécologique",
-            "Chirurgie maxillo-faciale", "Chirurgie oculaire", "Chirurgie pédiatrique",
-            "Chirurgie plastique, reconstructive et esthétique", "Chirurgie thoracique",
-            "Chirurgie traumatologique", "Chirurgie vasculaire", "Chirurgie viscérale",
-            "Gynécologie-obstétrique", "Neurochirurgie", "Obstétrique", "Ophtalmologie",
-            "Orthopédie", "ORL", "Urologie"]
-    };
+    // Safe date parsing via shared utility
+    const expiredDate = ms.safeDate('cb');
+    const switchDate = ms.safeDate('date-de-switch');
+    const signupDate = ms.safeDateFromValue(member.createdAt);
 
-    const allowedPlanIds = [
-        'pln_brique-google-internes-paris-i31as0w8p',
-        'pln_compte-interne-img-nl410oxc',
-        'pln_compte-interne-sy4j0oft',
-        'pln_interne-m-decine-g-n-rale-adh-rent--4a4t0o95',
-        'pln_compte-interne-derni-re-ann-e-9f4o0oyy'
-    ];
+    const date_till_expired = ms.daysUntil(expiredDate);
+    const date_since_signup = ms.daysSince(signupDate);
+    const date_since_switch = ms.daysSince(switchDate);
 
-    // Date calculations
-    const expiredDate = new Date(member.customFields["cb"]);
-    const date_till_expired = -(Date.now() - expiredDate) / 8.64e7;
-    const switchDate = new Date(member.customFields["date-de-switch"]);
-    const signupDate = new Date(member.createdAt);
-    const date_since_signup = (Date.now() - signupDate) / 8.64e7;
-    const date_since_switch = (Date.now() - switchDate) / 8.64e7;
-
-    const planConnections = member.planConnections;
     const hasAllowedPlanId = planConnections.some(plan =>
-        allowedPlanIds.includes(plan.planId) && plan.status !== 'CANCELED'
+        allowedPlanIds.indexOf(plan.planId) !== -1 && plan.status !== 'CANCELED'
     );
 
-    const semestreValue = member.customFields["semestre"];
+    const semestreValue = ms.customFields["semestre"];
     const semestre = parseInt(semestreValue, 10);
-    const specialite = member.customFields["specialite"];
-    const isSemesterAllowed = [undefined, null, 'Autre', ''].includes(semestreValue);
-    const isInterne = member.customFields["statut"] === 'Interne';
+    const specialite = ms.customFields["specialite"];
+    const isSemesterAllowed = [undefined, null, 'Autre', ''].indexOf(semestreValue) !== -1;
+    const isInterne = ms.customFields["statut"] === 'Interne';
 
     const storedDateEssaiGratuit = localStorage.getItem("storedDateEssaiGratuit");
     const storedDateEssaiGratuitBlue = localStorage.getItem("storedDateEssaiGratuitBlue");
     const storedDateEssaiGratuitRempla = localStorage.getItem("storedDateEssaiGratuitRempla");
     const storedDateEssaiGratuitRemplaBlue = localStorage.getItem("storedDateEssaiGratuitRemplaBlue");
 
-    const isNotRemplacant = member.customFields['mode-dexercice'] !== 'Remplacant';
-    const isRemplacant = member.customFields['mode-dexercice'] === 'Remplacant';
+    const isNotRemplacant = ms.customFields['mode-dexercice'] !== 'Remplacant';
+    const isRemplacant = ms.customFields['mode-dexercice'] === 'Remplacant';
 
-    const isPastDueBrique = planConnections.some(plan =>
-        plan.planId === 'pln_brique-past-due-os1c808ai'
-    );
-    const isSepaTemporary = planConnections.some(plan =>
-        plan.planId === 'pln_sepa-temporary-lj4w0oky'
-    );
+    const isPastDueBrique = ms.hasPlan('pln_brique-past-due-os1c808ai');
+    const isSepaTemporary = ms.hasPlan('pln_sepa-temporary-lj4w0oky');
     const hasPastDuePlan = planConnections.some(plan =>
         plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
         plan.status !== 'CANCELED' && plan.status === 'REQUIRES_PAYMENT'
     );
 
-    // Get required semester based on specialization
-    function getRequiredSemester(specialization) {
-        for (const [semesterDuration, specializations] of Object.entries(specializationDurations)) {
-            if (specializations.includes(specialization)) {
-                return parseInt(semesterDuration, 10);
-            }
-        }
-        return 8;
-    }
-
     // Combined redirection if required member information is missing
     if (
-        (hasAllowedPlanId && (!member.customFields["prnom"] || !member.customFields["semestre"])) ||
+        (hasAllowedPlanId && (!ms.customFields["prnom"] || !ms.customFields["semestre"])) ||
         (planConnections.length === 2 &&
             planConnections[0].status === 'CANCELED' &&
             (planConnections[1].planId === 'pln_compte-interne-derni-re-ann-e-9f4o0oyy' ||
                 planConnections[1].planId === 'pln_interne-m-decine-g-n-rale-adh-rent--4a4t0o95') &&
-            (!member.customFields["prnom"] || !member.customFields["semestre"]))
+            (!ms.customFields["prnom"] || !ms.customFields["semestre"]))
     ) {
         window.location.replace("/membership/mes-informations-internes");
         return;
@@ -142,19 +101,19 @@
     }
     else if (
         isInterne &&
-        semestre >= getRequiredSemester(specialite) &&
+        semestre >= ms.getRequiredSemester(specialite) &&
         !planConnections.some(plan =>
             plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
             plan.status !== 'CANCELED'
         )
     ) {
-        // $('#banner-to-hide-fin-internat').css({ display: 'flex' });
+        // Reserved for future fin-internat banner
     }
     else if (
-        member.customFields["semestre"] === 'Internat terminé' &&
+        ms.customFields["semestre"] === 'Internat terminé' &&
         hasAllowedPlanId &&
         isInterne &&
-        date_since_signup > 15 &&
+        date_since_signup !== null && date_since_signup > 15 &&
         !planConnections.some(plan =>
             plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
             plan.status !== 'CANCELED'
@@ -164,10 +123,10 @@
         return;
     }
     else if (
-        member.customFields["semestre"] === 'Internat terminé' &&
+        ms.customFields["semestre"] === 'Internat terminé' &&
         hasAllowedPlanId &&
         isInterne &&
-        date_since_signup < 15 &&
+        date_since_signup !== null && date_since_signup < 15 &&
         !planConnections.some(plan =>
             plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
             plan.status !== 'CANCELED'
@@ -179,7 +138,7 @@
         planConnections.some(plan =>
             plan.type === 'SUBSCRIPTION' &&
             (plan.status === 'ACTIVE' || plan.status === 'TRIALING') &&
-            date_till_expired < 31
+            date_till_expired !== null && date_till_expired < 31
         )
     ) {
         if ($) $('#pathologie-cb-expired-click').css({ 'display': 'flex' });
@@ -188,42 +147,42 @@
         planConnections.some(plan =>
             plan.type === 'SUBSCRIPTION' &&
             (plan.status === 'ACTIVE' || plan.status === 'TRIALING') &&
-            date_till_expired >= 31 && date_till_expired < 60
+            date_till_expired !== null && date_till_expired >= 31 && date_till_expired < 60
         )
     ) {
         if ($) $('#pathologie-cb-expires-soon-click').css({ 'display': 'flex' });
     }
     else if (
-        date_since_switch < 8 &&
-        planConnections.some(connection => connection.planId === 'pln_essai-gratuit-5e4s0o0r') &&
+        date_since_switch !== null && date_since_switch < 8 &&
+        ms.hasPlan('pln_essai-gratuit-5e4s0o0r') &&
         isNotRemplacant &&
-        (!storedDateEssaiGratuitBlue || (Date.now() - new Date(storedDateEssaiGratuitBlue)) > (24 * 60 * 60 * 1000))
+        (!storedDateEssaiGratuitBlue || (Date.now() - new Date(storedDateEssaiGratuitBlue)) > BANNER_DISMISS_DURATION)
     ) {
         if ($) $('#essai-gratuit-banner-blue').css({ 'display': 'flex' });
     }
     else if (
-        date_since_switch >= 8 &&
-        planConnections.some(connection => connection.planId === 'pln_essai-gratuit-5e4s0o0r') &&
+        date_since_switch !== null && date_since_switch >= 8 &&
+        ms.hasPlan('pln_essai-gratuit-5e4s0o0r') &&
         isNotRemplacant &&
-        (!storedDateEssaiGratuit || (Date.now() - new Date(storedDateEssaiGratuit)) > (24 * 60 * 60 * 1000))
+        (!storedDateEssaiGratuit || (Date.now() - new Date(storedDateEssaiGratuit)) > BANNER_DISMISS_DURATION)
     ) {
         if ($) $('#essai-gratuit-banner').css({ 'display': 'flex' });
     }
     else if (
-        date_since_switch < 8 &&
-        planConnections.some(connection => connection.planId === 'pln_essai-gratuit-5e4s0o0r') &&
+        date_since_switch !== null && date_since_switch < 8 &&
+        ms.hasPlan('pln_essai-gratuit-5e4s0o0r') &&
         isRemplacant &&
         isFrance &&
-        (!storedDateEssaiGratuitRemplaBlue || (Date.now() - new Date(storedDateEssaiGratuitRemplaBlue)) > (24 * 60 * 60 * 1000))
+        (!storedDateEssaiGratuitRemplaBlue || (Date.now() - new Date(storedDateEssaiGratuitRemplaBlue)) > BANNER_DISMISS_DURATION)
     ) {
         if ($) $('#essai-gratuit-banner-rempla-blue').css({ 'display': 'flex' });
     }
     else if (
-        date_since_switch >= 8 &&
-        planConnections.some(connection => connection.planId === 'pln_essai-gratuit-5e4s0o0r') &&
+        date_since_switch !== null && date_since_switch >= 8 &&
+        ms.hasPlan('pln_essai-gratuit-5e4s0o0r') &&
         isRemplacant &&
         isFrance &&
-        (!storedDateEssaiGratuitRempla || (Date.now() - new Date(storedDateEssaiGratuitRempla)) > (24 * 60 * 60 * 1000))
+        (!storedDateEssaiGratuitRempla || (Date.now() - new Date(storedDateEssaiGratuitRempla)) > BANNER_DISMISS_DURATION)
     ) {
         if ($) $('#essai-gratuit-banner-rempla').css({ 'display': 'flex' });
     }

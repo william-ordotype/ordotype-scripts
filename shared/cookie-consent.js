@@ -4,10 +4,14 @@
 
   // Check if logged in (banner still shown, but GTM auto-grants analytics)
   var isLoggedIn = false;
-  try {
-    var member = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
-    isLoggedIn = !!(member && member.id);
-  } catch (e) {}
+  if (window.OrdoMemberstack) {
+    isLoggedIn = !!window.OrdoMemberstack.memberId;
+  } else {
+    try {
+      var member = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
+      isLoggedIn = !!(member && member.id);
+    } catch (e) {}
+  }
 
   // Get elements
   var banner = document.querySelector('[fs-cc="banner"]');

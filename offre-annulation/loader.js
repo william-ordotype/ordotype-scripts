@@ -32,6 +32,10 @@
         console.log(PREFIX, 'Loading scripts...');
 
         try {
+            // Load shared utilities first
+            await loadScript(`${BASE}/shared/memberstack-utils.js`);
+            await loadScript(`${BASE}/shared/error-reporter.js`);
+
             for (const file of scripts) {
                 await loadScript(`${BASE}/${file}`);
             }

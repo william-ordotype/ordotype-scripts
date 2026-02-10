@@ -2,6 +2,8 @@
  * Shared Stripe Setup Session Script
  * Handles Stripe setup session for adding payment methods.
  *
+ * Requires: shared/memberstack-utils.js, shared/error-reporter.js
+ *
  * Configure via window.STRIPE_SETUP_CONFIG before loading:
  *
  * <script>
@@ -35,8 +37,8 @@
         const btnNo = document.getElementById(btnNoStripeId);
         const btnYes = document.getElementById(btnStripeId);
 
-        // Memberstack data
-        const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
+        // Memberstack data (from shared utility)
+        const ms = window.OrdoMemberstack || {};
 
         const fnUrl = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/create-checkout';
         const hookUrl = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook';
@@ -49,11 +51,12 @@
 
         let checkoutUrl = null;
         let sessionId = null;
+        let isPrefetching = false;
 
         function extractSessionIdFromUrl(url) {
             const m = url.match(/\/c\/pay\/([^?#]+)/);
-            if (m?.[1]) {
-                console.log(PREFIX, 'extracted sessionId from URL:', m[1]);
+            if (m && m[1]) {
+                console.log(PREFIX, 'sessionId extracted');
                 return m[1];
             }
             console.warn(PREFIX, 'could not extract sessionId from URL');
@@ -61,8 +64,8 @@
         }
 
         // 1) Toggle button visibility
-        if (memData.stripeCustomerId) {
-            console.log(PREFIX, 'stripeCustomerId found:', memData.stripeCustomerId);
+        if (ms.stripeCustomerId) {
+            console.log(PREFIX, 'stripeCustomerId found');
             if (btnNo) btnNo.style.display = 'none';
             if (btnYes) btnYes.style.display = 'inline-flex';
         } else {
@@ -73,11 +76,12 @@
         }
 
         // 2) Prefetch a Setup Session for faster checkout
+        isPrefetching = true;
         fetch(fnUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                stripeCustomerId: memData.stripeCustomerId,
+                stripeCustomerId: ms.stripeCustomerId,
                 cancelUrl: cancelUrl,
                 successUrl: successUrl,
                 payment_method_types: paymentMethods
@@ -88,19 +92,22 @@
             return r.json();
         })
         .then(data => {
-            console.log(PREFIX, 'prefetch data:', data);
             if (data.url) {
                 checkoutUrl = data.url;
                 sessionId = data.id || extractSessionIdFromUrl(data.url);
-                console.log(PREFIX, 'Stored checkoutUrl:', checkoutUrl);
-                console.log(PREFIX, 'Stored sessionId:', sessionId);
+                console.log(PREFIX, 'Setup session prefetched');
                 if (btnYes && btnYes.tagName === 'A') btnYes.href = checkoutUrl;
             } else {
-                console.error(PREFIX, 'prefetch did not return url:', data);
+                console.error(PREFIX, 'prefetch did not return url');
+                if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', 'Prefetch returned no URL');
             }
         })
         .catch(err => {
             console.error(PREFIX, 'prefetch error:', err);
+            if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', err);
+        })
+        .finally(() => {
+            isPrefetching = false;
         });
 
         // 3) On click: send payload, then redirect
@@ -111,7 +118,19 @@
                 btnYes.innerText = 'Patientez…';
                 btnYes.disabled = true;
 
-                // fallback fetch if prefetch failed
+                // If prefetch is still in-flight, wait for it briefly
+                if (isPrefetching) {
+                    console.log(PREFIX, 'Waiting for prefetch to complete...');
+                    await new Promise(resolve => {
+                        const check = setInterval(() => {
+                            if (!isPrefetching) { clearInterval(check); resolve(); }
+                        }, 100);
+                        // Timeout after 5 seconds
+                        setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+                    });
+                }
+
+                // Fallback fetch if prefetch failed
                 if (!checkoutUrl || !sessionId) {
                     console.log(PREFIX, 'Missing prefetch data, doing fallback fetch');
                     try {
@@ -119,52 +138,54 @@
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                stripeCustomerId: memData.stripeCustomerId,
+                                stripeCustomerId: ms.stripeCustomerId,
                                 cancelUrl: cancelUrl,
                                 successUrl: successUrl,
                                 payment_method_types: paymentMethods
                             })
                         });
                         const data = await resp.json();
-                        console.log(PREFIX, 'fallback data:', data);
                         checkoutUrl = data.url;
                         sessionId = data.id || extractSessionIdFromUrl(data.url);
-                        console.log(PREFIX, 'fallback stored checkoutUrl:', checkoutUrl);
-                        console.log(PREFIX, 'fallback stored sessionId:', sessionId);
+                        console.log(PREFIX, 'Fallback session ready');
                     } catch (err) {
                         console.error(PREFIX, 'fallback error:', err);
+                        if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', err);
+                        btnYes.innerText = 'Réessayer';
+                        btnYes.disabled = false;
+                        return;
                     }
                 }
 
-                // prepare payload
+                // Prepare payload
                 const payload = {
                     type: 'setup-tracking',
                     checkoutSessionId: sessionId,
-                    stripeCustomerId: memData.stripeCustomerId,
-                    memberstackUserId: memData.id,
-                    memberstackEmail: memData.auth?.email || memData.email,
+                    stripeCustomerId: ms.stripeCustomerId,
+                    memberstackUserId: ms.memberId,
+                    memberstackEmail: ms.email,
                     option: option,
                     paymentMethods,
                     originPage: window.location.href
                 };
-                console.log(PREFIX, 'Sending payload:', payload);
+                console.log(PREFIX, 'Sending tracking webhook');
 
-                // fire-and-forget POST via proxy
+                // Fire-and-forget POST via proxy
                 fetch(hookUrl, {
                     method: 'POST',
                     keepalive: true,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 })
-                .then(() => console.log(PREFIX, 'webhook fetch(no-cors) sent'))
+                .then(() => console.log(PREFIX, 'webhook sent'))
                 .catch(err => console.error(PREFIX, 'webhook fetch error:', err));
 
                 // Set justPaidTs for grace period (prevents redirect loop after payment)
                 localStorage.setItem('justPaidTs', Date.now());
                 console.log(PREFIX, 'Set justPaidTs for grace period');
 
-                // redirect to Stripe
-                console.log(PREFIX, 'Redirecting to Stripe Checkout:', checkoutUrl);
+                // Redirect to Stripe
+                console.log(PREFIX, 'Redirecting to Stripe Checkout');
                 window.location.href = checkoutUrl;
             });
         }
