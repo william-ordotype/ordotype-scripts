@@ -16,14 +16,16 @@
 
     // Fallback method using execCommand for browsers without Clipboard API support
     function fallbackExecCommand(element) {
-      // Temporarily style links so they don't paste as invisible (black on black)
+      // Temporarily strip links so URLs don't get pasted into medical software
       var links = element.querySelectorAll('a[href]');
-      var savedStyles = [];
+      var savedData = [];
       links.forEach(function(link) {
-        savedStyles.push(link.style.cssText);
-        link.style.color = '#0563C1';
+        savedData.push({ href: link.getAttribute('href'), style: link.style.cssText });
+        link.removeAttribute('href');
+        link.style.color = '#000000';
         link.style.backgroundColor = 'transparent';
-        link.style.textDecoration = 'underline';
+        link.style.fontWeight = 'bold';
+        link.style.textDecoration = 'none';
       });
 
       var range = document.createRange();
@@ -38,9 +40,10 @@
       }
       selection.removeAllRanges();
 
-      // Restore original styles
+      // Restore original links
       links.forEach(function(link, i) {
-        link.style.cssText = savedStyles[i];
+        link.setAttribute('href', savedData[i].href);
+        link.style.cssText = savedData[i].style;
       });
     }
 
@@ -49,12 +52,16 @@
     function copyAsRichText(element, useDecoded) {
       useDecoded = useDecoded || false;
 
-      // Clone element to style links without modifying the page
+      // Clone element and replace links with bold black text (no URLs in clipboard)
       var clone = element.cloneNode(true);
       clone.querySelectorAll('a[href]').forEach(function(link) {
-        link.style.color = '#0563C1';
-        link.style.backgroundColor = 'transparent';
-        link.style.textDecoration = 'underline';
+        var span = document.createElement('span');
+        span.innerHTML = link.innerHTML;
+        span.style.color = '#000000';
+        span.style.backgroundColor = 'transparent';
+        span.style.fontWeight = 'bold';
+        span.style.textDecoration = 'none';
+        link.parentNode.replaceChild(span, link);
       });
 
       var htmlContent = clone.innerHTML;
