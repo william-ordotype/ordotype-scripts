@@ -21,11 +21,11 @@
       return;
     }
 
-    // Parse Memberstack data (will be {} if user not connected)
-    var memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
-    var stripeCustomerId = memData.stripeCustomerId;
-    var memberstackUserId = memData.id;
-    var memberstackEmail = memData.auth?.email || null;
+    // Memberstack data (from shared utility)
+    var ms = window.OrdoMemberstack || {};
+    var stripeCustomerId = ms.stripeCustomerId;
+    var memberstackUserId = ms.memberId;
+    var memberstackEmail = ms.email;
 
     // User not connected or no Stripe customer ID
     if (!stripeCustomerId) {
@@ -103,6 +103,7 @@
         url2 = data.url2;
       } catch (err) {
         console.error('[StripeCheckoutV2] Fetch error:', err);
+        if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckoutV2', err);
         alert('Une erreur est survenue lors du chargement de la page.');
         return;
       }
@@ -119,9 +120,16 @@
         }
       }
 
+      // Double-click prevention
+      var isRedirecting = false;
+
       // Bind button #1
       btn1.addEventListener('click', function(e) {
         e.preventDefault();
+        if (isRedirecting) return;
+        isRedirecting = true;
+        btn1.innerText = 'Patientez…';
+        btn1.disabled = true;
         notifyWebhook({
           timestamp: new Date().toISOString(),
           checkoutSessionId: sessionId1,
@@ -141,6 +149,10 @@
       // Bind button #2
       btn2.addEventListener('click', function(e) {
         e.preventDefault();
+        if (isRedirecting) return;
+        isRedirecting = true;
+        btn2.innerText = 'Patientez…';
+        btn2.disabled = true;
         notifyWebhook({
           timestamp: new Date().toISOString(),
           checkoutSessionId: sessionId2,

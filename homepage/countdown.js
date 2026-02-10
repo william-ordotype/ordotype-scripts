@@ -16,20 +16,18 @@
         return;
     }
 
-    const memString = localStorage.getItem('_ms-mem');
-    if (!memString) {
+    var ms = window.OrdoMemberstack;
+    if (!ms || !ms.member || !ms.member.id) {
         console.log(PREFIX, 'No member data found');
         return;
     }
 
-    const member = JSON.parse(memString);
-    if (!member) {
-        console.log(PREFIX, 'Could not parse member data');
+    // Base date from custom field "date-de-switch"
+    const baseDate = ms.safeDate('date-de-switch');
+    if (!baseDate) {
+        console.log(PREFIX, 'No date-de-switch found');
         return;
     }
-
-    // Base date from custom field "date-de-switch"
-    const baseDate = new Date(member.customFields["date-de-switch"]);
 
     // Calculate new deadline by adding 15 days to the base date
     const newdeadline = new Date(baseDate);

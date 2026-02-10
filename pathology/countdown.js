@@ -16,15 +16,9 @@
         return;
     }
 
-    const memString = localStorage.getItem('_ms-mem');
-    if (!memString) {
+    var ms = window.OrdoMemberstack;
+    if (!ms || !ms.member || !ms.member.id) {
         console.log(PREFIX, 'No member data found');
-        return;
-    }
-
-    const member = JSON.parse(memString);
-    if (!member) {
-        console.log(PREFIX, 'Could not parse member data');
         return;
     }
 
@@ -35,7 +29,11 @@
         return result;
     };
 
-    const switchDate = new Date(member.customFields["date-de-switch"]);
+    const switchDate = ms.safeDate('date-de-switch');
+    if (!switchDate) {
+        console.log(PREFIX, 'No date-de-switch found');
+        return;
+    }
     const deadline = addDays(switchDate, 30);
     const newDeadline = addDays(switchDate, 15);
     const endSummer22 = new Date('2025-11-03T00:00:00');

@@ -33,16 +33,12 @@
             }
 
             const planConnections = member.planConnections;
-            console.log(PREFIX, 'Plan connections:', planConnections);
 
             // Check if any plan has status 'REQUIRES_PAYMENT'
             const hasPastDuePlan = planConnections.some(plan => plan.status === 'REQUIRES_PAYMENT');
 
             // Check if user has SEPA temporary plan
             const isSepaTemporary = planConnections.some(plan => plan.planId === SEPA_TEMPORARY_PLAN_ID);
-
-            console.log(PREFIX, 'Has past due plan:', hasPastDuePlan);
-            console.log(PREFIX, 'Is SEPA temporary:', isSepaTemporary);
 
             if (!hasPastDuePlan || isSepaTemporary) {
                 console.log(PREFIX, 'User should not be on this page, adding past-due plan and redirecting');

@@ -28,19 +28,28 @@
         await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
     }
 
-    // Memberstack data
-    const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
-    const stripeCustomerId = memData.stripeCustomerId;
+    // Memberstack data (prefer shared utility, fallback to inline parsing)
+    var ms = window.OrdoMemberstack;
+    if (!ms) {
+        try {
+            var raw = localStorage.getItem('_ms-mem');
+            var parsed = raw ? JSON.parse(raw) : {};
+            ms = { stripeCustomerId: parsed.stripeCustomerId, memberId: parsed.id, email: (parsed.auth && parsed.auth.email) || null };
+        } catch (e) {
+            ms = {};
+        }
+    }
+    const stripeCustomerId = ms.stripeCustomerId;
 
     if (!stripeCustomerId) {
         console.error(PREFIX, 'No Stripe customer ID found');
         return;
     }
 
-    console.log(PREFIX, 'Stripe customer found:', stripeCustomerId);
+    console.log(PREFIX, 'Stripe customer found');
 
-    const customerEmail = memData.auth?.email;
-    const userId = memData.id;
+    const customerEmail = ms.email;
+    const userId = ms.memberId;
 
     // Get button and hide it initially
     const btn = document.getElementById('checkoutStripe');

@@ -4,9 +4,16 @@
  * Must be loaded in header (blocking)
  */
 (function() {
-    const memData = JSON.parse(localStorage.getItem('_ms-mem') || '{}');
+    var memberId = null;
+    try {
+        var raw = localStorage.getItem('_ms-mem');
+        if (raw) {
+            var memData = JSON.parse(raw);
+            memberId = memData && memData.id;
+        }
+    } catch (e) {}
 
-    if (!memData.id) {
+    if (!memberId) {
         window.location.replace('/nos-offres');
     }
 })();
