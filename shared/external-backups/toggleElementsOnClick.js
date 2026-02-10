@@ -5,7 +5,7 @@ function l() {
       var hideSelector = n.getAttribute("data-element-to-hide");
 
       function fadeOut(el, callback) {
-        if (el && el.style.display !== "none") {
+        if (el && window.getComputedStyle(el).display !== "none") {
           el.style.transition = "opacity 0.3s ease";
           el.style.opacity = "0";
           setTimeout(function() {

@@ -8,7 +8,7 @@ function l() {
     setTimeout(function() {
       e.style.opacity = "0";
       e.style.display = "block";
-      e.style.transition = "opacity 0.3s ease";
+      e.style.transition = "opacity 0.4s ease";
       requestAnimationFrame(function() {
         e.style.opacity = "1";
       });

@@ -8,13 +8,13 @@ function o() {
       }
       var el = document.querySelector(selector);
       if (el) {
-        el.style.transition = "opacity 0.3s ease";
+        el.style.transition = "opacity 0.4s ease";
         el.style.opacity = "0";
         setTimeout(function() {
           el.style.display = "none";
           el.style.opacity = "";
           el.style.transition = "";
-        }, 300);
+        }, 400);
       } else {
         console.error('Element "' + selector + '" not found on the page');
       }

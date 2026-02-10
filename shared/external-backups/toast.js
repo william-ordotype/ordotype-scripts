@@ -1,11 +1,21 @@
-function c() {
-  var toastEl = document.querySelector('[x-ordo-utils="toast-component-common"]');
-  if (toastEl) {
-    toastEl.style.display = "none";
-  }
+/**
+ * Toast - Vanilla JS (no jQuery)
+ * Backup of dndevs/ordotype-front-utils showToast.
+ *
+ * Each trigger [x-ordo-utils*="show-toast"] is matched by index
+ * to its own toast component [x-ordo-utils="toast-component-{index}"].
+ */
+(function() {
+  var triggers = document.querySelectorAll("[x-ordo-utils*=show-toast]");
 
-  document.querySelectorAll("[x-ordo-utils*=show-toast]").forEach(function(trigger) {
-    var timeout = trigger.dataset.showToastTimeout ?? 3000;
+  triggers.forEach(function(trigger, index) {
+    var timeout = trigger.dataset.showToastTimeout || 3000;
+    var toastEl = document.querySelector('[x-ordo-utils="toast-component-' + index + '"]');
+
+    // Hide initially
+    if (toastEl) {
+      toastEl.style.display = "none";
+    }
 
     trigger.addEventListener("click", function(event) {
       event.preventDefault();
@@ -30,5 +40,4 @@ function c() {
       }, timeout);
     });
   });
-}
-c();
+})();

@@ -1,7 +1,7 @@
 function toggleCookiesManager() {
   var cookieManagerButton = document.querySelector('[x-ordo-utils="cookieManagerButton"]');
   var cookieManagerClose = document.querySelector('[x-ordo-utils="cookieManagerClose"]');
-  var cookieManagerBannerClose = document.querySelector('[x-ordo-utils="cookieManagerBannerClose"]');
+  var cookieManagerBannerClose = document.querySelector('[x-ordo-utils="cookieBannerClose"]');
   var cookieBanner = document.querySelector('[x-ordo-utils="cookieBanner"]');
   var hasSeenCookieBanner = document.cookie
     .split("; ")
