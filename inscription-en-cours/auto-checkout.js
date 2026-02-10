@@ -99,6 +99,9 @@
 
         sessionId = data.sessionId;
         checkoutUrl = data.url;
+        // Use server-resolved values (includes env var fallback)
+        var resolvedPriceId = data.priceId || priceId;
+        var resolvedCouponId = data.couponId || couponId;
         console.log(PREFIX, 'Checkout session ready');
 
     } catch (err) {
@@ -118,8 +121,8 @@
             stripeCustomerId,
             memberstackUserId: userId,
             Email: customerEmail,
-            priceId,
-            couponId,
+            priceId: resolvedPriceId,
+            couponId: resolvedCouponId,
             option,
             successUrl,
             cancelUrl,
