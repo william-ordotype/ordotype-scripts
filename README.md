@@ -128,9 +128,11 @@ ordotype-scripts/
     ├── global-utils.js
     └── external-backups/   # Backups of dndevs/ordotype-front-utils scripts
         ├── accordion.js
+        ├── cmsselect.js
         ├── cookiesManager.js
         ├── hideElementOnClick.js
         ├── showElementAfterDelay.js
+        ├── showElementOnClick.js
         ├── tabs.js
         ├── toast.js
         ├── toggleElementsOnClick.js
@@ -646,14 +648,16 @@ window.OPACITY_REVEAL_CONFIG = {
 
 ### external-backups/
 
-Backup copies of scripts from `dndevs/ordotype-front-utils` for independence. All scripts require jQuery and should be loaded in the footer.
+Backup copies of scripts from `dndevs/ordotype-front-utils` and Finsweet, rewritten in vanilla JS (no jQuery dependency). Load in the footer with `defer`.
 
 | Script | Description | Attribute |
 |--------|-------------|-----------|
 | accordion.js | Accordion expand/collapse | `[x-ordo-utils="accordion"]` |
+| cmsselect.js | Populate `<select>` from CMS list items (replaces @finsweet/attributes-cmsselect) | `[fs-list-element="list"]`, `[fs-list-element="select-value"]`, `[fs-list-element="select"]` |
 | cookiesManager.js | Cookie banner animations (deprecated - use cookie-consent.js) | `[x-ordo-utils="cookieManagerButton"]` |
 | hideElementOnClick.js | Hide element on click | `[x-ordo-utils="hideElementOnClick"]` |
 | showElementAfterDelay.js | Show element after delay | `[x-ordo-utils="showElementAfterDelay"]` |
+| showElementOnClick.js | Show element on click | `[x-ordo-utils="showElementOnClick"]` |
 | tabs.js | Animated tab background | `[x-ordo-utils="tabs"]` |
 | toast.js | Toast notifications | `[x-ordo-utils*="show-toast"]` |
 | toggleElementsOnClick.js | Toggle show/hide elements | `[x-ordo-utils="toggleElementsOnClick"]` |

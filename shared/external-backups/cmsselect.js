@@ -2,22 +2,40 @@
  * CMS Select - Vanilla JS replacement for @finsweet/attributes-cmsselect
  * Populates <select> dropdowns from Webflow CMS collection list items.
  *
- * Uses the same data attributes as the Finsweet original:
- *   - fs-cmsselect-element="select"     → the <select> to populate
- *   - fs-cmsselect-element="text-value"  → elements whose innerText becomes <option> values
+ * Attributes (same as Finsweet):
+ *   - fs-list-element="list"          → on the Collection List (.w-dyn-list)
+ *   - fs-list-element="select-value"  → on a text element inside each Collection Item
+ *   - fs-list-element="select"        → on the <select> field to populate
+ *   - fs-list-instance="NAME"         → (optional) links a specific list to a specific select
  *
- * Both must share a common parent .w-dyn-list wrapper.
+ * The list and select do NOT need to share a parent wrapper.
+ * After populating, the source list is hidden.
  * Handles duplicates and observes dynamically added CMS items.
  */
 (function() {
   'use strict';
 
   function populateSelects() {
-    var selects = document.querySelectorAll('[fs-cmsselect-element="select"]');
+    var selects = document.querySelectorAll('[fs-list-element="select"]');
+    var lists = document.querySelectorAll('[fs-list-element="list"]');
 
     selects.forEach(function(select) {
-      var wrapper = select.closest('.w-dyn-list');
-      if (!wrapper) return;
+      var instance = select.getAttribute('fs-list-instance');
+      var list = null;
+
+      // Match by instance name, or use the first list if no instance
+      if (instance) {
+        list = document.querySelector('[fs-list-element="list"][fs-list-instance="' + instance + '"]');
+      } else if (lists.length === 1) {
+        list = lists[0];
+      } else {
+        // Multiple lists, no instance specified — try closest common parent
+        lists.forEach(function(l) {
+          if (!list) list = l;
+        });
+      }
+
+      if (!list) return;
 
       var seen = new Set();
 
@@ -26,33 +44,32 @@
         if (opt.value) seen.add(opt.value);
       });
 
-      var sources = wrapper.querySelectorAll('[fs-cmsselect-element="text-value"]');
-      sources.forEach(function(el) {
-        var text = el.innerText.trim();
-        if (!text || seen.has(text)) return;
-        seen.add(text);
-        var option = document.createElement('option');
-        option.value = text;
-        option.textContent = text;
-        select.appendChild(option);
-      });
+      // Extract values from CMS items
+      function addOptionsFromList() {
+        var sources = list.querySelectorAll('[fs-list-element="select-value"]');
+        sources.forEach(function(el) {
+          var text = el.innerText.trim();
+          if (!text || seen.has(text)) return;
+          seen.add(text);
+          var option = document.createElement('option');
+          option.value = text;
+          option.textContent = text;
+          select.appendChild(option);
+        });
+      }
+
+      addOptionsFromList();
+
+      // Hide the source list after populating
+      list.style.display = 'none';
 
       // Watch for dynamically added CMS items (load more / pagination)
-      var list = wrapper.querySelector('.w-dyn-items');
-      if (list) {
+      var items = list.querySelector('.w-dyn-items');
+      if (items) {
         var observer = new MutationObserver(function() {
-          var newSources = wrapper.querySelectorAll('[fs-cmsselect-element="text-value"]');
-          newSources.forEach(function(el) {
-            var text = el.innerText.trim();
-            if (!text || seen.has(text)) return;
-            seen.add(text);
-            var option = document.createElement('option');
-            option.value = text;
-            option.textContent = text;
-            select.appendChild(option);
-          });
+          addOptionsFromList();
         });
-        observer.observe(list, { childList: true });
+        observer.observe(items, { childList: true });
       }
     });
   }
