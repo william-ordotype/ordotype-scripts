@@ -119,6 +119,9 @@ ordotype-scripts/
 ├── connexion-2fa/      # 2FA login page scripts
 │   └── crisp.js
 └── shared/             # Shared scripts used across pages
+    ├── memberstack-utils.js  # Memberstack data parser (exposes window.OrdoMemberstack)
+    ├── error-reporter.js     # Frontend error reporter (exposes window.OrdoErrorReporter)
+    ├── crisp-loader.js       # Crisp chat integration with Memberstack data
     ├── cookie-consent.js
     ├── stripe-checkout.js
     ├── stripe-setup-session.js
@@ -489,6 +492,77 @@ This is the B variant of the A/B test. Main differences from V1:
 ---
 
 ## Shared Scripts
+
+### memberstack-utils.js
+
+Parses Memberstack data from `localStorage` (`_ms-mem` key) and exposes it as `window.OrdoMemberstack`. This is the foundation script — most other scripts depend on it.
+
+**Loaded by all loaders as the first script in the chain.**
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/memberstack-utils.js"></script>
+```
+
+**Exposes `window.OrdoMemberstack` with:**
+- `member` — raw member object
+- `stripeCustomerId` — Stripe customer ID
+- `memberId` — Memberstack member ID
+- `email` — member email
+- `planConnections` — array of plan connections
+- `customFields` — member custom fields
+- `hasPlan(planId)` — returns `true` if member has the given plan
+- `getPlan(planId)` — returns the plan connection object or `null`
+- `isActive(planId)` — returns `true` if the plan is active
+- `safeDate(fieldName)` — returns a `Date` from a custom field, or `null` (never `Invalid Date`)
+- `daysSince(date)` / `daysUntil(date)` — returns a number or `null`
+- `FRENCH_TERRITORIES` — array of French territory codes
+- `ALLOWED_INTERN_PLAN_IDS` — array of intern plan IDs
+- `SPECIALIZATION_DURATIONS` — map of specialization durations
+- `getRequiredSemester(specialization)` — returns required semester number
+- `isFrenchTerritory(country)` — returns `true` if country is a French territory
+
+### Console Prefix
+
+- `[OrdoMemberstack]` - Memberstack utils
+
+---
+
+### error-reporter.js
+
+Sends frontend error reports to Discord via the Netlify webhook proxy. Exposes `window.OrdoErrorReporter`.
+
+**Loaded by loaders that include checkout or setup scripts.**
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/error-reporter.js"></script>
+```
+
+**Usage:**
+```javascript
+if (window.OrdoErrorReporter) {
+  OrdoErrorReporter.report('StripeCheckout', error);
+}
+```
+
+Reports are sent to `ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook` with type `frontend-error`, and forwarded to Discord as a red embed with page URL and member ID.
+
+### Console Prefix
+
+- `[OrdoErrorReporter]` - Error reporter
+
+---
+
+### crisp-loader.js
+
+Loads Crisp chat widget and pushes Memberstack data (member ID, email, page URL) to Crisp session.
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/crisp-loader.js"></script>
+```
+
+Prefers `window.OrdoMemberstack` when available, falls back to inline `localStorage` parsing for pages where it's loaded standalone.
+
+---
 
 ### stripe-checkout.js
 
@@ -1365,7 +1439,17 @@ jsDelivr caches files. To force an update after pushing changes:
 ```
 
 **Option B:** Purge cache manually
+
+**Important:** jsDelivr has two cache layers:
+1. **Edge cache** — cleared by the purge API (instant)
+2. **Branch resolution cache** (`@main` → commit hash) — cached up to 12 hours, NOT clearable via purge
+
+After purging, if changes still don't appear, use a commit-specific URL to bypass the branch cache: `@<commit-hash>` instead of `@main`.
+
 ```
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/memberstack-utils.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/error-reporter.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/crisp-loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/styles.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
