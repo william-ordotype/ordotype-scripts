@@ -16,6 +16,16 @@
 
     // Fallback method using execCommand for browsers without Clipboard API support
     function fallbackExecCommand(element) {
+      // Temporarily style links so they don't paste as invisible (black on black)
+      var links = element.querySelectorAll('a[href]');
+      var savedStyles = [];
+      links.forEach(function(link) {
+        savedStyles.push(link.style.cssText);
+        link.style.color = '#0563C1';
+        link.style.backgroundColor = 'transparent';
+        link.style.textDecoration = 'underline';
+      });
+
       var range = document.createRange();
       range.selectNodeContents(element);
       var selection = window.getSelection();
@@ -27,6 +37,11 @@
         console.error('[CopyHandler] execCommand failed:', err);
       }
       selection.removeAllRanges();
+
+      // Restore original styles
+      links.forEach(function(link, i) {
+        link.style.cssText = savedStyles[i];
+      });
     }
 
     // Function to copy rich text (HTML) and plain text
@@ -34,7 +49,15 @@
     function copyAsRichText(element, useDecoded) {
       useDecoded = useDecoded || false;
 
-      var htmlContent = element.innerHTML;
+      // Clone element to style links without modifying the page
+      var clone = element.cloneNode(true);
+      clone.querySelectorAll('a[href]').forEach(function(link) {
+        link.style.color = '#0563C1';
+        link.style.backgroundColor = 'transparent';
+        link.style.textDecoration = 'underline';
+      });
+
+      var htmlContent = clone.innerHTML;
       if (useDecoded) {
         htmlContent = decodeHTMLEntities(htmlContent);
       }
@@ -60,31 +83,6 @@
       document.querySelectorAll(selector).forEach(function(el) {
         el.remove();
       });
-    }
-
-    // Legacy function for selecting rich text and copying it to the clipboard
-    function selectRichTextToClipboard(node) {
-      if (typeof node === "string") {
-        node = document.querySelector(node);
-      }
-
-      if (document.body.createTextRange) {
-        var range = document.body.createTextRange();
-        range.moveToElementText(node);
-        range.select();
-        document.execCommand("copy");
-        document.selection.empty();
-      } else if (window.getSelection) {
-        var selection = window.getSelection();
-        var rangeObj = document.createRange();
-        rangeObj.selectNodeContents(node);
-        selection.removeAllRanges();
-        selection.addRange(rangeObj);
-        document.execCommand("copy");
-        window.getSelection().removeAllRanges();
-      } else {
-        console.warn("[CopyHandler] Could not select text in node: Unsupported browser.");
-      }
     }
 
     // ----------------------------
@@ -117,8 +115,7 @@
 
       triggerElement.addEventListener('click', function() {
         removeElements('.tr-wrap');
-        // Use the legacy function to select the rich text and copy it
-        selectRichTextToClipboard(subjectElement);
+        copyAsRichText(subjectElement, false);
       });
       console.log('[CopyHandler] Case 2 initialized (ms-code-copy)');
     }
