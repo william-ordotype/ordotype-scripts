@@ -154,23 +154,25 @@
 
     // ----------------------------
     // Case 2: Using ms-code-copy subject & trigger
-    // Legacy implementation integration
+    // Bind ALL trigger elements (multiple may exist for member/non-member variants)
     // ----------------------------
     var subjectElement = document.querySelector('[ms-code-copy="subject"]');
-    var triggerElement = document.querySelector('[ms-code-copy="trigger"]');
+    var triggerElements = document.querySelectorAll('[ms-code-copy="trigger"]');
 
-    if (subjectElement && triggerElement) {
+    if (subjectElement && triggerElements.length > 0) {
       // Remove any hidden/invisible elements if needed
       subjectElement.querySelectorAll('.w-condition-invisible').forEach(function(el) {
         el.remove();
       });
 
-      triggerElement.addEventListener('click', function() {
-        removeElements('.tr-wrap');
-        copyAsRichText(subjectElement, false);
-        showCopyToast();
+      triggerElements.forEach(function(trigger) {
+        trigger.addEventListener('click', function() {
+          removeElements('.tr-wrap');
+          copyAsRichText(subjectElement, false);
+          showCopyToast();
+        });
       });
-      console.log('[CopyHandler] Case 2 initialized (ms-code-copy)');
+      console.log('[CopyHandler] Case 2 initialized (ms-code-copy) — ' + triggerElements.length + ' trigger(s)');
     }
 
     // ----------------------------
