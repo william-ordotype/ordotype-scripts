@@ -17,15 +17,22 @@
     window.OrdoErrorReporter = {
         report: function(context, error) {
             try {
-                var ms = window.OrdoMemberstack || {};
+                // Fresh read from localStorage to avoid stale OrdoMemberstack snapshot
+                // (Memberstack SDK may update _ms-mem after our initial parse)
+                var member = {};
+                try {
+                    var raw = localStorage.getItem('_ms-mem');
+                    if (raw) member = JSON.parse(raw) || {};
+                } catch (e) { member = {}; }
+
                 var payload = {
                     type: 'frontend-error',
                     context: context,
                     error: String(error),
                     page: window.location.href,
-                    memberId: ms.memberId || 'unknown',
-                    stripeCustomerId: ms.stripeCustomerId || 'unknown',
-                    email: ms.email || 'unknown',
+                    memberId: member.id || 'unknown',
+                    stripeCustomerId: member.stripeCustomerId || 'unknown',
+                    email: (member.auth && member.auth.email) || 'unknown',
                     userAgent: navigator.userAgent,
                     timestamp: new Date().toISOString()
                 };
