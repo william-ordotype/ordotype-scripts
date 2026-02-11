@@ -17,12 +17,16 @@
     window.OrdoErrorReporter = {
         report: function(context, error) {
             try {
+                var ms = window.OrdoMemberstack || {};
                 var payload = {
                     type: 'frontend-error',
                     context: context,
                     error: String(error),
                     page: window.location.href,
-                    memberId: (window.OrdoMemberstack && window.OrdoMemberstack.memberId) || 'unknown',
+                    memberId: ms.memberId || 'unknown',
+                    stripeCustomerId: ms.stripeCustomerId || 'unknown',
+                    email: ms.email || 'unknown',
+                    userAgent: navigator.userAgent,
                     timestamp: new Date().toISOString()
                 };
                 fetch(WEBHOOK_URL, {
