@@ -16,14 +16,22 @@
 
     // Fallback method using execCommand for browsers without Clipboard API support
     function fallbackExecCommand(element) {
-      // Temporarily strip links so URLs don't get pasted into medical software
+      // Save original state of ALL elements (execCommand copies computed styles)
+      var allEls = element.querySelectorAll('*');
+      var savedStyles = [];
+      allEls.forEach(function(el) {
+        savedStyles.push({ style: el.style.cssText, cls: el.getAttribute('class') });
+        el.style.backgroundColor = 'transparent';
+        el.style.background = 'transparent';
+      });
+
+      // Strip links specifically
       var links = element.querySelectorAll('a[href]');
-      var savedData = [];
+      var savedHrefs = [];
       links.forEach(function(link) {
-        savedData.push({ href: link.getAttribute('href'), style: link.style.cssText });
+        savedHrefs.push(link.getAttribute('href'));
         link.removeAttribute('href');
         link.style.color = '#000000';
-        link.style.backgroundColor = 'transparent';
         link.style.fontWeight = 'bold';
         link.style.textDecoration = 'none';
       });
@@ -40,10 +48,15 @@
       }
       selection.removeAllRanges();
 
-      // Restore original links
+      // Restore everything
+      allEls.forEach(function(el, i) {
+        el.style.cssText = savedStyles[i].style;
+        if (savedStyles[i].cls) {
+          el.setAttribute('class', savedStyles[i].cls);
+        }
+      });
       links.forEach(function(link, i) {
-        link.setAttribute('href', savedData[i].href);
-        link.style.cssText = savedData[i].style;
+        link.setAttribute('href', savedHrefs[i]);
       });
     }
 
@@ -62,6 +75,15 @@
         span.style.fontWeight = 'bold';
         span.style.textDecoration = 'none';
         link.parentNode.replaceChild(span, link);
+      });
+
+      // Strip Webflow classes and dark backgrounds from ALL elements
+      // Medical software doesn't have Webflow CSS, but some apps render
+      // class-based styles from clipboard HTML unpredictably
+      clone.querySelectorAll('*').forEach(function(el) {
+        el.removeAttribute('class');
+        el.style.backgroundColor = '';
+        el.style.background = '';
       });
 
       var htmlContent = clone.innerHTML;
