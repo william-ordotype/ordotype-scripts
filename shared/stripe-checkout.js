@@ -67,6 +67,21 @@ async function initStripeCheckout() {
 
     const fnUrl = 'https://ordotype-stripe-checkout-sessions.netlify.app/.netlify/functions/create-checkout-session';
 
+    // Retry fetch on network errors (TypeError) — transient mobile failures
+    function fetchWithRetry(url, options, retries, delay) {
+        return fetch(url, options).catch(function(err) {
+            if (retries > 0 && err instanceof TypeError) {
+                console.log(PREFIX, 'Network error, retrying... (' + retries + ' left)');
+                return new Promise(function(resolve) {
+                    setTimeout(resolve, delay || 1000);
+                }).then(function() {
+                    return fetchWithRetry(url, options, retries - 1, delay);
+                });
+            }
+            throw err;
+        });
+    }
+
     // Fetch sessionId + URL
     let sessionId, checkoutUrl;
     try {
@@ -79,11 +94,11 @@ async function initStripeCheckout() {
             couponId
         };
 
-        const resp = await fetch(fnUrl, {
+        const resp = await fetchWithRetry(fnUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-        });
+        }, 2, 1000);
 
         const data = await resp.json();
 

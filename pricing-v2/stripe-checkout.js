@@ -64,6 +64,21 @@
     // V2 difference: includes both card and sepa_debit
     var paymentMethods = ['card', 'sepa_debit'];
 
+    // Retry fetch on network errors (TypeError) — transient mobile failures
+    function fetchWithRetry(url, options, retries, delay) {
+      return fetch(url, options).catch(function(err) {
+        if (retries > 0 && err instanceof TypeError) {
+          console.log('[StripeCheckoutV2] Network error, retrying... (' + retries + ' left)');
+          return new Promise(function(resolve) {
+            setTimeout(resolve, delay || 1000);
+          }).then(function() {
+            return fetchWithRetry(url, options, retries - 1, delay);
+          });
+        }
+        throw err;
+      });
+    }
+
     // Fetch both sessions
     fetchCheckoutSessions();
 
@@ -71,7 +86,7 @@
       var sessionId1, url1, sessionId2, url2;
 
       try {
-        var resp = await fetch(
+        var resp = await fetchWithRetry(
           'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/create-checkout-session',
           {
             method: 'POST',
@@ -86,7 +101,8 @@
               cancelUrl: cancelUrl,
               payment_method_types: paymentMethods
             })
-          }
+          },
+          2, 1000
         );
         var data = await resp.json();
 
