@@ -404,7 +404,7 @@ This is the B variant of the A/B test. Main differences from V1:
 | `urgent-handler.js` | Handles urgent prescriptions, stomach-empty/le-matin |
 | `duplicates-cleaner.js` | Removes duplicate items, DataLayer tracking |
 | `print-handler.js` | Print prescription functionality |
-| `copy-handler.js` | Copy as rich text (multiple methods) |
+| `copy-handler.js` | Copy as rich text (multiple methods). Strips `<a>` links and replaces with bold black text to avoid invisible URLs in medical software |
 | `styles.css` | Non-critical CSS (tables, print styles, responsive) |
 
 ### Usage in Webflow
