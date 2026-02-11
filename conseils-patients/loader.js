@@ -32,6 +32,16 @@
     });
   }
 
+  // Fallback: reveal content if scripts fail
+  function fallbackReveal() {
+    ['.qr-code-fcp-div-block-wrapper', '.rc-html-fcp'].forEach(function(sel) {
+      document.querySelectorAll(sel).forEach(function(el) {
+        el.style.opacity = '1';
+      });
+    });
+    console.warn('[OrdoConseils] Fallback reveal triggered');
+  }
+
   // Load all scripts in order
   async function loadAll() {
     console.log('[OrdoConseils] Loading...');
@@ -47,6 +57,7 @@
       console.log('[OrdoConseils] All scripts loaded');
     } catch (err) {
       console.error('[OrdoConseils] Load error:', err);
+      fallbackReveal();
     }
   }
 

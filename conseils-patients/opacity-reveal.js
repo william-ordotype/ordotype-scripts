@@ -22,5 +22,9 @@
     console.log('[OpacityReveal] Revealed', elements.length, 'element(s)');
   }
 
-  window.addEventListener('load', init);
+  if (document.readyState === 'complete') {
+    init();
+  } else {
+    window.addEventListener('load', init);
+  }
 })();

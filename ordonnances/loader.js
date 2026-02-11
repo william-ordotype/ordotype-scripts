@@ -32,6 +32,16 @@
     });
   }
 
+  // Fallback: reveal content if scripts fail
+  function fallbackReveal() {
+    ['.ordo-for-members', '.reco-rich-text', '.qr-codes-wrapper'].forEach(function(sel) {
+      document.querySelectorAll(sel).forEach(function(el) {
+        el.style.opacity = '1';
+      });
+    });
+    console.warn('[OrdoOrdonnances] Fallback reveal triggered');
+  }
+
   // Load all scripts in order
   async function loadAll() {
     console.log('[OrdoOrdonnances] Loading...');
@@ -47,6 +57,7 @@
       console.log('[OrdoOrdonnances] All scripts loaded');
     } catch (err) {
       console.error('[OrdoOrdonnances] Load error:', err);
+      fallbackReveal();
     }
   }
 
