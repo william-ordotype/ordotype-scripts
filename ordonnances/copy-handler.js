@@ -114,6 +114,29 @@
       });
     }
 
+    // Show the "Ordonnance copiée" toast
+    function showCopyToast() {
+      var toastEl = document.querySelector('[x-ordo-utils="toast-component-common"]');
+      if (!toastEl) return;
+
+      toastEl.classList.remove('hidden');
+      toastEl.style.display = 'inline-block';
+      toastEl.style.opacity = '0';
+      toastEl.style.transition = 'opacity 0.2s ease';
+
+      requestAnimationFrame(function() {
+        toastEl.style.opacity = '1';
+      });
+
+      setTimeout(function() {
+        toastEl.style.opacity = '0';
+        setTimeout(function() {
+          toastEl.style.display = 'none';
+          toastEl.classList.add('hidden');
+        }, 200);
+      }, 3000);
+    }
+
     // ----------------------------
     // Case 1: Using #copy-button & #copy-section
     // ----------------------------
@@ -123,8 +146,8 @@
     if (copyButton && copySection) {
       copyButton.addEventListener('click', function() {
         removeElements('.tr-wrap');
-        // Use 'true' to decode HTML entities since copy-section is encoded
         copyAsRichText(copySection, true);
+        showCopyToast();
       });
       console.log('[CopyHandler] Case 1 initialized (#copy-button)');
     }
@@ -145,6 +168,7 @@
       triggerElement.addEventListener('click', function() {
         removeElements('.tr-wrap');
         copyAsRichText(subjectElement, false);
+        showCopyToast();
       });
       console.log('[CopyHandler] Case 2 initialized (ms-code-copy)');
     }
@@ -158,8 +182,8 @@
     if (copyButtonFcp && printableArea) {
       copyButtonFcp.addEventListener('click', function() {
         removeElements('.tr-wrap');
-        // Use 'true' to decode HTML entities if needed
         copyAsRichText(printableArea, true);
+        showCopyToast();
       });
       console.log('[CopyHandler] Case 3 initialized (#copy-button-fcp)');
     }
