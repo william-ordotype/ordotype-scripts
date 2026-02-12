@@ -14,7 +14,7 @@
     // Scripts to load in order
     const scripts = [
         'shared/opacity-reveal.js',
-        'offre-annulation/countdown.js',
+        'shared/countdown.js',
         'shared/redeem-cancel-forms.js'
     ];
 
@@ -30,6 +30,9 @@
 
     async function init() {
         console.log(PREFIX, 'Loading scripts...');
+
+        // Set countdown storage key (preserve existing key for this page)
+        window.COUNTDOWN_CONFIG = { storageKey: 'countdownDateTime' };
 
         try {
             // Load shared utilities first
