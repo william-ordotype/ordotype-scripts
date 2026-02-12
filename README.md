@@ -77,6 +77,10 @@ ordotype-scripts/
 │   ├── geo-redirect.js
 │   ├── styles.js
 │   └── core.js
+├── syndicats-dinternes/  # Syndicats d'internes partnership pages
+│   ├── core.js
+│   ├── modal.js
+│   └── partnership-city.js
 ├── moyen-de-paiement/  # Payment method setup page (SEPA)
 │   ├── loader.js
 │   └── ab-test.js
@@ -832,6 +836,64 @@ The page needs two buttons with specific IDs:
 
 ---
 
+## Syndicats d'Internes Page (`/syndicats-dinternes/[item-slug]`)
+
+Partnership pages for intern unions (syndicats). Each slug corresponds to a specific partnership with a city/organization.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `core.js` | Stores current URL in localStorage for tracking |
+| `modal.js` | Modal toggle (signup prompt), QR code display, login detection, URL param triggers |
+| `partnership-city.js` | Reads city from CMS hidden input, stores in sessionStorage (cookie fallback), re-stores on signup |
+
+### Usage in Webflow
+
+**Header (keep inline — uses CMS template variables):**
+```html
+<style>
+/* Dynamic CMS colors for integrations blocks — must stay inline */
+.integrations-block.aimgl:not(:hover) {
+    box-shadow: 11px 11px 0 0 {{wf couleur-offre-syndicat}} !important;
+}
+/* ... */
+</style>
+<!-- Geo-redirect third-party embed — keep inline -->
+```
+
+**Footer:**
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/syndicats-dinternes/core.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/syndicats-dinternes/partnership-city.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/syndicats-dinternes/modal.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.16/dist/accordion.js" type="module"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
+```
+
+### Required DOM Elements
+
+**Modal:**
+- `#hideModal` — element shown by default (hidden when modal opens)
+- `#displayModal` — main signup modal
+- `#qrCodeModal` — QR code modal
+- `#hideModalOnClick` — button that triggers the toggle
+
+**Partnership City:**
+- `<input id="js-partnership-city" type="hidden" value="{{city from CMS}}">` — hidden input with city value
+
+### URL Parameters
+
+- `?openModal=true` — auto-opens signup modal for non-logged-in users
+- `?showQR=true` — shows QR code modal for all users (highest priority)
+
+### Console Prefixes
+
+- `[OrdoSyndicat]` - Core and modal
+- `[OrdoPartnerCity]` - Partnership city storage
+
+---
+
 ## Moyen de Paiement Page (`/membership/moyen-de-paiement`)
 
 Payment method setup page for adding SEPA payment methods.
@@ -1495,6 +1557,9 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-interna
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/geo-redirect.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/styles.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/fin-internat-v2/core.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/syndicats-dinternes/core.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/syndicats-dinternes/modal.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/syndicats-dinternes/partnership-city.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/accordion.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/cookiesManager.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/external-backups/hideElementOnClick.js
