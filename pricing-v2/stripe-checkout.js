@@ -120,7 +120,11 @@
       } catch (err) {
         console.error('[StripeCheckoutV2] Fetch error:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckoutV2', err);
-        alert('Une erreur est survenue lors du chargement de la page.');
+        // Show fallback buttons so user can still proceed via Memberstack
+        if (btn1) btn1.style.display = 'none';
+        if (btn2) btn2.style.display = 'none';
+        if (noStripe1) noStripe1.style.display = 'flex';
+        if (noStripe2) noStripe2.style.display = 'flex';
         return;
       }
 

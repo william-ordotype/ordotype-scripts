@@ -105,6 +105,9 @@
         .catch(err => {
             console.error(PREFIX, 'prefetch error:', err);
             if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', err);
+            // Show fallback button so user can still proceed via Memberstack
+            if (btnYes) btnYes.style.display = 'none';
+            if (btnNo) btnNo.style.display = 'inline-flex';
         })
         .finally(() => {
             isPrefetching = false;

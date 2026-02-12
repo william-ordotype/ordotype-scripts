@@ -105,7 +105,9 @@ async function initStripeCheckout() {
         if (!data.sessionId || !data.url) {
             console.error(PREFIX, 'Invalid response');
             if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', 'Invalid checkout session response');
-            alert('Une erreur est survenue lors du chargement de la page.');
+            // Show fallback button so user can still proceed via Memberstack
+            if (signupBtnStripe) signupBtnStripe.style.display = 'none';
+            if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
             return;
         }
         sessionId = data.sessionId;
@@ -115,7 +117,9 @@ async function initStripeCheckout() {
     } catch (err) {
         console.error(PREFIX, 'Error creating checkout session:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', err);
-        alert('Erreur réseau lors du chargement de la page.');
+        // Show fallback button so user can still proceed via Memberstack
+        if (signupBtnStripe) signupBtnStripe.style.display = 'none';
+        if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
         return;
     }
 
