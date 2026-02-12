@@ -42,13 +42,19 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 }).catch(function() {});
-                // Fallback: report to Sentry if available (works even when *.netlify.app is blocked)
-                if (window.Sentry) {
-                    var err = error instanceof Error ? error : new Error(String(error));
-                    window.Sentry.captureException(err, {
-                        tags: { reporter: 'OrdoErrorReporter', context: context },
-                        extra: payload
-                    });
+                // Fallback: report to Sentry via internal API (works even when *.netlify.app is blocked)
+                var carrier = window.__SENTRY__ && window.__SENTRY__[window.__SENTRY__.version];
+                if (carrier && carrier.defaultCurrentScope) {
+                    var client = carrier.defaultCurrentScope.getClient();
+                    if (client && client.captureException) {
+                        var err = error instanceof Error ? error : new Error(String(error));
+                        client.captureException(err, {
+                            captureContext: {
+                                tags: { reporter: 'OrdoErrorReporter', context: context },
+                                extra: payload
+                            }
+                        });
+                    }
                 }
             } catch (e) {
                 // Never throw from the error reporter itself
