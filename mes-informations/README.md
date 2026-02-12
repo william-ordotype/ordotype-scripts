@@ -25,7 +25,7 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | `statut-selectors.js` | Shows/hides semestre, mode-exercice, specialite based on statut |
 | `required-if-visible.js` | Sets `required` on visible `[ms-code="required-if-visible"]` inputs |
 | `phone-input.js` | intl-tel-input initialization on `[ms-code-phone-number]` inputs |
-| `checkout.js` | Stripe checkout form handler (praticien-sepa only) |
+| `checkout.js` | Stripe checkout form handler — sends `payment_method_types` to Netlify (praticien-sepa only) |
 | `partnership-city.js` | Partnership city from sessionStorage/cookie (internes-assos only) |
 
 ## Webflow setup
@@ -77,6 +77,7 @@ window.MES_INFOS_CONFIG = {
   showStatutSelectors: false,     // show semestre/mode-exercice/specialite visibility logic
   showRequiredIfVisible: true,    // conditional required attr on visible inputs
   enableCheckout: false,          // load checkout.js (Stripe redirect)
+  checkoutPaymentMethods: ['sepa_debit'], // payment methods for Stripe checkout
   enablePartnershipCity: false    // load partnership-city.js (sessionStorage/cookie sync)
 };
 ```

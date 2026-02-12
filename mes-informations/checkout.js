@@ -25,18 +25,30 @@
 
       var fnUrl = 'https://ordotype-stripe-checkout-sessions.netlify.app/.netlify/functions/create-checkout-session';
 
+      // Read config for payment methods
+      var config = window.OrdoMesInfos ? window.OrdoMesInfos.config : {};
+      var paymentMethods = config.checkoutPaymentMethods || ['sepa_debit'];
+
       // Read member data from localStorage
       var raw = '{}';
       try { raw = localStorage.getItem('_ms-mem') || '{}'; } catch (err) {}
       var mem = {};
       try { mem = JSON.parse(raw); } catch (err) {}
 
+      // Optional overrides from form data attributes
+      var priceId = form.dataset.price || null;
+      var couponId = form.dataset.coupon || null;
+      var successUrl = form.dataset.successUrl || null;
+
       var payload = {
-        memberId: mem.id,
-        email: mem.auth && mem.auth.email ? mem.auth.email : null,
         stripeCustomerId: mem.stripeCustomerId || null,
+        payment_method_types: paymentMethods,
         cancelUrl: window.location.href
       };
+
+      if (priceId) payload.priceId = priceId;
+      if (couponId) payload.couponId = couponId;
+      if (successUrl) payload.successUrl = successUrl;
 
       console.log(PREFIX, 'request payload:', payload);
 

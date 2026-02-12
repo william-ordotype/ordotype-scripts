@@ -39,6 +39,7 @@
     showStatutSelectors: Boolean(pageConfig.showStatutSelectors),
     showRequiredIfVisible: pageConfig.showRequiredIfVisible !== false,
     enableCheckout: Boolean(pageConfig.enableCheckout),
+    checkoutPaymentMethods: pageConfig.checkoutPaymentMethods || ['sepa_debit'],
     enablePartnershipCity: Boolean(pageConfig.enablePartnershipCity)
   };
 
