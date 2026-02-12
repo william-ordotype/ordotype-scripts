@@ -105,7 +105,7 @@
         .catch(err => {
             console.error(PREFIX, 'prefetch error:', err);
             if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', err);
-            // Show fallback button so user can still proceed via Memberstack
+            // Fallback: show Memberstack portal button instead
             if (btnYes) btnYes.style.display = 'none';
             if (btnNo) btnNo.style.display = 'inline-flex';
         })
@@ -154,8 +154,12 @@
                     } catch (err) {
                         console.error(PREFIX, 'fallback error:', err);
                         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', err);
-                        btnYes.innerText = 'Réessayer';
-                        btnYes.disabled = false;
+                        // Fallback: show Memberstack portal button and trigger it
+                        if (btnYes) btnYes.style.display = 'none';
+                        if (btnNo) {
+                            btnNo.style.display = 'inline-flex';
+                            btnNo.click();
+                        }
                         return;
                     }
                 }
