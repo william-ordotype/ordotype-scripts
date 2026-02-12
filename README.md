@@ -131,7 +131,6 @@ ordotype-scripts/
     ├── global-utils.js
     └── external-backups/   # Backups of dndevs/ordotype-front-utils scripts
         ├── accordion.js
-        ├── cmsselect.js
         ├── cookiesManager.js
         ├── hideElementOnClick.js
         ├── showElementAfterDelay.js
@@ -733,7 +732,6 @@ Backup copies of scripts from `dndevs/ordotype-front-utils` and Finsweet, rewrit
 | Script | Description | Attribute |
 |--------|-------------|-----------|
 | accordion.js | Accordion expand/collapse | `[x-ordo-utils="accordion"]` |
-| cmsselect.js | Populate `<select>` from CMS list items (replaces @finsweet/attributes-cmsselect) | `[fs-list-element="list"]`, `[fs-list-element="select-value"]`, `[fs-list-element="select"]` |
 | cookiesManager.js | Cookie banner animations (deprecated - use cookie-consent.js) | `[x-ordo-utils="cookieManagerButton"]` |
 | hideElementOnClick.js | Hide element on click | `[x-ordo-utils="hideElementOnClick"]` |
 | showElementAfterDelay.js | Show element after delay | `[x-ordo-utils="showElementAfterDelay"]` |
