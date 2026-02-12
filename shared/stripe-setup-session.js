@@ -106,7 +106,7 @@
             console.error(PREFIX, 'prefetch error:', err);
             if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', err);
             // Fallback: show Memberstack portal button instead
-            if (btnYes) btnYes.style.display = 'none';
+            if (btnYes) btnYes.remove();
             if (btnNo) btnNo.style.display = 'inline-flex';
         })
         .finally(() => {
@@ -155,7 +155,7 @@
                         console.error(PREFIX, 'fallback error:', err);
                         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeSetup', err);
                         // Fallback: show Memberstack portal button and trigger it
-                        if (btnYes) btnYes.style.display = 'none';
+                        if (btnYes) btnYes.remove();
                         if (btnNo) {
                             btnNo.style.display = 'inline-flex';
                             btnNo.click();
