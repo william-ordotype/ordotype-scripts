@@ -42,6 +42,14 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 }).catch(function() {});
+                // Fallback: report to Sentry if available (works even when *.netlify.app is blocked)
+                if (window.Sentry) {
+                    var err = error instanceof Error ? error : new Error(String(error));
+                    window.Sentry.captureException(err, {
+                        tags: { reporter: 'OrdoErrorReporter', context: context },
+                        extra: payload
+                    });
+                }
             } catch (e) {
                 // Never throw from the error reporter itself
             }
