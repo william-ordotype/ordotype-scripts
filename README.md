@@ -314,7 +314,7 @@ Console messages for retry/fallback:
 | `geo-redirect.js` | Geographic redirection |
 | `belgium-redirect.js` | Belgium users redirect to /nos-offres-belgique |
 | `hash-tabs.js` | URL hash-based tab selection |
-| `stripe-checkout.js` | Stripe checkout session handling (with currency mismatch redirect support) |
+| `stripe-checkout.js` | Stripe checkout session handling (with currency mismatch redirect support, fallback buttons on error) |
 | `tabs-bg.js` | Animated tab background |
 
 ### Usage in Webflow
@@ -365,7 +365,7 @@ This is the B variant of the A/B test. Main differences from V1:
 | `core.js` | Stores URL for tracking |
 | `geo-redirect.js` | Geographic redirection (different ID than V1) |
 | `belgium-redirect.js` | Belgium users redirect to /nos-offres-belgique |
-| `stripe-checkout.js` | Stripe checkout with card + SEPA |
+| `stripe-checkout.js` | Stripe checkout with card + SEPA (fallback buttons on error) |
 | `tabs-bg.js` | Animated tab background |
 
 ### Usage in Webflow
@@ -546,6 +546,8 @@ if (window.OrdoErrorReporter) {
 
 Reports are sent to `ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook` with type `frontend-error`, and forwarded to Discord as a red embed with page URL and member ID.
 
+**Dual reporting:** Also reports to Sentry via `__SENTRY__` internal API as a fallback. This ensures errors are captured even when `*.netlify.app` is blocked by ad blockers (Sentry uses `sessions.ordotype.fr`, a first-party domain).
+
 ### Console Prefix
 
 - `[OrdoErrorReporter]` - Error reporter
@@ -586,6 +588,8 @@ window.STRIPE_CHECKOUT_CONFIG = {
 
 Webhook calls (abandon-cart tracking) are proxied through `ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook` to keep Make.com URLs server-side only.
 
+**Fallback on error:** If the checkout session fetch fails (network error, ad blocker), the Stripe button is hidden and the non-Stripe fallback button is shown so users can still proceed via Memberstack.
+
 ### Console Prefix
 
 - `[StripeCheckout]` - Shared checkout script
@@ -611,6 +615,8 @@ window.STRIPE_SETUP_CONFIG = {
 ```
 
 Webhook calls (setup-tracking) are proxied through `ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook` to keep Make.com URLs server-side only.
+
+**Fallback on error:** If the setup session prefetch fails, the Stripe button is hidden and the non-Stripe fallback button is shown so users can still proceed via Memberstack.
 
 ### Console Prefix
 
