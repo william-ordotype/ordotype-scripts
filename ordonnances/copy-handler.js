@@ -1,7 +1,7 @@
 /**
  * Ordotype Ordonnances - Copy Handler
  * Handles copying prescription content as rich text.
- * Supports multiple copy methods: #copy-button, ms-code-copy, #copy-button-fcp
+ * Supports multiple copy methods: #copy-button, data-ordo-copy, #copy-button-fcp
  */
 (function() {
   'use strict';
@@ -153,11 +153,11 @@
     }
 
     // ----------------------------
-    // Case 2: Using ms-code-copy subject & trigger
+    // Case 2: Using data-ordo-copy subject & trigger
     // Bind ALL trigger elements (multiple may exist for member/non-member variants)
     // ----------------------------
-    var subjectElement = document.querySelector('[ms-code-copy="subject"]');
-    var triggerElements = document.querySelectorAll('[ms-code-copy="trigger"]');
+    var subjectElement = document.querySelector('[data-ordo-copy="subject"]');
+    var triggerElements = document.querySelectorAll('[data-ordo-copy="trigger"]');
 
     if (subjectElement && triggerElements.length > 0) {
       // Remove any hidden/invisible elements if needed
@@ -172,7 +172,7 @@
           showCopyToast();
         });
       });
-      console.log('[CopyHandler] Case 2 initialized (ms-code-copy) — ' + triggerElements.length + ' trigger(s)');
+      console.log('[CopyHandler] Case 2 initialized (data-ordo-copy) — ' + triggerElements.length + ' trigger(s)');
     }
 
     // ----------------------------
