@@ -12,13 +12,14 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances';
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
 
-  // Scripts to load (in order)
+  // Scripts to load (in order) — absolute URLs bypass BASE prefix
   const scripts = [
     'opacity-reveal.js',
     'urgent-handler.js',
     'duplicates-cleaner.js',
     'print-handler.js',
-    'copy-handler.js'
+    // TODO: revert to 'copy-handler.js' once jsDelivr @main cache has propagated (pinned 2026-02-21)
+    'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@01923f5/ordonnances/copy-handler.js'
   ];
 
   // Load a single script
@@ -52,7 +53,8 @@
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
 
       for (const file of scripts) {
-        await loadScript(`${BASE}/${file}`);
+        const url = file.startsWith('http') ? file : `${BASE}/${file}`;
+        await loadScript(url);
       }
       console.log('[OrdoOrdonnances] All scripts loaded');
     } catch (err) {
