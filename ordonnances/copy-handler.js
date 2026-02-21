@@ -116,16 +116,24 @@
 
     // Show the "Ordonnance copiée" toast
     function showCopyToast() {
-      var toastEl = document.querySelector('[x-ordo-utils="toast-component-common"]');
-      if (!toastEl) return;
+      // Try the page's own toast component first, then fall back to any existing toast
+      var toastEl = document.querySelector('[x-ordo-utils="toast-component-common"]')
+                 || document.querySelector('[x-ordo-utils*="toast-component"]');
+
+      if (!toastEl) {
+        console.warn('[CopyHandler] No toast element found');
+        return;
+      }
 
       toastEl.classList.remove('hidden');
       toastEl.style.display = 'inline-block';
       toastEl.style.opacity = '0';
-      toastEl.style.transition = 'opacity 0.2s ease';
+      toastEl.style.transition = 'opacity 0.2s ease, top 0.2s ease';
+      toastEl.style.top = '-100px';
 
       requestAnimationFrame(function() {
         toastEl.style.opacity = '1';
+        toastEl.style.top = '0px';
       });
 
       setTimeout(function() {
@@ -144,7 +152,8 @@
     var copySection = document.getElementById('copy-section');
 
     if (copyButton && copySection) {
-      copyButton.addEventListener('click', function() {
+      copyButton.addEventListener('click', function(e) {
+        e.preventDefault();
         removeElements('.tr-wrap');
         copyAsRichText(copySection, true);
         showCopyToast();
@@ -166,7 +175,9 @@
       });
 
       triggerElements.forEach(function(trigger) {
-        trigger.addEventListener('click', function() {
+        trigger.addEventListener('click', function(e) {
+          e.preventDefault();
+          console.log('[CopyHandler] Case 2 click — copying from subject');
           removeElements('.tr-wrap');
           copyAsRichText(subjectElement, false);
           showCopyToast();
@@ -179,18 +190,24 @@
     // Case 3: Using #copy-button-fcp & #printableArea
     // ----------------------------
     var copyButtonFcp = document.getElementById('copy-button-fcp');
-    var printableArea = document.getElementById('printableArea');
+    var printableArea = document.getElementById('printableArea')
+                     || document.querySelector('[data-ordo-copy="subject"]');
 
     if (copyButtonFcp && printableArea) {
-      copyButtonFcp.addEventListener('click', function() {
+      copyButtonFcp.addEventListener('click', function(e) {
+        e.preventDefault();
+        console.log('[CopyHandler] Case 3 click — copying from', printableArea.id || 'data-ordo-copy subject');
         removeElements('.tr-wrap');
         copyAsRichText(printableArea, true);
         showCopyToast();
       });
-      console.log('[CopyHandler] Case 3 initialized (#copy-button-fcp)');
+      console.log('[CopyHandler] Case 3 initialized (#copy-button-fcp), source:', printableArea.id || 'data-ordo-copy subject');
+    } else if (copyButtonFcp) {
+      console.warn('[CopyHandler] Case 3 SKIPPED — #copy-button-fcp found but no #printableArea or [data-ordo-copy="subject"]');
     }
 
-    console.log('[CopyHandler] Initialized');
+    // Debug: log what was found/missed
+    console.log('[CopyHandler] Initialized — subject:', !!subjectElement, '| triggers:', triggerElements.length, '| fcp:', !!copyButtonFcp, '| printableArea:', !!document.getElementById('printableArea'), '| toast:', !!(document.querySelector('[x-ordo-utils="toast-component-common"]') || document.querySelector('[x-ordo-utils*="toast-component"]')));
   }
 
   // Run init
