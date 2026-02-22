@@ -117,7 +117,16 @@
       if (useDecoded) {
         htmlContent = decodeHTMLEntities(htmlContent);
       }
-      var textContent = clone.textContent.trim();
+
+      // Use innerText for plain text — it respects block layout and adds
+      // proper line breaks between <div>/<p> elements. textContent does not.
+      // innerText requires the node to be in the document to compute layout.
+      clone.style.position = 'fixed';
+      clone.style.left = '-9999px';
+      clone.style.opacity = '0';
+      document.body.appendChild(clone);
+      var textContent = (clone.innerText || clone.textContent || '').trim();
+      document.body.removeChild(clone);
 
       if (navigator.clipboard && window.ClipboardItem) {
         var blobHTML = new Blob([htmlContent], { type: 'text/html' });
