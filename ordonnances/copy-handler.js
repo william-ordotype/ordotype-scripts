@@ -19,8 +19,15 @@
       // Save original state of ALL elements (execCommand copies computed styles)
       var allEls = element.querySelectorAll('*');
       var savedStyles = [];
+      var hiddenEls = [];
       allEls.forEach(function(el) {
         savedStyles.push({ style: el.style.cssText, cls: el.getAttribute('class') });
+        // Track hidden elements so we can ensure they stay hidden during copy
+        var cs = window.getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') {
+          hiddenEls.push({ el: el, origDisplay: el.style.display, origVisibility: el.style.visibility });
+          el.style.display = 'none';
+        }
         el.style.backgroundColor = 'transparent';
         el.style.background = 'transparent';
       });
@@ -67,6 +74,16 @@
 
       // Clone element and replace links with bold black text (no URLs in clipboard)
       var clone = element.cloneNode(true);
+
+      // Remove hidden elements from clone before processing
+      // (e.g. cms-section with display:none, .hide utility class)
+      clone.querySelectorAll('*').forEach(function(el) {
+        if (el.style.display === 'none' || el.style.visibility === 'hidden' ||
+            el.classList.contains('hide') || el.classList.contains('w-condition-invisible')) {
+          el.remove();
+        }
+      });
+
       clone.querySelectorAll('a[href]').forEach(function(link) {
         var span = document.createElement('span');
         span.innerHTML = link.innerHTML;
@@ -90,7 +107,7 @@
       if (useDecoded) {
         htmlContent = decodeHTMLEntities(htmlContent);
       }
-      var textContent = element.textContent.trim();
+      var textContent = clone.textContent.trim();
 
       if (navigator.clipboard && window.ClipboardItem) {
         var blobHTML = new Blob([htmlContent], { type: 'text/html' });
@@ -115,8 +132,10 @@
     }
 
     // Show the "Ordonnance copiée" toast
+    var toastHideTimer = null;
+    var toastFadeTimer = null;
+
     function showCopyToast() {
-      // Try the page's own toast component first, then fall back to any existing toast
       var toastEl = document.querySelector('[x-ordo-utils="toast-component-common"]')
                  || document.querySelector('[x-ordo-utils*="toast-component"]');
 
@@ -124,6 +143,10 @@
         console.warn('[CopyHandler] No toast element found');
         return;
       }
+
+      // Cancel any pending hide/fade from a previous toast cycle
+      if (toastHideTimer) { clearTimeout(toastHideTimer); toastHideTimer = null; }
+      if (toastFadeTimer) { clearTimeout(toastFadeTimer); toastFadeTimer = null; }
 
       toastEl.classList.remove('hidden');
       toastEl.style.display = 'inline-block';
@@ -136,9 +159,11 @@
         toastEl.style.top = '0px';
       });
 
-      setTimeout(function() {
+      toastHideTimer = setTimeout(function() {
+        toastHideTimer = null;
         toastEl.style.opacity = '0';
-        setTimeout(function() {
+        toastFadeTimer = setTimeout(function() {
+          toastFadeTimer = null;
           toastEl.style.display = 'none';
           toastEl.classList.add('hidden');
         }, 200);
