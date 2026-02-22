@@ -72,16 +72,26 @@
     function copyAsRichText(element, useDecoded) {
       useDecoded = useDecoded || false;
 
-      // Clone element and replace links with bold black text (no URLs in clipboard)
+      // Mark elements hidden via CSS/classes on the ORIGINAL element (before cloning)
+      // so we can remove them from the clone. getComputedStyle only works on
+      // elements attached to the document — cloned nodes lose computed styles.
+      var marked = [];
+      element.querySelectorAll('*').forEach(function(el) {
+        var cs = window.getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') {
+          el.setAttribute('data-copy-hidden', '');
+          marked.push(el);
+        }
+      });
+
       var clone = element.cloneNode(true);
 
-      // Remove hidden elements from clone before processing
-      // (e.g. cms-section with display:none, .hide utility class)
-      clone.querySelectorAll('*').forEach(function(el) {
-        if (el.style.display === 'none' || el.style.visibility === 'hidden' ||
-            el.classList.contains('hide') || el.classList.contains('w-condition-invisible')) {
-          el.remove();
-        }
+      // Clean up markers on the original immediately
+      marked.forEach(function(el) { el.removeAttribute('data-copy-hidden'); });
+
+      // Remove marked hidden elements from the clone
+      clone.querySelectorAll('[data-copy-hidden]').forEach(function(el) {
+        el.remove();
       });
 
       clone.querySelectorAll('a[href]').forEach(function(link) {
