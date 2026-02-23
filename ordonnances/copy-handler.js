@@ -82,16 +82,44 @@
           el.setAttribute('data-copy-hidden', '');
           marked.push(el);
         }
+        // Capture formatting from computed styles (CSS classes will be stripped later)
+        var fw = cs.fontWeight;
+        if (fw === 'bold' || fw === 'bolder' || parseInt(fw) >= 700) {
+          el.setAttribute('data-copy-bold', '');
+        }
+        if (cs.fontStyle === 'italic') {
+          el.setAttribute('data-copy-italic', '');
+        }
+        if (cs.textDecoration.indexOf('underline') !== -1) {
+          el.setAttribute('data-copy-underline', '');
+        }
       });
 
       var clone = element.cloneNode(true);
 
       // Clean up markers on the original immediately
       marked.forEach(function(el) { el.removeAttribute('data-copy-hidden'); });
+      element.querySelectorAll('[data-copy-bold]').forEach(function(el) { el.removeAttribute('data-copy-bold'); });
+      element.querySelectorAll('[data-copy-italic]').forEach(function(el) { el.removeAttribute('data-copy-italic'); });
+      element.querySelectorAll('[data-copy-underline]').forEach(function(el) { el.removeAttribute('data-copy-underline'); });
 
       // Remove marked hidden elements from the clone
       clone.querySelectorAll('[data-copy-hidden]').forEach(function(el) {
         el.remove();
+      });
+
+      // Apply captured formatting as inline styles (before class stripping)
+      clone.querySelectorAll('[data-copy-bold]').forEach(function(el) {
+        el.style.fontWeight = 'bold';
+        el.removeAttribute('data-copy-bold');
+      });
+      clone.querySelectorAll('[data-copy-italic]').forEach(function(el) {
+        el.style.fontStyle = 'italic';
+        el.removeAttribute('data-copy-italic');
+      });
+      clone.querySelectorAll('[data-copy-underline]').forEach(function(el) {
+        el.style.textDecoration = 'underline';
+        el.removeAttribute('data-copy-underline');
       });
 
       clone.querySelectorAll('a[href]').forEach(function(link) {
@@ -113,6 +141,26 @@
         el.style.background = '';
       });
 
+      // Convert list items to plain divs so innerText doesn't add bullet chars
+      clone.querySelectorAll('li').forEach(function(li) {
+        var div = document.createElement('div');
+        div.innerHTML = li.innerHTML;
+        li.parentNode.replaceChild(div, li);
+      });
+      clone.querySelectorAll('ul, ol').forEach(function(list) {
+        while (list.firstChild) {
+          list.parentNode.insertBefore(list.firstChild, list);
+        }
+        list.remove();
+      });
+
+      // Remove elements with no visible text to avoid extra blank lines
+      clone.querySelectorAll('div, p, span').forEach(function(el) {
+        if (!el.textContent.trim() && !el.querySelector('img, svg, table')) {
+          el.remove();
+        }
+      });
+
       var htmlContent = clone.innerHTML;
       if (useDecoded) {
         htmlContent = decodeHTMLEntities(htmlContent);
@@ -126,6 +174,7 @@
       clone.style.opacity = '0';
       document.body.appendChild(clone);
       var textContent = (clone.innerText || clone.textContent || '').trim();
+      textContent = textContent.replace(/\n{3,}/g, '\n\n');
       document.body.removeChild(clone);
 
       if (navigator.clipboard && window.ClipboardItem) {
