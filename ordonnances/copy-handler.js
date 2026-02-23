@@ -146,10 +146,11 @@
         el.style.background = '';
       });
 
-      // Convert list items to plain divs so innerText doesn't add bullet chars
+      // Convert list items to indented divs so innerText doesn't add bullet chars
       clone.querySelectorAll('li').forEach(function(li) {
         var div = document.createElement('div');
         div.innerHTML = li.innerHTML;
+        div.style.paddingLeft = '20px';
         li.parentNode.replaceChild(div, li);
       });
       clone.querySelectorAll('ul, ol').forEach(function(list) {
