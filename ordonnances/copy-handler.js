@@ -132,6 +132,11 @@
         link.parentNode.replaceChild(span, link);
       });
 
+      // Add visual separator before consignes section (classes still present here)
+      clone.querySelectorAll('.cms-section').forEach(function(section) {
+        section.parentNode.insertBefore(document.createElement('br'), section);
+      });
+
       // Strip Webflow classes and dark backgrounds from ALL elements
       // Medical software doesn't have Webflow CSS, but some apps render
       // class-based styles from clipboard HTML unpredictably
@@ -160,6 +165,31 @@
           el.remove();
         }
       });
+
+      // Flatten pure-wrapper divs to prevent nested blocks from creating extra newlines.
+      // Only unwrap divs whose children are ALL block-level — preserves divs that
+      // wrap inline elements (like <span>) since those need the block container.
+      var BLOCK_TAGS = {div:1, p:1, br:1, ul:1, ol:1, li:1, table:1, tr:1, td:1, th:1,
+        section:1, article:1, header:1, footer:1, blockquote:1, pre:1,
+        h1:1, h2:1, h3:1, h4:1, h5:1, h6:1};
+      var didUnwrap = true;
+      while (didUnwrap) {
+        didUnwrap = false;
+        clone.querySelectorAll('div').forEach(function(div) {
+          if (!div.parentNode) return;
+          var dominated = true;
+          for (var i = 0; i < div.childNodes.length; i++) {
+            var n = div.childNodes[i];
+            if (n.nodeType === 3 && n.textContent.trim()) { dominated = false; break; }
+            if (n.nodeType === 1 && !BLOCK_TAGS[n.tagName.toLowerCase()]) { dominated = false; break; }
+          }
+          if (dominated && div.children.length > 0) {
+            while (div.firstChild) { div.parentNode.insertBefore(div.firstChild, div); }
+            div.remove();
+            didUnwrap = true;
+          }
+        });
+      }
 
       var htmlContent = clone.innerHTML;
       if (useDecoded) {
