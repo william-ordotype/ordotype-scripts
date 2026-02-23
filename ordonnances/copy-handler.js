@@ -108,18 +108,37 @@
         el.remove();
       });
 
-      // Apply captured formatting as inline styles (before class stripping)
+      // Apply captured formatting as inline styles + semantic tags for paste compatibility.
+      // Many apps respect <strong>/<u>/<em> better than CSS on block elements.
       clone.querySelectorAll('[data-copy-bold]').forEach(function(el) {
         el.style.fontWeight = 'bold';
         el.removeAttribute('data-copy-bold');
+        var tag = el.tagName.toLowerCase();
+        if (tag !== 'strong' && tag !== 'b') {
+          var strong = document.createElement('strong');
+          while (el.firstChild) { strong.appendChild(el.firstChild); }
+          el.appendChild(strong);
+        }
       });
       clone.querySelectorAll('[data-copy-italic]').forEach(function(el) {
         el.style.fontStyle = 'italic';
         el.removeAttribute('data-copy-italic');
+        var tag = el.tagName.toLowerCase();
+        if (tag !== 'em' && tag !== 'i') {
+          var em = document.createElement('em');
+          while (el.firstChild) { em.appendChild(el.firstChild); }
+          el.appendChild(em);
+        }
       });
       clone.querySelectorAll('[data-copy-underline]').forEach(function(el) {
         el.style.textDecoration = 'underline';
         el.removeAttribute('data-copy-underline');
+        var tag = el.tagName.toLowerCase();
+        if (tag !== 'u') {
+          var u = document.createElement('u');
+          while (el.firstChild) { u.appendChild(el.firstChild); }
+          el.appendChild(u);
+        }
       });
 
       clone.querySelectorAll('a[href]').forEach(function(link) {
