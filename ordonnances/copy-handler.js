@@ -84,7 +84,7 @@
         }
         // Capture formatting from computed styles (CSS classes will be stripped later)
         var fw = cs.fontWeight;
-        if (fw === 'bold' || fw === 'bolder' || parseInt(fw) >= 700) {
+        if (fw === 'bold' || fw === 'bolder' || parseInt(fw) >= 600) {
           el.setAttribute('data-copy-bold', '');
         }
         if (cs.fontStyle === 'italic') {
@@ -154,6 +154,16 @@
       // Add visual separator before consignes section (classes still present here)
       clone.querySelectorAll('.cms-section').forEach(function(section) {
         section.parentNode.insertBefore(document.createElement('br'), section);
+      });
+
+      // Explicit bold for .ide-text-block (Webflow semi-bold may not trigger threshold)
+      clone.querySelectorAll('.ide-text-block').forEach(function(el) {
+        el.style.fontWeight = 'bold';
+        if (!el.querySelector('strong')) {
+          var strong = document.createElement('strong');
+          while (el.firstChild) { strong.appendChild(el.firstChild); }
+          el.appendChild(strong);
+        }
       });
 
       // Strip Webflow classes and dark backgrounds from ALL elements
