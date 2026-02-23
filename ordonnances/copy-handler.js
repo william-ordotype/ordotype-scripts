@@ -150,7 +150,9 @@
       clone.querySelectorAll('li').forEach(function(li) {
         var div = document.createElement('div');
         div.innerHTML = li.innerHTML;
-        div.style.paddingLeft = '20px';
+        div.style.marginLeft = '20px';
+        // Prepend tab for plain text indent (innerText ignores CSS margin/padding)
+        div.insertBefore(document.createTextNode('\t'), div.firstChild);
         li.parentNode.replaceChild(div, li);
       });
       clone.querySelectorAll('ul, ol').forEach(function(list) {
