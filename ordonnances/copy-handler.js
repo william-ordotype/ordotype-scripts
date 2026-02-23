@@ -146,6 +146,15 @@
         el.style.background = '';
       });
 
+      // Convert <p> to <div> — innerText gives <p> double newlines (paragraph breaks)
+      // but <div> only gets single newlines, which is what we want
+      clone.querySelectorAll('p').forEach(function(p) {
+        var div = document.createElement('div');
+        div.innerHTML = p.innerHTML;
+        if (p.style.cssText) div.style.cssText = p.style.cssText;
+        p.parentNode.replaceChild(div, p);
+      });
+
       // Convert list items to indented divs so innerText doesn't add bullet chars
       clone.querySelectorAll('li').forEach(function(li) {
         var div = document.createElement('div');
