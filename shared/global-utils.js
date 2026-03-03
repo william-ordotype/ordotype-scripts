@@ -64,7 +64,18 @@
             var html = el.innerHTML;
             var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*[^&]*&gt;/i.test(html);
             if (hasEscapedHtmlTag) {
-                el.innerHTML = el.textContent;
+                var decoded = el.textContent;
+                if (/^\s*<(p|ul|ol|div|table|dl|blockquote|h[1-6])\b/i.test(decoded)) {
+                    var parent = el.parentNode;
+                    var temp = document.createElement('div');
+                    temp.innerHTML = decoded;
+                    while (temp.firstChild) {
+                        parent.insertBefore(temp.firstChild, el);
+                    }
+                    parent.removeChild(el);
+                } else {
+                    el.innerHTML = decoded;
+                }
             }
         });
 
