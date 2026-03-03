@@ -60,22 +60,11 @@
         // Decode .w-richtext p elements that contain escaped HTML tags
         // Webflow sometimes escapes HTML content, sometimes not
         // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
-        document.querySelectorAll('.w-richtext > p').forEach(function(el) {
+        document.querySelectorAll('.w-richtext p').forEach(function(el) {
             var html = el.innerHTML;
-            var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*(?:[^&]|&(?!gt;))*&gt;/i.test(html);
+            var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*[^&]*&gt;/i.test(html);
             if (hasEscapedHtmlTag) {
-                var decoded = el.textContent;
-                if (/^\s*<(p|ul|ol|div|table|dl|blockquote|h[1-6])\b/i.test(decoded)) {
-                    var parent = el.parentNode;
-                    var temp = document.createElement('div');
-                    temp.innerHTML = decoded;
-                    while (temp.firstChild) {
-                        parent.insertBefore(temp.firstChild, el);
-                    }
-                    parent.removeChild(el);
-                } else {
-                    el.innerHTML = decoded;
-                }
+                el.innerHTML = el.textContent;
             }
         });
 
