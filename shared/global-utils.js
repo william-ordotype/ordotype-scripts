@@ -57,7 +57,27 @@
      * Handles .w-richtext p and .decode-html elements
      */
     function initRichTextDecoder() {
-        // Decode .w-richtext p elements that contain escaped HTML tags
+        // First pass: handle escaped block-level HTML in direct children of .w-richtext
+        // Some CMS items have entire HTML escaped (with &amp; entities in attributes),
+        // which the standard regex below misses. Replace the wrapper <p> at parent level
+        // since block-level elements (p, ul, table...) can't nest inside <p>.
+        document.querySelectorAll('.w-richtext:not(.rc-html) > p').forEach(function(el) {
+            var html = el.innerHTML;
+            if (/&lt;[a-z][a-z0-9]*(?:[^&]|&(?!gt;))*&gt;/i.test(html)) {
+                var decoded = el.textContent;
+                if (/^\s*<(p|ul|ol|div|table|dl|blockquote|h[1-6])\b/i.test(decoded)) {
+                    var parent = el.parentNode;
+                    var temp = document.createElement('div');
+                    temp.innerHTML = decoded;
+                    while (temp.firstChild) {
+                        parent.insertBefore(temp.firstChild, el);
+                    }
+                    parent.removeChild(el);
+                }
+            }
+        });
+
+        // Second pass: decode .w-richtext p elements that contain escaped HTML tags
         // Webflow sometimes escapes HTML content, sometimes not
         // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
         document.querySelectorAll('.w-richtext p').forEach(function(el) {
