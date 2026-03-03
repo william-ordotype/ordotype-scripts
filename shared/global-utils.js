@@ -60,7 +60,7 @@
         // Decode .w-richtext p elements that contain escaped HTML tags
         // Webflow sometimes escapes HTML content, sometimes not
         // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
-        document.querySelectorAll('.w-richtext p').forEach(function(el) {
+        document.querySelectorAll('.w-richtext > p').forEach(function(el) {
             var html = el.innerHTML;
             var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*(?:[^&]|&(?!gt;))*&gt;/i.test(html);
             if (hasEscapedHtmlTag) {
