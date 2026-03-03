@@ -62,7 +62,7 @@
         // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
         document.querySelectorAll('.w-richtext p').forEach(function(el) {
             var html = el.innerHTML;
-            var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*[^&]*&gt;/i.test(html);
+            var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*(?:[^&]|&(?!gt;))*&gt;/i.test(html);
             if (hasEscapedHtmlTag) {
                 var decoded = el.textContent;
                 if (/^\s*<(p|ul|ol|div|table|dl|blockquote|h[1-6])\b/i.test(decoded)) {
