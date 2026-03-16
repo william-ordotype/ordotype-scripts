@@ -200,6 +200,13 @@
         list.remove();
       });
 
+      // Convert checkboxes to visual characters (clipboard won't render <input>)
+      clone.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+        var span = document.createElement('span');
+        span.textContent = cb.checked ? '☑ ' : '☐ ';
+        cb.parentNode.replaceChild(span, cb);
+      });
+
       // Remove elements with no visible text to avoid extra blank lines
       clone.querySelectorAll('div, p, span').forEach(function(el) {
         if (!el.textContent.trim() && !el.querySelector('img, svg, table')) {
