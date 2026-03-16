@@ -251,16 +251,20 @@
         });
       }
 
-      // Prepend tab to each line inside drug-text blocks for indent
+      // Prepend non-breaking spaces to each line inside drug-text blocks
+      // (tabs and regular spaces get collapsed in HTML; nbsp survives in Word)
+      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
       clone.querySelectorAll('[data-indent]').forEach(function(bloc) {
-        // Indent direct child block elements
-        Array.prototype.forEach.call(bloc.children, function(child) {
-          child.insertBefore(document.createTextNode('\t'), child.firstChild);
+        // Indent all descendant block elements (not just direct children)
+        bloc.querySelectorAll('div, strong, b').forEach(function(child) {
+          if (child.closest('[data-indent]') === bloc) {
+            child.insertBefore(document.createTextNode(INDENT), child.firstChild);
+          }
         });
         // Also indent any loose text nodes directly in the bloc
         Array.prototype.forEach.call(bloc.childNodes, function(node) {
           if (node.nodeType === 3 && node.textContent.trim()) {
-            node.textContent = '\t' + node.textContent;
+            node.textContent = INDENT + node.textContent;
           }
         });
         bloc.removeAttribute('data-indent');
