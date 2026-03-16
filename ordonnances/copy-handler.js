@@ -250,25 +250,21 @@
         });
       }
 
-      // Indent every visible line EXCEPT drug names.
-      // Walk all text nodes, find each one's closest div, indent once per div.
+      // Indent every div that directly contains text, EXCEPT drug names.
       var INDENT = '\u00a0\u00a0\u00a0\u00a0';
-      var indented = new Set();
-      var walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT, null, false);
-      var node;
-      while ((node = walker.nextNode())) {
-        if (!node.textContent.trim()) continue;
-        // Find closest div ancestor
-        var block = node.parentElement;
-        while (block && block.tagName !== 'DIV' && block !== clone) {
-          block = block.parentElement;
+      clone.querySelectorAll('div').forEach(function(div) {
+        if (div.querySelector('[data-no-indent]')) return;
+        // Check if this div has direct text or inline-element children with text
+        var hasDirectText = false;
+        for (var i = 0; i < div.childNodes.length; i++) {
+          var n = div.childNodes[i];
+          if (n.nodeType === 3 && n.textContent.trim()) { hasDirectText = true; break; }
+          if (n.nodeType === 1 && n.tagName !== 'DIV' && n.textContent.trim()) { hasDirectText = true; break; }
         }
-        if (!block || block === clone || indented.has(block)) continue;
-        indented.add(block);
-        // Skip drug names
-        if (block.querySelector('[data-no-indent]')) continue;
-        block.insertBefore(document.createTextNode(INDENT), block.firstChild);
-      }
+        if (hasDirectText) {
+          div.insertBefore(document.createTextNode(INDENT), div.firstChild);
+        }
+      });
 
       var htmlContent = clone.innerHTML;
       if (useDecoded) {
