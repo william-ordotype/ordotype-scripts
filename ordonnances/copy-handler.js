@@ -166,9 +166,14 @@
         }
       });
 
-      // Indent text below drug names for readability (use pt for Word compat)
+      // Indent text below drug names — wrap in <blockquote> for Word compat
+      // (Word ignores CSS margin/padding on paste but respects <blockquote> indent)
       clone.querySelectorAll('.poso-medoc1-bloc').forEach(function(el) {
-        el.style.paddingLeft = '24pt';
+        var bq = document.createElement('blockquote');
+        bq.style.margin = '0';
+        bq.style.paddingLeft = '0';
+        while (el.firstChild) { bq.appendChild(el.firstChild); }
+        el.appendChild(bq);
       });
 
       // Strip Webflow classes and dark backgrounds from ALL elements
