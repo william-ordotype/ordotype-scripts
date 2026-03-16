@@ -166,8 +166,8 @@
         }
       });
 
-      // Mark drug names so we can skip indentation on them later
-      clone.querySelectorAll('.medicament-link-block').forEach(function(el) {
+      // Mark drug name <b> tags (survive flattening since they're inline)
+      clone.querySelectorAll('.html-bold-medicament b').forEach(function(el) {
         el.setAttribute('data-no-indent', '');
       });
 
@@ -250,14 +250,13 @@
         });
       }
 
-      // Indent every text-bearing block EXCEPT drug names
+      // Indent every text-bearing leaf div EXCEPT drug names
       var INDENT = '\u00a0\u00a0\u00a0\u00a0';
       clone.querySelectorAll('div').forEach(function(div) {
-        // Skip if this is or is inside a drug name
-        if (div.hasAttribute('data-no-indent') || div.closest('[data-no-indent]')) return;
-        // Only indent leaf divs (those with visible text, not pure wrappers)
         if (!div.textContent.trim()) return;
-        if (div.querySelector('div')) return; // has child divs — not a leaf
+        if (div.querySelector('div')) return;
+        // Skip if contains a drug name <b>
+        if (div.querySelector('[data-no-indent]')) return;
         div.insertBefore(document.createTextNode(INDENT), div.firstChild);
       });
 
