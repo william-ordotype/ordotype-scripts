@@ -166,6 +166,11 @@
         }
       });
 
+      // Indent text below drug names for readability
+      clone.querySelectorAll('.poso-medoc1-bloc').forEach(function(el) {
+        el.style.marginLeft = '20px';
+      });
+
       // Strip Webflow classes and dark backgrounds from ALL elements
       // Medical software doesn't have Webflow CSS, but some apps render
       // class-based styles from clipboard HTML unpredictably
@@ -189,8 +194,10 @@
         var div = document.createElement('div');
         div.innerHTML = li.innerHTML;
         div.style.marginLeft = '20px';
-        // Prepend tab for plain text indent (innerText ignores CSS margin/padding)
-        div.insertBefore(document.createTextNode('\t'), div.firstChild);
+        // Skip tab for checkbox items — tab triggers Word bullet auto-formatting
+        if (!li.querySelector('input[type="checkbox"]')) {
+          div.insertBefore(document.createTextNode('\t'), div.firstChild);
+        }
         li.parentNode.replaceChild(div, li);
       });
       clone.querySelectorAll('ul, ol').forEach(function(list) {
