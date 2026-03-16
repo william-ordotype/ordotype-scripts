@@ -166,9 +166,9 @@
         }
       });
 
-      // Indent text below drug names for readability
+      // Indent text below drug names for readability (use pt for Word compat)
       clone.querySelectorAll('.poso-medoc1-bloc').forEach(function(el) {
-        el.style.marginLeft = '20px';
+        el.style.paddingLeft = '24pt';
       });
 
       // Strip Webflow classes and dark backgrounds from ALL elements
@@ -189,17 +189,21 @@
         p.parentNode.replaceChild(div, p);
       });
 
-      // Convert list items to indented divs so innerText doesn't add bullet chars
-      clone.querySelectorAll('li').forEach(function(li) {
+      // Convert list items to indented divs so innerText doesn't add bullet chars.
+      // Use while loop — querySelectorAll returns a static snapshot and misses
+      // nested <li> elements created by innerHTML copy of outer <li>.
+      var li;
+      while ((li = clone.querySelector('li'))) {
         var div = document.createElement('div');
-        div.innerHTML = li.innerHTML;
-        div.style.marginLeft = '20px';
+        // Move children instead of innerHTML to preserve live node references
+        while (li.firstChild) { div.appendChild(li.firstChild); }
+        div.style.paddingLeft = '12pt';
         // Skip tab for checkbox items — tab triggers Word bullet auto-formatting
-        if (!li.querySelector('input[type="checkbox"]')) {
+        if (!div.querySelector('input[type="checkbox"]')) {
           div.insertBefore(document.createTextNode('\t'), div.firstChild);
         }
         li.parentNode.replaceChild(div, li);
-      });
+      }
       clone.querySelectorAll('ul, ol').forEach(function(list) {
         while (list.firstChild) {
           list.parentNode.insertBefore(list.firstChild, list);
