@@ -377,7 +377,11 @@
       console.warn('[CopyHandler] Case 3 SKIPPED — #copy-button-fcp found but no #printableArea or [data-ordo-copy="subject"]');
     }
 
-    // Checkboxes are display-only (pointer-events: none in styles.css)
+    // Disable all checkboxes — display only, not interactive
+    // Gray appearance is overridden by CSS (accent-color + opacity in styles.css)
+    document.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+      cb.disabled = true;
+    });
 
     // Debug: log what was found/missed
     console.log('[CopyHandler] Initialized — subject:', !!subjectElement, '| triggers:', triggerElements.length, '| fcp:', !!copyButtonFcp, '| printableArea:', !!document.getElementById('printableArea'), '| toast:', !!(document.querySelector('[x-ordo-utils="toast-component-common"]') || document.querySelector('[x-ordo-utils*="toast-component"]')));
