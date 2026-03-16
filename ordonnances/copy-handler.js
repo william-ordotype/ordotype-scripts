@@ -236,6 +236,7 @@
         didUnwrap = false;
         clone.querySelectorAll('div').forEach(function(div) {
           if (!div.parentNode) return;
+          if (div.hasAttribute('data-indent')) return;
           var dominated = true;
           for (var i = 0; i < div.childNodes.length; i++) {
             var n = div.childNodes[i];
