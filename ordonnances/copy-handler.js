@@ -181,13 +181,16 @@
       });
 
       // Convert <p> to <div> — innerText gives <p> double newlines (paragraph breaks)
-      // but <div> only gets single newlines, which is what we want
-      clone.querySelectorAll('p').forEach(function(p) {
+      // but <div> only gets single newlines, which is what we want.
+      // Use while loop (like li→div) — querySelectorAll static snapshot misses
+      // <p> tags created by innerHTML re-parsing of other <p> conversions.
+      var p;
+      while ((p = clone.querySelector('p'))) {
         var div = document.createElement('div');
-        div.innerHTML = p.innerHTML;
+        while (p.firstChild) { div.appendChild(p.firstChild); }
         if (p.style.cssText) div.style.cssText = p.style.cssText;
         p.parentNode.replaceChild(div, p);
-      });
+      }
 
       // Convert list items to indented divs so innerText doesn't add bullet chars.
       // Use while loop — querySelectorAll returns a static snapshot and misses
@@ -250,39 +253,18 @@
         });
       }
 
-      // DEBUG: log final DOM structure before indentation
-      console.log('[CopyHandler DEBUG] Final HTML before indent:', clone.innerHTML.substring(0, 2000));
-      var debugDivs = clone.querySelectorAll('div');
-      console.log('[CopyHandler DEBUG] Total divs:', debugDivs.length);
-      debugDivs.forEach(function(div, i) {
-        var hasDirectText = false;
-        for (var j = 0; j < div.childNodes.length; j++) {
-          var n = div.childNodes[j];
-          if (n.nodeType === 3 && n.textContent.trim()) { hasDirectText = true; break; }
-          if (n.nodeType === 1 && n.tagName !== 'DIV' && n.textContent.trim()) { hasDirectText = true; break; }
-        }
-        var hasDrug = !!div.querySelector('[data-no-indent]');
-        console.log('[CopyHandler DEBUG] div[' + i + '] directText=' + hasDirectText + ' drug=' + hasDrug + ' tag=' + div.tagName + ' | "' + div.textContent.trim().substring(0, 60) + '"');
-      });
-      // Also log non-div elements with text
-      clone.querySelectorAll('p, span, strong, b, em, label').forEach(function(el) {
-        if (el.textContent.trim()) {
-          console.log('[CopyHandler DEBUG] NON-DIV: <' + el.tagName.toLowerCase() + '> "' + el.textContent.trim().substring(0, 60) + '"');
-        }
-      });
-
-      // Indent every div with direct text, EXCEPT drug names
+      // Indent every block (div or p) with direct text, EXCEPT drug names
       var INDENT = '\u00a0\u00a0\u00a0\u00a0';
-      clone.querySelectorAll('div').forEach(function(div) {
-        if (div.querySelector('[data-no-indent]')) return;
+      clone.querySelectorAll('div, p').forEach(function(block) {
+        if (block.querySelector('[data-no-indent]')) return;
         var hasDirectText = false;
-        for (var i = 0; i < div.childNodes.length; i++) {
-          var n = div.childNodes[i];
+        for (var i = 0; i < block.childNodes.length; i++) {
+          var n = block.childNodes[i];
           if (n.nodeType === 3 && n.textContent.trim()) { hasDirectText = true; break; }
-          if (n.nodeType === 1 && n.tagName !== 'DIV' && n.textContent.trim()) { hasDirectText = true; break; }
+          if (n.nodeType === 1 && n.tagName !== 'DIV' && n.tagName !== 'P' && n.textContent.trim()) { hasDirectText = true; break; }
         }
         if (hasDirectText) {
-          div.insertBefore(document.createTextNode(INDENT), div.firstChild);
+          block.insertBefore(document.createTextNode(INDENT), block.firstChild);
         }
       });
 
