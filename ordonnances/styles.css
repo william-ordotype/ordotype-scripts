@@ -39,6 +39,13 @@ span.big-checkbox {
     line-height: 16px;
 }
 
+/* Disable checkboxes — display only, not interactive */
+input[type="checkbox"] {
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 /* HTML embed inline */
 .html-embed-16 {
     display: inline-block !important;
