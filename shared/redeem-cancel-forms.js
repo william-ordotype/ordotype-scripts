@@ -153,7 +153,9 @@
       xhr.onerror = () => reject(new Error('Network error'));
       xhr.ontimeout = () => reject(new Error('Request timeout'));
 
-      xhr.send(new FormData(form));
+      var data = new FormData(form);
+      data.append('pageUrl', window.location.href);
+      xhr.send(data);
     });
   }
 
