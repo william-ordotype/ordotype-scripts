@@ -166,14 +166,9 @@
         }
       });
 
-      // Indent text below drug names — wrap in <blockquote> for Word compat
-      // (Word ignores CSS margin/padding on paste but respects <blockquote> indent)
+      // Mark drug-text blocks for indentation (before classes are stripped)
       clone.querySelectorAll('.poso-medoc1-bloc').forEach(function(el) {
-        var bq = document.createElement('blockquote');
-        bq.style.margin = '0';
-        bq.style.paddingLeft = '0';
-        while (el.firstChild) { bq.appendChild(el.firstChild); }
-        el.appendChild(bq);
+        el.setAttribute('data-indent', '');
       });
 
       // Strip Webflow classes and dark backgrounds from ALL elements
@@ -254,6 +249,21 @@
           }
         });
       }
+
+      // Prepend tab to each line inside drug-text blocks for indent
+      clone.querySelectorAll('[data-indent]').forEach(function(bloc) {
+        // Indent direct child block elements
+        Array.prototype.forEach.call(bloc.children, function(child) {
+          child.insertBefore(document.createTextNode('\t'), child.firstChild);
+        });
+        // Also indent any loose text nodes directly in the bloc
+        Array.prototype.forEach.call(bloc.childNodes, function(node) {
+          if (node.nodeType === 3 && node.textContent.trim()) {
+            node.textContent = '\t' + node.textContent;
+          }
+        });
+        bloc.removeAttribute('data-indent');
+      });
 
       var htmlContent = clone.innerHTML;
       if (useDecoded) {
