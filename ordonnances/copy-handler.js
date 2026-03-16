@@ -166,9 +166,9 @@
         }
       });
 
-      // Mark drug-text blocks for indentation (before classes are stripped)
-      clone.querySelectorAll('.poso-medoc1-bloc').forEach(function(el) {
-        el.setAttribute('data-indent', '');
+      // Mark drug names so we can skip indentation on them later
+      clone.querySelectorAll('.medicament-link-block').forEach(function(el) {
+        el.setAttribute('data-no-indent', '');
       });
 
       // Strip Webflow classes and dark backgrounds from ALL elements
@@ -236,7 +236,6 @@
         didUnwrap = false;
         clone.querySelectorAll('div').forEach(function(div) {
           if (!div.parentNode) return;
-          if (div.hasAttribute('data-indent')) return;
           var dominated = true;
           for (var i = 0; i < div.childNodes.length; i++) {
             var n = div.childNodes[i];
@@ -251,23 +250,15 @@
         });
       }
 
-      // Prepend non-breaking spaces to each line inside drug-text blocks
-      // (tabs and regular spaces get collapsed in HTML; nbsp survives in Word)
+      // Indent every text-bearing block EXCEPT drug names
       var INDENT = '\u00a0\u00a0\u00a0\u00a0';
-      clone.querySelectorAll('[data-indent]').forEach(function(bloc) {
-        // Indent all descendant block elements (not just direct children)
-        bloc.querySelectorAll('div, strong, b').forEach(function(child) {
-          if (child.closest('[data-indent]') === bloc) {
-            child.insertBefore(document.createTextNode(INDENT), child.firstChild);
-          }
-        });
-        // Also indent any loose text nodes directly in the bloc
-        Array.prototype.forEach.call(bloc.childNodes, function(node) {
-          if (node.nodeType === 3 && node.textContent.trim()) {
-            node.textContent = INDENT + node.textContent;
-          }
-        });
-        bloc.removeAttribute('data-indent');
+      clone.querySelectorAll('div').forEach(function(div) {
+        // Skip if this is or is inside a drug name
+        if (div.hasAttribute('data-no-indent') || div.closest('[data-no-indent]')) return;
+        // Only indent leaf divs (those with visible text, not pure wrappers)
+        if (!div.textContent.trim()) return;
+        if (div.querySelector('div')) return; // has child divs — not a leaf
+        div.insertBefore(document.createTextNode(INDENT), div.firstChild);
       });
 
       var htmlContent = clone.innerHTML;
