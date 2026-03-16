@@ -156,6 +156,13 @@
         section.parentNode.insertBefore(document.createElement('br'), section);
       });
 
+      // Add break line between each drug block
+      clone.querySelectorAll('.medoc1-block').forEach(function(block, i) {
+        if (i > 0) {
+          block.parentNode.insertBefore(document.createElement('br'), block);
+        }
+      });
+
       // Explicit bold for .ide-text-block (Webflow semi-bold may not trigger threshold)
       clone.querySelectorAll('.ide-text-block').forEach(function(el) {
         el.style.fontWeight = 'bold';
@@ -253,8 +260,9 @@
         });
       }
 
-      // Indent every block (div or p) with direct text, EXCEPT drug names
-      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
+      // Indent every block (div or p) with direct text, EXCEPT drug names.
+      // Use <blockquote> so Word indents ALL lines of wrapped paragraphs
+      // (nbsp only indents the first line).
       clone.querySelectorAll('div, p').forEach(function(block) {
         if (block.querySelector('[data-no-indent]')) return;
         var hasDirectText = false;
@@ -264,7 +272,13 @@
           if (n.nodeType === 1 && n.tagName !== 'DIV' && n.tagName !== 'P' && n.textContent.trim()) { hasDirectText = true; break; }
         }
         if (hasDirectText) {
-          block.insertBefore(document.createTextNode(INDENT), block.firstChild);
+          // Wrap content in blockquote for Word paragraph indent
+          var bq = document.createElement('blockquote');
+          bq.style.margin = '0';
+          bq.style.padding = '0';
+          bq.style.paddingLeft = '20px';
+          while (block.firstChild) { bq.appendChild(block.firstChild); }
+          block.appendChild(bq);
         }
       });
 
