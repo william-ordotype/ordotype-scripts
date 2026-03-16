@@ -260,9 +260,8 @@
         });
       }
 
-      // Indent every block (div or p) with direct text, EXCEPT drug names.
-      // Use <blockquote> so Word indents ALL lines of wrapped paragraphs
-      // (nbsp only indents the first line).
+      // Indent every block (div or p) with direct text, EXCEPT drug names
+      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
       clone.querySelectorAll('div, p').forEach(function(block) {
         if (block.querySelector('[data-no-indent]')) return;
         var hasDirectText = false;
@@ -272,13 +271,7 @@
           if (n.nodeType === 1 && n.tagName !== 'DIV' && n.tagName !== 'P' && n.textContent.trim()) { hasDirectText = true; break; }
         }
         if (hasDirectText) {
-          // Wrap content in blockquote for Word paragraph indent
-          var bq = document.createElement('blockquote');
-          bq.style.margin = '0';
-          bq.style.padding = '0';
-          bq.style.paddingLeft = '20px';
-          while (block.firstChild) { bq.appendChild(block.firstChild); }
-          block.appendChild(bq);
+          block.insertBefore(document.createTextNode(INDENT), block.firstChild);
         }
       });
 
@@ -297,6 +290,9 @@
       var textContent = (clone.innerText || clone.textContent || '').trim();
       textContent = textContent.replace(/\n{3,}/g, '\n\n');
       document.body.removeChild(clone);
+
+      console.log('[CopyHandler] HTML content length:', htmlContent.length);
+      console.log('[CopyHandler] Plain text preview:', textContent.substring(0, 200));
 
       if (navigator.clipboard && window.ClipboardItem) {
         var blobHTML = new Blob([htmlContent], { type: 'text/html' });
