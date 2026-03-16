@@ -46,6 +46,11 @@ input[type="checkbox"] {
     -webkit-user-select: none;
 }
 
+/* Checkbox label text should not be bold */
+label:has(input[type="checkbox"]) {
+    font-weight: normal;
+}
+
 /* HTML embed inline */
 .html-embed-16 {
     display: inline-block !important;
