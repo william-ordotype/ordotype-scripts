@@ -250,15 +250,25 @@
         });
       }
 
-      // Indent every text-bearing leaf div EXCEPT drug names
+      // Indent every visible line EXCEPT drug names.
+      // Walk all text nodes, find each one's closest div, indent once per div.
       var INDENT = '\u00a0\u00a0\u00a0\u00a0';
-      clone.querySelectorAll('div').forEach(function(div) {
-        if (!div.textContent.trim()) return;
-        if (div.querySelector('div')) return;
-        // Skip if contains a drug name <b>
-        if (div.querySelector('[data-no-indent]')) return;
-        div.insertBefore(document.createTextNode(INDENT), div.firstChild);
-      });
+      var indented = new Set();
+      var walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT, null, false);
+      var node;
+      while ((node = walker.nextNode())) {
+        if (!node.textContent.trim()) continue;
+        // Find closest div ancestor
+        var block = node.parentElement;
+        while (block && block.tagName !== 'DIV' && block !== clone) {
+          block = block.parentElement;
+        }
+        if (!block || block === clone || indented.has(block)) continue;
+        indented.add(block);
+        // Skip drug names
+        if (block.querySelector('[data-no-indent]')) continue;
+        block.insertBefore(document.createTextNode(INDENT), block.firstChild);
+      }
 
       var htmlContent = clone.innerHTML;
       if (useDecoded) {
