@@ -46,13 +46,6 @@ input[type="checkbox"] {
     -webkit-user-select: none;
 }
 
-input[type="checkbox"]:disabled {
-    opacity: 1;
-    accent-color: #0075ff;
-    -webkit-appearance: checkbox;
-    appearance: checkbox;
-}
-
 /* HTML embed inline */
 .html-embed-16 {
     display: inline-block !important;

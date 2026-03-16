@@ -377,10 +377,10 @@
       console.warn('[CopyHandler] Case 3 SKIPPED — #copy-button-fcp found but no #printableArea or [data-ordo-copy="subject"]');
     }
 
-    // Disable all checkboxes — display only, not interactive
-    // Gray appearance is overridden by CSS (accent-color + opacity in styles.css)
+    // Lock all checkboxes — prevent toggling without graying out (disabled causes gray)
     document.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
-      cb.disabled = true;
+      cb.addEventListener('click', function(e) { e.preventDefault(); });
+      cb.addEventListener('change', function() { this.checked = !this.checked; });
     });
 
     // Debug: log what was found/missed
