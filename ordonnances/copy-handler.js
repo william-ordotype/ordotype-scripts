@@ -250,26 +250,28 @@
         });
       }
 
-      // Indent every div that directly contains text, EXCEPT drug names.
-      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
-      clone.querySelectorAll('div').forEach(function(div) {
-        if (div.querySelector('[data-no-indent]')) return;
-        // Check if this div has direct text or inline-element children with text
-        var hasDirectText = false;
-        for (var i = 0; i < div.childNodes.length; i++) {
-          var n = div.childNodes[i];
-          if (n.nodeType === 3 && n.textContent.trim()) { hasDirectText = true; break; }
-          if (n.nodeType === 1 && n.tagName !== 'DIV' && n.textContent.trim()) { hasDirectText = true; break; }
-        }
-        if (hasDirectText) {
-          div.insertBefore(document.createTextNode(INDENT), div.firstChild);
-        }
+      // Clean up data-no-indent before serialization
+      clone.querySelectorAll('[data-no-indent]').forEach(function(el) {
+        el.setAttribute('data-no-indent', '1');
       });
 
       var htmlContent = clone.innerHTML;
       if (useDecoded) {
         htmlContent = decodeHTMLEntities(htmlContent);
       }
+
+      // Indent every line in the HTML string EXCEPT drug names.
+      // Work on the serialized string to avoid DOM traversal quirks.
+      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
+      htmlContent = htmlContent.replace(/<div([^>]*)>([\s\S]*?)<\/div>/g, function(match, attrs, inner) {
+        // Skip drug name lines (contain data-no-indent marker)
+        if (inner.indexOf('data-no-indent') !== -1) return match;
+        // Skip wrapper divs (contain nested divs)
+        if (inner.indexOf('<div') !== -1) return match;
+        // Skip empty divs
+        if (!inner.replace(/<[^>]*>/g, '').trim()) return match;
+        return '<div' + attrs + '>' + INDENT + inner + '</div>';
+      });
 
       // Use innerText for plain text — it respects block layout and adds
       // proper line breaks between <div>/<p> elements. textContent does not.
