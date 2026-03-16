@@ -250,28 +250,46 @@
         });
       }
 
-      // Clean up data-no-indent before serialization
-      clone.querySelectorAll('[data-no-indent]').forEach(function(el) {
-        el.setAttribute('data-no-indent', '1');
+      // DEBUG: log final DOM structure before indentation
+      console.log('[CopyHandler DEBUG] Final HTML before indent:', clone.innerHTML.substring(0, 2000));
+      var debugDivs = clone.querySelectorAll('div');
+      console.log('[CopyHandler DEBUG] Total divs:', debugDivs.length);
+      debugDivs.forEach(function(div, i) {
+        var hasDirectText = false;
+        for (var j = 0; j < div.childNodes.length; j++) {
+          var n = div.childNodes[j];
+          if (n.nodeType === 3 && n.textContent.trim()) { hasDirectText = true; break; }
+          if (n.nodeType === 1 && n.tagName !== 'DIV' && n.textContent.trim()) { hasDirectText = true; break; }
+        }
+        var hasDrug = !!div.querySelector('[data-no-indent]');
+        console.log('[CopyHandler DEBUG] div[' + i + '] directText=' + hasDirectText + ' drug=' + hasDrug + ' tag=' + div.tagName + ' | "' + div.textContent.trim().substring(0, 60) + '"');
+      });
+      // Also log non-div elements with text
+      clone.querySelectorAll('p, span, strong, b, em, label').forEach(function(el) {
+        if (el.textContent.trim()) {
+          console.log('[CopyHandler DEBUG] NON-DIV: <' + el.tagName.toLowerCase() + '> "' + el.textContent.trim().substring(0, 60) + '"');
+        }
+      });
+
+      // Indent every div with direct text, EXCEPT drug names
+      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
+      clone.querySelectorAll('div').forEach(function(div) {
+        if (div.querySelector('[data-no-indent]')) return;
+        var hasDirectText = false;
+        for (var i = 0; i < div.childNodes.length; i++) {
+          var n = div.childNodes[i];
+          if (n.nodeType === 3 && n.textContent.trim()) { hasDirectText = true; break; }
+          if (n.nodeType === 1 && n.tagName !== 'DIV' && n.textContent.trim()) { hasDirectText = true; break; }
+        }
+        if (hasDirectText) {
+          div.insertBefore(document.createTextNode(INDENT), div.firstChild);
+        }
       });
 
       var htmlContent = clone.innerHTML;
       if (useDecoded) {
         htmlContent = decodeHTMLEntities(htmlContent);
       }
-
-      // Indent every line in the HTML string EXCEPT drug names.
-      // Work on the serialized string to avoid DOM traversal quirks.
-      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
-      htmlContent = htmlContent.replace(/<div([^>]*)>([\s\S]*?)<\/div>/g, function(match, attrs, inner) {
-        // Skip drug name lines (contain data-no-indent marker)
-        if (inner.indexOf('data-no-indent') !== -1) return match;
-        // Skip wrapper divs (contain nested divs)
-        if (inner.indexOf('<div') !== -1) return match;
-        // Skip empty divs
-        if (!inner.replace(/<[^>]*>/g, '').trim()) return match;
-        return '<div' + attrs + '>' + INDENT + inner + '</div>';
-      });
 
       // Use innerText for plain text — it respects block layout and adds
       // proper line breaks between <div>/<p> elements. textContent does not.
