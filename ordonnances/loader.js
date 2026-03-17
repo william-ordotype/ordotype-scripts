@@ -19,7 +19,7 @@
     'duplicates-cleaner.js',
     'print-handler.js',
     // TODO: revert to 'copy-handler.js' once jsDelivr @main cache has propagated (pinned 2026-03-16)
-    'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@661d47b/ordonnances/copy-handler.js'
+    'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@a739018/ordonnances/copy-handler.js'
   ];
 
   // Load a single script
