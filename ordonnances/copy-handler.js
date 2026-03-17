@@ -261,7 +261,7 @@
       }
 
       // Indent every block (div or p) with direct text, EXCEPT drug names.
-      var INDENT = '\u00a0\u00a0\u00a0\u00a0';
+      // Word only respects margin-left on <p>, not <div>, so convert to <p>.
       clone.querySelectorAll('div, p').forEach(function(block) {
         if (block.querySelector('[data-no-indent]')) return;
         var hasDirectText = false;
@@ -271,7 +271,19 @@
           if (n.nodeType === 1 && n.tagName !== 'DIV' && n.tagName !== 'P' && n.textContent.trim()) { hasDirectText = true; break; }
         }
         if (hasDirectText) {
-          block.insertBefore(document.createTextNode(INDENT), block.firstChild);
+          if (block.tagName === 'DIV') {
+            var p = document.createElement('p');
+            p.innerHTML = block.innerHTML;
+            if (block.style.cssText) p.style.cssText = block.style.cssText;
+            p.style.marginLeft = '36pt';
+            p.style.marginTop = '0';
+            p.style.marginBottom = '0';
+            block.parentNode.replaceChild(p, block);
+          } else {
+            block.style.marginLeft = '36pt';
+            block.style.marginTop = '0';
+            block.style.marginBottom = '0';
+          }
         }
       });
 
