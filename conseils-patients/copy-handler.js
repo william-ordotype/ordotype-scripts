@@ -14,6 +14,14 @@
     }
 
     function fallbackExecCommand(element) {
+      // If element is not in the DOM (e.g. a clone), temporarily append it
+      var tempInserted = false;
+      if (!document.body.contains(element)) {
+        element.style.position = 'fixed';
+        element.style.left = '-9999px';
+        document.body.appendChild(element);
+        tempInserted = true;
+      }
       var range = document.createRange();
       range.selectNodeContents(element);
       var selection = window.getSelection();
@@ -25,6 +33,9 @@
         console.error('[CopyHandler] execCommand failed:', err);
       }
       selection.removeAllRanges();
+      if (tempInserted) {
+        document.body.removeChild(element);
+      }
     }
 
     // Convert QR code grid to a table for clipboard compatibility
@@ -156,10 +167,10 @@
           'text/plain': blobText
         });
         navigator.clipboard.write([clipboardItem]).catch(function() {
-          fallbackExecCommand(element);
+          fallbackExecCommand(clone);
         });
       } else {
-        fallbackExecCommand(element);
+        fallbackExecCommand(clone);
       }
     }
 
