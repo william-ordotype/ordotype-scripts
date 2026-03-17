@@ -133,6 +133,12 @@
         bannerContent.remove();
       }
 
+      // Remove the hidden userId div
+      var userIdDiv = clone.querySelector('#userId');
+      if (userIdDiv) {
+        userIdDiv.remove();
+      }
+
       // Convert QR grid to table for clipboard compatibility
       convertQrGridToTable(clone);
 
@@ -140,7 +146,7 @@
       if (useDecoded) {
         htmlContent = decodeHTMLEntities(htmlContent);
       }
-      var textContent = element.textContent.trim();
+      var textContent = clone.textContent.trim();
 
       if (navigator.clipboard && window.ClipboardItem) {
         var blobHTML = new Blob([htmlContent], { type: 'text/html' });
