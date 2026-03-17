@@ -262,7 +262,10 @@
 
       // Indent every block (div or p) with direct text, EXCEPT drug names.
       // Word only respects margin-left on <p>, not <div>, so convert to <p>.
-      clone.querySelectorAll('div, p').forEach(function(block) {
+      // Process innermost blocks first (reverse) so that converting a parent
+      // div to <p> doesn't swallow child divs (browsers auto-close <p> before <div>).
+      var blocks = Array.prototype.slice.call(clone.querySelectorAll('div, p')).reverse();
+      blocks.forEach(function(block) {
         if (block.querySelector('[data-no-indent]')) return;
         var hasDirectText = false;
         for (var i = 0; i < block.childNodes.length; i++) {
@@ -275,12 +278,12 @@
             var p = document.createElement('p');
             p.innerHTML = block.innerHTML;
             if (block.style.cssText) p.style.cssText = block.style.cssText;
-            p.style.marginLeft = '36pt';
+            p.style.marginLeft = '18pt';
             p.style.marginTop = '0';
             p.style.marginBottom = '0';
             block.parentNode.replaceChild(p, block);
           } else {
-            block.style.marginLeft = '36pt';
+            block.style.marginLeft = '18pt';
             block.style.marginTop = '0';
             block.style.marginBottom = '0';
           }
