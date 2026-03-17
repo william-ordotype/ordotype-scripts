@@ -260,7 +260,9 @@
         });
       }
 
-      // Indent every block (div or p) with direct text, EXCEPT drug names
+      // Indent every block (div or p) with direct text, EXCEPT drug names.
+      // Convert indented blocks to <p style="margin-left:24pt"> so Word
+      // indents ALL lines of wrapped paragraphs, not just the first.
       var INDENT = '\u00a0\u00a0\u00a0\u00a0';
       clone.querySelectorAll('div, p').forEach(function(block) {
         if (block.querySelector('[data-no-indent]')) return;
@@ -271,7 +273,19 @@
           if (n.nodeType === 1 && n.tagName !== 'DIV' && n.tagName !== 'P' && n.textContent.trim()) { hasDirectText = true; break; }
         }
         if (hasDirectText) {
+          // nbsp for plain-text clipboard fallback
           block.insertBefore(document.createTextNode(INDENT), block.firstChild);
+          // Convert to <p> with margin-left for Word (Word respects paragraph indent on <p>)
+          if (block.tagName === 'DIV') {
+            var p = document.createElement('p');
+            p.innerHTML = block.innerHTML;
+            p.style.marginLeft = '24pt';
+            p.style.marginTop = '0';
+            p.style.marginBottom = '0';
+            block.parentNode.replaceChild(p, block);
+          } else {
+            block.style.marginLeft = '24pt';
+          }
         }
       });
 
