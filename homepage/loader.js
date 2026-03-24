@@ -10,6 +10,7 @@
 
   // Base URL
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage';
+  const MES_INFOS_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations';
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
 
   // Scripts to load (in order)
@@ -18,6 +19,12 @@
     'countdown.js',
     'member-redirects.js',
     'cgu-modal.js'
+  ];
+
+  // External dependencies for phone input
+  const phoneDeps = [
+    { type: 'css', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css' },
+    { type: 'js', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js' }
   ];
 
   // Load a single script
@@ -31,6 +38,16 @@
     });
   }
 
+  function loadCSS(url) {
+    return new Promise((resolve) => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = url;
+      link.onload = resolve;
+      document.head.appendChild(link);
+    });
+  }
+
   // Load all scripts in order
   async function loadAll() {
     console.log('[OrdoHomepage] Loading...');
@@ -39,6 +56,12 @@
       // Load shared utilities first
       await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
+
+      // Load phone input dependencies + script
+      await Promise.all(phoneDeps.map(dep =>
+        dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url)
+      ));
+      await loadScript(`${MES_INFOS_BASE}/phone-input.js`);
 
       for (const file of scripts) {
         await loadScript(`${BASE}/${file}`);
