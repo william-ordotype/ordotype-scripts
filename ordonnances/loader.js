@@ -14,12 +14,12 @@
 
   // Scripts to load (in order) — absolute URLs bypass BASE prefix
   const scripts = [
+    'qr-code-aggregator.js',
     'opacity-reveal.js',
     'urgent-handler.js',
     'duplicates-cleaner.js',
     'print-handler.js',
-    // TODO: revert to 'copy-handler.js' once jsDelivr @main cache has propagated (pinned 2026-03-16)
-    'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@a739018/ordonnances/copy-handler.js'
+    'copy-handler.js'
   ];
 
   // Load a single script
