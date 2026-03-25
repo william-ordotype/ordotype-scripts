@@ -1,7 +1,7 @@
 (function() {
   'use strict';
 
-  var css = '[data-ms-content]:empty { display: none; } .ab-grid > div:not(:has(.abonnement-wrapper)) { display: none; }';
+  var css = '[data-ms-content]:empty { display: none; } .ab-grid > div:not(.abonnement-wrapper):not(:has(.abonnement-wrapper)) { display: none; }';
 
   var style = document.createElement('style');
   style.textContent = css;
