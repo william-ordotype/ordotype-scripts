@@ -15,7 +15,7 @@
 
     var PREFIX = '[SessionStats]';
     var API_URL = 'https://memberstack-webhooks.netlify.app/.netlify/functions/session-count';
-    var MIN_SESSIONS = 50;
+    var MIN_SESSIONS = 18;
 
     function init() {
         var memberId = window.OrdoMemberstack && window.OrdoMemberstack.memberId;
