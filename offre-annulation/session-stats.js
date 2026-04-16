@@ -14,7 +14,7 @@
     'use strict';
 
     var PREFIX = '[SessionStats]';
-    var API_URL = 'https://ordotype-webhooks.netlify.app/.netlify/functions/session-count';
+    var API_URL = 'https://memberstack-webhooks.netlify.app/.netlify/functions/session-count';
     var MIN_SESSIONS = 50;
 
     function init() {
