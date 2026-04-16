@@ -15,6 +15,8 @@
     const scripts = [
         'shared/opacity-reveal.js',
         'shared/countdown.js',
+        'offre-annulation/session-stats.js',
+        'offre-annulation/pause-form.js',
         'shared/redeem-cancel-forms.js'
     ];
 
