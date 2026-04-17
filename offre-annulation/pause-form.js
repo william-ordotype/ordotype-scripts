@@ -54,7 +54,7 @@
         // Find the active MG subscription
         if (subIdInput && ms.planConnections) {
             var mgSub = ms.planConnections.find(function(c) {
-                return c.active
+                return (c.status === 'ACTIVE' || c.status === 'TRIALING')
                     && c.payment
                     && c.payment.stripeSubscriptionId
                     && MG_PLAN_IDS.indexOf(c.planId) !== -1;
