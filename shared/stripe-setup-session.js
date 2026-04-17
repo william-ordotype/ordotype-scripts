@@ -53,6 +53,17 @@
         let sessionId = null;
         let isPrefetching = false;
 
+        function fetchWithRetry(url, options, retries, delay) {
+            return fetch(url, options).catch(function(err) {
+                if (retries > 0) {
+                    console.warn(PREFIX, 'fetch failed, retrying in', delay, 'ms...', err.message);
+                    return new Promise(function(resolve) { setTimeout(resolve, delay); })
+                        .then(function() { return fetchWithRetry(url, options, retries - 1, delay); });
+                }
+                throw err;
+            });
+        }
+
         function extractSessionIdFromUrl(url) {
             const m = url.match(/\/c\/pay\/([^?#]+)/);
             if (m && m[1]) {
@@ -77,7 +88,7 @@
 
         // 2) Prefetch a Setup Session for faster checkout
         isPrefetching = true;
-        fetch(fnUrl, {
+        fetchWithRetry(fnUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -86,7 +97,7 @@
                 successUrl: successUrl,
                 payment_method_types: paymentMethods
             })
-        })
+        }, 2, 1500)
         .then(r => {
             console.log(PREFIX, 'prefetch HTTP status:', r.status);
             return r.json();
@@ -137,7 +148,7 @@
                 if (!checkoutUrl || !sessionId) {
                     console.log(PREFIX, 'Missing prefetch data, doing fallback fetch');
                     try {
-                        const resp = await fetch(fnUrl, {
+                        const resp = await fetchWithRetry(fnUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -146,7 +157,7 @@
                                 successUrl: successUrl,
                                 payment_method_types: paymentMethods
                             })
-                        });
+                        }, 2, 1500);
                         const data = await resp.json();
                         checkoutUrl = data.url;
                         sessionId = data.id || extractSessionIdFromUrl(data.url);
