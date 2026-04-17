@@ -12,7 +12,7 @@
  *
  * Expected DOM elements:
  * - Form: #pause-form
- * - Hidden inputs: #stripeCustomerIdPause, #memberIdPause
+ * - Hidden inputs: #stripeCustomerIdPause, #memberIdPause, #stripeSubscriptionIdPause
  * - Messages: #waiting-message-pause, #success-message-pause, #error-message-pause
  */
 (function() {
@@ -62,6 +62,17 @@
 
             if (memberIdInput) {
                 memberIdInput.value = member.id;
+            }
+
+            // Find the active MG subscription ID from planConnections
+            var subIdInput = document.getElementById('stripeSubscriptionIdPause');
+            if (subIdInput && member.planConnections) {
+                var activeSub = member.planConnections.find(function(c) {
+                    return c.active && c.payment && c.payment.stripeSubscriptionId;
+                });
+                if (activeSub) {
+                    subIdInput.value = activeSub.payment.stripeSubscriptionId;
+                }
             }
 
             showElement(waiting);
