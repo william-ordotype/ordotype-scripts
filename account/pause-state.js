@@ -90,6 +90,7 @@
         if (dateEl) dateEl.textContent = 'Reprise automatique le ' + formattedDate;
         if (memberIdInput) memberIdInput.value = memberId;
 
+        card.classList.remove('hidden');
         card.style.display = '';
         console.log(PREFIX, 'Showing pause card:', planLabel, 'until', formattedDate);
 
