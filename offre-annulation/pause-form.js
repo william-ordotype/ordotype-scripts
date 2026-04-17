@@ -65,13 +65,27 @@
             }
 
             // Find the active MG subscription ID from planConnections
+            // These are the plan IDs that use the offre-annulation cancel page
+            var MG_PLAN_IDS = [
+                'pln_compte-praticien-offre-speciale-500-premiers--893z0o60',
+                'pln_compte-m-decin-hu490oka',
+                'pln_compte-praticien-ov4d0oln',
+                'pln_abonnement-1-an-2-mois-gratuits-g04f0oue'
+            ];
+
             var subIdInput = document.getElementById('stripeSubscriptionIdPause');
             if (subIdInput && member.planConnections) {
-                var activeSub = member.planConnections.find(function(c) {
-                    return c.active && c.payment && c.payment.stripeSubscriptionId;
+                var mgSub = member.planConnections.find(function(c) {
+                    return c.active
+                        && c.payment
+                        && c.payment.stripeSubscriptionId
+                        && MG_PLAN_IDS.indexOf(c.planId) !== -1;
                 });
-                if (activeSub) {
-                    subIdInput.value = activeSub.payment.stripeSubscriptionId;
+                if (mgSub) {
+                    subIdInput.value = mgSub.payment.stripeSubscriptionId;
+                    console.log(PREFIX, 'Found MG sub:', mgSub.payment.stripeSubscriptionId);
+                } else {
+                    console.warn(PREFIX, 'No active MG subscription found');
                 }
             }
 
