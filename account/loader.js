@@ -20,6 +20,7 @@
     'styles.js',         // Must be first - hides empty Memberstack divs
     'core.js',           // Exposes window.OrdoAccount
     'subscriptions.js',
+    'pause-state.js',
     'status-selectors.js',
     'delete-account.js',
     'billing-portal.js',

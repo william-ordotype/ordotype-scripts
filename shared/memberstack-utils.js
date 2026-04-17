@@ -43,6 +43,7 @@
 
     var planConnections = Array.isArray(member.planConnections) ? member.planConnections : [];
     var customFields = member.customFields || {};
+    var metaData = member.metaData || {};
 
     // --- Shared constants ---
 
@@ -170,6 +171,7 @@
         email: (member.auth && member.auth.email) || member.email || null,
         planConnections: planConnections,
         customFields: customFields,
+        metaData: metaData,
 
         // Helpers
         hasPlan: hasPlan,
