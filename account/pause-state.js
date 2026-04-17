@@ -38,6 +38,42 @@
         'compte-praticien': 'Module MG - Compte Praticien'
     };
 
+    /**
+     * Check if the user has an active plan that belongs to the given group.
+     * Reads ms_groups from localStorage to find which plans belong to the group,
+     * then checks planConnections for an ACTIVE match.
+     */
+    function hasActivePlanForGroup(groupKey, planConnections) {
+        if (!planConnections || !planConnections.length) return false;
+
+        try {
+            var raw = localStorage.getItem('ms_groups');
+            if (!raw) return false;
+            var groups = JSON.parse(raw);
+            var group = null;
+            for (var i = 0; i < groups.length; i++) {
+                if (groups[i].key === groupKey) {
+                    group = groups[i];
+                    break;
+                }
+            }
+            if (!group || !group.plans) return false;
+
+            var groupPlanIds = group.plans.map(function(p) { return p.id; });
+
+            for (var j = 0; j < planConnections.length; j++) {
+                var conn = planConnections[j];
+                if (conn.status === 'ACTIVE' && groupPlanIds.indexOf(conn.planId) !== -1) {
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.warn(PREFIX, 'Error reading ms_groups:', e.message);
+        }
+
+        return false;
+    }
+
     function init() {
         var ms = window.OrdoMemberstack;
         if (!ms || !ms.metaData) {
@@ -49,6 +85,13 @@
         var pausedGroupKey = ms.metaData['paused-group-key'];
 
         if (!pauseEndDate || !pausedGroupKey) {
+            return;
+        }
+
+        // Check if user still has an active plan from the paused group
+        // If yes, the pause was resumed — don't show the card
+        if (hasActivePlanForGroup(pausedGroupKey, ms.planConnections)) {
+            console.log(PREFIX, 'User has active plan for group', pausedGroupKey, '— skipping pause card');
             return;
         }
 
