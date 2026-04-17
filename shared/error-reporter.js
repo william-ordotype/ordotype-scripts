@@ -25,10 +25,19 @@
                     if (raw) member = JSON.parse(raw) || {};
                 } catch (e) { member = {}; }
 
+                var errorStr;
+                if (error instanceof Error) {
+                    errorStr = error.message || String(error);
+                } else if (typeof error === 'object' && error !== null) {
+                    try { errorStr = JSON.stringify(error); } catch (e) { errorStr = String(error); }
+                } else {
+                    errorStr = String(error);
+                }
+
                 var payload = {
                     type: 'frontend-error',
                     context: context,
-                    error: String(error),
+                    error: errorStr,
                     page: window.location.href,
                     memberId: member.id || 'unknown',
                     stripeCustomerId: member.stripeCustomerId || 'unknown',

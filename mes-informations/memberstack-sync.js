@@ -87,9 +87,11 @@
           console.log(PREFIX, 'Synced', Object.keys(customFields).length, 'field(s)');
         })
         .catch(function(err) {
-          console.error(PREFIX, 'Sync error:', err);
+          var detail = err;
+          try { detail = JSON.stringify(err); } catch (e) {}
+          console.error(PREFIX, 'Sync error:', detail, 'Fields attempted:', Object.keys(customFields));
           if (window.OrdoErrorReporter) {
-            window.OrdoErrorReporter.report('MemberstackSync', err);
+            window.OrdoErrorReporter.report('MemberstackSync', detail);
           }
         });
     }).catch(function(err) {
