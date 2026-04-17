@@ -22,6 +22,14 @@
     var REDIRECT_DELAY = 3000;
     var REQUEST_TIMEOUT = 10000;
 
+    // Plan IDs that use the offre-annulation cancel page (Module MG)
+    var MG_PLAN_IDS = [
+        'pln_compte-praticien-offre-speciale-500-premiers--893z0o60',
+        'pln_compte-m-decin-hu490oka',
+        'pln_compte-praticien-ov4d0oln',
+        'pln_abonnement-1-an-2-mois-gratuits-g04f0oue'
+    ];
+
     function init() {
         var form = document.getElementById('pause-form');
         if (!form) {
@@ -29,90 +37,71 @@
             return;
         }
 
-        if (!window.$memberstackDom) {
-            console.warn(PREFIX, 'Memberstack not available');
+        var ms = window.OrdoMemberstack;
+        if (!ms || !ms.memberId) {
+            console.warn(PREFIX, 'OrdoMemberstack not available');
             return;
+        }
+
+        // Pre-fill hidden inputs from localStorage data (no async call needed)
+        var stripeInput = document.getElementById('stripeCustomerIdPause');
+        var memberIdInput = document.getElementById('memberIdPause');
+        var subIdInput = document.getElementById('stripeSubscriptionIdPause');
+
+        if (stripeInput) stripeInput.value = ms.stripeCustomerId || '';
+        if (memberIdInput) memberIdInput.value = ms.memberId || '';
+
+        // Find the active MG subscription
+        if (subIdInput && ms.planConnections) {
+            var mgSub = ms.planConnections.find(function(c) {
+                return c.active
+                    && c.payment
+                    && c.payment.stripeSubscriptionId
+                    && MG_PLAN_IDS.indexOf(c.planId) !== -1;
+            });
+            if (mgSub) {
+                subIdInput.value = mgSub.payment.stripeSubscriptionId;
+                console.log(PREFIX, 'Found MG sub:', mgSub.payment.stripeSubscriptionId);
+            } else {
+                console.warn(PREFIX, 'No active MG subscription found');
+            }
         }
 
         form.addEventListener('submit', handleSubmit);
         console.log(PREFIX, 'Initialized');
     }
 
-    async function handleSubmit(event) {
+    function handleSubmit(event) {
         event.preventDefault();
 
         var form = document.getElementById('pause-form');
-        var stripeInput = document.getElementById('stripeCustomerIdPause');
-        var memberIdInput = document.getElementById('memberIdPause');
         var waiting = document.getElementById('waiting-message-pause');
         var success = document.getElementById('success-message-pause');
         var error = document.getElementById('error-message-pause');
 
-        try {
-            var result = await window.$memberstackDom.getCurrentMember();
-            var member = result.data;
+        showElement(waiting);
+        hideElement(form);
+        hideElement(error);
 
-            if (!member || !member.stripeCustomerId) {
-                throw new Error('Stripe Customer ID not found');
-            }
-
-            if (stripeInput) {
-                stripeInput.value = member.stripeCustomerId;
-            }
-
-            if (memberIdInput) {
-                memberIdInput.value = member.id;
-            }
-
-            // Find the active MG subscription ID from planConnections
-            // These are the plan IDs that use the offre-annulation cancel page
-            var MG_PLAN_IDS = [
-                'pln_compte-praticien-offre-speciale-500-premiers--893z0o60',
-                'pln_compte-m-decin-hu490oka',
-                'pln_compte-praticien-ov4d0oln',
-                'pln_abonnement-1-an-2-mois-gratuits-g04f0oue'
-            ];
-
-            var subIdInput = document.getElementById('stripeSubscriptionIdPause');
-            if (subIdInput && member.planConnections) {
-                var mgSub = member.planConnections.find(function(c) {
-                    return c.active
-                        && c.payment
-                        && c.payment.stripeSubscriptionId
-                        && MG_PLAN_IDS.indexOf(c.planId) !== -1;
-                });
-                if (mgSub) {
-                    subIdInput.value = mgSub.payment.stripeSubscriptionId;
-                    console.log(PREFIX, 'Found MG sub:', mgSub.payment.stripeSubscriptionId);
+        submitForm(form)
+            .then(function(response) {
+                hideElement(waiting);
+                if (response.ok) {
+                    showElement(success);
+                    console.log(PREFIX, 'Pause submitted successfully');
+                    setTimeout(function() {
+                        window.location.href = '/membership/compte';
+                    }, REDIRECT_DELAY);
                 } else {
-                    console.warn(PREFIX, 'No active MG subscription found');
+                    throw new Error('Server returned ' + response.status);
                 }
-            }
-
-            showElement(waiting);
-            hideElement(form);
-            hideElement(error);
-
-            var response = await submitForm(form);
-
-            hideElement(waiting);
-
-            if (response.ok) {
-                showElement(success);
-                console.log(PREFIX, 'Pause submitted successfully');
-                setTimeout(function() {
-                    window.location.href = '/membership/compte';
-                }, REDIRECT_DELAY);
-            } else {
-                throw new Error('Server returned ' + response.status);
-            }
-
-        } catch (err) {
-            console.error(PREFIX, 'Error:', err);
-            hideElement(waiting);
-            showElement(form);
-            showElement(error);
-        }
+            })
+            .catch(function(err) {
+                console.error(PREFIX, 'Error:', err);
+                hideElement(waiting);
+                showElement(form);
+                showElement(error);
+            });
     }
 
     function submitForm(form) {
