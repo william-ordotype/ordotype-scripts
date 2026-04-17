@@ -22,8 +22,8 @@
     'use strict';
 
     var PREFIX = '[PauseState]';
-    var RESUME_WEBHOOK = 'PLACEHOLDER_RESUME_WEBHOOK';
-    var CANCEL_DEFINITIVE_WEBHOOK = 'PLACEHOLDER_CANCEL_DEFINITIVE_WEBHOOK';
+    var RESUME_WEBHOOK = 'https://hook.eu1.make.com/2y3halxc530pmbgju3les5b6gk1kwydc';
+    var CANCEL_DEFINITIVE_WEBHOOK = 'https://hook.eu1.make.com/greskl1wedbnhktd5cne0i88mq4qg7wr';
     var REDIRECT_DELAY = 3000;
     var REQUEST_TIMEOUT = 10000;
 
