@@ -1,7 +1,7 @@
 /**
  * Ordotype Account - Pause State
  * Detects if the member has a paused subscription (via Memberstack metaData)
- * and injects an "En pause" card on the account page with Resume + Cancel buttons.
+ * and shows the "En pause" card on the account page with Resume + Cancel buttons.
  *
  * Depends on: core.js (window.OrdoAccount, window.OrdoMemberstack)
  *
@@ -9,12 +9,14 @@
  *   - pause-end-date: ISO date string (e.g. "2026-10-17")
  *   - paused-group-key: Memberstack group key (e.g. "bouton-compte-praticien-only")
  *
- * Expected DOM:
- *   - Container: #subscriptions-section (where subscription cards live)
- *
- * Make webhook URLs (set as form actions in the injected HTML):
- *   - Resume: posted by #resume-form
- *   - Cancel definitively: posted by #cancel-definitive-form
+ * Expected DOM (Webflow):
+ *   - #pause-state-card (hidden by default, display:none)
+ *   - #pause-plan-label (text: plan name)
+ *   - #pause-resume-date (text: formatted date)
+ *   - #resume-btn (button)
+ *   - #cancel-definitive-btn (button)
+ *   - #pause-member-id (hidden input)
+ *   - #pause-action-waiting, #pause-action-success, #pause-action-error (messages)
  */
 (function() {
     'use strict';
@@ -27,13 +29,13 @@
 
     // Group key → display label mapping
     var GROUP_LABELS = {
-        'bouton-compte-praticien-only': 'Module Médecine Générale (FR)',
+        'bouton-compte-praticien-only': 'Module MG - Compte Praticien',
         'interne-img-and-ft': 'Module MG - Compte Interne',
         'btn-asso-interne-only': 'Module MG - Compte Interne adhérent',
         'rhumatologie-paid-plan': 'Module Rhumatologie',
         'soins-palliatifs-paid-plan': 'Module Soins palliatifs',
         'btn-ide-only': 'Module MG - Compte IDE',
-        'compte-praticien': 'Module Médecine Générale (FR)'
+        'compte-praticien': 'Module MG - Compte Praticien'
     };
 
     function init() {
@@ -66,71 +68,58 @@
         var planLabel = GROUP_LABELS[pausedGroupKey] || 'Abonnement';
         var memberId = ms.memberId || '';
 
-        console.log(PREFIX, 'Member has paused sub:', planLabel, 'until', formattedDate);
+        // Populate and show the card
+        var card = document.getElementById('pause-state-card');
+        var labelEl = document.getElementById('pause-plan-label');
+        var dateEl = document.getElementById('pause-resume-date');
+        var memberIdInput = document.getElementById('pause-member-id');
 
-        injectPauseCard(planLabel, formattedDate, memberId);
-    }
-
-    function injectPauseCard(planLabel, formattedDate, memberId) {
-        // Find the subscriptions section to prepend the card
-        var target = document.querySelector('[data-pause-target]')
-            || document.getElementById('subscriptions-section')
-            || document.querySelector('.account-subscriptions');
-
-        if (!target) {
-            console.warn(PREFIX, 'No target container found for pause card');
+        if (!card) {
+            console.warn(PREFIX, 'No #pause-state-card found in DOM');
             return;
         }
 
-        var card = document.createElement('div');
-        card.id = 'pause-state-card';
-        card.style.cssText = 'background:#fff;border:2px solid #2563eb;border-radius:12px;padding:24px;margin-bottom:20px;';
+        if (labelEl) labelEl.textContent = planLabel;
+        if (dateEl) dateEl.textContent = 'Reprise automatique le ' + formattedDate;
+        if (memberIdInput) memberIdInput.value = memberId;
 
-        card.innerHTML = ''
-            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
-            + '  <div style="font-size:16px;font-weight:600;color:#1a2b4a;">' + planLabel + '</div>'
-            + '  <span style="background:#eef4ff;color:#2563eb;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;">En pause</span>'
-            + '</div>'
-            + '<p style="font-size:14px;color:#666;margin:0 0 16px;line-height:1.5;">'
-            + '  Votre abonnement est en pause. Il sera réactivé automatiquement le <strong style="color:#1a2b4a;">' + formattedDate + '</strong>.'
-            + '</p>'
-            + '<div style="display:flex;gap:12px;flex-wrap:wrap;">'
-            + '  <button id="resume-btn" class="button is-gradient" style="flex:1;min-width:200px;cursor:pointer;">Reprendre mon abonnement</button>'
-            + '  <button id="cancel-definitive-btn" class="button is-grey" style="flex:1;min-width:200px;cursor:pointer;">Annuler définitivement</button>'
-            + '</div>'
-            + '<div id="pause-action-waiting" style="display:none;text-align:center;padding:12px;color:#666;">Traitement en cours...<br><span style="font-size:13px;">Ne fermez pas cette page.</span></div>'
-            + '<div id="pause-action-success" style="display:none;text-align:center;padding:12px;color:#16a34a;font-weight:600;"></div>'
-            + '<div id="pause-action-error" style="display:none;text-align:center;padding:12px;color:#dc2626;">Une erreur est survenue. Veuillez réessayer ou nous contacter.</div>'
-            + '<input type="hidden" id="pause-member-id" value="' + memberId + '">';
-
-        target.insertBefore(card, target.firstChild);
+        card.style.display = '';
+        console.log(PREFIX, 'Showing pause card:', planLabel, 'until', formattedDate);
 
         // Bind buttons
-        document.getElementById('resume-btn').addEventListener('click', function() {
-            handleAction(RESUME_WEBHOOK, 'Votre abonnement a été réactivé !');
-        });
+        var resumeBtn = document.getElementById('resume-btn');
+        var cancelBtn = document.getElementById('cancel-definitive-btn');
 
-        document.getElementById('cancel-definitive-btn').addEventListener('click', function() {
-            if (confirm('Êtes-vous sûr de vouloir annuler définitivement votre abonnement ?')) {
-                handleAction(CANCEL_DEFINITIVE_WEBHOOK, 'Votre abonnement a été annulé.');
-            }
-        });
+        if (resumeBtn) {
+            resumeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                handleAction(RESUME_WEBHOOK, 'Votre abonnement a été réactivé !');
+            });
+        }
 
-        console.log(PREFIX, 'Pause card injected');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (confirm('Êtes-vous sûr de vouloir annuler définitivement votre abonnement ?')) {
+                    handleAction(CANCEL_DEFINITIVE_WEBHOOK, 'Votre abonnement a été annulé.');
+                }
+            });
+        }
     }
 
     function handleAction(webhookUrl, successMessage) {
-        var card = document.getElementById('pause-state-card');
-        var btns = card.querySelectorAll('button');
+        var resumeBtn = document.getElementById('resume-btn');
+        var cancelBtn = document.getElementById('cancel-definitive-btn');
         var waiting = document.getElementById('pause-action-waiting');
         var success = document.getElementById('pause-action-success');
         var error = document.getElementById('pause-action-error');
         var memberId = document.getElementById('pause-member-id').value;
 
         // Hide buttons, show waiting
-        btns.forEach(function(b) { b.style.display = 'none'; });
-        waiting.style.display = 'block';
-        error.style.display = 'none';
+        if (resumeBtn) resumeBtn.style.display = 'none';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        if (waiting) waiting.style.display = 'block';
+        if (error) error.style.display = 'none';
 
         var xhr = new XMLHttpRequest();
         xhr.open('POST', webhookUrl);
@@ -138,35 +127,38 @@
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 
         xhr.onload = function() {
-            waiting.style.display = 'none';
+            if (waiting) waiting.style.display = 'none';
             if (xhr.status === 200) {
-                success.textContent = successMessage;
-                success.style.display = 'block';
-                setTimeout(function() {
-                    window.location.reload();
-                }, REDIRECT_DELAY);
+                if (success) {
+                    success.textContent = successMessage;
+                    success.style.display = 'block';
+                }
+                setTimeout(function() { window.location.reload(); }, REDIRECT_DELAY);
             } else {
-                error.style.display = 'block';
-                btns.forEach(function(b) { b.style.display = 'block'; });
+                showError();
             }
         };
 
         xhr.onerror = function() {
-            waiting.style.display = 'none';
-            error.style.display = 'block';
-            btns.forEach(function(b) { b.style.display = 'block'; });
+            if (waiting) waiting.style.display = 'none';
+            showError();
         };
 
         xhr.ontimeout = function() {
-            waiting.style.display = 'none';
-            error.style.display = 'block';
-            btns.forEach(function(b) { b.style.display = 'block'; });
+            if (waiting) waiting.style.display = 'none';
+            showError();
         };
+
+        function showError() {
+            if (error) error.style.display = 'block';
+            if (resumeBtn) resumeBtn.style.display = '';
+            if (cancelBtn) cancelBtn.style.display = '';
+        }
 
         xhr.send('memberId=' + encodeURIComponent(memberId) + '&pageUrl=' + encodeURIComponent(window.location.href));
     }
 
-    // Init after OrdoAccount is ready
+    // Init after DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
