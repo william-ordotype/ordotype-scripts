@@ -39,11 +39,7 @@
     };
 
     function init() {
-        console.log(PREFIX, 'Init called');
         var ms = window.OrdoMemberstack;
-        console.log(PREFIX, 'OrdoMemberstack:', ms ? 'loaded' : 'NOT FOUND');
-        console.log(PREFIX, 'metaData:', ms ? JSON.stringify(ms.metaData) : 'N/A');
-
         if (!ms || !ms.metaData) {
             console.log(PREFIX, 'No metaData, skipping');
             return;
@@ -51,10 +47,8 @@
 
         var pauseEndDate = ms.metaData['pause-end-date'];
         var pausedGroupKey = ms.metaData['paused-group-key'];
-        console.log(PREFIX, 'pause-end-date:', pauseEndDate, '| paused-group-key:', pausedGroupKey);
 
         if (!pauseEndDate || !pausedGroupKey) {
-            console.log(PREFIX, 'No pause data found');
             return;
         }
 
@@ -79,8 +73,6 @@
         var dateEl = document.getElementById('pause-resume-date');
         var memberIdInput = document.getElementById('pause-member-id');
 
-        console.log(PREFIX, 'Looking for #pause-state-card...');
-        console.log(PREFIX, 'Found:', card ? 'YES' : 'NO');
         if (!card) {
             console.warn(PREFIX, 'No #pause-state-card found in DOM');
             return;
