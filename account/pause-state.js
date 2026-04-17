@@ -164,12 +164,18 @@
         if (waiting) waiting.style.display = 'block';
         if (error) error.style.display = 'none';
 
+        var payload = 'memberId=' + encodeURIComponent(memberId) + '&pageUrl=' + encodeURIComponent(window.location.href);
+        console.log(PREFIX, 'Calling webhook:', webhookUrl);
+        console.log(PREFIX, 'Payload:', payload);
+
         var xhr = new XMLHttpRequest();
         xhr.open('POST', webhookUrl);
         xhr.timeout = REQUEST_TIMEOUT;
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 
         xhr.onload = function() {
+            console.log(PREFIX, 'Response status:', xhr.status);
+            console.log(PREFIX, 'Response body:', xhr.responseText);
             if (waiting) waiting.style.display = 'none';
             if (xhr.status === 200) {
                 if (success) {
@@ -183,11 +189,13 @@
         };
 
         xhr.onerror = function() {
+            console.error(PREFIX, 'XHR error (network)');
             if (waiting) waiting.style.display = 'none';
             showError();
         };
 
         xhr.ontimeout = function() {
+            console.error(PREFIX, 'XHR timeout after', REQUEST_TIMEOUT, 'ms');
             if (waiting) waiting.style.display = 'none';
             showError();
         };
@@ -198,7 +206,7 @@
             if (cancelBtn) cancelBtn.style.display = '';
         }
 
-        xhr.send('memberId=' + encodeURIComponent(memberId) + '&pageUrl=' + encodeURIComponent(window.location.href));
+        xhr.send(payload);
     }
 
     // Init after DOM ready
