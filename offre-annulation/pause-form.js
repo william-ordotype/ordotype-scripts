@@ -1,13 +1,18 @@
 /**
  * Ordotype - Pause Subscription Form
  * Handles the "Mettre en pause" button on the cancellation page.
- * Posts to a Make webhook to pause the Stripe subscription for 6 months.
+ * Posts to a Make webhook which:
+ *   1. Cancels the Stripe subscription (with metadata cancellation_comment=pause_by_customer)
+ *   2. Writes pause-end-date + paused-group-key to Memberstack metaData
+ *   3. Writes a comment to Memberstack custom field "comment" for CS
+ *   4. Adds an entry to the "Paused Subscriptions" Data Store
+ *   5. Sends Brevo confirmation email (template #806)
  *
  * Requires: window.OrdoMemberstack (memberstack-utils.js loaded first)
  *
  * Expected DOM elements:
  * - Form: #pause-form
- * - Hidden inputs: #stripeCustomerIdPause
+ * - Hidden inputs: #stripeCustomerIdPause, #memberIdPause
  * - Messages: #waiting-message-pause, #success-message-pause, #error-message-pause
  */
 (function() {
@@ -38,6 +43,7 @@
 
         var form = document.getElementById('pause-form');
         var stripeInput = document.getElementById('stripeCustomerIdPause');
+        var memberIdInput = document.getElementById('memberIdPause');
         var waiting = document.getElementById('waiting-message-pause');
         var success = document.getElementById('success-message-pause');
         var error = document.getElementById('error-message-pause');
@@ -54,6 +60,10 @@
                 stripeInput.value = member.stripeCustomerId;
             }
 
+            if (memberIdInput) {
+                memberIdInput.value = member.id;
+            }
+
             showElement(waiting);
             hideElement(form);
             hideElement(error);
@@ -66,7 +76,7 @@
                 showElement(success);
                 console.log(PREFIX, 'Pause submitted successfully');
                 setTimeout(function() {
-                    window.location.href = '/';
+                    window.location.href = '/membership/compte';
                 }, REDIRECT_DELAY);
             } else {
                 throw new Error('Server returned ' + response.status);
