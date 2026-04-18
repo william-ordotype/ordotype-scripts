@@ -129,7 +129,7 @@
         card.style.display = '';
 
         var expiredCard = document.getElementById('expired-state-card');
-        if (expiredCard) expiredCard.style.display = 'none';
+        if (expiredCard) expiredCard.remove();
 
         console.log(PREFIX, 'Showing pause card:', planLabel, 'until', formattedDate);
 
