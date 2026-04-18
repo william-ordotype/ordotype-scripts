@@ -14,11 +14,14 @@
     var PREFIX = '[TabHash]';
 
     var KEYWORD_MAP = {
-        'abonnements': 'abonnement',
-        'abonnements-facturation': 'abonnement',
-        'profil': 'profil',
-        'connexion': 'connexion',
-        'securite': 'sécurité'
+        'abonnements': 'billing',
+        'abonnements-facturation': 'billing',
+        'facturation': 'billing',
+        'profil': 'information',
+        'information': 'information',
+        'connexion': 'security',
+        'securite': 'security',
+        'security': 'security'
     };
 
     function switchToTab(keyword) {
