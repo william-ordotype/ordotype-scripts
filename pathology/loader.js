@@ -8,9 +8,21 @@
 (function() {
   'use strict';
 
-  // Base URLs
-  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology';
-  const SHARED = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
+  // Detect own commit/ref from the loader's src so sub-scripts load from
+  // the same pinned version (avoids stale jsDelivr @main caches).
+  function detectVersion() {
+    var scripts = document.getElementsByTagName('script');
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i].src || '';
+      if (src.indexOf('/pathology/loader.js') === -1) continue;
+      var m = src.match(/ordotype-scripts@([^\/]+)\//);
+      if (m) return m[1];
+    }
+    return 'main';
+  }
+  const VERSION = detectVersion();
+  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/pathology';
+  const SHARED = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
   // Configure opacity reveal for pathology selectors
   window.OPACITY_REVEAL_CONFIG = {
