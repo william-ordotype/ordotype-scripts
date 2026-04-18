@@ -127,6 +127,10 @@
 
         card.classList.remove('hidden');
         card.style.display = '';
+
+        var expiredCard = document.getElementById('expired-state-card');
+        if (expiredCard) expiredCard.style.display = 'none';
+
         console.log(PREFIX, 'Showing pause card:', planLabel, 'until', formattedDate);
 
         // Bind buttons
@@ -136,7 +140,7 @@
         if (resumeBtn) {
             resumeBtn.addEventListener('click', function(e) {
                 e.preventDefault();
-                handleAction(RESUME_WEBHOOK, 'Votre abonnement a été réactivé !');
+                handleAction(RESUME_WEBHOOK, 'Votre abonnement a été réactivé !', '/membership/abonnement-repris');
             });
         }
 
@@ -150,7 +154,7 @@
         }
     }
 
-    function handleAction(webhookUrl, successMessage) {
+    function handleAction(webhookUrl, successMessage, redirectUrl) {
         var resumeBtn = document.getElementById('resume-btn');
         var cancelBtn = document.getElementById('cancel-definitive-btn');
         var waiting = document.getElementById('pause-action-waiting');
@@ -182,7 +186,13 @@
                     success.textContent = successMessage;
                     success.style.display = 'block';
                 }
-                setTimeout(function() { window.location.reload(); }, REDIRECT_DELAY);
+                setTimeout(function() {
+                    if (redirectUrl) {
+                        window.location.href = redirectUrl;
+                    } else {
+                        window.location.reload();
+                    }
+                }, REDIRECT_DELAY);
             } else {
                 showError();
             }

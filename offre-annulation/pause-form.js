@@ -90,7 +90,7 @@
                     showElement(success);
                     console.log(PREFIX, 'Pause submitted successfully');
                     setTimeout(function() {
-                        window.location.href = '/membership/compte';
+                        window.location.href = '/membership/abonnement-en-pause';
                     }, REDIRECT_DELAY);
                 } else {
                     throw new Error('Server returned ' + response.status);
