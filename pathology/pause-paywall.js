@@ -39,9 +39,9 @@
                 '<div class="text-size-small text-color-base-600">' +
                   'Pour retrouver l\'accès immédiatement, reprenez votre abonnement.' +
                 '</div>' +
-                '<a href="/membership/compte" class="button w-inline-block">' +
-                  '<div class="button_text">Reprendre mon abonnement</div>' +
-                '</a>' +
+                '<div>' +
+                  '<a href="/membership/compte" class="button is-gradient w-button">Reprendre mon abonnement</a>' +
+                '</div>' +
               '</div>' +
             '</div>';
 
