@@ -128,6 +128,9 @@
         card.classList.remove('hidden');
         card.style.display = '';
 
+        var hideExpiredStyle = document.createElement('style');
+        hideExpiredStyle.textContent = '#expired-state-card { display: none !important; }';
+        document.head.appendChild(hideExpiredStyle);
         var expiredCard = document.getElementById('expired-state-card');
         if (expiredCard) expiredCard.remove();
 
