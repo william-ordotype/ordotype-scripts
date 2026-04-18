@@ -37,6 +37,7 @@
     `${SHARED}/opacity-reveal.js`,
     `${BASE}/tabs-manager.js`,
     `${BASE}/scroll-anchor.js`,
+    `${BASE}/pause-paywall.js`,
     `${BASE}/iframe-handler.js`,
     `${BASE}/tooltips.js`
   ];
