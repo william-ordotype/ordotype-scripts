@@ -49,6 +49,23 @@
         if (!member || !member.id) return;
 
         const $ = jQuery;
+
+        // Paused subscription — show dedicated pause banner, skip all other banner logic
+        const pauseEndDate = ms.metaData && ms.metaData['pause-end-date'];
+        if (pauseEndDate) {
+            const endDate = new Date(pauseEndDate);
+            if (!isNaN(endDate.getTime()) && endDate > new Date()) {
+                const formattedDate = endDate.toLocaleDateString('fr-FR', {
+                    day: 'numeric', month: 'long', year: 'numeric'
+                });
+                const dateSpan = document.getElementById('banner-to-hide-paused-date');
+                if (dateSpan) dateSpan.textContent = formattedDate;
+                $('#banner-to-hide-paused').css({ display: 'flex' });
+                $('#banner-to-hide-canceled, #banner-to-hide-essai-expire, #banner-to-hide-essai-expire-rempla').css({ display: 'none' });
+                console.log(PREFIX, 'Paused — showing pause banner, resume date:', formattedDate);
+                return;
+            }
+        }
         const SUBSCRIPTION = 'SUBSCRIPTION';
         const ACTIVE = 'ACTIVE';
         const TRIALING = 'TRIALING';

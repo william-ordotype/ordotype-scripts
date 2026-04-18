@@ -30,8 +30,7 @@
     'core.js',
     'countdown.js',
     'member-redirects.js',
-    'cgu-modal.js',
-    'pause-banner.js'
+    'cgu-modal.js'
   ];
 
   // External dependencies for phone input
