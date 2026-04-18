@@ -7,8 +7,8 @@
  *
  * Expected DOM (Webflow):
  *   - #banner-to-hide-canceled (existing "Votre abonnement est terminé" banner)
- *   - #pause-banner (hidden by default, class="hidden")
- *   - #pause-banner-date (text span for formatted resume date)
+ *   - #banner-to-hide-paused (hidden by default, class="hidden")
+ *   - #banner-to-hide-paused-date (text span for formatted resume date)
  */
 (function() {
     'use strict';
@@ -43,11 +43,11 @@
         var canceled = document.getElementById('banner-to-hide-canceled');
         if (canceled) canceled.remove();
 
-        var banner = document.getElementById('pause-banner');
-        var dateEl = document.getElementById('pause-banner-date');
+        var banner = document.getElementById('banner-to-hide-paused');
+        var dateEl = document.getElementById('banner-to-hide-paused-date');
 
         if (!banner) {
-            console.warn(PREFIX, 'No #pause-banner found in DOM');
+            console.warn(PREFIX, 'No #banner-to-hide-paused found in DOM');
             return;
         }
 
