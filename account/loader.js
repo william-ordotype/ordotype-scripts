@@ -12,8 +12,8 @@
   'use strict';
 
   // Base URL - update this after uploading to GitHub
-  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@57bf05e/account';
-  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@57bf05e/shared';
+  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account';
+  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
 
   // Scripts to load (in order)
   const scripts = [
