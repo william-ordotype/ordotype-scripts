@@ -40,7 +40,7 @@
                   'Pour retrouver l\'accès immédiatement, reprenez votre abonnement.' +
                 '</div>' +
                 '<div>' +
-                  '<a href="/membership/compte" class="button is-gradient w-button">Reprendre mon abonnement</a>' +
+                  '<a href="/membership/compte#abonnements" class="button is-gradient w-button">Reprendre mon abonnement</a>' +
                 '</div>' +
               '</div>' +
             '</div>';

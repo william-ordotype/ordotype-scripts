@@ -21,6 +21,7 @@
     'core.js',           // Exposes window.OrdoAccount
     'subscriptions.js',
     'pause-state.js',
+    'tab-hash.js',
     'status-selectors.js',
     'delete-account.js',
     'billing-portal.js',
