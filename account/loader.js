@@ -32,6 +32,7 @@
     'styles.js',         // Must be first - hides empty Memberstack divs
     'core.js',           // Exposes window.OrdoAccount
     'subscriptions.js',
+    'session-stats-prefetch.js',
     'pause-state.js',
     'tab-hash.js',
     'status-selectors.js',
