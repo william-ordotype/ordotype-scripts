@@ -4,7 +4,7 @@
  *
  * - Sets justPaidTs (2-min grace period) so homepage member-redirects.js
  *   doesn't react to the just-canceled Stripe sub.
- * - Injects the pause end date into any element with [data-pause-end-date].
+ * - Runs the #countdown UI then redirects to homepage.
  *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/abonnement-en-pause/confirmation.js"></script>
@@ -13,30 +13,35 @@
     'use strict';
 
     var PREFIX = '[PauseConfirm]';
+    var COUNTDOWN_SECONDS = 2;
+    var REDIRECT_URL = '/';
 
     try { localStorage.setItem('justPaidTs', Date.now()); } catch (e) {}
 
-    function init() {
-        try {
-            var raw = localStorage.getItem('_ms-mem');
-            if (!raw) return;
-            var member = JSON.parse(raw) || {};
-            var meta = member.metaData || {};
-            var endDate = meta['pause-end-date'];
-            if (!endDate) return;
-            var d = new Date(endDate);
-            if (isNaN(d.getTime())) return;
-            var formatted = d.toLocaleDateString('fr-FR', {
-                day: 'numeric', month: 'long', year: 'numeric'
-            });
-            var targets = document.querySelectorAll('[data-pause-end-date]');
-            for (var i = 0; i < targets.length; i++) {
-                targets[i].textContent = formatted;
-            }
-            console.log(PREFIX, 'Pause end date:', formatted);
-        } catch (e) {
-            console.warn(PREFIX, e.message);
+    function startCountdown(seconds, redirectUrl) {
+        var countdownEl = document.getElementById('countdown');
+        var labelEl = document.getElementById('label');
+
+        function updateDisplay(sec) {
+            if (countdownEl) countdownEl.textContent = sec;
+            if (labelEl) labelEl.textContent = sec <= 1 ? 'seconde' : 'secondes';
         }
+
+        updateDisplay(seconds);
+
+        var interval = setInterval(function() {
+            seconds -= 1;
+            if (seconds >= 0) updateDisplay(seconds);
+            if (seconds === 0) {
+                clearInterval(interval);
+                console.log(PREFIX, 'Redirecting to:', redirectUrl);
+                window.location.href = redirectUrl;
+            }
+        }, 1000);
+    }
+
+    function init() {
+        startCountdown(COUNTDOWN_SECONDS, REDIRECT_URL);
     }
 
     if (document.readyState === 'loading') {
