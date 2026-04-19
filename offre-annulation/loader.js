@@ -9,7 +9,21 @@
     'use strict';
 
     const PREFIX = '[OrdoOffreAnnulation]';
-    const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+
+    // Auto-detect loader's own commit/ref so sub-scripts load from the same
+    // pinned version (sidesteps stale jsDelivr @main caches).
+    function detectVersion() {
+        const list = document.getElementsByTagName('script');
+        for (let i = 0; i < list.length; i++) {
+            const src = list[i].src || '';
+            if (src.indexOf('/offre-annulation/loader.js') === -1) continue;
+            const m = src.match(/ordotype-scripts@([^\/]+)\//);
+            if (m) return m[1];
+        }
+        return 'main';
+    }
+    const VERSION = detectVersion();
+    const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION;
 
     // Scripts to load in order
     const scripts = [
