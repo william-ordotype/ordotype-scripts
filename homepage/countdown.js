@@ -4,7 +4,7 @@
  *
  * Requires:
  * - jQuery
- * - Elements with IDs: js-clock1-days, js-clock5-days, js-clock6-days, js-clock7-days, js-clock8-days
+ * - Elements with IDs: js-clock-fin-internat-days, js-clock5-days, js-clock6-days, js-clock7-days, js-clock8-days
  */
 (function() {
     'use strict';
@@ -33,8 +33,8 @@
     const newdeadline = new Date(baseDate);
     newdeadline.setDate(newdeadline.getDate() + 15);
 
-    // Define a fixed deadline for js-clock1
-    const fixedDeadline = new Date("2026-05-05T00:00:00+02:00");
+    // Fixed deadline for the fin-internat banner (end of May 4th, Paris time)
+    const finInternatDeadline = new Date("2026-05-05T00:00:00+02:00");
 
     // Calculate the number of remaining days until the given end time
     const getDaysRemaining = endTime => {
@@ -57,8 +57,7 @@
     updateClock('js-clock7', newdeadline);
     updateClock('js-clock8', newdeadline);
 
-    // Update js-clock1 with the fixed deadline
-    updateClock('js-clock1', fixedDeadline);
+    updateClock('js-clock-fin-internat', finInternatDeadline);
 
     console.log(PREFIX, 'Countdowns initialized');
 })();

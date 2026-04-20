@@ -107,7 +107,7 @@
             plan.status !== 'CANCELED'
         )
     ) {
-        // Reserved for future fin-internat banner
+        if ($) $('#banner-to-hide-fin-internat').css({ 'display': 'flex' });
     }
     else if (
         ms.customFields["semestre"] === 'Internat terminé' &&

@@ -4,7 +4,7 @@
  *
  * Requires:
  * - jQuery
- * - Elements with IDs: js-clock1-days, js-clock2-days, js-clock3-days, js-clock4-days, js-clock5-days
+ * - Elements with IDs: js-clock1-days, js-clock2-days, js-clock-fin-internat-days, js-clock4-days, js-clock5-days
  */
 (function() {
     'use strict';
@@ -36,7 +36,8 @@
     }
     const deadline = addDays(switchDate, 30);
     const newDeadline = addDays(switchDate, 15);
-    const endSummer22 = new Date('2025-11-03T00:00:00');
+    // Fixed deadline for the fin-internat banner (end of May 4th, Paris time)
+    const finInternatDeadline = new Date('2026-05-05T00:00:00+02:00');
 
     // Pad numbers using padStart for clarity
     const pad = (num, size) => String(num).padStart(size, '0');
@@ -68,7 +69,7 @@
 
     clock('js-clock1', newDeadline);
     clock('js-clock2', newDeadline);
-    clock('js-clock3', endSummer22);
+    clock('js-clock-fin-internat', finInternatDeadline);
     clock('js-clock4', newDeadline);
     clock('js-clock5', newDeadline);
 
