@@ -34,7 +34,7 @@
     newdeadline.setDate(newdeadline.getDate() + 15);
 
     // Define a fixed deadline for js-clock1
-    const fixedDeadline = new Date("2025-11-03");
+    const fixedDeadline = new Date("2026-05-05T00:00:00+02:00");
 
     // Calculate the number of remaining days until the given end time
     const getDaysRemaining = endTime => {

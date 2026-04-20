@@ -216,7 +216,7 @@
                 plan.status !== 'CANCELED'
             )
         ) {
-            // Reserved for future fin-internat banner
+            $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
         else if (partnershipCity === 'Rennes (MG)' && srpImg) {
             srpImg.style.display = 'flex';
