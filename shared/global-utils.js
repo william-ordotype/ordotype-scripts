@@ -61,7 +61,7 @@
         // Some CMS items have entire HTML escaped (with &amp; entities in attributes),
         // which the standard regex below misses. Replace the wrapper <p> at parent level
         // since block-level elements (p, ul, table...) can't nest inside <p>.
-        document.querySelectorAll('.w-richtext:not(.rc-html) > p').forEach(function(el) {
+        document.querySelectorAll('.w-richtext:not(.rc-html):not(.rich-text-block-18) > p').forEach(function(el) {
             var html = el.innerHTML;
             if (/&lt;[a-z][a-z0-9]*(?:[^&]|&(?!gt;))*&gt;/i.test(html)) {
                 var decoded = el.textContent;
