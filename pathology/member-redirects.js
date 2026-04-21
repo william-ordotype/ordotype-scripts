@@ -13,8 +13,8 @@
     const ms = window.OrdoMemberstack || {};
     const BANNER_DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Grace period check for payment redirect prevention (120 seconds)
-    const GRACE_PERIOD = 120 * 1000;
+    // Grace period check for payment redirect prevention (24 hours)
+    const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
     if (justPaidTs && (Date.now() - justPaidTs) < GRACE_PERIOD) {
         console.log(PREFIX, 'Within grace period, skipping redirect logic');

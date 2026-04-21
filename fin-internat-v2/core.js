@@ -13,7 +13,7 @@
     // Set grace period to prevent payment redirect loops
     // This prevents member-redirects.js from redirecting back during checkout flow
     localStorage.setItem('justPaidTs', Date.now());
-    setTimeout(() => localStorage.removeItem('justPaidTs'), 120000);
+    setTimeout(() => localStorage.removeItem('justPaidTs'), 86400000); // 24h — aligned with GRACE_PERIOD in member-redirects.js
 
     console.log(PREFIX, 'Core initialized, grace period set');
 })();

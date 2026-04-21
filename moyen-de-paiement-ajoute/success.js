@@ -24,9 +24,9 @@
    * Initialize on DOM ready
    */
   function init() {
-    // Set payment timestamp for grace period (2 minutes)
+    // Set payment timestamp for grace period (24 hours)
     localStorage.setItem('justPaidTs', Date.now());
-    setTimeout(() => localStorage.removeItem('justPaidTs'), 120000);
+    setTimeout(() => localStorage.removeItem('justPaidTs'), 86400000);
 
     console.log(PREFIX, 'Payment method added successfully');
 

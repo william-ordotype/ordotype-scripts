@@ -17,6 +17,12 @@
     // Store URL for tracking
     localStorage.setItem('locat', location.href);
 
+    // Anti-loop protection: set justPaidTs on page load so the homepage
+    // redirect (member-redirects.js) doesn't bounce the user back here
+    // on every visit while their subscription is in REQUIRES_PAYMENT state.
+    // Paired with 24h GRACE_PERIOD in member-redirects.js.
+    localStorage.setItem('justPaidTs', Date.now());
+
     // Set config for shared stripe-setup-session.js
     window.STRIPE_SETUP_CONFIG = {
         btnNoStripeId: 'setupBtnNoStripeId',

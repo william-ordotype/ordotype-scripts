@@ -43,12 +43,12 @@
     enablePartnershipCity: Boolean(pageConfig.enablePartnershipCity)
   };
 
-  // Set justPaidTs if configured (praticien pages)
+  // Set justPaidTs if configured (praticien pages) — 24h grace period
   if (config.setJustPaidTs) {
     safeSetItem('justPaidTs', Date.now().toString());
     setTimeout(function() {
       try { localStorage.removeItem('justPaidTs'); } catch (e) {}
-    }, 60000);
+    }, 86400000);
   }
 
   // Expose globally for other scripts
