@@ -18,14 +18,16 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f811999b9f853a3ef5451
  *
- * Version: 1.2.0 (2026-04-22)
+ * Version: 1.3.0 (2026-04-22)
  *   1.0.0 — initial fetch proxy implementation.
  *   1.1.0 — add XMLHttpRequest wrapper (Memberstack/axios uses XHR, fetch
  *           proxy alone never fires on /otp/verify).
  *   1.2.0 — count attempts from /otp/verify calls instead of form submits.
- *           Memberstack forms are handled by React state and do not emit a
- *           native submit event, so the submit listener always saw 0
- *           attempts. One /otp/verify call = one attempt.
+ *   1.3.0 — add resend_count to 2fa_failure and 2fa_abandoned payloads so
+ *           Looker can split "abandon with resend" (delivery issue) from
+ *           "abandon without resend" (givers-up). Skip pagehide on bfcache
+ *           restore (event.persisted) which otherwise creates false
+ *           abandons on Safari back/forward navigation.
  */
 
 (function () {
@@ -102,6 +104,7 @@
       event: '2fa_failure',
       error_reason: reason,
       attempt_number: attemptNumber,
+      resend_count: resendCount,
     });
   }
 
@@ -110,6 +113,7 @@
       event: '2fa_failure',
       error_reason: ttlReason(),
       attempt_number: attemptNumber,
+      resend_count: resendCount,
     });
   }
 
@@ -216,13 +220,17 @@
   // --- Abandon detection ---------------------------------------------------
   // Fires on page hide / unload when no 2fa_success was recorded.
   // Using pagehide because it is more reliable than beforeunload on iOS Safari.
-  function pushAbandonedOnce() {
+  function pushAbandonedOnce(evt) {
+    // bfcache restore: Safari back/forward navigation calls pagehide with
+    // persisted=true even though the user is not abandoning. Skip.
+    if (evt && evt.persisted === true) return;
     if (successFired || abandonFired) return;
     abandonFired = true;
     window.dataLayer.push({
       event: '2fa_abandoned',
       time_on_page_sec: sec(),
       attempt_number: attemptCount,
+      resend_count: resendCount,
     });
   }
   window.addEventListener('pagehide', pushAbandonedOnce);
