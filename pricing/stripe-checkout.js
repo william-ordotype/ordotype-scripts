@@ -165,6 +165,14 @@
           originPage: window.location.href,
           paymentMethods: paymentMethods
         });
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'stripe_signup_click',
+          option: 'praticien',
+          priceId: priceId1,
+          coupon: couponId1,
+          checkoutSessionId: sessionId1
+        });
         window.location.href = url1;
       });
 
@@ -187,6 +195,14 @@
           coupon: couponId2,
           originPage: window.location.href,
           paymentMethods: paymentMethods
+        });
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'stripe_signup_click',
+          option: 'rempla',
+          priceId: priceId2,
+          coupon: couponId2,
+          checkoutSessionId: sessionId2
         });
         window.location.href = url2;
       });

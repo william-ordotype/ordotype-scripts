@@ -148,7 +148,16 @@
         }
     }
 
-    // Send abandon cart and redirect immediately
+    // Push GTM event and send abandon cart before redirect.
+    // Push goes first so GA4's sendBeacon can flush before navigation.
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+        event: 'stripe_signup_click',
+        option,
+        priceId: resolvedPriceId,
+        coupon: resolvedCouponId,
+        checkoutSessionId: sessionId
+    });
     notifyAbandonCart();
     window.location.href = checkoutUrl;
 
