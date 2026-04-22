@@ -18,10 +18,14 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f811999b9f853a3ef5451
  *
- * Version: 1.1.0 (2026-04-22)
+ * Version: 1.2.0 (2026-04-22)
  *   1.0.0 — initial fetch proxy implementation.
  *   1.1.0 — add XMLHttpRequest wrapper (Memberstack/axios uses XHR, fetch
  *           proxy alone never fires on /otp/verify).
+ *   1.2.0 — count attempts from /otp/verify calls instead of form submits.
+ *           Memberstack forms are handled by React state and do not emit a
+ *           native submit event, so the submit listener always saw 0
+ *           attempts. One /otp/verify call = one attempt.
  */
 
 (function () {
@@ -57,15 +61,10 @@
     }
   });
 
-  // --- Form submits --------------------------------------------------------
-  // Generic: capture phase so we count every OTP form submission.
-  document.addEventListener(
-    'submit',
-    function () {
-      attemptCount += 1;
-    },
-    true,
-  );
+  // Note: we do NOT listen on document submit events. Memberstack's OTP form
+  // is a React component that calls the API directly without dispatching a
+  // native submit event. Attempts are counted per /otp/verify call (see the
+  // fetch and XHR handlers below).
 
   // --- Endpoint matchers ---------------------------------------------------
   // Host-agnostic: matches api.ordotype.fr, staging, Render preview, etc.
@@ -81,17 +80,20 @@
     lastCodeRequestAt = Date.now();
   }
 
-  function onVerifySuccess() {
+  // `attemptNumber` is captured at /otp/verify send-time and passed through
+  // the response handlers via closure, so two parallel calls (very unlikely)
+  // would each emit their own correct attempt index.
+  function onVerifySuccess(attemptNumber) {
     successFired = true;
     window.dataLayer.push({
       event: '2fa_success',
-      attempt_number: attemptCount,
+      attempt_number: attemptNumber,
       time_on_page_sec: sec(),
       resent_before_success: resendCount > 0,
     });
   }
 
-  function onVerifyFailureFromBody(body) {
+  function onVerifyFailureFromBody(attemptNumber, body) {
     var reason;
     if (body && body.code === 'OTP_EXPIRED') reason = 'expired';
     else if (body && body.code === 'OTP_INVALID') reason = 'invalid';
@@ -99,16 +101,22 @@
     window.dataLayer.push({
       event: '2fa_failure',
       error_reason: reason,
-      attempt_number: attemptCount,
+      attempt_number: attemptNumber,
     });
   }
 
-  function onVerifyFailureNoBody() {
+  function onVerifyFailureNoBody(attemptNumber) {
     window.dataLayer.push({
       event: '2fa_failure',
       error_reason: ttlReason(),
-      attempt_number: attemptCount,
+      attempt_number: attemptNumber,
     });
+  }
+
+  // Register a new /otp/verify call and return the attempt number to use.
+  function registerVerifyAttempt() {
+    attemptCount += 1;
+    return attemptCount;
   }
 
   // --- Fetch proxy ---------------------------------------------------------
@@ -136,16 +144,21 @@
 
     if (!isVerify) return promise;
 
+    var attemptNumber = registerVerifyAttempt();
     return promise.then(function (resp) {
       if (resp && resp.ok) {
-        onVerifySuccess();
+        onVerifySuccess(attemptNumber);
         return resp;
       }
       resp
         .clone()
         .json()
-        .then(onVerifyFailureFromBody)
-        .catch(onVerifyFailureNoBody);
+        .then(function (body) {
+          onVerifyFailureFromBody(attemptNumber, body);
+        })
+        .catch(function () {
+          onVerifyFailureNoBody(attemptNumber);
+        });
       return resp;
     });
   };
@@ -173,6 +186,7 @@
         var isVerify = RE_VERIFY.test(url);
         if (isGenerate || isVerify) {
           var xhr = this;
+          var attemptNumber = isVerify ? registerVerifyAttempt() : 0;
           xhr.addEventListener('loadend', function () {
             var ok = xhr.status >= 200 && xhr.status < 300;
             if (isGenerate) {
@@ -181,15 +195,15 @@
             }
             // isVerify
             if (ok) {
-              onVerifySuccess();
+              onVerifySuccess(attemptNumber);
               return;
             }
             var body = null;
             try {
               body = JSON.parse(xhr.responseText);
             } catch (e) {}
-            if (body) onVerifyFailureFromBody(body);
-            else onVerifyFailureNoBody();
+            if (body) onVerifyFailureFromBody(attemptNumber, body);
+            else onVerifyFailureNoBody(attemptNumber);
           });
         }
       } catch (err) {
