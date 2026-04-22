@@ -83,11 +83,19 @@
     }
   }
 
+  // Broadcast consent change so downstream loaders (crisp, etc.) can react
+  function dispatchConsentEvent(consents) {
+    try {
+      window.dispatchEvent(new CustomEvent('ordo:consent-updated', { detail: { consents: consents } }));
+    } catch (e) {}
+  }
+
   // Handle actions
   function handleAllow() {
     var consents = { marketing: true, analytics: true, personalization: true };
     saveConsent(consents);
     updateGtagConsent(consents);
+    dispatchConsentEvent(consents);
     hideBanner();
     hidePrefs();
     showManager();
@@ -97,6 +105,7 @@
     var consents = { marketing: false, analytics: false, personalization: false };
     saveConsent(consents);
     updateGtagConsent(consents);
+    dispatchConsentEvent(consents);
     hideBanner();
     hidePrefs();
     showManager();
@@ -106,6 +115,7 @@
     var consents = getCheckboxStates();
     saveConsent(consents);
     updateGtagConsent(consents);
+    dispatchConsentEvent(consents);
     hideBanner();
     hidePrefs();
     showManager();
