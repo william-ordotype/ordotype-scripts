@@ -66,18 +66,19 @@
   function showManager() { if (manager) manager.style.display = 'flex'; }
   function hideManager() { if (manager) manager.style.display = 'none'; }
 
-  // Update GTM consent (if gtag available)
+  // Update GTM consent — push directly to dataLayer so we don't depend on
+  // window.gtag being defined (it may not be if GA4 Config hasn't loaded yet).
   function updateGtagConsent(consents) {
-    if (typeof gtag === 'function') {
-      gtag('consent', 'update', {
-        'ad_storage': consents.marketing ? 'granted' : 'denied',
-        'ad_user_data': consents.marketing ? 'granted' : 'denied',
-        'ad_personalization': consents.personalization ? 'granted' : 'denied',
-        'analytics_storage': consents.analytics ? 'granted' : 'denied',
-        'personalization_storage': consents.personalization ? 'granted' : 'denied'
-      });
-    }
-    // Update Clarity if available
+    window.dataLayer = window.dataLayer || [];
+    function localGtag() { window.dataLayer.push(arguments); }
+    localGtag('consent', 'update', {
+      'ad_storage': consents.marketing ? 'granted' : 'denied',
+      'ad_user_data': consents.marketing ? 'granted' : 'denied',
+      'ad_personalization': consents.personalization ? 'granted' : 'denied',
+      'analytics_storage': consents.analytics ? 'granted' : 'denied',
+      'functionality_storage': consents.personalization ? 'granted' : 'denied',
+      'personalization_storage': consents.personalization ? 'granted' : 'denied'
+    });
     if (window.clarity) {
       window.clarity('consent', consents.analytics);
     }
