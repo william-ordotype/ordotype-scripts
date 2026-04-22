@@ -18,7 +18,10 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f811999b9f853a3ef5451
  *
- * Version: 1.0.0 (2026-04-22)
+ * Version: 1.1.0 (2026-04-22)
+ *   1.0.0 — initial fetch proxy implementation.
+ *   1.1.0 — add XMLHttpRequest wrapper (Memberstack/axios uses XHR, fetch
+ *           proxy alone never fires on /otp/verify).
  */
 
 (function () {
@@ -64,13 +67,53 @@
     true,
   );
 
-  // --- Fetch proxy ---------------------------------------------------------
-  // Intercepts /otp/generate (refresh TTL timer) and /otp/verify (push events).
-  // Regex matches the endpoints regardless of host (api.ordotype.fr, staging,
-  // Render preview, etc.).
-  var ORIGINAL_FETCH = window.fetch;
+  // --- Endpoint matchers ---------------------------------------------------
+  // Host-agnostic: matches api.ordotype.fr, staging, Render preview, etc.
   var RE_GENERATE = /\/v1\.0\.0\/otp\/generate\b/;
   var RE_VERIFY = /\/v1\.0\.0\/otp\/verify\b/;
+
+  // Shared event emitters (used by both fetch and XHR handlers).
+  function ttlReason() {
+    return Date.now() - lastCodeRequestAt > OTP_TTL_MS ? 'expired' : 'invalid';
+  }
+
+  function onGenerateSuccess() {
+    lastCodeRequestAt = Date.now();
+  }
+
+  function onVerifySuccess() {
+    successFired = true;
+    window.dataLayer.push({
+      event: '2fa_success',
+      attempt_number: attemptCount,
+      time_on_page_sec: sec(),
+      resent_before_success: resendCount > 0,
+    });
+  }
+
+  function onVerifyFailureFromBody(body) {
+    var reason;
+    if (body && body.code === 'OTP_EXPIRED') reason = 'expired';
+    else if (body && body.code === 'OTP_INVALID') reason = 'invalid';
+    else reason = ttlReason();
+    window.dataLayer.push({
+      event: '2fa_failure',
+      error_reason: reason,
+      attempt_number: attemptCount,
+    });
+  }
+
+  function onVerifyFailureNoBody() {
+    window.dataLayer.push({
+      event: '2fa_failure',
+      error_reason: ttlReason(),
+      attempt_number: attemptCount,
+    });
+  }
+
+  // --- Fetch proxy ---------------------------------------------------------
+  // Covers cases where the frontend uses native fetch.
+  var ORIGINAL_FETCH = window.fetch;
 
   window.fetch = function (input, init) {
     var url =
@@ -83,11 +126,11 @@
     var promise = ORIGINAL_FETCH.apply(this, arguments);
 
     if (isGenerate) {
-      promise.then(function (resp) {
-        if (resp && resp.ok) {
-          lastCodeRequestAt = Date.now();
-        }
-      }).catch(function () {});
+      promise
+        .then(function (resp) {
+          if (resp && resp.ok) onGenerateSuccess();
+        })
+        .catch(function () {});
       return promise;
     }
 
@@ -95,45 +138,66 @@
 
     return promise.then(function (resp) {
       if (resp && resp.ok) {
-        successFired = true;
-        window.dataLayer.push({
-          event: '2fa_success',
-          attempt_number: attemptCount,
-          time_on_page_sec: sec(),
-          resent_before_success: resendCount > 0,
-        });
+        onVerifySuccess();
         return resp;
-      }
-
-      // Failure path: prefer explicit backend code (OTP_EXPIRED / OTP_INVALID),
-      // fall back to client-side TTL heuristic.
-      function ttlReason() {
-        return Date.now() - lastCodeRequestAt > OTP_TTL_MS ? 'expired' : 'invalid';
       }
       resp
         .clone()
         .json()
-        .then(function (body) {
-          var reason;
-          if (body && body.code === 'OTP_EXPIRED') reason = 'expired';
-          else if (body && body.code === 'OTP_INVALID') reason = 'invalid';
-          else reason = ttlReason();
-          window.dataLayer.push({
-            event: '2fa_failure',
-            error_reason: reason,
-            attempt_number: attemptCount,
-          });
-        })
-        .catch(function () {
-          window.dataLayer.push({
-            event: '2fa_failure',
-            error_reason: ttlReason(),
-            attempt_number: attemptCount,
-          });
-        });
+        .then(onVerifyFailureFromBody)
+        .catch(onVerifyFailureNoBody);
       return resp;
     });
   };
+
+  // --- XMLHttpRequest wrapper ----------------------------------------------
+  // Memberstack 2.0 / axios use XHR by default in browsers. Without this, we
+  // miss every /otp/verify call. Wrapping both open() and send() lets us
+  // attach a load listener with the right URL context.
+  if (window.XMLHttpRequest && window.XMLHttpRequest.prototype) {
+    var XHR_PROTO = window.XMLHttpRequest.prototype;
+    var ORIGINAL_XHR_OPEN = XHR_PROTO.open;
+    var ORIGINAL_XHR_SEND = XHR_PROTO.send;
+
+    XHR_PROTO.open = function (method, url) {
+      try {
+        this.__ordoUrl = typeof url === 'string' ? url : '';
+      } catch (e) {}
+      return ORIGINAL_XHR_OPEN.apply(this, arguments);
+    };
+
+    XHR_PROTO.send = function () {
+      try {
+        var url = this.__ordoUrl || '';
+        var isGenerate = RE_GENERATE.test(url);
+        var isVerify = RE_VERIFY.test(url);
+        if (isGenerate || isVerify) {
+          var xhr = this;
+          xhr.addEventListener('loadend', function () {
+            var ok = xhr.status >= 200 && xhr.status < 300;
+            if (isGenerate) {
+              if (ok) onGenerateSuccess();
+              return;
+            }
+            // isVerify
+            if (ok) {
+              onVerifySuccess();
+              return;
+            }
+            var body = null;
+            try {
+              body = JSON.parse(xhr.responseText);
+            } catch (e) {}
+            if (body) onVerifyFailureFromBody(body);
+            else onVerifyFailureNoBody();
+          });
+        }
+      } catch (err) {
+        // Never break the original request over an instrumentation bug.
+      }
+      return ORIGINAL_XHR_SEND.apply(this, arguments);
+    };
+  }
 
   // --- Abandon detection ---------------------------------------------------
   // Fires on page hide / unload when no 2fa_success was recorded.
