@@ -31,7 +31,8 @@
         'shared/countdown.js',
         'offre-annulation/session-stats.js',
         'offre-annulation/pause-form.js',
-        'shared/redeem-cancel-forms.js'
+        'shared/redeem-cancel-forms.js',
+        'shared/tracking-churn-offers.js'
     ];
 
     function loadScript(url) {
