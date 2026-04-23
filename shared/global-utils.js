@@ -104,14 +104,53 @@
         console.log(PREFIX, 'Rich text decoder initialized');
     }
 
+    /**
+     * Churn Offer Tracking Loader
+     * Injects shared/tracking-churn-offers.js on cancellation funnel pages only.
+     * Centralised here so non-offer cancel pages don't need a bespoke Webflow
+     * footer edit to be instrumented (global-utils.js is already site-wide).
+     */
+    const CHURN_PATHS = [
+        '/membership/offre-annulation',
+        '/membership/annulation-abonnement',
+        '/membership/desabonnement-module-ordotype',
+        '/membership/desabonnement-module-rhumato',
+        '/membership/annulation-offre-asso-interne'
+    ];
+
+    function loadChurnTracking() {
+        const path = window.location.pathname.replace(/\/$/, '');
+        if (CHURN_PATHS.indexOf(path) === -1) return;
+
+        // Resolve version from this script's own src so a pinned global-utils.js
+        // pulls a matching tracking-churn-offers.js.
+        let version = 'main';
+        const list = document.getElementsByTagName('script');
+        for (let i = 0; i < list.length; i++) {
+            const src = list[i].src || '';
+            if (src.indexOf('/shared/global-utils.js') === -1) continue;
+            const m = src.match(/ordotype-scripts@([^\/]+)\//);
+            if (m) { version = m[1]; break; }
+        }
+
+        const script = document.createElement('script');
+        script.defer = true;
+        script.src = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@'
+            + version + '/shared/tracking-churn-offers.js';
+        document.head.appendChild(script);
+        console.log(PREFIX, 'Churn tracking injected (' + version + ')');
+    }
+
     // Initialize on DOMContentLoaded
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
             initSkeletonLoader();
             initRichTextDecoder();
+            loadChurnTracking();
         });
     } else {
         initSkeletonLoader();
         initRichTextDecoder();
+        loadChurnTracking();
     }
 })();

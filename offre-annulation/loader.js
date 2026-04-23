@@ -26,13 +26,14 @@
     const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION;
 
     // Scripts to load in order
+    // Note: tracking-churn-offers.js is injected site-wide by shared/global-utils.js
+    // (path-guarded to cancel URLs) so it lives on every cancel page from one source.
     const scripts = [
         'shared/opacity-reveal.js',
         'shared/countdown.js',
         'offre-annulation/session-stats.js',
         'offre-annulation/pause-form.js',
-        'shared/redeem-cancel-forms.js',
-        'shared/tracking-churn-offers.js'
+        'shared/redeem-cancel-forms.js'
     ];
 
     function loadScript(url) {
