@@ -37,7 +37,11 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f8106ab1cd5a29bee81b2
  *
- * Version: 1.0.0 (2026-04-23)
+ * Version: 1.1.0 (2026-04-23)
+ *   1.0.0 — initial implementation.
+ *   1.1.0 — delay churn_offer_shown until OrdoMemberstack populates (up to
+ *           2s poll) so `plan` is attributed correctly on the impression
+ *           event — loader.js races tracking-churn-offers.js injection.
  */
 (function () {
   'use strict';
@@ -92,6 +96,28 @@
     }
     window.dataLayer.push(payload);
     console.log(PREFIX, eventName, payload);
+  }
+
+  // ---------- Wait for OrdoMemberstack -----------------------------------
+  // offre-annulation/loader.js loads memberstack-utils.js first, but this
+  // tracking script is injected in parallel by global-utils.js, so the two
+  // race. Without a wait, pushShownOnce() can fire before planConnections is
+  // populated, giving `plan: null`. User-click events are immune (they fire
+  // seconds later) — only churn_offer_shown is at risk.
+  var MS_WAIT_TIMEOUT_MS = 2000;
+  var MS_POLL_INTERVAL_MS = 50;
+  function waitForMemberstack(cb) {
+    if (window.OrdoMemberstack) { cb(); return; }
+    var deadline = Date.now() + MS_WAIT_TIMEOUT_MS;
+    var timer = setInterval(function () {
+      if (window.OrdoMemberstack || Date.now() > deadline) {
+        clearInterval(timer);
+        if (!window.OrdoMemberstack) {
+          console.warn(PREFIX, 'OrdoMemberstack not ready after ' + MS_WAIT_TIMEOUT_MS + 'ms, firing with fallback');
+        }
+        cb();
+      }
+    }, MS_POLL_INTERVAL_MS);
   }
 
   // ---------- churn_offer_shown ------------------------------------------
@@ -159,10 +185,14 @@
   // ---------- Init --------------------------------------------------------
   function init() {
     if (onOfferPage) {
-      pushShownOnce();
+      // Bind click listeners + observer immediately — they fire on user
+      // interaction so OrdoMemberstack is guaranteed ready by then.
       wireAccept('redeem-form', 'discount_50_6m');
       wireAccept('pause-form', 'freeze_6m');
       wireDeclined();
+      // Delay churn_offer_shown until OrdoMemberstack populates (up to 2s)
+      // so `plan` is attributed correctly on the impression event.
+      waitForMemberstack(pushShownOnce);
     }
     watchConfirmed();
   }
