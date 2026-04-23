@@ -4,9 +4,9 @@
  * Runs on the /membership/connexion-2fa page. Pushes 3 GA4 events into
  * window.dataLayer so the existing GTM container (GTM-MPMWHVV) can forward
  * them as GA4 Events :
- *   - 2fa_success   : OTP verified successfully
- *   - 2fa_failure   : OTP rejected (error_reason: invalid | expired | unknown)
- *   - 2fa_abandoned : user leaves the page without successful verification
+ *   - 2fa_otp_success : OTP verified successfully
+ *   - 2fa_otp_failure : OTP rejected (error_reason: invalid | expired | unknown)
+ *   - 2fa_abandoned   : user leaves the page without successful verification
  *
  * Companion GTM objects are defined in workspace "2FA events (Claude API setup)"
  * and consume these dataLayer keys : error_reason, attempt_number,
@@ -23,7 +23,7 @@
  *   1.1.0 — add XMLHttpRequest wrapper (Memberstack/axios uses XHR, fetch
  *           proxy alone never fires on /otp/verify).
  *   1.2.0 — count attempts from /otp/verify calls instead of form submits.
- *   1.3.0 — add resend_count to 2fa_failure and 2fa_abandoned payloads so
+ *   1.3.0 — add resend_count to 2fa_otp_failure and 2fa_abandoned payloads so
  *           Looker can split "abandon with resend" (delivery issue) from
  *           "abandon without resend" (givers-up). Skip pagehide on bfcache
  *           restore (event.persisted) which otherwise creates false
@@ -88,7 +88,7 @@
   function onVerifySuccess(attemptNumber) {
     successFired = true;
     window.dataLayer.push({
-      event: '2fa_success',
+      event: '2fa_otp_success',
       attempt_number: attemptNumber,
       time_on_page_sec: sec(),
       resent_before_success: resendCount > 0,
@@ -101,7 +101,7 @@
     else if (body && body.code === 'OTP_INVALID') reason = 'invalid';
     else reason = ttlReason();
     window.dataLayer.push({
-      event: '2fa_failure',
+      event: '2fa_otp_failure',
       error_reason: reason,
       attempt_number: attemptNumber,
       resend_count: resendCount,
@@ -110,7 +110,7 @@
 
   function onVerifyFailureNoBody(attemptNumber) {
     window.dataLayer.push({
-      event: '2fa_failure',
+      event: '2fa_otp_failure',
       error_reason: ttlReason(),
       attempt_number: attemptNumber,
       resend_count: resendCount,
@@ -218,7 +218,7 @@
   }
 
   // --- Abandon detection ---------------------------------------------------
-  // Fires on page hide / unload when no 2fa_success was recorded.
+  // Fires on page hide / unload when no 2fa_otp_success was recorded.
   // Using pagehide because it is more reliable than beforeunload on iOS Safari.
   function pushAbandonedOnce(evt) {
     // bfcache restore: Safari back/forward navigation calls pagehide with
