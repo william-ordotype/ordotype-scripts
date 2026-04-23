@@ -37,10 +37,27 @@
   window.__ordotype2faEventsInstalled = true;
   window.dataLayer = window.dataLayer || [];
 
+  // On /membership/connexion-2fa, _ms-mem isn't populated yet (auth not
+  // complete), but ms_member_id IS set in localStorage just before the 2FA
+  // challenge renders. Use it to attribute events to the member.
+  var memberIdOnPage = null;
+  try { memberIdOnPage = localStorage.getItem('ms_member_id') || null; } catch (e) {}
+
+  // Update user_id for this session (gtag pattern, works before/after gtag.js).
+  if (memberIdOnPage) {
+    (function() {
+      function _gtag() { window.dataLayer.push(arguments); }
+      _gtag('set', { user_id: memberIdOnPage });
+    })();
+  }
+
   // Replaces the former GA4 Admin "Create event" rule that synthesized
   // membership_2fa_view from page_view on /membership/connexion-2fa.
-  // Named without the "membership_" prefix to align with the 2fa_* family.
-  window.dataLayer.push({ event: '2fa_view' });
+  // member_id populates the {{memberstack - member_id}} DLV so subsequent
+  // tag firings on this page get attribution even though _ms-mem is empty.
+  var viewPayload = { event: '2fa_view' };
+  if (memberIdOnPage) viewPayload.member_id = memberIdOnPage;
+  window.dataLayer.push(viewPayload);
 
   // --- Timers ---------------------------------------------------------------
   var pageLoadedAt = Date.now();
