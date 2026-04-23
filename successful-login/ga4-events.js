@@ -4,15 +4,15 @@
  * Runs on the /membership/successful-login page. If the user arrived from
  * /membership/connexion-2fa, pushes a `2fa_login_confirmed` event into
  * dataLayer. This is a ground-truth success signal complementary to the
- * `2fa_success` event emitted from the connexion-2fa page's XHR interceptor:
+ * `2fa_otp_success` event emitted from the connexion-2fa page's XHR interceptor:
  *
- *   - `2fa_success` fires when /otp/verify returns 200 — can race with the
+ *   - `2fa_otp_success` fires when /otp/verify returns 200 — can race with the
  *     Memberstack-initiated navigation and occasionally be lost.
  *   - `2fa_login_confirmed` fires on the next page load — 100 % reliable
  *     because the browser committed the navigation.
  *
  * In Looker, compare counts to detect tracking drift :
- *   count(2fa_success) ≈ count(2fa_login_confirmed) — if not, investigate.
+ *   count(2fa_otp_success) ≈ count(2fa_login_confirmed) — if not, investigate.
  *
  * Related Notion : https://www.notion.so/34a30a1b750f811999b9f853a3ef5451
  *
