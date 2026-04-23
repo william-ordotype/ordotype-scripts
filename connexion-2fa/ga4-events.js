@@ -37,6 +37,11 @@
   window.__ordotype2faEventsInstalled = true;
   window.dataLayer = window.dataLayer || [];
 
+  // Replaces the former GA4 Admin "Create event" rule that synthesized
+  // membership_2fa_view from page_view on /membership/connexion-2fa.
+  // Named without the "membership_" prefix to align with the 2fa_* family.
+  window.dataLayer.push({ event: '2fa_view' });
+
   // --- Timers ---------------------------------------------------------------
   var pageLoadedAt = Date.now();
   var lastCodeRequestAt = pageLoadedAt; // refreshed on each successful /otp/generate
