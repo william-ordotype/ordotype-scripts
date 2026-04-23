@@ -25,9 +25,11 @@
   'use strict';
 
   if (!window || window.__ordotypeMesInfosGa4Installed) return;
-  if (!/^\/membership\/mes-informations(?:[-/]|$)/.test(location.pathname)) return;
+  var pathname = (location.pathname || '').replace(/\/+$/, '');
+  if (!/^\/membership\/mes-informations(?:-|$)/.test(pathname)) return;
   window.__ordotypeMesInfosGa4Installed = true;
   window.dataLayer = window.dataLayer || [];
+  console.log('[OrdoMesInfosGa4] Pushing membership_info_view');
 
   var ms = window.OrdoMemberstack || {};
   var memberId = ms.memberId || null;

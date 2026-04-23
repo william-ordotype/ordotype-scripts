@@ -23,9 +23,11 @@
   'use strict';
 
   if (!window || window.__ordotypePricingGa4Installed) return;
-  if (location.pathname !== '/nos-offres') return;
+  var pathname = (location.pathname || '').replace(/\/+$/, '');
+  if (pathname !== '/nos-offres') return;
   window.__ordotypePricingGa4Installed = true;
   window.dataLayer = window.dataLayer || [];
+  console.log('[OrdoPricingGa4] Pushing nos_offres_view');
 
   var ms = window.OrdoMemberstack || {};
   var memberId = ms.memberId || null;
