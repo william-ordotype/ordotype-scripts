@@ -23,7 +23,8 @@
     'memberstack-sync.js',
     'statut-selectors.js',
     'required-if-visible.js',
-    'phone-input.js'
+    'phone-input.js',
+    'ga4-events.js'
   ];
 
   // External dependencies for phone input

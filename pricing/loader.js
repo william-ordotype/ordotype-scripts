@@ -19,7 +19,8 @@
     'core.js',
     'hash-tabs.js',
     'stripe-checkout.js',
-    'tabs-bg.js'
+    'tabs-bg.js',
+    'ga4-events.js'
   ];
 
   // Load a single script
