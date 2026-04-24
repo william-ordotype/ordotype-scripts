@@ -18,7 +18,7 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f811999b9f853a3ef5451
  *
- * Version: 1.3.0 (2026-04-22)
+ * Version: 1.5.0 (2026-04-24)
  *   1.0.0 — initial fetch proxy implementation.
  *   1.1.0 — add XMLHttpRequest wrapper (Memberstack/axios uses XHR, fetch
  *           proxy alone never fires on /otp/verify).
@@ -28,6 +28,15 @@
  *           "abandon without resend" (givers-up). Skip pagehide on bfcache
  *           restore (event.persisted) which otherwise creates false
  *           abandons on Safari back/forward navigation.
+ *   1.4.x — push 2fa_view on init; attach member_id via localStorage.ms_member_id.
+ *   1.5.0 — reduce 2fa_abandoned false positives. Three changes:
+ *           (a) mark success at XHR readyState=2 (HEADERS_RECEIVED) instead of
+ *               waiting for loadend, so a Memberstack-initiated navigation on
+ *               200 doesn't beat us to pagehide.
+ *           (b) belt-and-suspenders: scan dataLayer for 2fa_otp_success before
+ *               firing abandoned.
+ *           (c) bounce filter: skip abandoned when attempt_count=0 AND
+ *               time_on_page_sec<3 (pre-form misclicks / back-button).
  */
 
 (function () {
@@ -213,6 +222,14 @@
         if (isGenerate || isVerify) {
           var xhr = this;
           var attemptNumber = isVerify ? registerVerifyAttempt() : 0;
+          // Fire success as early as possible (HEADERS_RECEIVED) to win the
+          // race against pagehide when Memberstack navigates on 200.
+          xhr.addEventListener('readystatechange', function () {
+            if (!isVerify || successFired) return;
+            if (xhr.readyState < 2) return;
+            var s = xhr.status;
+            if (s >= 200 && s < 300) onVerifySuccess(attemptNumber);
+          });
           xhr.addEventListener('loadend', function () {
             var ok = xhr.status >= 200 && xhr.status < 300;
             if (isGenerate) {
@@ -221,7 +238,7 @@
             }
             // isVerify
             if (ok) {
-              onVerifySuccess(attemptNumber);
+              if (!successFired) onVerifySuccess(attemptNumber);
               return;
             }
             var body = null;
@@ -242,11 +259,30 @@
   // --- Abandon detection ---------------------------------------------------
   // Fires on page hide / unload when no 2fa_otp_success was recorded.
   // Using pagehide because it is more reliable than beforeunload on iOS Safari.
+  function dataLayerHasSuccess() {
+    try {
+      var dl = window.dataLayer || [];
+      for (var i = 0; i < dl.length; i++) {
+        var e = dl[i];
+        if (e && e.event === '2fa_otp_success') return true;
+      }
+    } catch (err) {}
+    return false;
+  }
+
   function pushAbandonedOnce(evt) {
     // bfcache restore: Safari back/forward navigation calls pagehide with
     // persisted=true even though the user is not abandoning. Skip.
     if (evt && evt.persisted === true) return;
     if (successFired || abandonFired) return;
+    // Belt-and-suspenders: if anything already pushed a 2fa_otp_success
+    // (e.g. readystatechange path raced ahead of the successFired assignment
+    // between event loop ticks), don't double-count.
+    if (dataLayerHasSuccess()) return;
+    // Bounce filter: a user arriving and leaving within 3s without any
+    // /otp/verify attempt is a misclick or back-button, not an intentional
+    // abandonment of the 2FA challenge.
+    if (attemptCount === 0 && sec() < 3) return;
     abandonFired = true;
     window.dataLayer.push({
       event: '2fa_abandoned',
