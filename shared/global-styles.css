@@ -57,3 +57,12 @@ form#wf-form-mutateDocument {
 .decode-html {
     display: flex;
 }
+
+/* Pin footer to viewport bottom on very tall displays (>3000px wide screens, etc.) */
+html, body { min-height: 100vh; }
+body > div:has(> .page-wrapper) {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+.page-wrapper { flex: 1 0 auto; }
