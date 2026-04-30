@@ -40,8 +40,8 @@
         // Memberstack data (from shared utility)
         const ms = window.OrdoMemberstack || {};
 
-        const fnUrl = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/create-checkout';
-        const hookUrl = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook';
+        const fnUrl = 'https://billing.ordotype.fr/.netlify/functions/create-checkout';
+        const hookUrl = 'https://billing.ordotype.fr/.netlify/functions/notify-webhook';
 
         // Configuration with defaults
         const successUrl = config.successUrl || `${window.location.origin}/membership/moyen-de-paiement-ajoute`;

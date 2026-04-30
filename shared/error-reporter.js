@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    var WEBHOOK_URL = 'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook';
+    var WEBHOOK_URL = 'https://pricing.ordotype.fr/.netlify/functions/notify-webhook';
 
     window.OrdoErrorReporter = {
         report: function(context, error) {

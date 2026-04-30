@@ -23,7 +23,7 @@
       e.preventDefault();
       console.log(PREFIX, 'form.submit intercepted');
 
-      var fnUrl = 'https://ordotype-stripe-checkout-sessions.netlify.app/.netlify/functions/create-checkout-session';
+      var fnUrl = 'https://checkout.ordotype.fr/.netlify/functions/create-checkout-session';
 
       // Read config for payment methods
       var config = window.OrdoMesInfos ? window.OrdoMesInfos.config : {};

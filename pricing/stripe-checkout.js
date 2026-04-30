@@ -85,7 +85,7 @@
 
       try {
         var resp = await fetchWithRetry(
-          'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/create-checkout-session',
+          'https://pricing.ordotype.fr/.netlify/functions/create-checkout-session',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -129,7 +129,7 @@
       // Fire-and-forget webhook helper via proxy
       // Uses sendBeacon to survive page navigation (no CORS preflight with text/plain)
       function notifyWebhook(payload) {
-        var url = 'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook';
+        var url = 'https://pricing.ordotype.fr/.netlify/functions/notify-webhook';
         var data = JSON.stringify({ type: 'abandon-cart', ...payload });
         if (navigator.sendBeacon) {
           navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));

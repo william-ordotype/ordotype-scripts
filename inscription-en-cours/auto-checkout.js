@@ -76,7 +76,7 @@
 
     console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option });
 
-    const fnUrl = 'https://ordotype-stripe-checkout-sessions.netlify.app/.netlify/functions/create-checkout-session';
+    const fnUrl = 'https://checkout.ordotype.fr/.netlify/functions/create-checkout-session';
 
     let sessionId, checkoutUrl;
     try {
@@ -139,7 +139,7 @@
             paymentMethods
         };
 
-        var url = 'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook';
+        var url = 'https://pricing.ordotype.fr/.netlify/functions/notify-webhook';
         var data = JSON.stringify(payload);
         if (navigator.sendBeacon) {
             navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));

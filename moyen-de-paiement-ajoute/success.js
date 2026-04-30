@@ -17,8 +17,8 @@
 
   const PREFIX = '[PaymentSuccess]';
   const COUNTDOWN_SECONDS = 2;
-  const BILLING_PORTAL_URL = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/create-billing-portal';
-  const WEBHOOK_URL = 'https://ordotype-stripe-setup-session.netlify.app/.netlify/functions/notify-webhook';
+  const BILLING_PORTAL_URL = 'https://billing.ordotype.fr/.netlify/functions/create-billing-portal';
+  const WEBHOOK_URL = 'https://billing.ordotype.fr/.netlify/functions/notify-webhook';
 
   /**
    * Initialize on DOM ready

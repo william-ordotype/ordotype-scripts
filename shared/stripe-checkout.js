@@ -65,7 +65,7 @@ async function initStripeCheckout() {
     const paymentMethods = config.paymentMethods || ['sepa_debit'];
     const option = config.option || 'default';
 
-    const fnUrl = 'https://ordotype-stripe-checkout-sessions.netlify.app/.netlify/functions/create-checkout-session';
+    const fnUrl = 'https://checkout.ordotype.fr/.netlify/functions/create-checkout-session';
 
     // Retry fetch on network errors (TypeError) — transient mobile failures
     function fetchWithRetry(url, options, retries, delay) {
@@ -126,7 +126,7 @@ async function initStripeCheckout() {
     // Helper to send abandon-cart payload via proxy
     // Uses sendBeacon to survive page navigation (no CORS preflight with text/plain)
     function notifyAbandonCart(payload) {
-        var url = 'https://ordotype-stripe-double-checkout.netlify.app/.netlify/functions/notify-webhook';
+        var url = 'https://pricing.ordotype.fr/.netlify/functions/notify-webhook';
         var data = JSON.stringify({ type: 'abandon-cart', ...payload });
         if (navigator.sendBeacon) {
             navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));
