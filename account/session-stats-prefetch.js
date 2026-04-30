@@ -12,7 +12,7 @@
     'use strict';
 
     var PREFIX = '[SessionStatsPrefetch]';
-    var API_URL = 'https://memberstack-webhooks.netlify.app/.netlify/functions/session-count';
+    var API_URL = 'https://webhooks.ordotype.fr/.netlify/functions/session-count';
     var CACHE_KEY = 'ordo_session_stats';
 
     function init() {

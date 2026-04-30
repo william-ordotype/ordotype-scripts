@@ -16,7 +16,7 @@
     'use strict';
 
     var PREFIX = '[SessionStats]';
-    var API_URL = 'https://memberstack-webhooks.netlify.app/.netlify/functions/session-count';
+    var API_URL = 'https://webhooks.ordotype.fr/.netlify/functions/session-count';
     var CACHE_KEY = 'ordo_session_stats';
     var CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
     var MIN_SESSIONS = 18;
