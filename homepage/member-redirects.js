@@ -208,6 +208,7 @@
             window.location.replace("/membership/probleme-de-paiement");
             return;
         }
+        /*
         else if (
             isInterne &&
             semestre >= ms.getRequiredSemester(specialite) &&
@@ -218,6 +219,7 @@
         ) {
             $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
+        */
         else if (partnershipCity === 'Rennes (MG)' && srpImg) {
             srpImg.style.display = 'flex';
         }

@@ -99,6 +99,7 @@
         window.location.replace('/membership/conserver-ses-acces');
         return;
     }
+    /*
     else if (
         isInterne &&
         semestre >= ms.getRequiredSemester(specialite) &&
@@ -109,6 +110,7 @@
     ) {
         if ($) $('#banner-to-hide-fin-internat').css({ 'display': 'flex' });
     }
+    */
     else if (
         ms.customFields["semestre"] === 'Internat terminé' &&
         hasAllowedPlanId &&
