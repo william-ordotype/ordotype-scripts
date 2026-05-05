@@ -12,6 +12,17 @@
         .text-size-body2 strong {
             font-size: inherit;
         }
+        body > .page-wrapper {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        body > .page-wrapper > .main-wrapper {
+            flex: 1 0 auto;
+        }
+        body > .page-wrapper > .footer_component {
+            flex-shrink: 0;
+        }
     `;
     document.head.appendChild(style);
 })();
