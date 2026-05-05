@@ -60,9 +60,11 @@
         localStorage.removeItem('_ms-mem');
         localStorage.removeItem('userExists');
 
-        // Logout from Memberstack
+        // Logout from Memberstack as cleanup after account deletion.
+        // Distinct from a regular #logout-button click (which gets reason=user_clicked_button
+        // via auth-cdn auth.forms.ts). reason is forwarded to Sentry by auth-cdn proxy.
         if (window.$memberstackDom) {
-          await window.$memberstackDom.logout();
+          await window.$memberstackDom.logout({ reason: 'account_deleted' });
         }
 
         // Redirect home
