@@ -61,6 +61,7 @@
     var couponId2 = btn2.dataset.coupon || null;
 
     var paymentMethods = ['sepa_debit'];
+    var pageCurrency = (window.OrdoPageCurrency || 'eur').toLowerCase();
 
     // Retry fetch on network errors (TypeError) — transient mobile failures
     function fetchWithRetry(url, options, retries, delay) {
@@ -91,6 +92,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               stripeCustomerId: stripeCustomerId,
+              pageCurrency: pageCurrency,
               priceId1: priceId1,
               couponId1: couponId1,
               priceId2: priceId2,
