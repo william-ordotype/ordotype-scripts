@@ -96,8 +96,8 @@
             }
         });
 
-        // Handler for .urine-24h - decode all HTML entities
-        document.querySelectorAll('.urine-24h').forEach(function(el) {
+        // Handler for .urine-24h and .selles - decode all HTML entities
+        document.querySelectorAll('.urine-24h, .selles').forEach(function(el) {
             el.innerHTML = el.textContent;
         });
 
