@@ -80,18 +80,25 @@
 
     let sessionId, checkoutUrl;
     try {
-        const resp = await fetch(fnUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                stripeCustomerId,
-                priceId,
-                couponId,
-                successUrl,
-                cancelUrl,
-                payment_method_types: paymentMethods
-            })
-        });
+        // Reuse in-flight fetch from the footer inline kicker if present, else fire one now.
+        let resp;
+        if (window.__checkoutSessionPromise) {
+            console.log(PREFIX, 'Using pre-flight session');
+            resp = await window.__checkoutSessionPromise;
+        } else {
+            resp = await fetch(fnUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stripeCustomerId,
+                    priceId,
+                    couponId,
+                    successUrl,
+                    cancelUrl,
+                    payment_method_types: paymentMethods
+                })
+            });
+        }
 
         if (!resp.ok) {
             const text = await resp.text().catch(() => '(no body)');
