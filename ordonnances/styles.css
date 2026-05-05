@@ -62,6 +62,11 @@ label:has(input[type="checkbox"]) {
     margin-bottom: 0px;
 }
 
+/* Exam indications list spacing — collapse gap before following paragraph */
+.exam-indications.w-richtext ul {
+    margin-bottom: 0;
+}
+
 /* Print styles */
 @media print {
     body {
