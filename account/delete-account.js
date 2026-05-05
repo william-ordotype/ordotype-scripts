@@ -60,12 +60,10 @@
         localStorage.removeItem('_ms-mem');
         localStorage.removeItem('userExists');
 
-        // Logout from Memberstack
+        // Logout from Memberstack — user clicked the delete button, this is voluntary.
+        // reason is forwarded to Sentry by auth-cdn proxy (see LogoutReason).
         if (window.$memberstackDom) {
-          // reason is forwarded through the auth-cdn Memberstack Proxy to Sentry
-          // for involuntary-vs-user-initiated triage. See LogoutReason in
-          // ordotype-authentication-proxy/src/core/auth/auth.types.ts.
-          await window.$memberstackDom.logout({ reason: 'account_deleted' });
+          await window.$memberstackDom.logout({ reason: 'user_clicked_button' });
         }
 
         // Redirect home
