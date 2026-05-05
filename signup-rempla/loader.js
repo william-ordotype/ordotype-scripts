@@ -27,10 +27,14 @@
         'shared/stripe-checkout.js'
     ];
 
+    // script.async = false → browser fetches in parallel but executes in
+    // insertion order. Preserves the dependency chain (memberstack-utils →
+    // core → stripe-checkout) without serializing downloads.
     function loadScript(url) {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = url;
+            script.async = false;
             script.onload = resolve;
             script.onerror = () => reject(new Error(`Failed to load: ${url}`));
             document.head.appendChild(script);
@@ -38,14 +42,14 @@
     }
 
     async function loadAll() {
-        try {
-            // Load shared utilities first
-            await loadScript(`${BASE}/shared/memberstack-utils.js`);
-            await loadScript(`${BASE}/shared/error-reporter.js`);
+        const orderedJS = [
+            `${BASE}/shared/memberstack-utils.js`,
+            `${BASE}/shared/error-reporter.js`,
+            ...scripts.map(f => `${BASE}/${f}`)
+        ];
 
-            for (const file of scripts) {
-                await loadScript(`${BASE}/${file}`);
-            }
+        try {
+            await Promise.all(orderedJS.map(loadScript));
         } catch (err) {
             console.error(PREFIX, 'Load error:', err);
         }
