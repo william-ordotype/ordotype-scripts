@@ -62,7 +62,10 @@
 
         // Logout from Memberstack
         if (window.$memberstackDom) {
-          await window.$memberstackDom.logout();
+          // reason is forwarded through the auth-cdn Memberstack Proxy to Sentry
+          // for involuntary-vs-user-initiated triage. See LogoutReason in
+          // ordotype-authentication-proxy/src/core/auth/auth.types.ts.
+          await window.$memberstackDom.logout({ reason: 'account_deleted' });
         }
 
         // Redirect home
