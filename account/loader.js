@@ -41,30 +41,23 @@
     'phone-input.js'
   ];
 
-  // External dependencies for phone input
-  const dependencies = [
-    {
-      type: 'css',
-      url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css'
-    },
-    {
-      type: 'js',
-      url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js'
-    }
-  ];
+  const INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
+  const INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
 
-  // Load a single script
+  // script.async = false → browser fetches in parallel but executes in
+  // insertion order. Preserves the dependency chain (memberstack-utils →
+  // core → consumers) without serializing downloads.
   function loadScript(url) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = url;
+      script.async = false;
       script.onload = resolve;
       script.onerror = () => reject(new Error(`Failed to load: ${url}`));
       document.head.appendChild(script);
     });
   }
 
-  // Load a stylesheet
   function loadCSS(url) {
     return new Promise((resolve) => {
       const link = document.createElement('link');
@@ -75,25 +68,21 @@
     });
   }
 
-  // Load all dependencies first, then scripts in order
   async function loadAll() {
     console.log('[OrdoAccount] Loading...');
 
+    const orderedJS = [
+      `${SHARED_BASE}/memberstack-utils.js`,
+      `${SHARED_BASE}/error-reporter.js`,
+      INTL_TEL_INPUT_JS,
+      ...scripts.map(f => `${BASE}/${f}`)
+    ];
+
     try {
-      // Load shared utilities first
-      await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
-      await loadScript(`${SHARED_BASE}/error-reporter.js`);
-
-      // Load external dependencies (CSS + intl-tel-input)
-      await Promise.all(dependencies.map(dep => {
-        return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);
-      }));
-
-      // Load scripts sequentially
-      for (const file of scripts) {
-        await loadScript(`${BASE}/${file}`);
-      }
-
+      await Promise.all([
+        loadCSS(INTL_TEL_INPUT_CSS),
+        ...orderedJS.map(loadScript)
+      ]);
       console.log('[OrdoAccount] All scripts loaded');
     } catch (err) {
       console.error('[OrdoAccount] Load error:', err);
