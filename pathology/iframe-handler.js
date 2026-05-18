@@ -54,7 +54,7 @@
       }
 
       var host = window.location.origin;
-      var url = host + '/' + collection + '/' + slug;
+      var url = host + '/' + collection + '/' + slug + '?embed=1';
       var currentIframeId = ev.currentTarget.getAttribute('data-iframe-id');
 
       $('.content-item').removeClass('is-active');
