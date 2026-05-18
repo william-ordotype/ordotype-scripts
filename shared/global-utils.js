@@ -18,20 +18,6 @@
      * Removes skeleton-loader divs after a delay specified by ms-code-skeleton attribute
      */
     function initSkeletonLoader() {
-        // Skip skeleton overlays inside an Ordotype embed iframe — embed-mode.js
-        // pre-reveals members content immediately, so the skeleton would just
-        // be a 200ms visual flash hiding already-ready content. Decoder still
-        // runs after this returns (it's a separate call in the IIFE below),
-        // so escaped HTML still decodes — no FOUC.
-        let inEmbedIframe = false;
-        try {
-            inEmbedIframe = !!(window.frameElement && window.frameElement.dataset && window.frameElement.dataset.embed === '1');
-        } catch (e) {}
-        if (inEmbedIframe) {
-            console.log(PREFIX, 'Skeleton loaders skipped (embed mode)');
-            return;
-        }
-
         const skeletonElements = document.querySelectorAll('[ms-code-skeleton]');
 
         skeletonElements.forEach((element, index) => {

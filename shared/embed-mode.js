@@ -38,14 +38,6 @@
 
   document.documentElement.classList.add('is-embed');
 
-  // Hide skeleton overlays via CSS — fires regardless of when global-utils.js
-  // adds them, no timing dependency, no multiple JS listeners needed.
-  // The HTML decoder in global-utils still runs (so escaped HTML decodes
-  // normally); only the visual overlay is suppressed inside embed iframes.
-  var style = document.createElement('style');
-  style.textContent = '.is-embed .skeleton-loader{display:none !important;}';
-  (document.head || document.documentElement).appendChild(style);
-
   function revealAndStrip() {
     // Pre-reveal members-only content by REMOVING data-ms-content="members"
     // (not via CSS). Removing the attribute means Memberstack's hide rule
