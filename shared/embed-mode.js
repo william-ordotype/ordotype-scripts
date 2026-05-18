@@ -38,24 +38,28 @@
 
   document.documentElement.classList.add('is-embed');
 
-  var style = document.createElement('style');
-  style.textContent =
-    '.is-embed [data-ms-content="members"]{' +
-      'display:revert !important;' +
-      'visibility:visible !important;' +
-      'opacity:1 !important;' +
-    '}';
-  (document.head || document.documentElement).appendChild(style);
-
-  function stripSkeletons() {
-    var nodes = document.querySelectorAll('[ms-code-skeleton]');
-    for (var i = 0; i < nodes.length; i++) {
-      nodes[i].removeAttribute('ms-code-skeleton');
+  function revealAndStrip() {
+    // Pre-reveal members-only content by REMOVING data-ms-content="members"
+    // (not via CSS). Removing the attribute means Memberstack's hide rule
+    // no longer matches the element, so Webflow's own class-based layout
+    // (display: flex on .posos-div-block, etc.) stays authoritative.
+    // CSS-based reveal with `display: revert` would clobber those layouts.
+    //
+    // Only "members" is pre-revealed — premium-pages/!copier-coller-html
+    // and other plan-specific gates stay under Memberstack's control.
+    var membersOnly = document.querySelectorAll('[data-ms-content="members"]');
+    for (var i = 0; i < membersOnly.length; i++) {
+      membersOnly[i].removeAttribute('data-ms-content');
+    }
+    // Strip ms-code-skeleton so the loading skeleton doesn't hold content.
+    var skeletons = document.querySelectorAll('[ms-code-skeleton]');
+    for (var j = 0; j < skeletons.length; j++) {
+      skeletons[j].removeAttribute('ms-code-skeleton');
     }
   }
-  stripSkeletons();
+  revealAndStrip();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', stripSkeletons);
+    document.addEventListener('DOMContentLoaded', revealAndStrip);
   }
 
   console.log('[OrdoEmbed] Active');
