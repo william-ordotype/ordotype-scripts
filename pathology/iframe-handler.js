@@ -80,8 +80,13 @@
         // Mark embed via dataset (not URL) so Webflow-bundled URL parsers
         // (e.g. PersonalizedButton) don't pick up the marker in slugs.
         // embed-mode.js reads this via window.frameElement.dataset.embed.
-        openedIframe.dataset.embed = '1';
-        openedIframe.setAttribute('src', url);
+        // Skip if mousedown handler already started this exact load — re-setting
+        // src to the same URL causes Chrome to restart the load and discard
+        // the head-start.
+        if (openedIframe.getAttribute('src') !== url) {
+          openedIframe.dataset.embed = '1';
+          openedIframe.setAttribute('src', url);
+        }
       } else {
         // Mobile
         target.addClass("is-active");
@@ -152,6 +157,32 @@
           $(".pathologies_tab .tab_right-icon").show();
         }, 1500);
       }
+    });
+
+    // Prefetch on mousedown (desktop only): start the iframe load ~50-100ms
+    // before the click event fires. No bandwidth waste — only the button
+    // the user committed to pressing triggers a load.
+    // Mobile creates iframes dynamically on click, so prefetch doesn't apply.
+    $('.pathologies_tab .content-item[data-iframe-id]').on('mousedown', function(ev) {
+      if (window.innerWidth <= 767) return;        // desktop only
+      if (ev.button !== 0) return;                  // primary (left) button only
+      if ($(paywallElem).css('display') === 'block') return; // skip when paywalled
+
+      var meta = $(ev.currentTarget).find('.iframe-meta')[0];
+      if (!meta) return;
+      var slug = meta.getAttribute('data-iframe-slug');
+      var collection = meta.getAttribute('data-collection-slug');
+      if (!slug || !collection) return;
+
+      var iframeId = ev.currentTarget.getAttribute('data-iframe-id');
+      var iframe = document.getElementById(iframeId);
+      if (!iframe) return;
+
+      var url = window.location.origin + '/' + collection + '/' + slug;
+      if (iframe.getAttribute('src') === url) return; // already loading/loaded
+
+      iframe.dataset.embed = '1';
+      iframe.setAttribute('src', url);
     });
 
     // Refresh iframe when switching subtab
