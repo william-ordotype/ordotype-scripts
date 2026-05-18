@@ -54,10 +54,7 @@
       }
 
       var host = window.location.origin;
-      // Use hash (#embed=1) rather than query string so the marker
-      // doesn't pollute slug-parsing logic in Webflow-bundled JS
-      // (PersonalizedButton was including "?embed=1" in favorite slugs).
-      var url = host + '/' + collection + '/' + slug + '#embed=1';
+      var url = host + '/' + collection + '/' + slug;
       var currentIframeId = ev.currentTarget.getAttribute('data-iframe-id');
 
       $('.content-item').removeClass('is-active');
@@ -80,6 +77,10 @@
         }
 
         var openedIframe = document.getElementById(currentIframeId);
+        // Mark embed via dataset (not URL) so Webflow-bundled URL parsers
+        // (e.g. PersonalizedButton) don't pick up the marker in slugs.
+        // embed-mode.js reads this via window.frameElement.dataset.embed.
+        openedIframe.dataset.embed = '1';
         openedIframe.setAttribute('src', url);
       } else {
         // Mobile
@@ -120,6 +121,7 @@
 
         var iframe = document.createElement("iframe");
         iframe.className = "mobile-iframe";
+        iframe.dataset.embed = '1';
         iframe.src = url;
         iframe.style.width = "100%";
         iframe.style.height = "600px";

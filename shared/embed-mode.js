@@ -19,23 +19,19 @@
 (function() {
   'use strict';
 
-  // Require BOTH: #embed=1 hash AND being inside an iframe.
-  // Hash (not query string) so the marker doesn't get picked up by
-  // Webflow-bundled URL-slug parsers (PersonalizedButton, analytics, etc.).
-  // The iframe check prevents leaks if someone opens the embed URL directly
-  // (e.g. right-click → "Open frame in new tab", shared link, etc.) —
-  // in that case we fall back to normal Memberstack gating.
-  var hasEmbedParam = false;
+  // Detect embed via the parent iframe element's data-embed attribute.
+  // The parent's iframe-handler.js sets iframe.dataset.embed = '1' before
+  // assigning src. We avoid URL markers (?embed=1 / #embed=1) because
+  // Webflow-bundled JS reads location.href for slug extraction and would
+  // include the marker in slugs (favorites, analytics, etc.).
+  //
+  // window.frameElement is non-null only inside a same-origin iframe;
+  // accessing it across origins throws, which we treat as "not our embed".
+  var isEmbed = false;
   try {
-    var hashStr = (window.location.hash || '').replace(/^#/, '');
-    hasEmbedParam = new URLSearchParams(hashStr).get('embed') === '1';
+    isEmbed = !!(window.frameElement && window.frameElement.dataset && window.frameElement.dataset.embed === '1');
   } catch (e) {}
 
-  var inIframe = false;
-  try { inIframe = window.self !== window.top; }
-  catch (e) { inIframe = true; } // cross-origin top access throws → we're framed
-
-  var isEmbed = hasEmbedParam && inIframe;
   window.OrdoEmbed = { active: isEmbed };
 
   if (!isEmbed) return;
