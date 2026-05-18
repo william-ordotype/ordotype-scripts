@@ -67,10 +67,16 @@
       overlays[k].remove();
     }
   }
+  // Run once now (covers the case where global-utils already added overlays).
   revealAndStrip();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', revealAndStrip);
-  }
+  // Always re-run on DOMContentLoaded — if global-utils.js adds overlays
+  // later in the same DOMContentLoaded handler (its listener fires first),
+  // we need a second pass to remove them. The listener is a no-op if the
+  // event already fired, so this is safe even in late-load scenarios.
+  document.addEventListener('DOMContentLoaded', revealAndStrip);
+  // Final safety net: if anything (e.g. a setTimeout) injects an overlay
+  // after DOMContentLoaded, catch it on window.load.
+  window.addEventListener('load', revealAndStrip);
 
   console.log('[OrdoEmbed] Active');
 })();
