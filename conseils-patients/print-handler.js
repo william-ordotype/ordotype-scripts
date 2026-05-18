@@ -47,17 +47,6 @@
       return;
     }
 
-    // Track JS print fallback usage (vs direct-PDF prints which bypass JS).
-    try {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        event: 'JSPrintFallback',
-        eventCategory: 'Print',
-        eventAction: 'ConseilsJSFallback',
-        printableArea: printableAreaId
-      });
-    } catch (e) {}
-
     // Clone that area
     var clone = printableArea.cloneNode(true);
 
