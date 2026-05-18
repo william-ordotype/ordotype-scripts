@@ -129,7 +129,12 @@
       console.log('[OrdoPathology] Lazy-loading ClipboardJS + clipboard.js');
       loadPromise = loadScript(CLIPBOARDJS_URL)
         .then(function() { return loadScript(BASE + '/clipboard.js'); })
-        .then(function() { ready = true; });
+        .then(function() { ready = true; })
+        .catch(function(err) {
+          console.error('[OrdoPathology] Lazy clipboard load failed:', err);
+          loadPromise = null; // allow retry on next interaction
+          throw err;          // propagate so click handler skips the replay
+        });
       return loadPromise;
     }
 
@@ -137,11 +142,13 @@
       return e.target && e.target.closest && e.target.closest('#copy-drawer');
     }
 
+    // Preload is best-effort — swallow rejection silently; the click
+    // handler's .catch will surface the error if it fails there too.
     document.addEventListener('mousedown', function(e) {
-      if (inDrawer(e)) loadLibs();
+      if (inDrawer(e)) loadLibs().catch(function() {});
     }, true);
     document.addEventListener('touchstart', function(e) {
-      if (inDrawer(e)) loadLibs();
+      if (inDrawer(e)) loadLibs().catch(function() {});
     }, { capture: true, passive: true });
     document.addEventListener('click', function(e) {
       if (!inDrawer(e)) return;
@@ -149,7 +156,9 @@
       e.preventDefault();
       e.stopPropagation();
       var original = e.target;
-      loadLibs().then(function() { original.click(); });
+      loadLibs()
+        .then(function() { original.click(); })
+        .catch(function() { /* already logged in loadLibs */ });
     }, true);
   }
 
