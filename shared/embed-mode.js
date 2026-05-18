@@ -51,10 +51,20 @@
     for (var i = 0; i < membersOnly.length; i++) {
       membersOnly[i].removeAttribute('data-ms-content');
     }
-    // Strip ms-code-skeleton so the loading skeleton doesn't hold content.
+    // Strip ms-code-skeleton so global-utils.js's setTimeout-based skeleton
+    // removal becomes a no-op (the attr it reads is gone). Then yank any
+    // already-attached .skeleton-loader overlays so content reveals NOW
+    // instead of waiting the configured delay (typically 200ms).
+    // The decoder in global-utils.js has already run by this point
+    // (it shares the DOMContentLoaded handler that adds the skeletons),
+    // so removing the overlay safely reveals decoded HTML.
     var skeletons = document.querySelectorAll('[ms-code-skeleton]');
     for (var j = 0; j < skeletons.length; j++) {
       skeletons[j].removeAttribute('ms-code-skeleton');
+    }
+    var overlays = document.querySelectorAll('.skeleton-loader');
+    for (var k = 0; k < overlays.length; k++) {
+      overlays[k].remove();
     }
   }
   revealAndStrip();
