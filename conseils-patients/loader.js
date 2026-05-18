@@ -26,14 +26,48 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/conseils-patients';
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
-  // Scripts to load (in order)
-  const scripts = [
-    'opacity-reveal.js',
-    'html-cleaner.js',
-    'tracking.js',
-    'print-handler.js',
-    'copy-handler.js'
-  ];
+  // Scripts to load (in order). Built after embed-mode.js loads so we
+  // can read window.OrdoEmbed.active and skip print-handler.js when
+  // embedded (lazy-loaded on click instead).
+  function buildScripts(isEmbed) {
+    return [
+      'opacity-reveal.js',
+      'html-cleaner.js',
+      'tracking.js'
+    ].concat(isEmbed ? [] : ['print-handler.js'])
+     .concat(['copy-handler.js']);
+  }
+
+  // Embed mode: lazy-load print-handler.js on first click of any print
+  // button (#print-button-fr / #print-button-fr2 / #print-button-ar).
+  // Saves ~1s on Fast 3G iframe loads; costs ~500ms on the first print
+  // click (rare action).
+  function installLazyPrint() {
+    var buttonIds = ['print-button-fr', 'print-button-fr2', 'print-button-ar'];
+    var lazyPrint = function(e) {
+      e.preventDefault();
+      var clickedBtn = e.currentTarget;
+      buttonIds.forEach(function(id) {
+        var b = document.getElementById(id);
+        if (b) b.removeEventListener('click', lazyPrint);
+      });
+      var s = document.createElement('script');
+      s.src = `${BASE}/print-handler.js`;
+      s.onload = function() { clickedBtn.click(); };
+      document.head.appendChild(s);
+    };
+    var attach = function() {
+      buttonIds.forEach(function(id) {
+        var b = document.getElementById(id);
+        if (b) b.addEventListener('click', lazyPrint);
+      });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attach);
+    } else {
+      attach();
+    }
+  }
 
   // Load a single script
   function loadScript(url) {
@@ -67,9 +101,11 @@
       await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
 
-      for (const file of scripts) {
+      const isEmbed = !!(window.OrdoEmbed && window.OrdoEmbed.active);
+      for (const file of buildScripts(isEmbed)) {
         await loadScript(`${BASE}/${file}`);
       }
+      if (isEmbed) installLazyPrint();
       console.log('[OrdoConseils] All scripts loaded');
     } catch (err) {
       console.error('[OrdoConseils] Load error:', err);

@@ -27,14 +27,41 @@
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
   // Scripts to load (in order) — absolute URLs bypass BASE prefix.
-  const scripts = [
-    'qr-code-aggregator.js',
-    'opacity-reveal.js',
-    'urgent-handler.js',
-    'duplicates-cleaner.js',
-    'print-handler.js',
-    'copy-handler.js'
-  ];
+  // Built after embed-mode.js loads so we can read window.OrdoEmbed.active
+  // and skip print-handler.js when embedded (lazy-loaded on click instead).
+  function buildScripts(isEmbed) {
+    return [
+      'qr-code-aggregator.js',
+      'opacity-reveal.js',
+      'urgent-handler.js',
+      'duplicates-cleaner.js'
+    ].concat(isEmbed ? [] : ['print-handler.js'])
+     .concat(['copy-handler.js']);
+  }
+
+  // Embed mode: most prescriptions use #print-cp-ordo (direct PDF link).
+  // The rare PDF-less ones expose #print-button-cp and need print-handler.js.
+  // Skip the eager load (~1s on Fast 3G); fetch on first click instead.
+  function installLazyPrint() {
+    var attach = function() {
+      var btn = document.getElementById('print-button-cp');
+      if (!btn) return;
+      var lazyPrint = function(e) {
+        e.preventDefault();
+        btn.removeEventListener('click', lazyPrint);
+        var s = document.createElement('script');
+        s.src = `${BASE}/print-handler.js`;
+        s.onload = function() { btn.click(); };
+        document.head.appendChild(s);
+      };
+      btn.addEventListener('click', lazyPrint);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attach);
+    } else {
+      attach();
+    }
+  }
 
   // Load a single script
   function loadScript(url) {
@@ -68,10 +95,12 @@
       await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
 
-      for (const file of scripts) {
+      const isEmbed = !!(window.OrdoEmbed && window.OrdoEmbed.active);
+      for (const file of buildScripts(isEmbed)) {
         const url = file.startsWith('http') ? file : `${BASE}/${file}`;
         await loadScript(url);
       }
+      if (isEmbed) installLazyPrint();
       console.log('[OrdoOrdonnances] All scripts loaded');
     } catch (err) {
       console.error('[OrdoOrdonnances] Load error:', err);

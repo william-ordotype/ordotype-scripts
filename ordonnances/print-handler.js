@@ -28,6 +28,18 @@
       return;
     }
 
+    // Track JS print fallback usage. Direct-PDF prints (#print-cp-ordo)
+    // don't fire this — they're plain <a href="...pdf" target="_blank">.
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'JSPrintFallback',
+        eventCategory: 'Print',
+        eventAction: 'OrdonnancesJSFallback',
+        printableArea: printableAreaId
+      });
+    } catch (e) {}
+
     var printWindow = window.open("", "", "height=400,width=800");
     printWindow.document.write("</head><body>");
     printWindow.document.write(printableArea.innerHTML);
