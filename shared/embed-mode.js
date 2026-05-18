@@ -38,6 +38,14 @@
 
   document.documentElement.classList.add('is-embed');
 
+  // Hide skeleton overlays via CSS — fires regardless of when global-utils.js
+  // adds them, no timing dependency, no multiple JS listeners needed.
+  // The HTML decoder in global-utils still runs (so escaped HTML decodes
+  // normally); only the visual overlay is suppressed inside embed iframes.
+  var style = document.createElement('style');
+  style.textContent = '.is-embed .skeleton-loader{display:none !important;}';
+  (document.head || document.documentElement).appendChild(style);
+
   function revealAndStrip() {
     // Pre-reveal members-only content by REMOVING data-ms-content="members"
     // (not via CSS). Removing the attribute means Memberstack's hide rule
@@ -51,32 +59,12 @@
     for (var i = 0; i < membersOnly.length; i++) {
       membersOnly[i].removeAttribute('data-ms-content');
     }
-    // Strip ms-code-skeleton so global-utils.js's setTimeout-based skeleton
-    // removal becomes a no-op (the attr it reads is gone). Then yank any
-    // already-attached .skeleton-loader overlays so content reveals NOW
-    // instead of waiting the configured delay (typically 200ms).
-    // The decoder in global-utils.js has already run by this point
-    // (it shares the DOMContentLoaded handler that adds the skeletons),
-    // so removing the overlay safely reveals decoded HTML.
-    var skeletons = document.querySelectorAll('[ms-code-skeleton]');
-    for (var j = 0; j < skeletons.length; j++) {
-      skeletons[j].removeAttribute('ms-code-skeleton');
-    }
-    var overlays = document.querySelectorAll('.skeleton-loader');
-    for (var k = 0; k < overlays.length; k++) {
-      overlays[k].remove();
-    }
+    // Skeleton overlays are hidden via CSS above — no JS removal needed.
   }
-  // Run once now (covers the case where global-utils already added overlays).
   revealAndStrip();
-  // Always re-run on DOMContentLoaded — if global-utils.js adds overlays
-  // later in the same DOMContentLoaded handler (its listener fires first),
-  // we need a second pass to remove them. The listener is a no-op if the
-  // event already fired, so this is safe even in late-load scenarios.
-  document.addEventListener('DOMContentLoaded', revealAndStrip);
-  // Final safety net: if anything (e.g. a setTimeout) injects an overlay
-  // after DOMContentLoaded, catch it on window.load.
-  window.addEventListener('load', revealAndStrip);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', revealAndStrip);
+  }
 
   console.log('[OrdoEmbed] Active');
 })();
