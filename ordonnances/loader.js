@@ -26,22 +26,14 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/ordonnances';
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
-  // Scripts to load (in order) — absolute URLs bypass BASE prefix.
-  // Built after embed-mode.js loads so we can read window.OrdoEmbed.active.
-  // In embed mode, print-handler.js and copy-handler.js are skipped from
-  // the initial load and lazy-loaded on first click of their buttons.
-  function buildScripts(isEmbed) {
-    var s = ['qr-code-aggregator.js', 'opacity-reveal.js', 'urgent-handler.js', 'duplicates-cleaner.js'];
-    if (!isEmbed) {
-      s.push('print-handler.js');
-      s.push('copy-handler.js');
-    }
-    return s;
-  }
+  // Scripts to load (in order). print-handler.js and copy-handler.js are
+  // intentionally absent — they're lazy-loaded on first button click via
+  // installLazyPrint() / installLazyCopy() regardless of embed mode.
+  var SCRIPTS = ['qr-code-aggregator.js', 'opacity-reveal.js', 'urgent-handler.js', 'duplicates-cleaner.js'];
 
-  // Embed mode: most prescriptions use #print-cp-ordo (direct PDF link).
-  // The rare PDF-less ones expose #print-button-cp and need print-handler.js.
-  // Skip the eager load (~1s on Fast 3G); fetch on first click instead.
+  // Most prescriptions use #print-cp-ordo (direct PDF link). The PDF-less
+  // ones expose #print-button-cp and need print-handler.js. Skip the
+  // eager load; fetch on first click instead.
   function installLazyPrint() {
     var attach = function() {
       var btn = document.getElementById('print-button-cp');
@@ -63,10 +55,10 @@
     }
   }
 
-  // Embed mode: copy-handler.js is ~15KB and only does real work on click.
-  // Skip eager load and fetch on first click of any copy trigger. After
-  // load, re-fire the click so copy-handler's listener runs normally.
-  // Possible copy triggers: #copy-button, #copy-button-fcp, [data-ordo-copy="trigger"].
+  // copy-handler.js only does real work on click. Skip eager load and
+  // fetch on first click of any copy trigger. After load, re-fire the
+  // click so copy-handler's listener runs normally.
+  // Copy triggers: #copy-button, #copy-button-fcp, [data-ordo-copy="trigger"].
   function installLazyCopy() {
     var attach = function() {
       var nodes = []
@@ -124,15 +116,12 @@
       await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
 
-      const isEmbed = !!(window.OrdoEmbed && window.OrdoEmbed.active);
-      for (const file of buildScripts(isEmbed)) {
+      for (const file of SCRIPTS) {
         const url = file.startsWith('http') ? file : `${BASE}/${file}`;
         await loadScript(url);
       }
-      if (isEmbed) {
-        installLazyPrint();
-        installLazyCopy();
-      }
+      installLazyPrint();
+      installLazyCopy();
       console.log('[OrdoOrdonnances] All scripts loaded');
     } catch (err) {
       console.error('[OrdoOrdonnances] Load error:', err);

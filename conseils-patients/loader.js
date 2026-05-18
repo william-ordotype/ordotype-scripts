@@ -26,21 +26,13 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/conseils-patients';
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
-  // Scripts to load (in order). Built after embed-mode.js loads so we
-  // can read window.OrdoEmbed.active. In embed mode, print-handler.js
-  // and copy-handler.js are skipped from the initial load and
-  // lazy-loaded on first click of their buttons.
-  function buildScripts(isEmbed) {
-    var s = ['opacity-reveal.js', 'html-cleaner.js', 'tracking.js'];
-    if (!isEmbed) {
-      s.push('print-handler.js');
-      s.push('copy-handler.js');
-    }
-    return s;
-  }
+  // Scripts to load (in order). print-handler.js and copy-handler.js are
+  // intentionally absent — they're lazy-loaded on first button click via
+  // installLazyPrint() / installLazyCopy() regardless of embed mode.
+  var SCRIPTS = ['opacity-reveal.js', 'html-cleaner.js', 'tracking.js'];
 
-  // Embed mode: copy-handler.js (~6KB) only does real work on click.
-  // Skip eager load; fetch on first click of #copy-button, then re-fire.
+  // copy-handler.js only does real work on click. Skip eager load; fetch
+  // on first click of #copy-button, then re-fire the click.
   function installLazyCopy() {
     var attach = function() {
       var btn = document.getElementById('copy-button');
@@ -62,10 +54,10 @@
     }
   }
 
-  // Embed mode: lazy-load print-handler.js on first click of any print
-  // button (#print-button-fr / #print-button-fr2 / #print-button-ar).
-  // Saves ~1s on Fast 3G iframe loads; costs ~500ms on the first print
-  // click (rare action).
+  // Lazy-load print-handler.js on first click of any print button
+  // (#print-button-fr / #print-button-fr2 / #print-button-ar). Saves the
+  // eager fetch on every pageview; costs a small one-time delay on first
+  // print click.
   function installLazyPrint() {
     var buttonIds = ['print-button-fr', 'print-button-fr2', 'print-button-ar'];
     var lazyPrint = function(e) {
@@ -125,14 +117,11 @@
       await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
 
-      const isEmbed = !!(window.OrdoEmbed && window.OrdoEmbed.active);
-      for (const file of buildScripts(isEmbed)) {
+      for (const file of SCRIPTS) {
         await loadScript(`${BASE}/${file}`);
       }
-      if (isEmbed) {
-        installLazyPrint();
-        installLazyCopy();
-      }
+      installLazyPrint();
+      installLazyCopy();
       console.log('[OrdoConseils] All scripts loaded');
     } catch (err) {
       console.error('[OrdoConseils] Load error:', err);

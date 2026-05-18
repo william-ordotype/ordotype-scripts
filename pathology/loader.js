@@ -37,13 +37,15 @@
   };
 
   // Scripts to load (in order) - use full URLs for shared scripts
+  // clipboard.js is intentionally NOT here — #copy-drawer only appears on
+  // custom ordonnances / conseils patients, so we lazy-load it on first
+  // interaction via installLazyClipboard() below.
   const scripts = [
     `${SHARED}/memberstack-utils.js`,
     `${SHARED}/error-reporter.js`,
     `${BASE}/core.js`,
     `${BASE}/countdown.js`,
     `${BASE}/member-redirects.js`,
-    `${BASE}/clipboard.js`,
     `${BASE}/date-french.js`,
     `${BASE}/sources-list.js`,
     `${SHARED}/opacity-reveal.js`,
@@ -109,5 +111,48 @@
     }
   }
 
+  // Lazy-load ClipboardJS + clipboard.js only when the (rare) custom copy
+  // drawer is actually used. Preloads on mousedown/touchstart so the libs
+  // are usually ready by the time the click event fires; if not, blocks the
+  // click, loads, then replays it.
+  //
+  // ClipboardJS must execute BEFORE clipboard.js (which calls
+  // `new ClipboardJS(...)` at IIFE-time), so sequence the two — Promise.all
+  // would race them since dynamically-inserted scripts execute as they arrive.
+  function installLazyClipboard() {
+    var ready = false;
+    var loadPromise = null;
+    var CLIPBOARDJS_URL = 'https://cdn.jsdelivr.net/npm/clipboard@2.0.11/dist/clipboard.min.js';
+
+    function loadLibs() {
+      if (loadPromise) return loadPromise;
+      console.log('[OrdoPathology] Lazy-loading ClipboardJS + clipboard.js');
+      loadPromise = loadScript(CLIPBOARDJS_URL)
+        .then(function() { return loadScript(BASE + '/clipboard.js'); })
+        .then(function() { ready = true; });
+      return loadPromise;
+    }
+
+    function inDrawer(e) {
+      return e.target && e.target.closest && e.target.closest('#copy-drawer');
+    }
+
+    document.addEventListener('mousedown', function(e) {
+      if (inDrawer(e)) loadLibs();
+    }, true);
+    document.addEventListener('touchstart', function(e) {
+      if (inDrawer(e)) loadLibs();
+    }, { capture: true, passive: true });
+    document.addEventListener('click', function(e) {
+      if (!inDrawer(e)) return;
+      if (ready) return; // ClipboardJS already bound — let it handle this click
+      e.preventDefault();
+      e.stopPropagation();
+      var original = e.target;
+      loadLibs().then(function() { original.click(); });
+    }, true);
+  }
+
+  installLazyClipboard();
   loadAll();
 })();
