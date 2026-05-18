@@ -38,6 +38,15 @@
                 delay = 2000;
             }
 
+            // Cap at 50ms — the original 200-2000ms values were cosmetic
+            // overkill. The actual work the overlay was hiding (decoder +
+            // DOM cleanup from urgent-handler/qr-code-aggregator/etc.)
+            // typically completes within 20ms on modern devices, so 50ms
+            // is a safe ceiling with margin.
+            if (delay > 50) {
+                delay = 50;
+            }
+
             setTimeout(() => {
                 // Remove the skeleton loader div after delay
                 const skeletonDiv = document.getElementById(`skeleton-${index}`);
