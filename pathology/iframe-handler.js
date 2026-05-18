@@ -54,7 +54,10 @@
       }
 
       var host = window.location.origin;
-      var url = host + '/' + collection + '/' + slug + '?embed=1';
+      // Use hash (#embed=1) rather than query string so the marker
+      // doesn't pollute slug-parsing logic in Webflow-bundled JS
+      // (PersonalizedButton was including "?embed=1" in favorite slugs).
+      var url = host + '/' + collection + '/' + slug + '#embed=1';
       var currentIframeId = ev.currentTarget.getAttribute('data-iframe-id');
 
       $('.content-item').removeClass('is-active');

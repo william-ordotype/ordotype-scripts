@@ -19,13 +19,16 @@
 (function() {
   'use strict';
 
-  // Require BOTH: ?embed=1 param AND being inside an iframe.
+  // Require BOTH: #embed=1 hash AND being inside an iframe.
+  // Hash (not query string) so the marker doesn't get picked up by
+  // Webflow-bundled URL-slug parsers (PersonalizedButton, analytics, etc.).
   // The iframe check prevents leaks if someone opens the embed URL directly
   // (e.g. right-click → "Open frame in new tab", shared link, etc.) —
   // in that case we fall back to normal Memberstack gating.
   var hasEmbedParam = false;
   try {
-    hasEmbedParam = new URLSearchParams(window.location.search).get('embed') === '1';
+    var hashStr = (window.location.hash || '').replace(/^#/, '');
+    hasEmbedParam = new URLSearchParams(hashStr).get('embed') === '1';
   } catch (e) {}
 
   var inIframe = false;
