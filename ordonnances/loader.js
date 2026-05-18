@@ -27,16 +27,16 @@
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
   // Scripts to load (in order) — absolute URLs bypass BASE prefix.
-  // Built after embed-mode.js loads so we can read window.OrdoEmbed.active
-  // and skip print-handler.js when embedded (lazy-loaded on click instead).
+  // Built after embed-mode.js loads so we can read window.OrdoEmbed.active.
+  // In embed mode, print-handler.js and copy-handler.js are skipped from
+  // the initial load and lazy-loaded on first click of their buttons.
   function buildScripts(isEmbed) {
-    return [
-      'qr-code-aggregator.js',
-      'opacity-reveal.js',
-      'urgent-handler.js',
-      'duplicates-cleaner.js'
-    ].concat(isEmbed ? [] : ['print-handler.js'])
-     .concat(['copy-handler.js']);
+    var s = ['qr-code-aggregator.js', 'opacity-reveal.js', 'urgent-handler.js', 'duplicates-cleaner.js'];
+    if (!isEmbed) {
+      s.push('print-handler.js');
+      s.push('copy-handler.js');
+    }
+    return s;
   }
 
   // Embed mode: most prescriptions use #print-cp-ordo (direct PDF link).
@@ -55,6 +55,35 @@
         document.head.appendChild(s);
       };
       btn.addEventListener('click', lazyPrint);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attach);
+    } else {
+      attach();
+    }
+  }
+
+  // Embed mode: copy-handler.js is ~15KB and only does real work on click.
+  // Skip eager load and fetch on first click of any copy trigger. After
+  // load, re-fire the click so copy-handler's listener runs normally.
+  // Possible copy triggers: #copy-button, #copy-button-fcp, [data-ordo-copy="trigger"].
+  function installLazyCopy() {
+    var attach = function() {
+      var nodes = []
+        .concat(Array.prototype.slice.call(document.querySelectorAll('#copy-button')))
+        .concat(Array.prototype.slice.call(document.querySelectorAll('#copy-button-fcp')))
+        .concat(Array.prototype.slice.call(document.querySelectorAll('[data-ordo-copy="trigger"]')));
+      if (nodes.length === 0) return;
+      var lazyCopy = function(e) {
+        e.preventDefault();
+        var clickedBtn = e.currentTarget;
+        nodes.forEach(function(n) { n.removeEventListener('click', lazyCopy); });
+        var s = document.createElement('script');
+        s.src = `${BASE}/copy-handler.js`;
+        s.onload = function() { clickedBtn.click(); };
+        document.head.appendChild(s);
+      };
+      nodes.forEach(function(n) { n.addEventListener('click', lazyCopy); });
     };
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', attach);
@@ -100,7 +129,10 @@
         const url = file.startsWith('http') ? file : `${BASE}/${file}`;
         await loadScript(url);
       }
-      if (isEmbed) installLazyPrint();
+      if (isEmbed) {
+        installLazyPrint();
+        installLazyCopy();
+      }
       console.log('[OrdoOrdonnances] All scripts loaded');
     } catch (err) {
       console.error('[OrdoOrdonnances] Load error:', err);

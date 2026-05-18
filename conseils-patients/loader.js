@@ -27,15 +27,39 @@
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
   // Scripts to load (in order). Built after embed-mode.js loads so we
-  // can read window.OrdoEmbed.active and skip print-handler.js when
-  // embedded (lazy-loaded on click instead).
+  // can read window.OrdoEmbed.active. In embed mode, print-handler.js
+  // and copy-handler.js are skipped from the initial load and
+  // lazy-loaded on first click of their buttons.
   function buildScripts(isEmbed) {
-    return [
-      'opacity-reveal.js',
-      'html-cleaner.js',
-      'tracking.js'
-    ].concat(isEmbed ? [] : ['print-handler.js'])
-     .concat(['copy-handler.js']);
+    var s = ['opacity-reveal.js', 'html-cleaner.js', 'tracking.js'];
+    if (!isEmbed) {
+      s.push('print-handler.js');
+      s.push('copy-handler.js');
+    }
+    return s;
+  }
+
+  // Embed mode: copy-handler.js (~6KB) only does real work on click.
+  // Skip eager load; fetch on first click of #copy-button, then re-fire.
+  function installLazyCopy() {
+    var attach = function() {
+      var btn = document.getElementById('copy-button');
+      if (!btn) return;
+      var lazyCopy = function(e) {
+        e.preventDefault();
+        btn.removeEventListener('click', lazyCopy);
+        var s = document.createElement('script');
+        s.src = `${BASE}/copy-handler.js`;
+        s.onload = function() { btn.click(); };
+        document.head.appendChild(s);
+      };
+      btn.addEventListener('click', lazyCopy);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attach);
+    } else {
+      attach();
+    }
   }
 
   // Embed mode: lazy-load print-handler.js on first click of any print
@@ -105,7 +129,10 @@
       for (const file of buildScripts(isEmbed)) {
         await loadScript(`${BASE}/${file}`);
       }
-      if (isEmbed) installLazyPrint();
+      if (isEmbed) {
+        installLazyPrint();
+        installLazyCopy();
+      }
       console.log('[OrdoConseils] All scripts loaded');
     } catch (err) {
       console.error('[OrdoConseils] Load error:', err);
