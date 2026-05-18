@@ -27,18 +27,14 @@
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
   // Scripts to load (in order) — absolute URLs bypass BASE prefix.
-  // Built after embed-mode.js runs so we can read window.OrdoEmbed.active
-  // (the canonical embed gate: ?embed=1 AND inside an iframe).
-  function buildScripts() {
-    var isEmbed = window.OrdoEmbed && window.OrdoEmbed.active;
-    return [
-      'qr-code-aggregator.js',
-      'opacity-reveal.js',
-      'urgent-handler.js',
-      'duplicates-cleaner.js'
-    ].concat(isEmbed ? [] : ['print-handler.js'])
-     .concat(['copy-handler.js']);
-  }
+  const scripts = [
+    'qr-code-aggregator.js',
+    'opacity-reveal.js',
+    'urgent-handler.js',
+    'duplicates-cleaner.js',
+    'print-handler.js',
+    'copy-handler.js'
+  ];
 
   // Load a single script
   function loadScript(url) {
@@ -72,7 +68,7 @@
       await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
 
-      for (const file of buildScripts()) {
+      for (const file of scripts) {
         const url = file.startsWith('http') ? file : `${BASE}/${file}`;
         await loadScript(url);
       }
