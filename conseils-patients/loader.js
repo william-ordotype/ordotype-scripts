@@ -8,9 +8,23 @@
 (function() {
   'use strict';
 
-  // Base URL
-  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients';
-  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
+  // Detect own commit/ref from the loader's src so sub-scripts load from
+  // the same pinned version. Avoids jsDelivr @main alias staleness (where
+  // edge nodes cache the alias→commit mapping separately from file
+  // content, so purging files doesn't always force a fresh resolution).
+  function detectVersion() {
+    var scripts = document.getElementsByTagName('script');
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i].src || '';
+      if (src.indexOf('/conseils-patients/loader.js') === -1) continue;
+      var m = src.match(/ordotype-scripts@([^\/]+)\//);
+      if (m) return m[1];
+    }
+    return 'main';
+  }
+  const VERSION = detectVersion();
+  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/conseils-patients';
+  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
   // Scripts to load (in order). Built after embed-mode.js runs so we can
   // read window.OrdoEmbed.active (the canonical embed gate: ?embed=1 AND
