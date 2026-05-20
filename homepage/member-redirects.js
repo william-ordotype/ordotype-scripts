@@ -227,6 +227,17 @@
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });
         }
 
+        // Payment-failed banner — now JS-controlled (replaces Memberstack
+        // data-ms-content="has-failed-payment" + data-ms-bind:style, which flashed
+        // because Memberstack revealed it at paint and this script hid it a beat later).
+        // The banner is display:none by default in Webflow, so it only ever appears here.
+        // Members who needed the payment-page redirect already left above; grace-period
+        // members returned early at the top. So this runs only for members who stay on the
+        // homepage and still owe payment (e.g. brique-past-due / sepa-temporary holders).
+        if (hasPastDuePlan) {
+            $('#banner-to-hide-payment-failed').css({ display: 'flex' });
+        }
+
         console.log(PREFIX, 'Member redirects initialized');
     })();
 })();
