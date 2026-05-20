@@ -152,8 +152,20 @@
             return;
         }
 
-        // Display various banners based on member conditions
-        if (isEssaiGratuit && isNotRemplacant && date_since_switch !== null && date_since_switch < 8) {
+        // Display various banners based on member conditions.
+        // Payment-failed is checked FIRST in this chain — it's the most urgent billing
+        // state (active dunning / imminent access loss), so it outranks every other banner
+        // here, including cb-expired. (Profile-completeness redirects above still run first.)
+        if (hasPastDuePlan) {
+            if (!isPastDueBrique && !isSepaTemporary) {
+                window.location.replace("/membership/probleme-de-paiement");
+                return;
+            }
+            // Grace access (brique-past-due / sepa-temporary) but the special-500 payment
+            // still failed → show the payment-failed banner. JS-controlled (banner is
+            // display:none by default in Webflow); mutually exclusive with the others.
+            $('#banner-to-hide-payment-failed').css({ display: 'flex' });
+        } else if (isEssaiGratuit && isNotRemplacant && date_since_switch !== null && date_since_switch < 8) {
             $('#banner-to-hide-essai-gratuit-blue').css({ display: 'flex' });
         } else if (isEssaiGratuit && isNotRemplacant) {
             $('#banner-to-hide-essai-gratuit-new').css({ display: 'flex' });
@@ -204,18 +216,6 @@
             isInterne && noRPPS && date_since_signup !== null && date_since_signup > SIGNUP_DAYS && parseInt(semestreValue, 10) >= 2
         ) {
             $('#banner-to-hide-rpps-interne').css({ display: 'flex' });
-        } else if (hasPastDuePlan) {
-            if (!isPastDueBrique && !isSepaTemporary) {
-                window.location.replace("/membership/probleme-de-paiement");
-                return;
-            }
-            // Has grace access (brique-past-due / sepa-temporary) but the special-500
-            // payment still failed → show the payment-failed banner. It lives inside this
-            // else-if chain, so it never stacks with the other banners. Replaces the
-            // Memberstack data-ms-content="has-failed-payment" + data-ms-bind:style setup,
-            // which flashed (revealed at paint, hidden a beat later). Banner is
-            // display:none by default in Webflow, so it only ever appears here.
-            $('#banner-to-hide-payment-failed').css({ display: 'flex' });
         }
         /*
         else if (
@@ -229,11 +229,13 @@
             $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
         */
-        else if (partnershipCity === 'Rennes (MG)' && srpImg) {
-            srpImg.style.display = 'flex';
-        }
         else if (noPhone) {
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });
+        }
+        // Rennes (MG) partnership image — super low importance, kept last so any other
+        // banner (incl. phone-missing) wins for a Rennes member.
+        else if (partnershipCity === 'Rennes (MG)' && srpImg) {
+            srpImg.style.display = 'flex';
         }
 
         console.log(PREFIX, 'Member redirects initialized');
