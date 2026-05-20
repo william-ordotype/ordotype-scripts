@@ -204,9 +204,18 @@
             isInterne && noRPPS && date_since_signup !== null && date_since_signup > SIGNUP_DAYS && parseInt(semestreValue, 10) >= 2
         ) {
             $('#banner-to-hide-rpps-interne').css({ display: 'flex' });
-        } else if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary) {
-            window.location.replace("/membership/probleme-de-paiement");
-            return;
+        } else if (hasPastDuePlan) {
+            if (!isPastDueBrique && !isSepaTemporary) {
+                window.location.replace("/membership/probleme-de-paiement");
+                return;
+            }
+            // Has grace access (brique-past-due / sepa-temporary) but the special-500
+            // payment still failed → show the payment-failed banner. It lives inside this
+            // else-if chain, so it never stacks with the other banners. Replaces the
+            // Memberstack data-ms-content="has-failed-payment" + data-ms-bind:style setup,
+            // which flashed (revealed at paint, hidden a beat later). Banner is
+            // display:none by default in Webflow, so it only ever appears here.
+            $('#banner-to-hide-payment-failed').css({ display: 'flex' });
         }
         /*
         else if (
