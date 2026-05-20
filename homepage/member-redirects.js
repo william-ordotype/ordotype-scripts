@@ -204,9 +204,18 @@
             isInterne && noRPPS && date_since_signup !== null && date_since_signup > SIGNUP_DAYS && parseInt(semestreValue, 10) >= 2
         ) {
             $('#banner-to-hide-rpps-interne').css({ display: 'flex' });
-        } else if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary) {
-            window.location.replace("/membership/probleme-de-paiement");
-            return;
+        } else if (hasPastDuePlan) {
+            if (!isPastDueBrique && !isSepaTemporary) {
+                window.location.replace("/membership/probleme-de-paiement");
+                return;
+            }
+            // Has grace access (brique-past-due / sepa-temporary) but the special-500
+            // payment still failed → show the payment-failed banner. It lives inside this
+            // else-if chain, so it never stacks with the other banners. Replaces the
+            // Memberstack data-ms-content="has-failed-payment" + data-ms-bind:style setup,
+            // which flashed (revealed at paint, hidden a beat later). Banner is
+            // display:none by default in Webflow, so it only ever appears here.
+            $('#banner-to-hide-payment-failed').css({ display: 'flex' });
         }
         /*
         else if (
@@ -225,17 +234,6 @@
         }
         else if (noPhone) {
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });
-        }
-
-        // Payment-failed banner — now JS-controlled (replaces Memberstack
-        // data-ms-content="has-failed-payment" + data-ms-bind:style, which flashed
-        // because Memberstack revealed it at paint and this script hid it a beat later).
-        // The banner is display:none by default in Webflow, so it only ever appears here.
-        // Members who needed the payment-page redirect already left above; grace-period
-        // members returned early at the top. So this runs only for members who stay on the
-        // homepage and still owe payment (e.g. brique-past-due / sepa-temporary holders).
-        if (hasPastDuePlan) {
-            $('#banner-to-hide-payment-failed').css({ display: 'flex' });
         }
 
         console.log(PREFIX, 'Member redirects initialized');
