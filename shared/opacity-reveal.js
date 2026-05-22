@@ -37,15 +37,32 @@
         }
     }
 
-    // Reveal as soon as the DOM is parsed. By then the global-utils.js rich
-    // text decoder (a defer script, guaranteed by spec to run before
-    // DOMContentLoaded) has already prettified the content, so there's no
-    // flash of escaped HTML. Previously this waited for window.load, which
-    // held content invisible for several seconds on slow connections while it
-    // waited on images/iframes the text doesn't need.
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+    // Choose when to reveal. Default 'load' preserves the original behavior
+    // for pages whose revealed elements are filled by a later script (e.g.
+    // the inscription-offre-speciale countdown), which need the element
+    // populated before it appears. Pages can opt into 'domcontentloaded' via
+    // OPACITY_REVEAL_CONFIG.trigger to reveal as soon as the DOM is parsed.
+    const trigger = (window.OPACITY_REVEAL_CONFIG || {}).trigger === 'domcontentloaded'
+        ? 'domcontentloaded'
+        : 'load';
+
+    if (trigger === 'domcontentloaded') {
+        // Reveal as soon as the DOM is parsed. Used by the pathology page,
+        // where the content masked by opacity:0 is decoded by global-utils.js
+        // — a defer script guaranteed by spec to run before DOMContentLoaded —
+        // so there's no flash of escaped HTML. Waiting for window.load held
+        // content invisible for several seconds on slow connections while it
+        // waited on images/iframes the text doesn't need.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     } else {
-        init();
+        if (document.readyState === 'complete') {
+            init();
+        } else {
+            window.addEventListener('load', init);
+        }
     }
 })();

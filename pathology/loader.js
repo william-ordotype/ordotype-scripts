@@ -24,8 +24,12 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/pathology';
   const SHARED = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
-  // Configure opacity reveal for pathology selectors
+  // Configure opacity reveal for pathology selectors. Reveal on
+  // DOMContentLoaded (not window.load): the content is decoded by
+  // global-utils.js (a defer script, done before DCL), so waiting for full
+  // load just kept it invisible for seconds while images/iframes loaded.
   window.OPACITY_REVEAL_CONFIG = {
+    trigger: 'domcontentloaded',
     selectors: [
       '.rc-html.opacity-0',
       '.redac-and-ref.patho',
