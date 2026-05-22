@@ -37,9 +37,15 @@
         }
     }
 
-    if (document.readyState === 'complete') {
-        init();
+    // Reveal as soon as the DOM is parsed. By then the global-utils.js rich
+    // text decoder (a defer script, guaranteed by spec to run before
+    // DOMContentLoaded) has already prettified the content, so there's no
+    // flash of escaped HTML. Previously this waited for window.load, which
+    // held content invisible for several seconds on slow connections while it
+    // waited on images/iframes the text doesn't need.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
     } else {
-        window.addEventListener('load', init);
+        init();
     }
 })();
