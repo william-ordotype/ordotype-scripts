@@ -52,6 +52,39 @@
     filter: invert(1);
 }
 
+/* Loading spinner — pure-CSS replacement for the Webflow Lottie loader.
+   The 107 .loading-spinner Lottie embeds each re-fetched the same JSON on
+   every pageview (a concurrent cache stampede; a <link rel=preload> can't
+   dedupe it). This white ring renders the same loader on the
+   .content-item.is-active (--primary-400) background with zero network
+   requests. Webflow side: strip the Lottie data-attributes so
+   .loading-spinner becomes a plain empty div. Width is pinned because the
+   empty div's width:auto would otherwise collapse to 0 in the flex row.
+   We don't set `display` — Webflow's JS keeps toggling display:none until
+   the item is loading. */
+.loading-spinner {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    box-sizing: border-box;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: ordo-spinner-rotate 0.7s linear infinite;
+}
+
+/* Hide any residual Lottie SVG so the rollout is clean in either order
+   (this CSS shipped before or after the Webflow embed is stripped). */
+.loading-spinner svg {
+    display: none;
+}
+
+@keyframes ordo-spinner-rotate {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Mobile iframe */
 .mobile-iframe {
     display: none;
