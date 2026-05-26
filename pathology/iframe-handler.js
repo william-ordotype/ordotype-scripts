@@ -154,6 +154,12 @@
         // Define the load event handler
         function iframeLoadHandler(event) {
           iframe.dataset.loaded = '1';
+          if (spinnerSafetyTimeout) {
+            clearTimeout(spinnerSafetyTimeout);
+            spinnerSafetyTimeout = null;
+          }
+          $('.pathologies_tab .loading-spinner').hide();
+          $('.pathologies_tab .tab_right-icon').show();
           if (window.pathologyId) {
             var prescriptionTypeFr = iframe.closest('[data-w-tab]').getAttribute('data-w-tab');
             var prescriptionType = prescriptionTypeFr === "Conseil patient" ? "recommendation" : "prescription";
@@ -171,12 +177,6 @@
 
         iframe.addEventListener("load", iframeLoadHandler);
         target.after(iframe);
-
-        // Hide spinner and show icon after a delay (fallback)
-        setTimeout(function() {
-          $(".pathologies_tab .loading-spinner").hide();
-          $(".pathologies_tab .tab_right-icon").show();
-        }, 1500);
       }
     });
 
