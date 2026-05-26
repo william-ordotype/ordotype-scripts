@@ -27,6 +27,7 @@
 
   function init() {
     var paywallElem = $('.rappels-cliniques-content .rc_hidden_warning_wrapper');
+    var spinnerSafetyTimeout = null;
 
     // Handle paywall visibility
     if ($(paywallElem).css('display') === 'block') {
@@ -59,12 +60,31 @@
 
       $('.content-item').removeClass('is-active');
 
-      // Loading state
+      // Loading state — skip spinner if iframe is already loaded with this
+      // URL (mousedown prefetch finished before click, or same item re-clicked);
+      // otherwise show spinner + arm a 1s safety net in case the load event
+      // never fires for this navigation.
       target.find('.tab_right-icon').hide();
-      target.find('.loading-spinner').show();
+      var isDesktop = window.innerWidth > 767;
+      var openedIframe = isDesktop ? document.getElementById(currentIframeId) : null;
+      var alreadyLoaded = openedIframe
+        && openedIframe.getAttribute('src') === url
+        && openedIframe.dataset.loaded === '1';
+
+      if (alreadyLoaded) {
+        target.find('.tab_right-icon').show();
+      } else {
+        target.find('.loading-spinner').show();
+        if (spinnerSafetyTimeout) clearTimeout(spinnerSafetyTimeout);
+        spinnerSafetyTimeout = setTimeout(function() {
+          $('.pathologies_tab .loading-spinner').hide();
+          $('.pathologies_tab .tab_right-icon').show();
+          spinnerSafetyTimeout = null;
+        }, 1000);
+      }
 
       // Desktop
-      if (window.innerWidth > 767) {
+      if (isDesktop) {
         target.addClass('is-active');
 
         if ($(paywallElem).css('display') === 'block') {
@@ -76,7 +96,6 @@
           return;
         }
 
-        var openedIframe = document.getElementById(currentIframeId);
         // Mark embed via dataset (not URL) so Webflow-bundled URL parsers
         // (e.g. PersonalizedButton) don't pick up the marker in slugs.
         // embed-mode.js reads this via window.frameElement.dataset.embed.
@@ -84,6 +103,7 @@
         // src to the same URL causes Chrome to restart the load and discard
         // the head-start.
         if (openedIframe.getAttribute('src') !== url) {
+          openedIframe.dataset.loaded = '';
           openedIframe.dataset.embed = '1';
           openedIframe.setAttribute('src', url);
         }
@@ -133,6 +153,7 @@
 
         // Define the load event handler
         function iframeLoadHandler(event) {
+          iframe.dataset.loaded = '1';
           if (window.pathologyId) {
             var prescriptionTypeFr = iframe.closest('[data-w-tab]').getAttribute('data-w-tab');
             var prescriptionType = prescriptionTypeFr === "Conseil patient" ? "recommendation" : "prescription";
@@ -196,6 +217,11 @@
 
     // Hide loading state after iframe loads
     $('iframe').on('load', function(ev) {
+      ev.target.dataset.loaded = '1';
+      if (spinnerSafetyTimeout) {
+        clearTimeout(spinnerSafetyTimeout);
+        spinnerSafetyTimeout = null;
+      }
       $('.pathologies_tab .loading-spinner').hide();
       $('.pathologies_tab .tab_right-icon').show();
 
