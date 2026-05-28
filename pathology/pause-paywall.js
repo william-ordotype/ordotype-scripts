@@ -1,10 +1,17 @@
 /**
  * Ordotype Pathology - Pause Paywall
- * If the member has a paused subscription, replaces the inner content of
- * every .rc_hidden_warning_wrapper > .rc_premium_hidden_warning with a
- * pause-specific message and CTA to /membership/compte.
+ * If the member has a paused subscription:
+ *   1. Replaces .rc_hidden_warning_wrapper > .rc_premium_hidden_warning innerHTML
+ *      with a pause-specific message + CTA to /membership/compte.
+ *   2. Strips .w-condition-invisible from the wrapper so it's actually displayed.
+ *      Paused members still hold their plan in Memberstack, so Webflow's
+ *      conditional visibility keeps the paywall hidden by default — without
+ *      this, iframe-handler's `display === 'block'` gate never trips and the
+ *      gated iframes load normally.
  *
- * Runs BEFORE iframe-handler.js so clones inherit the replaced content.
+ * Must run BEFORE iframe-handler.js so its init clones the updated paywall
+ * (with pause message) into .pathologies_tab_col-right. Loaded as a
+ * pre-Tier-2 step by loader.js.
  *
  * Depends on: memberstack-utils.js (window.OrdoMemberstack)
  */
@@ -53,6 +60,15 @@
         inners.forEach(function(el) {
             el.innerHTML = html;
         });
+
+        // Force the paywall visible — Webflow keeps it hidden for paused
+        // members because they still hold their plan. iframe-handler checks
+        // `css('display') === 'block'` to decide between iframe and paywall.
+        var wrappers = document.querySelectorAll('.rc_hidden_warning_wrapper');
+        wrappers.forEach(function(el) {
+            el.classList.remove('w-condition-invisible');
+        });
+
         console.log(PREFIX, 'Replaced', inners.length, 'paywall(s) with pause message, resume date:', formattedDate);
     }
 

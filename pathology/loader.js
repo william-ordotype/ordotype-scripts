@@ -40,16 +40,21 @@
     ]
   };
 
-  // Scripts split into 3 tiers by criticality.
+  // Scripts split into tiers by criticality.
   //
   // Tier 1: paint-critical, no jQuery dependency. Parallel + awaited so
   //         a failure here triggers fallbackReveal().
+  // Pause-paywall: memberstack-utils + pause-paywall loaded sequentially
+  //         BEFORE Tier 2 so pause-paywall mutates the DOM (replaces paywall
+  //         innerHTML + strips .w-condition-invisible) before iframe-handler's
+  //         init reads the paywall state and clones it into col-right.
+  //         Awaited so Tier 2 doesn't race ahead.
   // Tier 2: interactive UX. Most depend on jQuery; by the time T1 has
   //         resolved (~one parallel batch later), Webflow's jQuery tag
   //         has had ample time to execute. Fire-and-forget.
-  // Tier 3: banners / redirects / paywall; deferred until idle so they
-  //         don't compete with first paint. memberstack-utils loads
-  //         first because the other 3 read window.OrdoMemberstack.
+  // Tier 3: banners / redirects; deferred until idle so they don't compete
+  //         with first paint. memberstack-utils is already loaded from the
+  //         pre-T2 step, but reloading is a cache hit and idempotent.
   //
   // core.js is in Tier 2 (not Tier 1) because it calls $(window).on()
   // at IIFE-time — keeping it out of the eager parallel batch avoids a
@@ -58,6 +63,8 @@
     `${SHARED}/error-reporter.js`,
     `${SHARED}/opacity-reveal.js`
   ];
+  const MEMBERSTACK_UTILS = `${SHARED}/memberstack-utils.js`;
+  const PAUSE_PAYWALL = `${BASE}/pause-paywall.js`;
   const TIER2 = [
     `${BASE}/core.js`,
     `${BASE}/tabs-manager.js`,
@@ -68,11 +75,9 @@
     `${BASE}/sources-list.js`,
     `${BASE}/clipboard.js`
   ];
-  const TIER3_PREREQ = `${SHARED}/memberstack-utils.js`;
   const TIER3 = [
     `${BASE}/member-redirects.js`,
-    `${BASE}/countdown.js`,
-    `${BASE}/pause-paywall.js`
+    `${BASE}/countdown.js`
   ];
 
   // Load a single script with retry
@@ -148,14 +153,27 @@
       return;
     }
 
+    // Pre-T2: load memberstack-utils + pause-paywall sequentially BEFORE
+    // Tier 2 so iframe-handler.js sees the paywall state pause-paywall
+    // sets up (replaces innerHTML, strips .w-condition-invisible).
+    // Wrapped in try/catch so a CDN miss here doesn't prevent the rest
+    // of the page from working.
+    try {
+      await loadScript(MEMBERSTACK_UTILS);
+      await loadScript(PAUSE_PAYWALL);
+    } catch (err) {
+      console.error('[OrdoPathology] Pause-paywall pre-load failed:', err);
+    }
+
     // Tier 2: parallel, fire-and-forget. Doesn't block Tier 3 scheduling.
     Promise.all(TIER2.map(function(url) { return loadOrLog(url, 'Tier 2'); }))
       .then(function() { console.log('[OrdoPathology] Tier 2 loaded'); });
 
-    // Tier 3: defer until the browser is idle. memberstack-utils must
-    // resolve before its consumers in TIER3 — they read window.OrdoMemberstack.
+    // Tier 3: defer until the browser is idle. memberstack-utils was
+    // loaded pre-T2 (cache hit here, idempotent IIFE), so consumers in
+    // TIER3 can rely on window.OrdoMemberstack.
     scheduleIdle(function() {
-      loadScript(TIER3_PREREQ)
+      loadScript(MEMBERSTACK_UTILS)
         .then(function() {
           return Promise.all(TIER3.map(function(url) { return loadOrLog(url, 'Tier 3'); }));
         })
