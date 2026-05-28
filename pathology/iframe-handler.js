@@ -33,7 +33,12 @@
     if ($(paywallElem).css('display') === 'block') {
       $('.pathology_tab-view-iframe').hide();
       $('.content-item').removeAttr('data-collection-slug').removeAttr('data-iframe-slug');
-      $('.pathologies_tab_col-right').append($(paywallElem).clone().hide());
+      // Force opacity:1 on the clone — the CSS rule `.rc_hidden_warning_wrapper
+      // { opacity: 0 }` is cleared on the ORIGINAL by opacity-reveal.js inside
+      // a 50ms setTimeout after DCL. If init runs before that timeout, the
+      // original still has opacity:0 inline-empty and the clone inherits the
+      // hidden state — .show() flips display but the clone stays invisible.
+      $('.pathologies_tab_col-right').append($(paywallElem).clone().css('opacity', '1').hide());
     }
 
     // Open corresponding iframe on collection item click
@@ -125,7 +130,9 @@
             return;
           }
 
-          var paywallMobile = $(paywallElem).clone();
+          // Force opacity:1 on the mobile clone for the same reason the
+          // desktop init clone does — opacity-reveal.js races a 50ms timeout.
+          var paywallMobile = $(paywallElem).clone().css('opacity', '1');
           target.after(
             paywallMobile.prepend('<h3 class="job-post-title-ordo-display">' + target.find(".content-item_name").first().text() + '</h3>')
           );
