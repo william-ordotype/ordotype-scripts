@@ -10,19 +10,28 @@ window.CRISP_WEBSITE_ID = "7fcb1bdb-58d0-49a9-a269-397bac574b0b";
 })();
 
 function getMemberstackData() {
-  const msMemberData = localStorage.getItem("_ms-mem");
-  if (!msMemberData) return { userId: null, email: null };
+  // On /membership/connexion-2fa, _ms-mem isn't populated yet (auth not
+  // complete), but ms_member_id is set in localStorage just before the 2FA
+  // challenge renders. Read it first; fall back to _ms-mem for the email.
+  let userId = null;
+  let email = null;
 
   try {
-    const memberData = JSON.parse(msMemberData);
-    return {
-      userId: memberData.id,
-      email: memberData.auth?.email
-    };
+    userId = localStorage.getItem("ms_member_id") || null;
+  } catch (e) {}
+
+  try {
+    const msMemberData = localStorage.getItem("_ms-mem");
+    if (msMemberData) {
+      const memberData = JSON.parse(msMemberData);
+      if (!userId) userId = memberData.id || null;
+      email = memberData.auth?.email || null;
+    }
   } catch (e) {
-    console.error("Failed to parse Memberstack data", e);
-    return { userId: null, email: null };
+    console.error("[Crisp] Failed to parse Memberstack data", e);
   }
+
+  return { userId, email };
 }
 
 function pushCrispData() {
