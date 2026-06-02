@@ -19,6 +19,14 @@
       // Apply the cleaned HTML
       $this.html(html);
 
+      // Remove the first paragraph if it's empty
+      // (reveal-on-parse / CMS exports can leave a leading empty <p>,
+      // which causes a ~10px layout shift via p { margin-bottom: 10px })
+      var $firstP = $this.children('p:first-child');
+      if ($firstP.length && !$.trim($firstP.text())) {
+        $firstP.remove();
+      }
+
       // Remove ONLY the last paragraph if it's empty
       var $lastP = $this.children('p:last-child');
       if ($lastP.length && !$.trim($lastP.text())) {
