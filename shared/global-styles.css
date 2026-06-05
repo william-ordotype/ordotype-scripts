@@ -58,6 +58,13 @@ form#wf-form-mutateDocument {
     display: flex;
 }
 
+/* Note uploader: make the invisible file input the top layer so the mobile
+ * "Importer des fichiers" button (.button is position:relative and paints
+ * above the absolutely-positioned .input-file, intercepting taps with its
+ * dead href="#") no longer blocks the file picker. opacity:0 means the button
+ * label still shows through; whole drop zone becomes tappable as on desktop. */
+.note_uploader .input-file { z-index: 1; }
+
 /* Pin footer to viewport bottom on very tall displays (>3000px wide screens, etc.) */
 html, body { min-height: 100vh; }
 body > div:has(> .page-wrapper) {
