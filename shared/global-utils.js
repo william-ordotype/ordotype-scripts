@@ -141,16 +141,43 @@
         console.log(PREFIX, 'Churn tracking injected (' + version + ')');
     }
 
+    /**
+     * Note Uploader Button (mobile)
+     * The note editor is injected at runtime. Its mobile "Importer des fichiers"
+     * button is an <a href="#"> that was never wired to the file <input>, and a
+     * runtime/IX2 style keeps it above the invisible .input-file overlay, so a
+     * tap on the button does nothing (just the href="#" jump). Delegate a single
+     * click listener on document: when the uploader button (or its inner label/
+     * icon) is tapped, forward the click to the file input in the same wrapper.
+     * Delegation means it works no matter when the editor DOM is injected.
+     */
+    function initNoteUploaderButton() {
+        document.addEventListener('click', function(ev) {
+            const target = ev.target;
+            if (!target || !target.closest) return;
+            // Only the mobile button is visible/clickable (display:none on desktop)
+            const button = target.closest('.uploader_w a.button');
+            if (!button) return;
+            const input = button.closest('.uploader_w').querySelector('input.input-file');
+            if (!input) return;
+            ev.preventDefault(); // stop the dead href="#" jump
+            input.click();       // open the native file picker (same user gesture)
+        });
+        console.log(PREFIX, 'Note uploader button wired');
+    }
+
     // Initialize on DOMContentLoaded
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
             initSkeletonLoader();
             initRichTextDecoder();
             loadChurnTracking();
+            initNoteUploaderButton();
         });
     } else {
         initSkeletonLoader();
         initRichTextDecoder();
         loadChurnTracking();
+        initNoteUploaderButton();
     }
 })();

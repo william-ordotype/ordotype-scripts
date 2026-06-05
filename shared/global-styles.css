@@ -59,14 +59,14 @@ form#wf-form-mutateDocument {
 }
 
 /* Note uploader (mobile): the invisible file input (.input-file, position:
- * absolute; inset:0) covers the whole drop zone and is the real picker trigger.
- * On mobile the "Importer des fichiers" .button is shown and, via a runtime/IX2
- * style, paints above the input with a dead href="#", swallowing taps so the
- * picker never opens. Lift the input (z-index) AND make the decorative button
- * tap-transparent so every tap falls through to the input. Button stays fully
- * visible (pointer-events only affects hit-testing, not rendering). */
+ * absolute; inset:0) covers the drop zone and is the real picker trigger, so
+ * taps on the grey zone open the picker. The mobile "Importer des fichiers"
+ * .button (a dead href="#") is painted above the input by a runtime/IX2 style,
+ * so taps on the button itself can't reliably fall through via CSS — that case
+ * is handled in global-utils.js (initNoteUploaderButton), which forwards a tap
+ * on the button to the input. Keep z-index here so the grey zone keeps working;
+ * the button MUST stay clickable for the JS handler to receive the tap. */
 .note_uploader .input-file { z-index: 1; }
-.note_uploader .uploader_w .button { pointer-events: none; }
 
 /* Pin footer to viewport bottom on very tall displays (>3000px wide screens, etc.) */
 html, body { min-height: 100vh; }
