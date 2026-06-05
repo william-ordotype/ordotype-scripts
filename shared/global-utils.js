@@ -146,23 +146,40 @@
      * The note editor is injected at runtime. Its mobile "Importer des fichiers"
      * button is an <a href="#"> that was never wired to the file <input>, and a
      * runtime/IX2 style keeps it above the invisible .input-file overlay, so a
-     * tap on the button does nothing (just the href="#" jump). Delegate a single
-     * click listener on document: when the uploader button (or its inner label/
-     * icon) is tapped, forward the click to the file input in the same wrapper.
-     * Delegation means it works no matter when the editor DOM is injected.
+     * tap on the button does nothing (just the href="#" jump). Delegate on
+     * document: when the uploader button (or its inner label/icon) is tapped,
+     * forward it to the file input in the same wrapper. Delegation means it
+     * works no matter when the editor DOM is injected.
+     *
+     * Act on `touchend`, not `click`: the button has :hover styles, and iOS
+     * Safari treats the first tap on a :hover element as "apply hover" and only
+     * fires `click` on the second tap. touchend fires on the first tap, so we
+     * open the picker immediately. A timestamp guard ignores the emulated click
+     * that follows a handled touch, so desktop click still works single-fire.
      */
     function initNoteUploaderButton() {
-        document.addEventListener('click', function(ev) {
+        let lastTouchTs = 0;
+
+        function forwardToInput(ev) {
             const target = ev.target;
             if (!target || !target.closest) return;
             // Only the mobile button is visible/clickable (display:none on desktop)
             const button = target.closest('.uploader_w a.button');
             if (!button) return;
+            // touchend already handled this tap — swallow the emulated click
+            if (ev.type === 'click' && Date.now() - lastTouchTs < 700) {
+                ev.preventDefault();
+                return;
+            }
             const input = button.closest('.uploader_w').querySelector('input.input-file');
             if (!input) return;
-            ev.preventDefault(); // stop the dead href="#" jump
+            if (ev.type === 'touchend') lastTouchTs = Date.now();
+            ev.preventDefault(); // stop the dead href="#" jump + the emulated click/hover
             input.click();       // open the native file picker (same user gesture)
-        });
+        }
+
+        document.addEventListener('touchend', forwardToInput, { passive: false });
+        document.addEventListener('click', forwardToInput);
         console.log(PREFIX, 'Note uploader button wired');
     }
 
