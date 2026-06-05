@@ -67,6 +67,16 @@ form#wf-form-mutateDocument {
  * on the button to the input. Keep z-index here so the grey zone keeps working;
  * the button MUST stay clickable for the JS handler to receive the tap. */
 .note_uploader .input-file { z-index: 1; }
+/* iOS sticky-hover: the .is-gradient:hover gradient change makes Safari treat
+ * the FIRST tap on the upload button as "apply hover" and only fire `click` on
+ * the SECOND tap (the "have to tap twice" bug). On touch devices, make :hover
+ * identical to the base gradient so there's no hover change to gate on — the
+ * first tap fires click, and global-utils.js opens the picker single-tap. */
+@media (hover: none) {
+  .uploader_w a.button.is-gradient:hover {
+    background-image: radial-gradient(circle at 0 0, #7cd0ff, #3454f6 60% 103%);
+  }
+}
 
 /* Pin footer to viewport bottom on very tall displays (>3000px wide screens, etc.) */
 html, body { min-height: 100vh; }
