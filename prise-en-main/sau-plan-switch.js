@@ -6,8 +6,9 @@
  * SAU partnership signups land on the "praticien" free plan
  * (pln_sau-praticien-ln1x0ovn). If, on the previous page, they declared their
  * statut as "Interne", grant them the SAU "interne" free plan
- * (pln_sau-interne-811d0aht). A Memberstack rule on the interne plan removes the
- * praticien plan automatically when interne is added — so we only add here.
+ * (pln_sau-interne-811d0aht), then remove the praticien plan. The removal is
+ * done by the script (not relying on a Memberstack rule) so the end state is
+ * guaranteed; it is idempotent if a Memberstack rule also removes the plan.
  *
  * Why on this page (not on mes-informations):
  *  - statut is already persisted (the form submit completed), so we read the
@@ -23,7 +24,7 @@
 (function() {
   'use strict';
 
-  var VERSION = '2026-06-08-debug-1';
+  var VERSION = '2026-06-08-debug-2';
   var PREFIX = '[SauPlanSwitch]';
   var PRATICIEN_PLAN_ID = 'pln_sau-praticien-ln1x0ovn';
   var INTERNE_PLAN_ID = 'pln_sau-interne-811d0aht';
@@ -92,10 +93,19 @@
       memberstack.addPlan({ planId: INTERNE_PLAN_ID })
         .then(function(res) {
           console.log(PREFIX, 'addPlan SUCCESS:', res);
-          console.log(PREFIX, 'Done — praticien plan should be removed by your Memberstack rule.');
+          // Remove the praticien plan only AFTER the interne plan is in place,
+          // so the member is never momentarily left with no SAU plan.
+          console.log(PREFIX, 'Calling removePlan(' + PRATICIEN_PLAN_ID + ')...');
+          return memberstack.removePlan({ planId: PRATICIEN_PLAN_ID });
+        })
+        .then(function(res) {
+          console.log(PREFIX, 'removePlan SUCCESS:', res);
+          console.log(PREFIX, 'Done — member now holds the interne plan, praticien removed.');
         })
         .catch(function(err) {
-          console.error(PREFIX, 'addPlan ERROR:', err, '| stringified:', safeStringify(err));
+          // A removePlan "member does not have this plan" error is harmless —
+          // it means a Memberstack rule already removed the praticien plan.
+          console.error(PREFIX, 'addPlan/removePlan ERROR:', err, '| stringified:', safeStringify(err));
           if (window.OrdoErrorReporter) {
             window.OrdoErrorReporter.report('SauPlanSwitch', safeStringify(err));
           }
