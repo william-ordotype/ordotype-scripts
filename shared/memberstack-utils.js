@@ -59,7 +59,8 @@
         'pln_compte-interne-img-nl410oxc',
         'pln_compte-interne-sy4j0oft',
         'pln_interne-m-decine-g-n-rale-adh-rent--4a4t0o95',
-        'pln_compte-interne-derni-re-ann-e-9f4o0oyy'
+        'pln_compte-interne-derni-re-ann-e-9f4o0oyy',
+        'pln_sau-interne-811d0aht' // SAU partnership interne (free) — same intern lifecycle as above
     ];
 
     var SPECIALIZATION_DURATIONS = {
