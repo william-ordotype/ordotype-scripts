@@ -65,6 +65,10 @@
   ];
   const MEMBERSTACK_UTILS = `${SHARED}/memberstack-utils.js`;
   const PAUSE_PAYWALL = `${BASE}/pause-paywall.js`;
+  // SAU paywall: same pre-Tier-2 contract as pause-paywall (must mutate the
+  // paywall state BEFORE iframe-handler's init reads it). Runs after
+  // pause-paywall so the SAU variant wins if both ever apply.
+  const SAU_PAYWALL = `${BASE}/sau-paywall.js`;
   const TIER2 = [
     `${BASE}/core.js`,
     `${BASE}/tabs-manager.js`,
@@ -161,8 +165,9 @@
     try {
       await loadScript(MEMBERSTACK_UTILS);
       await loadScript(PAUSE_PAYWALL);
+      await loadScript(SAU_PAYWALL);
     } catch (err) {
-      console.error('[OrdoPathology] Pause-paywall pre-load failed:', err);
+      console.error('[OrdoPathology] Paywall pre-load failed:', err);
     }
 
     // Tier 2: parallel, fire-and-forget. Doesn't block Tier 3 scheduling.
