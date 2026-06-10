@@ -82,23 +82,57 @@
 
     function cardHtml() {
         var ip = readIp();
+        // The enforced address is whatever the API connection used (often
+        // IPv6 at home). Admins think in IPv4, so a hidden slot is appended
+        // and revealed once the IPv4 lookup (fillIpv4) resolves — BOTH may
+        // need whitelisting since the browser can use either toward the API.
         var ipLine = ip
-            ? '<div class="text-size-small text-color-base-600">ou demandez à votre administrateur d’ajouter cette adresse à la liste autorisée : <code></code></div>'
+            ? '<div class="text-size-small text-color-base-600">' +
+                'Si vous \u00eates actuellement dans votre \u00e9tablissement, demandez \u00e0 votre ' +
+                'administrateur d\u2019ajouter cette adresse \u00e0 la liste autoris\u00e9e\u00a0: ' +
+                '<code data-ordo-ip="main"></code>' +
+                '<span data-ordo-ip4-slot style="display:none"> \u00b7 <code data-ordo-ip="v4"></code></span>' +
+              '</div>'
             : '';
         return (
-            '<div class="paywall_card">' +
+            '<div class="paywall_card" style="max-width:42rem">' +
               '<div class="w-layout-grid grid-1col-1rem left-align">' +
-                '<h2 class="heading-h2-docs text-weight-medium">Vous êtes en dehors de votre établissement</h2>' +
+                '<h2 class="heading-h2-docs text-weight-medium">Besoin d\u2019Ordotype en dehors de l\u2019h\u00f4pital\u00a0?</h2>' +
                 '<div class="text-size-regular text-color-base-600">' +
-                  'Votre compte gratuit Urgences fonctionne uniquement depuis le réseau de votre hôpital.' +
+                  'Votre compte gratuit Urgences est r\u00e9serv\u00e9 au r\u00e9seau de votre \u00e9tablissement. ' +
+                  'Passez au compte payant pour profiter d\u2019Ordotype o\u00f9 que vous soyez.' +
                 '</div>' +
                 '<div>' +
-                  '<a href="/nos-offres" class="button is-gradient w-button">Passer au compte payant — accès partout</a>' +
+                  '<a href="/nos-offres" class="button is-gradient w-button">Passer au compte payant \u2014 acc\u00e8s partout</a>' +
                 '</div>' +
                 ipLine +
               '</div>' +
             '</div>'
         );
+    }
+
+    /**
+     * Discover the public IPv4 once and reveal it next to the enforced
+     * address. api.ipify.org publishes ONLY A records, so this request is
+     * guaranteed to travel over IPv4 even on an IPv6-preferring network.
+     * Best-effort: on failure the card simply keeps the enforced address.
+     */
+    function fillIpv4() {
+        var enforced = readIp();
+        if (!enforced || enforced.indexOf(':') === -1) return; // already IPv4
+        fetch('https://api.ipify.org?format=text')
+            .then(function(r) { return r.text(); })
+            .then(function(v4) {
+                v4 = (v4 || '').trim();
+                if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(v4)) return;
+                document.querySelectorAll('code[data-ordo-ip="v4"]').forEach(function(code) {
+                    code.textContent = v4;
+                });
+                document.querySelectorAll('[data-ordo-ip4-slot]').forEach(function(slot) {
+                    slot.style.display = '';
+                });
+            })
+            .catch(function() { /* best-effort */ });
     }
 
     /**
@@ -150,7 +184,7 @@
             el.innerHTML = html;
             // IP set via textContent (never innerHTML) — belt-and-braces on
             // top of the regex above.
-            var code = el.querySelector('code');
+            var code = el.querySelector('code[data-ordo-ip="main"]');
             if (code && ip) code.textContent = ip;
         });
         console.log(PREFIX, 'Swapped', inners.length, 'paywall(s) to SAU variant', ip ? '(ip shown)' : '(no ip)');
@@ -163,6 +197,7 @@
         document.body.classList.add(BODY_CLASS);
         ensureWrapper();
         swapCard();
+        fillIpv4();
     }
 
     function unapply() {
