@@ -110,6 +110,13 @@
         var html = cardHtml();
         var ip = readIp();
         inners.forEach(function(el) {
+            // Keep the original card so unapply() can restore it — otherwise a
+            // logged-out/free visitor on this browser (for whom Memberstack
+            // SHOWS the wrapper) would read the SAU message for one pageview
+            // after a restricted member logs out.
+            if (el.__ordoOriginalCard === undefined) {
+                el.__ordoOriginalCard = el.innerHTML;
+            }
             el.innerHTML = html;
             // IP set via textContent (never innerHTML) — belt-and-braces on
             // top of the regex above.
@@ -131,7 +138,15 @@
         if (!applied) return;
         applied = false;
         document.body.classList.remove(BODY_CLASS);
-        // The swapped card stays inside the (now re-hidden) wrapper — inert.
+        // Restore the original card content (signup/upgrade variant) so a
+        // visitor for whom Memberstack shows the wrapper never reads the SAU
+        // message after the restriction lifted.
+        document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning')
+            .forEach(function(el) {
+                if (el.__ordoOriginalCard !== undefined) {
+                    el.innerHTML = el.__ordoOriginalCard;
+                }
+            });
         console.log(PREFIX, 'Restriction lifted (upgrade or back on-site)');
     }
 
