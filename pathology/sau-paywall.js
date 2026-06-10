@@ -101,6 +101,36 @@
         );
     }
 
+    /**
+     * Memberstack DOM doesn't merely hide `data-ms-content="!premium-pages"`
+     * elements for members WITH premium access — it REMOVES them (verified
+     * live 2026-06-10: restricted member, content hidden, wrapper gone). So
+     * for the SAU cohort the Webflow paywall wrapper usually doesn't exist;
+     * inject our own. The injected node reuses the exact id/classes because
+     * iframe-handler keys its premium gating on
+     * `.rappels-cliniques-content .rc_hidden_warning_wrapper` computing
+     * display:block, and our stylesheet keys on #RC_hidden_warning.
+     */
+    function ensureWrapper() {
+        if (document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper')) {
+            return;
+        }
+        var host = document.querySelector('.rappels-cliniques-content');
+        if (!host) {
+            console.warn(PREFIX, 'No .rappels-cliniques-content host — cannot inject paywall');
+            return;
+        }
+        var wrapper = document.createElement('div');
+        wrapper.id = 'RC_hidden_warning';
+        wrapper.className = 'rc_hidden_warning_wrapper';
+        wrapper.setAttribute('data-ordo-injected', '1');
+        var inner = document.createElement('div');
+        inner.className = 'rc_premium_hidden_warning';
+        wrapper.appendChild(inner);
+        host.appendChild(wrapper);
+        console.log(PREFIX, 'Injected paywall wrapper (Memberstack removed the original)');
+    }
+
     function swapCard() {
         var inners = document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning');
         if (!inners.length) {
@@ -131,6 +161,7 @@
         applied = true;
         injectStyle();
         document.body.classList.add(BODY_CLASS);
+        ensureWrapper();
         swapCard();
     }
 
@@ -138,9 +169,13 @@
         if (!applied) return;
         applied = false;
         document.body.classList.remove(BODY_CLASS);
-        // Restore the original card content (signup/upgrade variant) so a
-        // visitor for whom Memberstack shows the wrapper never reads the SAU
-        // message after the restriction lifted.
+        // Wrappers WE injected (incl. any clones iframe-handler made of them)
+        // have no business existing once the restriction lifts — remove them.
+        document.querySelectorAll('.rc_hidden_warning_wrapper[data-ordo-injected="1"]')
+            .forEach(function(el) { el.remove(); });
+        // Restore the original card content (signup/upgrade variant) in any
+        // genuine Webflow wrapper so a visitor for whom Memberstack shows it
+        // never reads the SAU message after the restriction lifted.
         document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning')
             .forEach(function(el) {
                 if (el.__ordoOriginalCard !== undefined) {
