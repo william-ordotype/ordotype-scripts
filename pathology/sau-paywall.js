@@ -190,8 +190,30 @@
         console.log(PREFIX, 'Swapped', inners.length, 'paywall(s) to SAU variant', ip ? '(ip shown)' : '(no ip)');
     }
 
+    /**
+     * FREE pathologies (e.g. HTA) carry NO data-ms-content gating attributes
+     * (the CMS "gated content" field is empty, so Webflow renders the same
+     * structure without the attributes — verified live 2026-06-10). Their
+     * content is open to everyone, including logged-out visitors, so a
+     * restricted member must see it too. Without this guard the stylesheet
+     * force-shows the page's (ungated, normally hidden) #RC_hidden_warning
+     * and iframe-handler then paywalls free ordonnances.
+     *
+     * The positive premium gate is the discriminator: present in the raw DOM
+     * before Memberstack processes it, and KEPT by Memberstack for our
+     * cohort (restricted members hold premium access) — so it's reliable at
+     * any point in the load.
+     */
+    function pageHasGatedContent() {
+        return !!document.querySelector('[data-ms-content="premium-pages"]');
+    }
+
     function apply() {
         if (applied) return;
+        if (!pageHasGatedContent()) {
+            console.log(PREFIX, 'Free pathology (no gated content) — paywall skipped');
+            return;
+        }
         applied = true;
         injectStyle();
         document.body.classList.add(BODY_CLASS);
