@@ -12,10 +12,10 @@
     const PREFIX = '[MemberRedirects]';
     const ms = window.OrdoMemberstack || {};
 
-    // SAU signup banner — 30-day snooze (per-browser). Set when the user engages
+    // SAU signup banner — 14-day snooze (per-browser). Set when the user engages
     // (CTA) or dismisses (close) so it doesn't reappear on every page load.
     const SAU_BANNER_DISMISS_KEY = 'sauSignupBannerDismissedTs';
-    const SAU_BANNER_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
+    const SAU_BANNER_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
     function sauBannerSnoozed() {
         const ts = parseInt(localStorage.getItem(SAU_BANNER_DISMISS_KEY) || '0', 10);
         return !!ts && (Date.now() - ts) < SAU_BANNER_SNOOZE_MS;
@@ -55,7 +55,7 @@
         } catch (e) {
             console.warn(PREFIX, 'SAU banner snooze not persisted (storage unavailable)');
         }
-        console.log(PREFIX, 'SAU banner', cta ? 'CTA clicked' : 'dismissed', '— snoozed 30 days');
+        console.log(PREFIX, 'SAU banner', cta ? 'CTA clicked' : 'dismissed', '— snoozed 14 days');
     });
 
     // Grace period check for payment redirect prevention (24 hours)
