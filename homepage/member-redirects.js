@@ -43,11 +43,17 @@
         const cta = event.target.closest("#click-banner-to-hide-sau-signup");
         const close = event.target.closest("#close-banner-to-hide-sau-signup");
         if (!cta && !close) return;
-        localStorage.setItem(SAU_BANNER_DISMISS_KEY, String(Date.now()));
+        // User-visible action first, so a storage failure (private mode / quota)
+        // can't break the click.
         if (close) {
             event.preventDefault();
             const banner = document.getElementById('banner-to-hide-sau-signup');
             if (banner) banner.style.display = 'none';
+        }
+        try {
+            localStorage.setItem(SAU_BANNER_DISMISS_KEY, String(Date.now()));
+        } catch (e) {
+            console.warn(PREFIX, 'SAU banner snooze not persisted (storage unavailable)');
         }
         console.log(PREFIX, 'SAU banner', cta ? 'CTA clicked' : 'dismissed', '— snoozed 30 days');
     });
