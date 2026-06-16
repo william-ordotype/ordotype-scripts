@@ -36,26 +36,24 @@
         }
     });
 
-    // SAU banner dismiss/engage — record the snooze. Attached at top level so it
-    // works regardless of the early returns below. The CTA keeps its default
-    // action (navigation); only the close button hides the banner in place.
+    // SAU banner dismiss — record the 14-day snooze ONLY when the user clicks the
+    // close button. The CTA (#click-banner-to-hide-sau-signup) keeps its default
+    // action and does NOT snooze: engaging with the offer isn't dismissing it.
+    // Attached at top level so it works regardless of the early returns below.
     document.addEventListener("click", function(event) {
-        const cta = event.target.closest("#click-banner-to-hide-sau-signup");
         const close = event.target.closest("#close-banner-to-hide-sau-signup");
-        if (!cta && !close) return;
+        if (!close) return;
         // User-visible action first, so a storage failure (private mode / quota)
         // can't break the click.
-        if (close) {
-            event.preventDefault();
-            const banner = document.getElementById('banner-to-hide-sau-signup');
-            if (banner) banner.style.display = 'none';
-        }
+        event.preventDefault();
+        const banner = document.getElementById('banner-to-hide-sau-signup');
+        if (banner) banner.style.display = 'none';
         try {
             localStorage.setItem(SAU_BANNER_DISMISS_KEY, String(Date.now()));
         } catch (e) {
             console.warn(PREFIX, 'SAU banner snooze not persisted (storage unavailable)');
         }
-        console.log(PREFIX, 'SAU banner', cta ? 'CTA clicked' : 'dismissed', '— snoozed 14 days');
+        console.log(PREFIX, 'SAU banner dismissed — snoozed 14 days');
     });
 
     // Grace period check for payment redirect prevention (24 hours)
