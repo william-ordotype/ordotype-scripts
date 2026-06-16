@@ -12,6 +12,15 @@
     const PREFIX = '[MemberRedirects]';
     const ms = window.OrdoMemberstack || {};
 
+    // SAU signup banner — 14-day snooze (per-browser). Set when the user engages
+    // (CTA) or dismisses (close) so it doesn't reappear on every page load.
+    const SAU_BANNER_DISMISS_KEY = 'sauSignupBannerDismissedTs';
+    const SAU_BANNER_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
+    function sauBannerSnoozed() {
+        const ts = parseInt(localStorage.getItem(SAU_BANNER_DISMISS_KEY) || '0', 10);
+        return !!ts && (Date.now() - ts) < SAU_BANNER_SNOOZE_MS;
+    }
+
     // Close button click handler for banners
     document.addEventListener("click", function(event) {
         const closeButton = event.target.closest(".nfc_close-button");
@@ -25,6 +34,28 @@
                 console.log(PREFIX, 'nfc_wrapper div hidden');
             }
         }
+    });
+
+    // SAU banner dismiss/engage — record the snooze. Attached at top level so it
+    // works regardless of the early returns below. The CTA keeps its default
+    // action (navigation); only the close button hides the banner in place.
+    document.addEventListener("click", function(event) {
+        const cta = event.target.closest("#click-banner-to-hide-sau-signup");
+        const close = event.target.closest("#close-banner-to-hide-sau-signup");
+        if (!cta && !close) return;
+        // User-visible action first, so a storage failure (private mode / quota)
+        // can't break the click.
+        if (close) {
+            event.preventDefault();
+            const banner = document.getElementById('banner-to-hide-sau-signup');
+            if (banner) banner.style.display = 'none';
+        }
+        try {
+            localStorage.setItem(SAU_BANNER_DISMISS_KEY, String(Date.now()));
+        } catch (e) {
+            console.warn(PREFIX, 'SAU banner snooze not persisted (storage unavailable)');
+        }
+        console.log(PREFIX, 'SAU banner', cta ? 'CTA clicked' : 'dismissed', '— snoozed 14 days');
     });
 
     // Grace period check for payment redirect prevention (24 hours)
@@ -233,6 +264,7 @@
         // SAU partnership (free) plan. Low priority: any billing/profile banner above wins.
         else if (
             specialite === "Médecine d'urgence" &&
+            !sauBannerSnoozed() &&
             !planConnections.some(plan =>
                 ['pln_sau-praticien-ln1x0ovn', 'pln_sau-interne-811d0aht'].indexOf(plan.planId) !== -1 &&
                 plan.status !== 'CANCELED'
