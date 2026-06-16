@@ -229,6 +229,24 @@
             $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
         */
+        // SAU signup prompt for emergency-medicine users who haven't yet taken an
+        // SAU partnership (free) plan. Low priority: any billing/profile banner above wins.
+        else if (
+            specialite === "Médecine d'urgence" &&
+            !planConnections.some(plan =>
+                ['pln_sau-praticien-ln1x0ovn', 'pln_sau-interne-811d0aht'].indexOf(plan.planId) !== -1 &&
+                plan.status !== 'CANCELED'
+            ) &&
+            // TEMP (2026-06-16): also exclude paying special-500 praticiens — any
+            // non-CANCELED status (ACTIVE / REQUIRES_PAYMENT / TRIALING). Delete this
+            // single clause to re-include them.
+            !planConnections.some(plan =>
+                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
+                plan.status !== 'CANCELED'
+            )
+        ) {
+            $('#banner-to-hide-sau-signup').css({ display: 'flex' });
+        }
         else if (noPhone) {
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });
         }
