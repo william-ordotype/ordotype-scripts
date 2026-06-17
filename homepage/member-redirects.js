@@ -278,6 +278,16 @@
             !sauBannerSnoozed()
         ) {
             $('#banner-to-hide-sau-signup').css({ display: 'flex' });
+            // Impression event so we can measure the view → click → close funnel
+            // in GA4. member.id is guaranteed here (early return above) and the GTM
+            // view tag reads member_id straight from this push, so the impression is
+            // deterministically attributed — unlike the click/close tags, which
+            // re-derive the id from the live Memberstack global at fire time.
+            // One push per pageview where the banner is shown.
+            (window.dataLayer = window.dataLayer || []).push({
+                event: 'sau_signup_banner_view',
+                member_id: member.id
+            });
         }
         else if (noPhone) {
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });
