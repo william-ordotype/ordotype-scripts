@@ -25,7 +25,8 @@
         console.error('Missing data-element-to-show attribute');
         return;
       }
-      var el = document.querySelector(selector);
+      // Accept either a bare id ("foo") or a CSS selector ("#foo", ".bar").
+      var el = document.getElementById(selector) || document.querySelector(selector);
       if (!el) {
         console.error('Element "' + selector + '" not found on the page');
         return;

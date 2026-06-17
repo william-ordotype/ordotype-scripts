@@ -6,7 +6,8 @@ function o() {
         console.error("Missing data-element-to-hide id attribute");
         return;
       }
-      var el = document.querySelector(selector);
+      // Accept either a bare id ("foo") or a CSS selector ("#foo", ".bar").
+      var el = document.getElementById(selector) || document.querySelector(selector);
       if (el) {
         el.style.transition = "opacity 0.4s ease";
         el.style.opacity = "0";
