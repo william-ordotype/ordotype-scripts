@@ -278,6 +278,14 @@
             !sauBannerSnoozed()
         ) {
             $('#banner-to-hide-sau-signup').css({ display: 'flex' });
+            // Impression event so we can measure the view → click → close funnel
+            // in GA4. member.id is guaranteed here (early return above), so the view
+            // always carries an attributable id — unlike the click/close tags, which
+            // depend on the user-property path. One push per pageview where it shows.
+            (window.dataLayer = window.dataLayer || []).push({
+                event: 'sau_signup_banner_view',
+                member_id: member.id
+            });
         }
         else if (noPhone) {
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });
