@@ -16,8 +16,9 @@
     // Closes #1-2 hide it 14 days; close #3+ hide it 365 days.
     const SAU_BANNER_DISMISS_KEY = 'sauSignupBannerDismissedTs';
     const SAU_BANNER_COUNT_KEY = 'sauSignupBannerCloseCount';
-    const SAU_SNOOZE_SHORT_MS = 14 * 24 * 60 * 60 * 1000;
-    const SAU_SNOOZE_LONG_MS = 365 * 24 * 60 * 60 * 1000;
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const SAU_SNOOZE_SHORT_MS = 14 * DAY_MS;
+    const SAU_SNOOZE_LONG_MS = 365 * DAY_MS;
     function sauBannerSnoozeMs(closeCount) {
         return closeCount >= 3 ? SAU_SNOOZE_LONG_MS : SAU_SNOOZE_SHORT_MS;
     }
@@ -56,15 +57,16 @@
         event.preventDefault();
         const banner = document.getElementById('banner-to-hide-sau-signup');
         if (banner) banner.style.display = 'none';
-        const count = parseInt(localStorage.getItem(SAU_BANNER_COUNT_KEY) || '0', 10) + 1;
-        const days = sauBannerSnoozeMs(count) / (24 * 60 * 60 * 1000);
+        // Read + write + log inside the try: if storage is unavailable nothing
+        // persists and we just warn — the banner already closed above.
         try {
+            const count = parseInt(localStorage.getItem(SAU_BANNER_COUNT_KEY) || '0', 10) + 1;
             localStorage.setItem(SAU_BANNER_COUNT_KEY, String(count));
             localStorage.setItem(SAU_BANNER_DISMISS_KEY, String(Date.now()));
+            console.log(PREFIX, 'SAU banner dismissed (close #' + count + ') — snoozed ' + (sauBannerSnoozeMs(count) / DAY_MS) + ' days');
         } catch (e) {
             console.warn(PREFIX, 'SAU banner snooze not persisted (storage unavailable)');
         }
-        console.log(PREFIX, 'SAU banner dismissed (close #' + count + ') — snoozed ' + days + ' days');
     });
 
     // Grace period check for payment redirect prevention (24 hours)
