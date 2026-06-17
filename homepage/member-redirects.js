@@ -12,13 +12,21 @@
     const PREFIX = '[MemberRedirects]';
     const ms = window.OrdoMemberstack || {};
 
-    // SAU signup banner — 14-day snooze (per-browser). Set when the user engages
-    // (CTA) or dismisses (close) so it doesn't reappear on every page load.
+    // SAU signup banner — escalating snooze (per-browser), set on close.
+    // Closes #1-2 hide it 14 days; close #3+ hide it 365 days.
     const SAU_BANNER_DISMISS_KEY = 'sauSignupBannerDismissedTs';
-    const SAU_BANNER_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
+    const SAU_BANNER_COUNT_KEY = 'sauSignupBannerCloseCount';
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const SAU_SNOOZE_SHORT_MS = 14 * DAY_MS;
+    const SAU_SNOOZE_LONG_MS = 365 * DAY_MS;
+    function sauBannerSnoozeMs(closeCount) {
+        return closeCount >= 3 ? SAU_SNOOZE_LONG_MS : SAU_SNOOZE_SHORT_MS;
+    }
     function sauBannerSnoozed() {
         const ts = parseInt(localStorage.getItem(SAU_BANNER_DISMISS_KEY) || '0', 10);
-        return !!ts && (Date.now() - ts) < SAU_BANNER_SNOOZE_MS;
+        if (!ts) return false;
+        const count = parseInt(localStorage.getItem(SAU_BANNER_COUNT_KEY) || '0', 10);
+        return (Date.now() - ts) < sauBannerSnoozeMs(count);
     }
 
     // Close button click handler for banners
@@ -36,9 +44,10 @@
         }
     });
 
-    // SAU banner dismiss — record the 14-day snooze ONLY when the user clicks the
-    // close button. The CTA (#click-banner-to-hide-sau-signup) keeps its default
-    // action and does NOT snooze: engaging with the offer isn't dismissing it.
+    // SAU banner dismiss — record the snooze ONLY when the user clicks the close
+    // button. The CTA (#click-banner-to-hide-sau-signup) keeps its default action
+    // and does NOT snooze: engaging with the offer isn't dismissing it.
+    // Escalating duration: closes #1-2 → 14 days, close #3+ → 365 days.
     // Attached at top level so it works regardless of the early returns below.
     document.addEventListener("click", function(event) {
         const close = event.target.closest("#close-banner-to-hide-sau-signup");
@@ -48,12 +57,16 @@
         event.preventDefault();
         const banner = document.getElementById('banner-to-hide-sau-signup');
         if (banner) banner.style.display = 'none';
+        // Read + write + log inside the try: if storage is unavailable nothing
+        // persists and we just warn — the banner already closed above.
         try {
+            const count = parseInt(localStorage.getItem(SAU_BANNER_COUNT_KEY) || '0', 10) + 1;
+            localStorage.setItem(SAU_BANNER_COUNT_KEY, String(count));
             localStorage.setItem(SAU_BANNER_DISMISS_KEY, String(Date.now()));
+            console.log(PREFIX, 'SAU banner dismissed (close #' + count + ') — snoozed ' + (sauBannerSnoozeMs(count) / DAY_MS) + ' days');
         } catch (e) {
             console.warn(PREFIX, 'SAU banner snooze not persisted (storage unavailable)');
         }
-        console.log(PREFIX, 'SAU banner dismissed — snoozed 14 days');
     });
 
     // Grace period check for payment redirect prevention (24 hours)
