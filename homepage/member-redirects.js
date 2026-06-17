@@ -258,15 +258,11 @@
             $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
         */
-        // SAU signup prompt for emergency-medicine users who haven't yet taken an
-        // SAU partnership (free) plan. Low priority: any billing/profile banner above wins.
+        // SAU signup prompt for all emergency-medicine members (snooze-gated).
+        // Low priority: any billing/profile banner above wins.
         else if (
             specialite === "Médecine d'urgence" &&
-            !sauBannerSnoozed() &&
-            !planConnections.some(plan =>
-                ['pln_sau-praticien-ln1x0ovn', 'pln_sau-interne-811d0aht'].indexOf(plan.planId) !== -1 &&
-                plan.status !== 'CANCELED'
-            )
+            !sauBannerSnoozed()
         ) {
             $('#banner-to-hide-sau-signup').css({ display: 'flex' });
         }
