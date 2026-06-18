@@ -25,6 +25,12 @@
                     if (raw) member = JSON.parse(raw) || {};
                 } catch (e) { member = {}; }
 
+                // Fallback id: _ms-mem can be empty while ms_member_id is still set
+                // (e.g. mid-auth on /connexion-2fa, or session lost on the
+                // post-checkout return) — recover the member id so alerts aren't "unknown".
+                var fallbackMemberId = null;
+                try { fallbackMemberId = localStorage.getItem('ms_member_id'); } catch (e) {}
+
                 var errorStr;
                 if (error instanceof Error) {
                     errorStr = error.message || String(error);
@@ -39,7 +45,7 @@
                     context: context,
                     error: errorStr,
                     page: window.location.href,
-                    memberId: member.id || 'unknown',
+                    memberId: member.id || fallbackMemberId || 'unknown',
                     stripeCustomerId: member.stripeCustomerId || 'unknown',
                     email: (member.auth && member.auth.email) || 'unknown',
                     userAgent: navigator.userAgent,

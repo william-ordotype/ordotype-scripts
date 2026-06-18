@@ -21,6 +21,12 @@
     return;
   }
 
+  // _ms-mem can be empty while ms_member_id is still set (mid-auth, or session lost
+  // on the post-checkout return) — use it to identify the member in logs.
+  function getMemberIdHint() {
+    try { return localStorage.getItem('ms_member_id') || 'unknown'; } catch (e) { return 'unknown'; }
+  }
+
   function init() {
     var memberstack = window.$memberstackDom;
     if (!memberstack) {
@@ -30,6 +36,19 @@
 
     memberstack.getCurrentMember().then(function(result) {
       var member = result && result.data ? result.data : result;
+
+      // No authenticated member. getCurrentMember() resolves with { data: null }
+      // when logged out, so we land here with no session — common on the
+      // post-checkout return, especially iOS Safari (ITP wipes the session across
+      // the Stripe round-trip). updateMember() would 401, and on this page
+      // forceStatut means we'd otherwise fire on every logged-out load. Skip
+      // quietly: the plan grant happens server-side via the Stripe webhook,
+      // independently of this client-side custom-field sync.
+      if (!member || !member.id) {
+        console.warn(PREFIX, 'No authenticated member — skipping sync (session not available). member hint:', getMemberIdHint());
+        return;
+      }
+
       var customFields = {};
       var keysToRemove = [];
 
@@ -89,6 +108,18 @@
         .catch(function(err) {
           var detail = err;
           try { detail = JSON.stringify(err); } catch (e) {}
+
+          // "Unauthorized" = the Memberstack session/token expired or is invalid
+          // (the member was cached by getCurrentMember() but the access token is
+          // stale — again typical of the post-checkout return on iOS Safari). This
+          // is an expected session edge case, not an actionable code error, so log
+          // it but don't ping Discord.
+          var msg = (err && err.message) ? String(err.message) : String(err);
+          if (/unauthor/i.test(msg) || /unauthor/i.test(detail || '')) {
+            console.warn(PREFIX, 'Sync skipped — Memberstack session expired (Unauthorized). member hint:', getMemberIdHint(), 'Fields:', Object.keys(customFields));
+            return;
+          }
+
           console.error(PREFIX, 'Sync error:', detail, 'Fields attempted:', Object.keys(customFields));
           if (window.OrdoErrorReporter) {
             window.OrdoErrorReporter.report('MemberstackSync', detail);
