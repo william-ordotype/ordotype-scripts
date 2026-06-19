@@ -177,6 +177,16 @@ abbr:hover::after {
     display: none;
 }
 
+/* Drawer layering — the opened document/notes drawer (.drawer_view /
+   .modal_view) and the global navbar (.navbar_component) both compile to
+   z-index:10000 in the Webflow CSS. The tie lets the navbar paint over an
+   opened document on the pathology page. Lift the drawer just above the
+   navbar (still below the toast/modal band at 99999). */
+.drawer_view,
+.modal_view {
+    z-index: 11000 !important;
+}
+
 /* Print styles */
 @media print {
     .drawer-footer {
