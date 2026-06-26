@@ -1,5 +1,10 @@
 /**
- * SAU signup page loader — /membership/sau-en-savoir-plus
+ * SAU / SFMU signup page loader
+ *   - /membership/sau-en-savoir-plus   (form #wf-form-SAU-inscription-2)
+ *   - /signup/sfmu-coordonnees         (form #wf-form-SFMU-inscription)
+ *
+ * Both pages use the same Webflow `.inscription_form` (identical fields,
+ * method=get, no native bot protection). One shared loader serves both.
  *
  * Bundles the two page-specific concerns that previously lived as a separate
  * inline script in the Webflow page footer:
@@ -7,14 +12,15 @@
  *   1. [SAUSource]   — capture the acquisition source (?src= / Brevo UTMs) and
  *                      inject it as a hidden `src` input so Webflow forwards it
  *                      in the form webhook.
- *   2. [SAUHoneypot] — anti-bot honeypot: inject an invisible decoy field and
- *                      block submission if a bot fills it. Stops the scraper
- *                      spam hitting the unprotected SAU signup form.
+ *   2. [SAUHoneypot] — anti-bot honeypot: inject an invisible decoy field into
+ *                      every `.inscription_form` and block submission if a bot
+ *                      fills it. Stops the scraper spam hitting these
+ *                      unprotected signup forms.
  *
  * Crisp is intentionally NOT loaded here — it is loaded site-wide from the
  * global Webflow footer (shared/crisp-loader.js); keep that tag untouched.
  *
- * Loaded in Webflow via a single tag, e.g.:
+ * Loaded in Webflow via a single tag on each page, e.g.:
  *   <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/signup-sau/sau-signup-loader.js"></script>
  */
 (function () {
@@ -69,13 +75,14 @@
    * ------------------------------------------------------------------ */
   (function () {
     var PREFIX = '[SAUHoneypot]';
-    var FORM_ID = 'wf-form-SAU-inscription-2';
+    // Arm on any signup form sharing the Webflow .inscription_form class —
+    // covers both the SAU (#wf-form-SAU-inscription-2) and SFMU
+    // (#wf-form-SFMU-inscription) forms, and any future page reusing it.
+    var SELECTOR = 'form.inscription_form';
     // Decoy field name — looks plausible to a dumb bot, means nothing to us.
     var HP_NAME = 'website-url';
 
-    function setup() {
-      var form = document.getElementById(FORM_ID);
-      if (!form) return;
+    function arm(form) {
       if (form.querySelector('input[name="' + HP_NAME + '"]')) return; // already wired
 
       // Inject the invisible decoy. Off-screen (not display:none — some bots
@@ -102,8 +109,12 @@
           return false;
         }
       }, true);
+    }
 
-      console.log(PREFIX, 'armed');
+    function setup() {
+      var forms = document.querySelectorAll(SELECTOR);
+      for (var i = 0; i < forms.length; i++) arm(forms[i]);
+      console.log(PREFIX, 'armed on', forms.length, 'form(s)');
     }
 
     if (document.readyState === 'loading') {
