@@ -80,11 +80,35 @@
         // Second pass: decode .w-richtext p elements that contain escaped HTML tags
         // Webflow sometimes escapes HTML content, sometimes not
         // Only decode if escaped tags are detected (e.g., &lt;p&gt;, &lt;strong&gt;)
+        //
+        // This pass also covers .rc-html (which the first pass deliberately skips,
+        // see commit a566e29). Some legacy .rc-html fiches store their ENTIRE body
+        // escaped inside one wrapper <p> (e.g. <p>&lt;table&gt;...&lt;/table&gt;</p>).
+        // Decoding such a <p> with `el.innerHTML = el.textContent` would re-inject
+        // block-level elements (table/p/ul...) INSIDE the <p> — invalid HTML the
+        // parser flattens into a wall of unstyled text. So when the decoded content
+        // starts with a block element, lift it to the parent (next to the <p>) and
+        // drop the now-empty wrapper, mirroring the first pass. Inline-only escaped
+        // content (strong/a/abbr) keeps the original in-place decode unchanged.
         document.querySelectorAll('.w-richtext p').forEach(function(el) {
             var html = el.innerHTML;
             var hasEscapedHtmlTag = /&lt;[a-z][a-z0-9]*[^&]*&gt;/i.test(html);
-            if (hasEscapedHtmlTag) {
-                el.innerHTML = el.textContent;
+            if (!hasEscapedHtmlTag) return;
+            var decoded = el.textContent;
+            // Lift decoded block-level content out of the wrapper <p> (see above).
+            // .rich-text-block-18 is excluded from the lift to preserve its prior
+            // in-place behaviour (commit 1a8b431 kept it out of the parent-lift pass).
+            var startsWithBlock = /^\s*<(p|ul|ol|div|table|dl|blockquote|h[1-6])\b/i.test(decoded);
+            if (startsWithBlock && !el.closest('.rich-text-block-18')) {
+                var parent = el.parentNode;
+                var temp = document.createElement('div');
+                temp.innerHTML = decoded;
+                while (temp.firstChild) {
+                    parent.insertBefore(temp.firstChild, el);
+                }
+                parent.removeChild(el);
+            } else {
+                el.innerHTML = decoded;
             }
         });
 
