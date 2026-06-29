@@ -155,6 +155,27 @@
         }
     }
 
+    // If the cancelUrl points at a comeback page (/inscription-non-terminee/<slug>),
+    // stash the Stripe session URL under the SAME key the comeback page reads
+    // (ordo-pending-checkout-<slug>) so it re-opens THIS session instead of
+    // creating a fresh one. The key is the comeback slug, not `option` — the CMS
+    // `option` here is just 'praticien'/'rempla', while the comeback page uses the
+    // full slug (e.g. praticien-sepa). Deriving it from cancelUrl keeps them in sync.
+    function stashCheckoutSessionForComeback() {
+        try {
+            var m = /\/inscription-non-terminee\/([^/?#]+)/.exec(cancelUrl || '');
+            if (!m) return; // cancelUrl isn't a comeback page — nothing to stash
+            localStorage.setItem('ordo-pending-checkout-' + m[1], JSON.stringify({
+                url: checkoutUrl,
+                sessionId: sessionId,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            // localStorage unavailable (private mode / quota) — non-fatal
+            console.warn(PREFIX, 'Could not stash checkout session:', e);
+        }
+    }
+
     // Push GTM event and send abandon cart before redirect.
     // Push goes first so GA4's sendBeacon can flush before navigation.
     window.dataLayer = window.dataLayer || [];
@@ -166,6 +187,7 @@
         checkoutSessionId: sessionId
     });
     notifyAbandonCart();
+    stashCheckoutSessionForComeback();
     window.location.href = checkoutUrl;
 
     // Show button after delay as fallback if redirect doesn't work
@@ -178,6 +200,7 @@
         btn.addEventListener('click', e => {
             e.preventDefault();
             notifyAbandonCart();
+            stashCheckoutSessionForComeback();
             window.location.href = checkoutUrl;
         });
     }
