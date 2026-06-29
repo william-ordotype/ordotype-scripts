@@ -52,6 +52,11 @@
     var config = window.COMEBACK_CONFIG || {};
     var option = config.option || 'praticien';
 
+    // GA4: user abandoned Stripe Checkout and landed on the comeback page.
+    // Pairs with comeback_resume_click (below) to measure recovery rate.
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ event: 'comeback_view', option: option });
+
     // Memberstack data (prefer shared utility, fallback to inline parsing)
     var ms = window.OrdoMemberstack;
     if (!ms) {
@@ -192,6 +197,18 @@
       isRedirecting = true;
       btn.innerText = 'Patientez…';
       btn.disabled = true;
+
+      // GA4: user clicked "Finaliser l'inscription" to resume their checkout.
+      // Fires for BOTH the reused-session and fresh-session paths, so it's the
+      // canonical "recovery attempt" step. Pushed before navigation so GA4's
+      // sendBeacon can flush. (stripe_signup_click below only fires on the
+      // fresh-session path, where we have a brand-new session id to report.)
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'comeback_resume_click',
+        option: option,
+        reused: !abandonCtx   // true = re-opened abandoned session, false = fresh
+      });
 
       if (abandonCtx) {
         notifyWebhook({
