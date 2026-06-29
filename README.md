@@ -396,6 +396,71 @@ This is the B variant of the A/B test. Main differences from V1:
 
 ---
 
+## Inscription Non Terminée Page (`/inscription-non-terminee/[slug]`)
+
+The "comeback" page Stripe returns to when the user **cancels** a checkout opened
+from `/nos-offres` (`pricing/stripe-checkout.js`) or `/nos-offres-v2`
+(`pricing-v2/stripe-checkout.js`). It shows the abandoned offer ("Votre
+inscription n'est pas terminée") and a **Finaliser l'inscription** button to resume.
+
+CMS-driven, one item per offer × payment method. Slugs **must match** the cancel
+URLs the pricing scripts send. There are four, split by payment method because
+each pricing page offers different methods:
+
+| Slug             | Offer       | Payment      | Comes from        |
+|------------------|-------------|--------------|-------------------|
+| `praticien-sepa` | Praticien   | SEPA only    | `/nos-offres`     |
+| `rempla-sepa`    | Remplaçant  | SEPA only    | `/nos-offres`     |
+| `praticien-cb`   | Praticien   | SEPA + Card  | `/nos-offres-v2`  |
+| `rempla-cb`      | Remplaçant  | SEPA + Card  | `/nos-offres-v2`  |
+
+### How it links up with the pricing pages
+
+- The pricing scripts send per-session cancel URLs to the dual-checkout function.
+  `/nos-offres` (SEPA-only) → `-sepa` slugs; `/nos-offres-v2` (Card+SEPA) → `-cb`
+  slugs. `cancelUrl1` = Praticien, `cancelUrl2` = Remplaçant.
+  (Backend `create-checkout-session.js` falls back to a single `cancelUrl` for
+  older callers.)
+- Right before redirecting to Stripe, the pricing scripts stash the Checkout
+  Session URL in `localStorage` under `ordo-pending-checkout-<slug>`
+  (`{ url, sessionId, timestamp }`) — the key is the full comeback-page slug.
+- On the comeback page, `comeback-checkout.js` reads that stash and binds the
+  button to **re-open the exact session** the user abandoned (Stripe URLs are
+  valid ~24h; treated as expired after 23h). If the stash is missing/expired, it
+  **creates a fresh single-offer session** via `checkout.ordotype.fr` using
+  `priceId`/`couponId` from the CMS config.
+
+### Files
+
+| File                   | Purpose                                                                              |
+|------------------------|--------------------------------------------------------------------------------------|
+| `comeback-checkout.js` | Reads stashed session (or creates a fresh one) and binds the "Finaliser l'inscription" button |
+
+### Usage in Webflow
+
+**Footer (of the `/inscription-non-terminee/[slug]` CMS template):**
+```html
+<script>
+window.COMEBACK_CONFIG = {
+    option: "{{wf slug}}",              // 'praticien' | 'rempla'
+    priceId: "{{wf stripepriceid}}",    // for the fresh-session fallback
+    couponId: "{{wf code-promo}}",
+    paymentMethods: "{{wf payment-method-types}}".split(',')
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription-non-terminee/comeback-checkout.js"></script>
+```
+
+### Required DOM Element
+
+- `#checkoutStripe` - The "Finaliser l'inscription" button
+
+### Console Prefixes
+
+- `[ComebackCheckout]` - Comeback checkout
+
+---
+
 ## Ordonnances Page (Prescriptions)
 
 ### Files

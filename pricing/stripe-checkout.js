@@ -52,7 +52,15 @@
 
     // Static URLs
     var successUrl = 'https://www.ordotype.fr/membership/mes-informations-praticien';
-    var cancelUrl = window.location.href;
+    // On cancel/abandon, send the user to the dedicated "comeback" page for the
+    // offer they were subscribing to (CMS-driven: /inscription-non-terminee/[slug]).
+    // Each option has its own slug so the page can show the right offer details.
+    // These are sent as cancelUrl1 (Praticien) / cancelUrl2 (Rempla) so the
+    // backend gives each Stripe session its own cancel page.
+    // /nos-offres is SEPA-only, so the comeback pages are the "-sepa" slugs.
+    var comebackBaseUrl = 'https://www.ordotype.fr/inscription-non-terminee/';
+    var cancelUrl1 = comebackBaseUrl + 'praticien-sepa';
+    var cancelUrl2 = comebackBaseUrl + 'rempla-sepa';
 
     // Read data from buttons
     var priceId1 = btn1.dataset.price;
@@ -98,7 +106,8 @@
               priceId2: priceId2,
               couponId2: couponId2,
               successUrl: successUrl,
-              cancelUrl: cancelUrl,
+              cancelUrl1: cancelUrl1,
+              cancelUrl2: cancelUrl2,
               payment_method_types: paymentMethods
             })
           },
@@ -144,6 +153,25 @@
         }
       }
 
+      // Stash the Stripe Checkout Session URL so the "comeback" page
+      // (/inscription-non-terminee/[slug]) can re-open the EXACT session the
+      // user abandoned instead of creating a new one. Stripe session URLs are
+      // valid ~24h; we store a timestamp so the comeback page can fall back to
+      // a fresh session if it has expired. Keyed by option so each comeback
+      // page reads its own pending session.
+      function stashCheckoutSession(option, sessionId, url) {
+        try {
+          localStorage.setItem('ordo-pending-checkout-' + option, JSON.stringify({
+            url: url,
+            sessionId: sessionId,
+            timestamp: Date.now()
+          }));
+        } catch (e) {
+          // localStorage unavailable (private mode / quota) — non-fatal
+          console.warn('[StripeCheckout] Could not stash checkout session:', e);
+        }
+      }
+
       // Double-click prevention
       var isRedirecting = false;
 
@@ -154,6 +182,7 @@
         isRedirecting = true;
         btn1.innerText = 'Patientez…';
         btn1.disabled = true;
+        stashCheckoutSession('praticien-sepa', sessionId1, url1);
         notifyWebhook({
           timestamp: new Date().toISOString(),
           checkoutSessionId: sessionId1,
@@ -185,6 +214,7 @@
         isRedirecting = true;
         btn2.innerText = 'Patientez…';
         btn2.disabled = true;
+        stashCheckoutSession('rempla-sepa', sessionId2, url2);
         notifyWebhook({
           timestamp: new Date().toISOString(),
           checkoutSessionId: sessionId2,
