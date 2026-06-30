@@ -304,28 +304,24 @@ caption.rc-html {
     margin: .25em;
 }
 
-/* Uniform table text size.
+/* Uniform table text size — tables match body text at every breakpoint.
  *
- * Two problems converge in .rc-html tables:
- *  1. The in-body decode script rebuilds escaped <table> markup via innerHTML
- *     and injects bare, class-less <table>/<caption>/<th>/<td> into .rc-html.
- *     On the Webflow ≤479px breakpoint .rc-html is font-size: 4em (≈48px vs the
- *     12px .rc-wrapper), so those class-less cells inherit 48px and overflow.
- *  2. Webflow globals (`ul, li { font-size: 14.4px }`, `th { font-size: 110% }`)
- *     and inline <span>/<abbr>/<strong> leave cells at a mix of 10.8/12/13/14/
- *     14.4px, so list columns render larger than plain/strong columns (the left
- *     vs right column mismatch in e.g. Tableau 4).
+ * Webflow globals (`ul, li { font-size: 14.4px }`, `th { font-size: 110% }`)
+ * plus inline <span>/<abbr>/<strong> leave table cells at a mix of
+ * 10.8/12/13/14/14.4px, so list columns render larger than plain/strong columns
+ * (the left vs right column mismatch in e.g. Tableau 4). The decode script also
+ * injects bare, class-less <table>/<caption>/<th>/<td> that pick up those rules.
  *
- * Force every element inside an .rc-html table to one compact size (12px).
- * !important is required to beat the Webflow bare-element rules and the
- * inherited mobile 4em. 12px keeps wide multi-column tables (e.g. the 5-column
- * trimester schedule on grossesse-a-bas-risque) as narrow as possible so they
- * scroll less on mobile; body text OUTSIDE tables is untouched (stays 14.4px).
- * Headers/caption keep their bold weight, just not a larger size. <sup>/<sub>
- * are exempted so exponents/ordinals (e.g. "1ʳᵉ") stay small. */
+ * Force every element inside an .rc-html table to `inherit`, so it collapses to
+ * the cell's inherited size — i.e. .rc-html's own responsive value (14.4px on
+ * desktop, 12px on tablet/mobile). Tables therefore stay uniform within
+ * themselves AND track the surrounding body text at every width, with no
+ * hard-coded size to keep in sync. !important is required to beat the Webflow
+ * bare-element rules. <sup>/<sub> are exempted so exponents/ordinals (e.g.
+ * "1ʳᵉ") stay small. */
 .rc-html table,
 .rc-html table * {
-    font-size: 12px !important;
+    font-size: inherit !important;
 }
 
 .rc-html table sup,
