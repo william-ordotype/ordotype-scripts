@@ -304,6 +304,29 @@ caption.rc-html {
     margin: .25em;
 }
 
+/* Decode-script tables inherit .rc-html's huge mobile size.
+ * The decode script (in the page body) rebuilds escaped <table> markup via
+ * innerHTML and injects bare, class-less <table>/<caption>/<th>/<td> directly
+ * into .rc-html. On the Webflow ≤479px breakpoint, .rc-html itself is set to
+ * font-size: 4em (≈48px against the 12px .rc-wrapper), so these class-less
+ * elements inherit 48px and overflow the viewport. Pin them to body size so
+ * the inherited 4em never reaches the table content. */
+.rc-html table,
+.rc-html tr,
+.rc-html th,
+.rc-html td {
+    font-size: 12px;
+}
+
+.rc-html caption {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.rc-html th {
+    font-size: 13px;
+}
+
 .rc-html a {
     color: inherit !important;
     text-decoration: underline 0.1rem solid #016FB2 !important;
