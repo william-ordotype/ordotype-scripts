@@ -316,13 +316,16 @@ caption.rc-html {
  *     14.4px, so list columns render larger than plain/strong columns (the left
  *     vs right column mismatch in e.g. Tableau 4).
  *
- * Force every element inside an .rc-html table to one size (14.4px, the .rc-html
- * body size). !important is required to beat the Webflow bare-element rules and
- * the inherited 4em. Headers/caption keep their bold weight, just not a larger
- * size. <sup>/<sub> are exempted so exponents/ordinals (e.g. "1ʳᵉ") stay small. */
+ * Force every element inside an .rc-html table to one compact size (12px).
+ * !important is required to beat the Webflow bare-element rules and the
+ * inherited mobile 4em. 12px keeps wide multi-column tables (e.g. the 5-column
+ * trimester schedule on grossesse-a-bas-risque) as narrow as possible so they
+ * scroll less on mobile; body text OUTSIDE tables is untouched (stays 14.4px).
+ * Headers/caption keep their bold weight, just not a larger size. <sup>/<sub>
+ * are exempted so exponents/ordinals (e.g. "1ʳᵉ") stay small. */
 .rc-html table,
 .rc-html table * {
-    font-size: 14.4px !important;
+    font-size: 12px !important;
 }
 
 .rc-html table sup,
