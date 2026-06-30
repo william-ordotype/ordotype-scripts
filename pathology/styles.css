@@ -327,6 +327,16 @@ caption.rc-html {
     font-size: 13px;
 }
 
+/* Webflow's global `ul, li { font-size: 14.4px }` overrides the inherited 12px
+ * inside table cells, so list cells render larger than plain/strong cells in
+ * the same table (e.g. left vs right column mismatch in Tableau 4). Pin lists
+ * inside .rc-html tables back to the table body size. */
+.rc-html table ul,
+.rc-html table ol,
+.rc-html table li {
+    font-size: 12px;
+}
+
 .rc-html a {
     color: inherit !important;
     text-decoration: underline 0.1rem solid #016FB2 !important;
