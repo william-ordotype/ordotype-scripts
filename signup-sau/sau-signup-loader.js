@@ -32,7 +32,7 @@
   (function () {
     var PREFIX = '[SAUSource]';
     var KEY = 'sau_src';
-    var ALLOWED = { banner: 1, pricing: 1, email: 1 };
+    var ALLOWED = { banner: 1, pricing: 1, email: 1, congres: 1 };
 
     // Capture the source on landing; persist for the session
     // (survives refresh / in-page nav).
