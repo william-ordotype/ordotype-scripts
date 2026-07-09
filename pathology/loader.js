@@ -139,6 +139,14 @@
   function loadOrLog(url, tierName) {
     return loadScript(url).catch(function(err) {
       console.error('[OrdoPathology] ' + tierName + ' script failed:', url, err);
+      // error-reporter.js is Tier 1, so it is available by the time a
+      // T2/T3 failure can happen (reports to Discord + Sentry). Matters
+      // doubly since the tab items became real links: a missing
+      // iframe-handler means plain clicks navigate instead of opening
+      // the iframe, and we want to know it is happening.
+      if (window.OrdoErrorReporter) {
+        window.OrdoErrorReporter.report('PathologyLoader', tierName + ' script failed after retries: ' + url);
+      }
     });
   }
 
@@ -168,6 +176,9 @@
       await loadScript(SAU_PAYWALL);
     } catch (err) {
       console.error('[OrdoPathology] Paywall pre-load failed:', err);
+      if (window.OrdoErrorReporter) {
+        window.OrdoErrorReporter.report('PathologyLoader', 'Paywall pre-load failed: ' + (err && err.message));
+      }
     }
 
     // Tier 2: parallel, fire-and-forget. Doesn't block Tier 3 scheduling.
