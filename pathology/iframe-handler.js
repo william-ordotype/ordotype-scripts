@@ -43,6 +43,13 @@
 
     // Open corresponding iframe on collection item click
     $('.pathologies_tab .content-item[data-iframe-id]').click(function(ev) {
+      // The item title is now a real <a href> to the ordonnance page (SEO:
+      // crawlable internal links). A plain click must keep the iframe
+      // behavior, so cancel the navigation; modified clicks (cmd/ctrl/
+      // shift/alt) fall through so the browser opens a new tab/window.
+      if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      ev.preventDefault();
+
       var target = $(ev.currentTarget);
       var iframeMeta = target.find('.iframe-meta')[0];
 
@@ -194,6 +201,7 @@
     $('.pathologies_tab .content-item[data-iframe-id]').on('mousedown', function(ev) {
       if (window.innerWidth <= 767) return;        // desktop only
       if (ev.button !== 0) return;                  // primary (left) button only
+      if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return; // opening in a new tab: don't waste an iframe load
       if ($(paywallElem).css('display') === 'block') return; // skip when paywalled
 
       var meta = $(ev.currentTarget).find('.iframe-meta')[0];
