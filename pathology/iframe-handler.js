@@ -41,20 +41,32 @@
       $('.pathologies_tab_col-right').append($(paywallElem).clone().css('opacity', '1').hide());
     }
 
+    // A broken item (embed removed in the Designer, missing attributes)
+    // must not become a dead click: skip preventDefault so the item's real
+    // <a href> navigates to the page instead, and report once per page load
+    // (Discord + Sentry via the shared reporter).
+    var reportedBrokenItem = false;
+    function brokenItemFallback(reason) {
+      console.warn('[IframeHandler] ' + reason + ' — falling back to link navigation');
+      if (!reportedBrokenItem && window.OrdoErrorReporter) {
+        reportedBrokenItem = true;
+        window.OrdoErrorReporter.report('IframeHandler', reason + ' (plain click fell back to link navigation)');
+      }
+    }
+
     // Open corresponding iframe on collection item click
     $('.pathologies_tab .content-item[data-iframe-id]').click(function(ev) {
       // The item title is now a real <a href> to the ordonnance page (SEO:
-      // crawlable internal links). A plain click must keep the iframe
-      // behavior, so cancel the navigation; modified clicks (cmd/ctrl/
-      // shift/alt) fall through so the browser opens a new tab/window.
+      // crawlable internal links). Modified clicks (cmd/ctrl/shift/alt)
+      // fall through so the browser opens a new tab/window; a plain click
+      // keeps the iframe behavior via the preventDefault below.
       if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
-      ev.preventDefault();
 
       var target = $(ev.currentTarget);
       var iframeMeta = target.find('.iframe-meta')[0];
 
       if (!iframeMeta) {
-        console.warn("[IframeHandler] .iframe-meta not found inside content-item");
+        brokenItemFallback('.iframe-meta not found inside content-item');
         return;
       }
 
@@ -62,9 +74,13 @@
       var collection = iframeMeta.getAttribute('data-collection-slug');
 
       if (!slug || !collection) {
-        console.warn("[IframeHandler] Missing slug or collection:", { slug: slug, collection: collection });
+        brokenItemFallback('Missing slug or collection on iframe-meta');
         return;
       }
+
+      // Everything the iframe needs is present: cancel the link navigation
+      // and keep today's behavior.
+      ev.preventDefault();
 
       var host = window.location.origin;
       var url = host + '/' + collection + '/' + slug;
