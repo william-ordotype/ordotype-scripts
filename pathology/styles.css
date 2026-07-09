@@ -48,6 +48,13 @@
     color: var(--inverted-900);
 }
 
+/* The item title is now a real <a> (SEO links). Unlike the old div, a
+   link doesn't inherit the active color when a site-level link rule
+   sets an explicit one, so force the inheritance chain here. */
+.content-item.is-active .content-item_name {
+    color: inherit;
+}
+
 .content-item.is-active .tab_right-icon {
     filter: invert(1);
 }
