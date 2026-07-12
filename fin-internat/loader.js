@@ -47,6 +47,7 @@
     function loadScript(url) {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
+            script.crossOrigin = 'anonymous';
             script.src = url;
             script.async = false;
             script.onload = resolve;

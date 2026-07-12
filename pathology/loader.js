@@ -95,6 +95,7 @@
       function tryLoad() {
         attempts++;
         var script = document.createElement('script');
+        script.crossOrigin = 'anonymous';
         script.src = url + (attempts > 1 ? '?retry=' + attempts : '');
         script.onload = resolve;
         script.onerror = function() {

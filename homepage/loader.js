@@ -43,6 +43,7 @@
   function loadScript(url) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
       script.src = url;
       script.onload = resolve;
       script.onerror = () => reject(new Error(`Failed to load: ${url}`));
