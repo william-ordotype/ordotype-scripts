@@ -41,6 +41,7 @@
         e.preventDefault();
         btn.removeEventListener('click', lazyCopy);
         var s = document.createElement('script');
+        s.crossOrigin = 'anonymous';
         s.src = `${BASE}/copy-handler.js`;
         s.onload = function() { btn.click(); };
         document.head.appendChild(s);
@@ -68,6 +69,7 @@
         if (b) b.removeEventListener('click', lazyPrint);
       });
       var s = document.createElement('script');
+      s.crossOrigin = 'anonymous';
       s.src = `${BASE}/print-handler.js`;
       s.onload = function() { clickedBtn.click(); };
       document.head.appendChild(s);
@@ -89,6 +91,7 @@
   function loadScript(url) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
       script.src = url;
       script.onload = resolve;
       script.onerror = () => reject(new Error(`Failed to load: ${url}`));

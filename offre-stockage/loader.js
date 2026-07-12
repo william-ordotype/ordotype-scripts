@@ -21,6 +21,7 @@
   function loadScript(url) {
     return new Promise(function(resolve, reject) {
       var script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
       script.src = url;
       script.onload = resolve;
       script.onerror = function() { reject(new Error('Failed to load: ' + url)); };

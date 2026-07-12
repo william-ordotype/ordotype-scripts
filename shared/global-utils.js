@@ -158,6 +158,7 @@
         }
 
         const script = document.createElement('script');
+        script.crossOrigin = 'anonymous';
         script.defer = true;
         script.src = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@'
             + version + '/shared/tracking-churn-offers.js';
