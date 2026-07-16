@@ -49,16 +49,20 @@
   //         innerHTML + strips .w-condition-invisible) before iframe-handler's
   //         init reads the paywall state and clones it into col-right.
   //         Awaited so Tier 2 doesn't race ahead.
-  // Tier 2: interactive UX. Most depend on jQuery; by the time T1 has
-  //         resolved (~one parallel batch later), Webflow's jQuery tag
-  //         has had ample time to execute. Fire-and-forget.
+  // Tier 2: interactive UX. Split on a hard load-time dependency: the
+  //         TIER2_JQUERY scripts reference `$` at IIFE-time, and Webflow's
+  //         jQuery tag can lose that race — a blocked CDN means the page's
+  //         fallback loader injects jQuery seconds later, or never on fully
+  //         filtered networks. Loading them without jQuery threw one
+  //         module-scope ReferenceError per script per pageview (the Sentry
+  //         "$ is not defined" family) and lost the features even when the
+  //         fallback recovered jQuery moments later. So: vanilla scripts
+  //         load immediately, jQuery-dependent ones wait for jQuery (up to
+  //         JQUERY_WAIT_MS) and are skipped with ONE structured report if
+  //         it never arrives. Fire-and-forget either way.
   // Tier 3: banners / redirects; deferred until idle so they don't compete
   //         with first paint. memberstack-utils is already loaded from the
   //         pre-T2 step, but reloading is a cache hit and idempotent.
-  //
-  // core.js is in Tier 2 (not Tier 1) because it calls $(window).on()
-  // at IIFE-time — keeping it out of the eager parallel batch avoids a
-  // race with Webflow's jQuery script tag.
   const TIER1 = [
     `${SHARED}/error-reporter.js`,
     `${SHARED}/opacity-reveal.js`
@@ -69,16 +73,22 @@
   // paywall state BEFORE iframe-handler's init reads it). Runs after
   // pause-paywall so the SAU variant wins if both ever apply.
   const SAU_PAYWALL = `${BASE}/sau-paywall.js`;
-  const TIER2 = [
-    `${BASE}/core.js`,
+  const TIER2_VANILLA = [
     `${BASE}/tabs-manager.js`,
-    `${BASE}/iframe-handler.js`,
     `${BASE}/tooltips.js`,
-    `${BASE}/scroll-anchor.js`,
-    `${BASE}/date-french.js`,
-    `${BASE}/sources-list.js`,
     `${BASE}/clipboard.js`
   ];
+  const TIER2_JQUERY = [
+    `${BASE}/core.js`,
+    `${BASE}/iframe-handler.js`,
+    `${BASE}/scroll-anchor.js`,
+    `${BASE}/date-french.js`,
+    `${BASE}/sources-list.js`
+  ];
+  // Generous ceiling: the jQuery CDN fallback needs to detect the primary
+  // failure, inject its script tag and download jQuery - normally well under
+  // 5s. Past this, treat jQuery as gone for this pageview.
+  const JQUERY_WAIT_MS = 20000;
   const TIER3 = [
     `${BASE}/member-redirects.js`,
     `${BASE}/countdown.js`
@@ -123,6 +133,27 @@
       });
     });
     console.warn('[OrdoPathology] Fallback reveal triggered');
+  }
+
+  // Calls back with true as soon as window.jQuery exists, or false once
+  // maxWaitMs has elapsed without it. Polling (vs. hooking the script tag)
+  // stays correct no matter where jQuery comes from: Webflow's tag, the
+  // CDN-fallback loader, or a browser extension.
+  function whenJQueryReady(maxWaitMs, callback) {
+    if (window.jQuery) {
+      callback(true);
+      return;
+    }
+    var waited = 0;
+    var timer = setInterval(function() {
+      if (window.jQuery) {
+        clearInterval(timer);
+        callback(true);
+      } else if ((waited += 200) >= maxWaitMs) {
+        clearInterval(timer);
+        callback(false);
+      }
+    }, 200);
   }
 
   // Schedule a callback for when the browser is idle. Falls back to a
@@ -183,8 +214,20 @@
     }
 
     // Tier 2: parallel, fire-and-forget. Doesn't block Tier 3 scheduling.
-    Promise.all(TIER2.map(function(url) { return loadOrLog(url, 'Tier 2'); }))
-      .then(function() { console.log('[OrdoPathology] Tier 2 loaded'); });
+    Promise.all(TIER2_VANILLA.map(function(url) { return loadOrLog(url, 'Tier 2'); }))
+      .then(function() { console.log('[OrdoPathology] Tier 2 (vanilla) loaded'); });
+
+    whenJQueryReady(JQUERY_WAIT_MS, function(hasJQuery) {
+      if (!hasJQuery) {
+        console.warn('[OrdoPathology] jQuery never arrived, skipping ' + TIER2_JQUERY.length + ' jQuery-dependent script(s)');
+        if (window.OrdoErrorReporter) {
+          window.OrdoErrorReporter.report('PathologyLoader', 'jQuery unavailable after ' + JQUERY_WAIT_MS + 'ms: skipped jQuery-dependent Tier 2 scripts');
+        }
+        return;
+      }
+      Promise.all(TIER2_JQUERY.map(function(url) { return loadOrLog(url, 'Tier 2'); }))
+        .then(function() { console.log('[OrdoPathology] Tier 2 (jQuery) loaded'); });
+    });
 
     // Tier 3: defer until the browser is idle. memberstack-utils was
     // loaded pre-T2 (cache hit here, idempotent IIFE), so consumers in
