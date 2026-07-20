@@ -1,7 +1,7 @@
 /**
  * Ordotype Pathology - Date French
  * Translates English dates/days to French.
- * Depends on: jQuery
+ * Vanilla DOM — must not depend on jQuery (survives jQuery CDN failure).
  */
 (function() {
   'use strict';
@@ -31,21 +31,25 @@
   };
 
   function init() {
-    const elements = $('.' + dateClass);
+    const elements = document.querySelectorAll('.' + dateClass);
 
-    elements.each(function() {
-      let text = $(this).text();
+    elements.forEach(function(el) {
+      let text = el.textContent;
 
       for (const [en, fr] of Object.entries(translations)) {
         const regex = new RegExp('\\b' + en + '\\b', 'gi');
         text = text.replace(regex, fr);
       }
 
-      $(this).text(text);
+      el.textContent = text;
     });
 
     console.log('[DateFrench] Translated', elements.length, 'element(s)');
   }
 
-  $(document).ready(init);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();

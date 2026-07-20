@@ -1,24 +1,29 @@
 /**
  * Ordotype Ordonnances - Duplicates Cleaner
  * Removes duplicate search items and handles custom prescription tracking.
- * Depends on: jQuery
+ * Vanilla DOM — must not depend on jQuery: this runs on every ordonnance
+ * pageview and has to survive Webflow's jQuery CDN being blocked.
  */
 (function() {
   'use strict';
 
   // Opens modal with ordonnance personalized information if in iframe
-  $("#txt-editor-redirect").on("click", function(ev) {
-    ev.preventDefault();
+  function attachEditorTracking() {
+    var editorBtn = document.getElementById('txt-editor-redirect');
+    if (!editorBtn) return;
+    editorBtn.addEventListener('click', function(ev) {
+      ev.preventDefault();
 
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({
-      'event': 'CustomPrescriptionClick',
-      'eventCategory': 'Button Click',
-      'eventAction': 'Click',
-      'eventLabel': 'Custom Prescription Click',
-      'eventValue': ''
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        'event': 'CustomPrescriptionClick',
+        'eventCategory': 'Button Click',
+        'eventAction': 'Click',
+        'eventLabel': 'Custom Prescription Click',
+        'eventValue': ''
+      });
     });
-  });
+  }
 
   // Remove duplicate search items
   function removeDuplicates() {
@@ -38,7 +43,15 @@
     }
   }
 
-  removeDuplicates();
+  function init() {
+    attachEditorTracking();
+    removeDuplicates();
+    console.log('[DuplicatesCleaner] Initialized');
+  }
 
-  console.log('[DuplicatesCleaner] Initialized');
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
