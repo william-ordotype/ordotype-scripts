@@ -83,7 +83,13 @@
       }).length;
 
       var shouldHide = emptyItems === items.length && visibleCount === 0;
-      section.style.display = shouldHide ? 'none' : '';
+      if (shouldHide) {
+        section.style.display = 'none';
+      } else if (section.style.display === 'none') {
+        // Only clear an inline "none" — jQuery's .show() left any other
+        // inline display (e.g. flex set by a Webflow interaction) untouched.
+        section.style.display = '';
+      }
     });
 
     console.log('[UrgentHandler] Initialized');
