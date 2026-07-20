@@ -157,12 +157,15 @@
       callback(true);
       return;
     }
-    var waited = 0;
+    // Wall-clock deadline, not tick counting: background tabs throttle
+    // setInterval (1s floor, ~1/min under Chrome intensive throttling), so
+    // counting 200ms ticks would stretch the ceiling to many minutes.
+    var deadline = Date.now() + maxWaitMs;
     var timer = setInterval(function() {
       if (jQueryUsable()) {
         clearInterval(timer);
         callback(true);
-      } else if ((waited += 200) >= maxWaitMs) {
+      } else if (Date.now() >= deadline) {
         clearInterval(timer);
         callback(false);
       }
@@ -232,9 +235,14 @@
 
     whenJQueryReady(JQUERY_WAIT_MS, function(hasJQuery) {
       if (!hasJQuery) {
-        console.warn('[OrdoPathology] jQuery never arrived, skipping ' + TIER2_JQUERY.length + ' jQuery-dependent script(s)');
+        // typeof suffix separates the two root causes this can now mean:
+        // jQuery CDN never loaded (typeof jQuery=undefined) vs a third
+        // party ran jQuery.noConflict() and removed $ (typeof
+        // jQuery=function, typeof $=undefined). Triage relies on it.
+        var state = ' (typeof jQuery=' + typeof window.jQuery + ', typeof $=' + typeof window.$ + ')';
+        console.warn('[OrdoPathology] jQuery unusable, skipping ' + TIER2_JQUERY.length + ' jQuery-dependent script(s)' + state);
         if (window.OrdoErrorReporter) {
-          window.OrdoErrorReporter.report('PathologyLoader', 'jQuery unavailable after ' + JQUERY_WAIT_MS + 'ms: skipped jQuery-dependent Tier 2 scripts');
+          window.OrdoErrorReporter.report('PathologyLoader', 'jQuery unavailable after ' + JQUERY_WAIT_MS + 'ms: skipped jQuery-dependent Tier 2 scripts' + state);
         }
         return;
       }
