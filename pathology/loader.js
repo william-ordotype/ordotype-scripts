@@ -60,6 +60,11 @@
   //         load immediately, jQuery-dependent ones wait for jQuery (up to
   //         JQUERY_WAIT_MS) and are skipped with ONE structured report if
   //         it never arrives. Fire-and-forget either way.
+  //         core/date-french/sources-list were rewritten vanilla so they
+  //         moved to TIER2_VANILLA and keep working without jQuery. The two
+  //         left in TIER2_JQUERY genuinely need the jQuery+webflow.js
+  //         runtime (tabs, animate) — without jQuery, webflow.js is dead
+  //         and the interactions they enhance don't exist anyway.
   // Tier 3: banners / redirects; deferred until idle so they don't compete
   //         with first paint. memberstack-utils is already loaded from the
   //         pre-T2 step, but reloading is a cache hit and idempotent.
@@ -76,14 +81,14 @@
   const TIER2_VANILLA = [
     `${BASE}/tabs-manager.js`,
     `${BASE}/tooltips.js`,
-    `${BASE}/clipboard.js`
-  ];
-  const TIER2_JQUERY = [
+    `${BASE}/clipboard.js`,
     `${BASE}/core.js`,
-    `${BASE}/iframe-handler.js`,
-    `${BASE}/scroll-anchor.js`,
     `${BASE}/date-french.js`,
     `${BASE}/sources-list.js`
+  ];
+  const TIER2_JQUERY = [
+    `${BASE}/iframe-handler.js`,
+    `${BASE}/scroll-anchor.js`
   ];
   // Generous ceiling: the jQuery CDN fallback needs to detect the primary
   // failure, inject its script tag and download jQuery - normally well under
@@ -135,18 +140,26 @@
     console.warn('[OrdoPathology] Fallback reveal triggered');
   }
 
-  // Calls back with true as soon as window.jQuery exists, or false once
+  // The gated scripts call `$`, not `jQuery` — and jQuery.noConflict()
+  // (any third-party embed can call it) deletes window.$ while keeping
+  // window.jQuery. Gating on jQuery alone would then pass and reintroduce
+  // the exact "$ is not defined" crash this gate exists to prevent.
+  function jQueryUsable() {
+    return !!(window.jQuery && window.$);
+  }
+
+  // Calls back with true as soon as jQuery is usable, or false once
   // maxWaitMs has elapsed without it. Polling (vs. hooking the script tag)
   // stays correct no matter where jQuery comes from: Webflow's tag, the
   // CDN-fallback loader, or a browser extension.
   function whenJQueryReady(maxWaitMs, callback) {
-    if (window.jQuery) {
+    if (jQueryUsable()) {
       callback(true);
       return;
     }
     var waited = 0;
     var timer = setInterval(function() {
-      if (window.jQuery) {
+      if (jQueryUsable()) {
         clearInterval(timer);
         callback(true);
       } else if ((waited += 200) >= maxWaitMs) {

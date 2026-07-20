@@ -2,75 +2,88 @@
  * Ordotype Ordonnances - Urgent Handler
  * Handles urgent prescriptions, stomach-empty/le-matin combinations,
  * and cleans up empty containers.
- * Depends on: jQuery
+ * Vanilla DOM — must not depend on jQuery: this runs on every ordonnance
+ * pageview and has to survive Webflow's jQuery CDN being blocked.
  */
 (function() {
   'use strict';
 
+  // jQuery's :visible definition, without jQuery.
+  function isVisible(el) {
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  }
+
+  function qsa(selector, root) {
+    return Array.prototype.slice.call((root || document).querySelectorAll(selector));
+  }
+
   function init() {
-    var urgentValue = $('#urgent-value').data('urgent');
+    var urgentEl = document.getElementById('urgent-value');
+    var urgentValue = urgentEl ? urgentEl.getAttribute('data-urgent') : null;
 
     // Hide elements for urgent prescriptions
-    if (urgentValue == "Oui") {
-      $('.stomach-empty, .le-matin').css('display', 'none');
+    if (urgentValue == 'Oui') {
+      qsa('.stomach-empty, .le-matin').forEach(function(el) {
+        el.style.display = 'none';
+      });
     }
 
     // Combine stomach-empty and le-matin if both visible
-    if ($('.le-matin:visible').length > 0 && $('.stomach-empty:visible').length > 0) {
-      $('.stomach-empty-le-matin').css('display', 'block');
-      $('.le-matin, .stomach-empty').css('display', 'none');
+    if (qsa('.le-matin').some(isVisible) && qsa('.stomach-empty').some(isVisible)) {
+      qsa('.stomach-empty-le-matin').forEach(function(el) {
+        el.style.display = 'block';
+      });
+      qsa('.le-matin, .stomach-empty').forEach(function(el) {
+        el.style.display = 'none';
+      });
     }
 
     // Hide .tr-contain elements that have no children in .tr-list
-    var emptyTrContainers = $(".tr-contain").filter(function() {
-      return $(this).find(".tr-list").children().length <= 0;
+    qsa('.tr-contain').forEach(function(container) {
+      var childCount = qsa('.tr-list', container).reduce(function(n, list) {
+        return n + list.children.length;
+      }, 0);
+      if (childCount <= 0) container.style.display = 'none';
     });
-    emptyTrContainers.hide();
 
     // Remove .cms-section .w-dyn-bind-empty:only-child:empty elements
-    $(".cms-section .w-dyn-bind-empty:only-child:empty").closest(".cms-item").remove();
-
-    // Remove hidden variants for ALL target classes BEFORE dedupe
-    ["stomach-empty", "urine-24h", "le-matin", "consignes-patient", "selles"].forEach(function(c) {
-      $('.' + c + '.w-condition-invisible').remove();
+    qsa('.cms-section .w-dyn-bind-empty:only-child:empty').forEach(function(el) {
+      var item = el.closest('.cms-item');
+      if (item && item.parentNode) item.parentNode.removeChild(item);
     });
 
-    // Define a dictionary to hold seen content for each class
-    var seenContent = {
-      "stomach-empty": new Set(),
-      "urine-24h": new Set(),
-      "le-matin": new Set(),
-      "consignes-patient": new Set(),
-      "selles": new Set()
-    };
+    var targetClasses = ['stomach-empty', 'urine-24h', 'le-matin', 'consignes-patient', 'selles'];
+
+    // Remove hidden variants for ALL target classes BEFORE dedupe
+    targetClasses.forEach(function(c) {
+      qsa('.' + c + '.w-condition-invisible').forEach(function(el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    });
 
     // For each class, remove duplicates and keep only the first instance
-    ["stomach-empty", "urine-24h", "le-matin", "consignes-patient", "selles"].forEach(function(className) {
-      $('.' + className).each(function() {
-        var content = $(this).html().trim();
-        if (seenContent[className].has(content)) {
-          $(this).remove();
+    targetClasses.forEach(function(className) {
+      var seenContent = new Set();
+      qsa('.' + className).forEach(function(el) {
+        var content = el.innerHTML.trim();
+        if (seenContent.has(content)) {
+          if (el.parentNode) el.parentNode.removeChild(el);
         } else {
-          seenContent[className].add(content);
+          seenContent.add(content);
         }
       });
     });
 
     // Hide .cms-section if all .cms-item elements have no visible children
-    $('.cms-section').each(function() {
-      var totalItems = $(this).find('.cms-item').length;
-      var visibleCount = $(this).find('.stomach-empty-le-matin:visible').length;
-      var emptyItems = $(this).find('.cms-item').filter(function() {
-        return $(this).children(':visible').length === 0;
+    qsa('.cms-section').forEach(function(section) {
+      var items = qsa('.cms-item', section);
+      var visibleCount = qsa('.stomach-empty-le-matin', section).filter(isVisible).length;
+      var emptyItems = items.filter(function(item) {
+        return Array.prototype.slice.call(item.children).filter(isVisible).length === 0;
       }).length;
 
-      var shouldHide = emptyItems === totalItems && visibleCount === 0;
-
-      if (shouldHide) {
-        $(this).hide();
-      } else {
-        $(this).show();
-      }
+      var shouldHide = emptyItems === items.length && visibleCount === 0;
+      section.style.display = shouldHide ? 'none' : '';
     });
 
     console.log('[UrgentHandler] Initialized');
