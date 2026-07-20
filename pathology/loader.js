@@ -140,18 +140,26 @@
     console.warn('[OrdoPathology] Fallback reveal triggered');
   }
 
-  // Calls back with true as soon as window.jQuery exists, or false once
+  // The gated scripts call `$`, not `jQuery` — and jQuery.noConflict()
+  // (any third-party embed can call it) deletes window.$ while keeping
+  // window.jQuery. Gating on jQuery alone would then pass and reintroduce
+  // the exact "$ is not defined" crash this gate exists to prevent.
+  function jQueryUsable() {
+    return !!(window.jQuery && window.$);
+  }
+
+  // Calls back with true as soon as jQuery is usable, or false once
   // maxWaitMs has elapsed without it. Polling (vs. hooking the script tag)
   // stays correct no matter where jQuery comes from: Webflow's tag, the
   // CDN-fallback loader, or a browser extension.
   function whenJQueryReady(maxWaitMs, callback) {
-    if (window.jQuery) {
+    if (jQueryUsable()) {
       callback(true);
       return;
     }
     var waited = 0;
     var timer = setInterval(function() {
-      if (window.jQuery) {
+      if (jQueryUsable()) {
         clearInterval(timer);
         callback(true);
       } else if ((waited += 200) >= maxWaitMs) {
