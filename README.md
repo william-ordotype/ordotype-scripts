@@ -203,12 +203,19 @@ ordotype-scripts/
 
 ### External Scripts (keep separate)
 
+> ⚠️ **Do NOT load anything from `dndevs/ordotype-front-utils`** — that org is
+> inactive and outside our control (supply-chain risk). Every script it provided
+> has a maintained vanilla-JS equivalent in `shared/external-backups/` in THIS
+> repo; serve those instead, pinned to a commit. (Verified 2026-07-21: the live
+> site no longer loads any of these on the homepage — the only remaining dndevs
+> reference site-wide was `toast.js` on the Ordonnances template, now migrated.)
+
 ```html
-<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.16/dist/accordion.js" type="module"></script>
-<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.16/src/toggleSwitch.js" type="module"></script>
-<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.23/src/cookiesManager.js" type="module"></script>
-<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@v0.0.18/dist/showElementAfterDelay.js" type="module"></script>
-<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.24/dist/hideElementOnClick.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@ad8295a/shared/external-backups/accordion.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@ad8295a/shared/external-backups/toggleSwitch.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@ad8295a/shared/external-backups/cookiesManager.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@ad8295a/shared/external-backups/showElementAfterDelay.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@ad8295a/shared/external-backups/hideElementOnClick.js" type="module"></script>
 <script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/cookie-consent.js"></script>
 ```
 
@@ -336,8 +343,11 @@ Console messages for retry/fallback:
 
 ### External Scripts (keep separate)
 
+> ⚠️ `dndevs/ordotype-front-utils` is dead — serve the in-house vanilla
+> equivalent instead (see the warning in the Homepage section):
+
 ```html
-<script src="https://cdn.jsdelivr.net/gh/dndevs/ordotype-front-utils@0.0.7/dist/accordion.js" type="module"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@ad8295a/shared/external-backups/accordion.js" type="module"></script>
 ```
 
 ### Console Prefixes
