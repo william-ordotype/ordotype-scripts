@@ -180,13 +180,56 @@
       });
     }
 
+    // Show the "copié" toast — same implementation as ordonnances/copy-handler.js.
+    // The template ships the component as [x-ordo-utils="toast-component-common"]
+    // with a .hidden class; nothing else unhides it, so the handler must.
+    var toastHideTimer = null;
+    var toastFadeTimer = null;
+
+    function showCopyToast() {
+      var toastEl = document.querySelector('[x-ordo-utils="toast-component-common"]')
+                 || document.querySelector('[x-ordo-utils*="toast-component"]');
+
+      if (!toastEl) {
+        console.warn('[CopyHandler] No toast element found');
+        return;
+      }
+
+      // Cancel any pending hide/fade from a previous toast cycle
+      if (toastHideTimer) { clearTimeout(toastHideTimer); toastHideTimer = null; }
+      if (toastFadeTimer) { clearTimeout(toastFadeTimer); toastFadeTimer = null; }
+
+      toastEl.classList.remove('hidden');
+      toastEl.style.display = 'inline-block';
+      toastEl.style.opacity = '0';
+      toastEl.style.transition = 'opacity 0.2s ease, top 0.2s ease';
+      toastEl.style.top = '-100px';
+
+      requestAnimationFrame(function() {
+        toastEl.style.opacity = '1';
+        toastEl.style.top = '0px';
+      });
+
+      toastHideTimer = setTimeout(function() {
+        toastHideTimer = null;
+        toastEl.style.opacity = '0';
+        toastFadeTimer = setTimeout(function() {
+          toastFadeTimer = null;
+          toastEl.style.display = 'none';
+          toastEl.classList.add('hidden');
+        }, 200);
+      }, 3000);
+    }
+
     var copyButton = document.getElementById('copy-button');
     var copySection = document.getElementById('printableArea_CP');
 
     if (copyButton && copySection) {
-      copyButton.addEventListener('click', function() {
+      copyButton.addEventListener('click', function(e) {
+        e.preventDefault();
         removeElements('.tr-wrap');
         copyAsRichText(copySection, true);
+        showCopyToast();
       });
       console.log('[CopyHandler] Initialized');
     } else {
