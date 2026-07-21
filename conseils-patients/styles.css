@@ -14,6 +14,13 @@ p:not(table p) {
     margin-bottom: 10px !important;
 }
 
+/* The rule above is unscoped, so it also hits UI components on the page.
+   The copy toast centers its text with flexbox; the forced bottom margin
+   shifts the glyphs ~5px above center. Re-zero it there. */
+.toast-message-copy p {
+    margin-bottom: 0 !important;
+}
+
 /* Arabic text direction */
 .rich-text-ar {
     direction: rtl;
