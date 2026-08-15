@@ -67,7 +67,7 @@
         6: ["Médecine générale", "Médecine générale ", "Médecine palliative", "Soins palliatifs"],
         10: ["Anatomie pathologique", "Anesthésiologie", "Anesthésie réanimation", "Cardiologie",
             "Gastro-entérologie", "Hématologie", "Hépatologie", "Immunologie", "Infectiologie",
-            "Médecine interne", "Néonatologie", "Néphrologie", "Oncologie", "Pédiatrie",
+            "Médecine intensive-réanimation", "Médecine interne", "Néonatologie", "Néphrologie", "Oncologie", "Pédiatrie",
             "Pneumologie", "Radiologie", "Radiothérapie"],
         12: ["Chirurgie cardiaque", "Chirurgie générale", "Chirurgie gynécologique",
             "Chirurgie maxillo-faciale", "Chirurgie oculaire", "Chirurgie pédiatrique",
