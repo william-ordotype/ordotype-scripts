@@ -26,7 +26,9 @@ function getMemberstackData() {
     if (msMemberData) {
       const memberData = JSON.parse(msMemberData);
       if (!userId) userId = memberData.id || null;
-      email = memberData.auth?.email || null;
+      // No ES2020 syntax (?. / ??) in this file: it must parse on old
+      // hospital browsers (same family as Sentry ORDOTYPE-FRONTEND-1F7)
+      email = (memberData.auth && memberData.auth.email) || null;
     }
   } catch (e) {
     console.error("[Crisp] Failed to parse Memberstack data", e);

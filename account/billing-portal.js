@@ -6,8 +6,8 @@
 (function() {
   'use strict';
 
-  const member = window.OrdoAccount?.member;
-  if (!member?.id) return;
+  const member = window.OrdoAccount && window.OrdoAccount.member;
+  if (!member || !member.id) return;
 
   // Endpoints
   const BILLING_PORTAL_URL = 'https://billing.ordotype.fr/.netlify/functions/create-billing-portal';
@@ -73,7 +73,7 @@
     const patterns = [/\/p\/session\/([^?#]+)/, /\/session\/([^?#]+)/];
     for (const p of patterns) {
       const match = url.match(p);
-      if (match?.[1]) return match[1];
+      if (match && match[1]) return match[1];
     }
     return null;
   }
@@ -114,7 +114,7 @@
       checkoutSessionId: sessionId,
       stripeCustomerId: member.stripeCustomerId,
       memberstackUserId: member.id,
-      memberstackEmail: member.auth?.email || member.email,
+      memberstackEmail: (member.auth && member.auth.email) || member.email,
       option: 'billing_portal',
       paymentMethods: ['view_invoices'],
       originPage: window.location.href
