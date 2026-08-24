@@ -6,8 +6,8 @@
 (function() {
   'use strict';
 
-  const member = window.OrdoAccount?.member;
-  if (!member?.id) return;
+  const member = window.OrdoAccount && window.OrdoAccount.member;
+  if (!member || !member.id) return;
 
   function init() {
     const deleteBtn = document.getElementById('delete-account-btn');

@@ -99,7 +99,7 @@
       // Get current member and inject Stripe Customer ID
       const { data: member } = await window.$memberstackDom.getCurrentMember();
 
-      if (!member?.stripeCustomerId) {
+      if (!member || !member.stripeCustomerId) {
         throw new Error('Stripe Customer ID not found');
       }
 

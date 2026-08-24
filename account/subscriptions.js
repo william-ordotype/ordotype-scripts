@@ -6,8 +6,8 @@
 (function() {
   'use strict';
 
-  const member = window.OrdoAccount?.member;
-  if (!member?.id) return;
+  const member = window.OrdoAccount && window.OrdoAccount.member;
+  if (!member || !member.id) return;
 
   // Plan configurations - add new plans here
   const plans = [
@@ -39,7 +39,7 @@
     });
 
     // No plan connections? Nothing to show
-    if (!member.planConnections?.length) {
+    if (!member.planConnections || !member.planConnections.length) {
       console.log('[Subscriptions] No plan connections');
       return;
     }
@@ -50,7 +50,7 @@
       if (!connection) return;
 
       const elements = getElements(plan.prefix);
-      const isCanceled = Boolean(connection.payment?.cancelAtDate);
+      const isCanceled = Boolean(connection.payment && connection.payment.cancelAtDate);
 
       if (isCanceled) {
         if (elements.canceledBtn) elements.canceledBtn.style.display = 'block';

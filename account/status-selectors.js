@@ -6,12 +6,12 @@
 (function() {
   'use strict';
 
-  const member = window.OrdoAccount?.member;
-  if (!member?.id) return;
+  const member = window.OrdoAccount && window.OrdoAccount.member;
+  if (!member || !member.id) return;
 
   function init() {
     const statutSelector = document.getElementById('mon-statut-2');
-    const currentStatut = member.customFields?.statut;
+    const currentStatut = member.customFields && member.customFields.statut;
 
     // Apply initial visibility
     applyVisibilityRules(currentStatut);
