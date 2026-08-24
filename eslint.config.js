@@ -10,11 +10,10 @@ module.exports = [
     ignores: [
       "**/*.min.js",
       "**/node_modules/**",
-      // Not served to the site (tooling / data / experiments)
+      // Not served to the site (local tooling, mostly Python)
       "qr_code_switch/**",
       "generation-pdf-ordos/**",
       "winback/**",
-      "ordonnances/**",
     ],
   },
   {
