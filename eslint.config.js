@@ -4,7 +4,7 @@
 // PARSE error in this lint run - the bug class of Sentry ORDOTYPE-FRONTEND-1FB
 // /1F7/19K, where one token kills an entire file on those browsers.
 // No style rules on purpose: this gate checks parseability only.
-// Run: npx --yes eslint@9 .   (also run by .github/workflows/parse-floor.yml)
+// Run: npx --yes eslint@10 .   (also run by .github/workflows/parse-floor.yml)
 module.exports = [
   {
     ignores: [

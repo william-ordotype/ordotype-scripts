@@ -197,6 +197,9 @@ ordotype-scripts/
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js"></script>
 ```
 
+In production the embed is COMMIT-PINNED, not `@main` (see the pinned-embeds
+note in Cache Busting): deploying a change here means bumping the pin.
+
 ### Dependencies
 
 - jQuery (required for countdown and member-redirects)
@@ -275,6 +278,9 @@ ordotype-scripts/
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js"></script>
 ```
+
+In production the embed is COMMIT-PINNED, not `@main` (see the pinned-embeds
+note in Cache Busting): deploying a change here means bumping the pin.
 
 ### Dependencies
 
@@ -1593,7 +1599,10 @@ commit instead of `@main` (verified live 2026-08-24: the homepage loads
 `pathology/loader.js@ad8295a`, and each loader propagates its own pin to
 every sub-script it loads). Commit-pinned jsDelivr URLs are immutable:
 shipping a change to those pages means bumping the pinned hash in the
-Webflow custom code (then republishing the site), not purging.
+Webflow custom code (then republishing the site), not purging. In
+particular, `homepage/cgu-modal.js` and `pathology/scroll-anchor.js` are
+ONLY ever served through those pinned loaders: they deploy exclusively
+via a pin bump and are deliberately absent from the purge list below.
 
 ```
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/memberstack-utils.js
@@ -1609,9 +1618,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/del
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/member-redirects.js
-https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/cgu-modal.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
-https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/scroll-anchor.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js
