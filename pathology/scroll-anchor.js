@@ -22,8 +22,10 @@
     // Handle clicks for links starting with "#refer"
     $("body").on("click", "a[href^='#refer']", function(e) {
       e.preventDefault();
-      var target = $(e.target).attr('href');
-      scrollToAnchor(target);
+      // $(this) is the matched <a>; e.target can be a child node without an
+      // href (Sentry ORDOTYPE-FRONTEND-1DZ: undefined.replace on click)
+      var target = $(this).attr('href');
+      if (target) scrollToAnchor(target);
       return false;
     });
 

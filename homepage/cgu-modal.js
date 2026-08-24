@@ -29,7 +29,9 @@
         if (memString) {
           try {
             var member = JSON.parse(memString);
-            acceptedDate = member.json?.['cgu-accepted-date'] || null;
+            // No ES2020 syntax (?. / ??) in this file: it must parse on old
+            // hospital browsers (Chrome 78, Sentry ORDOTYPE-FRONTEND-1FB)
+            acceptedDate = (member.json && member.json['cgu-accepted-date']) || null;
           } catch (e) {
             console.warn("[CGUModal] Could not parse _ms-mem JSON:", e);
           }
