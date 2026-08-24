@@ -63,7 +63,16 @@
 
             for (var j = 0; j < planConnections.length; j++) {
                 var conn = planConnections[j];
-                if (conn.status === 'ACTIVE' && groupPlanIds.indexOf(conn.planId) !== -1) {
+                var isLive = conn.status === 'ACTIVE' || conn.status === 'TRIALING';
+                if (isLive && groupPlanIds.indexOf(conn.planId) !== -1) {
+                    // payment.cancelAtDate is the generic scheduled-cancel flag
+                    // (same meaning as in subscriptions.js), not pause-specific.
+                    // Heuristic: treat such a connection as the paid drain of the
+                    // pause rather than a resumed subscription, so the card stays
+                    // visible during the drain. Accepted trade-off: a member who
+                    // re-subscribed via checkout and then scheduled a normal
+                    // cancel of the new sub sees the card again.
+                    if (conn.payment && conn.payment.cancelAtDate) continue;
                     return true;
                 }
             }
