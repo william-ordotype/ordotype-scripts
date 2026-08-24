@@ -202,7 +202,11 @@
             console.warn('[IframeHandler] No pathology id found');
           }
 
-          iframe.removeEventListener("load", iframeLoadHandler);
+          // Listener kept for the iframe's whole life: if the embedded SPA
+          // reloads itself (stale-chunk auto-recovery in main.js), the next
+          // load event must re-send iframeLoaded or the iframe comes back
+          // without pathologyId. Same behavior as the desktop $('iframe')
+          // handler below; re-dispatching on every load is idempotent.
         }
 
         iframe.addEventListener("load", iframeLoadHandler);
