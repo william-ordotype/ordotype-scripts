@@ -17,8 +17,9 @@
  *                      fills it. Stops the scraper spam hitting these
  *                      unprotected signup forms.
  *
- * Crisp is intentionally NOT loaded here — it is loaded site-wide from the
- * global Webflow footer (shared/crisp-loader.js); keep that tag untouched.
+ * Crisp is intentionally NOT loaded here: every page footer already embeds
+ * the consent-gated loader from the separate crisp repo
+ * (william-ordotype/crisp@main/crisp-loader.js); keep that tag untouched.
  *
  * Loaded in Webflow via a single tag on each page, e.g.:
  *   <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/signup-sau/sau-signup-loader.js"></script>
