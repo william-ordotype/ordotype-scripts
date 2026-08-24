@@ -1,0 +1,18 @@
+# Parse-floor gate: fails the build if any served .js contains syntax newer
+# than ES2019 (?., ??, class fields...). One such token makes the WHOLE file
+# fail to parse on the old hospital browsers (Chrome 78 / Safari 13) that
+# still browse the site - Sentry ORDOTYPE-FRONTEND-1FB/1F7/19K bug class.
+# The rule set lives in eslint.config.js (parse errors only, no style rules).
+name: parse-floor
+on:
+  push:
+  pull_request:
+jobs:
+  es2019-parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npx --yes eslint@10 .
