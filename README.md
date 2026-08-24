@@ -1587,16 +1587,31 @@ jsDelivr caches files. To force an update after pushing changes:
 
 After purging, if changes still don't appear, use a commit-specific URL to bypass the branch cache: `@<commit-hash>` instead of `@main`.
 
+**Pinned embeds are NOT deployed by purging.** Some Webflow embeds pin a
+commit instead of `@main` (verified live 2026-08-24: the homepage loads
+`homepage/loader.js@4e368f3` and pathology pages load
+`pathology/loader.js@ad8295a`, and each loader propagates its own pin to
+every sub-script it loads). Commit-pinned jsDelivr URLs are immutable:
+shipping a change to those pages means bumping the pinned hash in the
+Webflow custom code (then republishing the site), not purging.
+
 ```
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/memberstack-utils.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/error-reporter.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/crisp-loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/connexion-2fa/crisp.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/styles.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/subscriptions.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/billing-portal.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/status-selectors.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/delete-account.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/member-redirects.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/cgu-modal.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/scroll-anchor.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js
