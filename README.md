@@ -642,6 +642,14 @@ Reports are sent to `ordotype-stripe-double-checkout.netlify.app/.netlify/functi
 
 Loads Crisp chat widget and pushes Memberstack data (member ID, email, page URL) to Crisp session.
 
+**Legacy fork.** The canonical, consent-gated loader lives in a separate repo and is what the site footer embeds on every page:
+
+```html
+<script defer crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js"></script>
+```
+
+This `shared/` copy injects Crisp eagerly, with no `fs-cc` consent check and no browser-capability guard (Safari < 16.4 / Chrome < 80 get a dead widget plus raw SyntaxError noise, Sentry ORDOTYPE-FRONTEND-1D5). It is still loaded by `mes-informations/loader.js` only; do not add it to new pages, and never load it on a page that already embeds the canonical loader (both reset `window.$crisp`). Same caveats for `connexion-2fa/crisp.js`.
+
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/crisp-loader.js"></script>
 ```
@@ -1604,7 +1612,12 @@ particular, `homepage/cgu-modal.js` and `pathology/scroll-anchor.js` are
 ONLY ever served through those pinned loaders: they deploy exclusively
 via a pin bump and are deliberately absent from the purge list below.
 
+The site-wide Crisp loader is served from a separate repo
+(`william-ordotype/crisp`, embedded `@main` on every page): a change there is
+only live after its own purge, so its URL is part of this list.
+
 ```
+https://purge.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/memberstack-utils.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/error-reporter.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/crisp-loader.js
