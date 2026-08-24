@@ -10,11 +10,14 @@
 
   Webflow.push(function() {
     function scrollToAnchor(anchorRef) {
-      var headerHeight = $('.padding-global').height();
-      var ref = $("[id='" + anchorRef.replace('#', '') + "']");
+      var headerHeight = $('.padding-global').height() || 0;
+      // getElementById treats the id as data: a quote in a hand-authored
+      // #refer anchor would make a jQuery attribute selector throw, and the
+      // id index is O(1) on the longest pages of the site
+      var el = document.getElementById(anchorRef.slice(1));
 
-      if (ref.length) {
-        var yHeight = ref.offset().top - headerHeight - 56;
+      if (el) {
+        var yHeight = $(el).offset().top - headerHeight - 56;
         $('html, body').animate({ scrollTop: yHeight }, 500, 'swing');
       }
     }
@@ -24,8 +27,7 @@
       e.preventDefault();
       // $(this) is the matched <a>; e.target can be a child node without an
       // href (Sentry ORDOTYPE-FRONTEND-1DZ: undefined.replace on click)
-      var target = $(this).attr('href');
-      if (target) scrollToAnchor(target);
+      scrollToAnchor($(this).attr('href'));
       return false;
     });
 

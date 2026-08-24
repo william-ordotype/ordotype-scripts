@@ -15,17 +15,28 @@
     var cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 90);
 
+    // localStorage accessors THROW on locked-down browsers ('Block all
+    // cookies', storage disabled by policy) - the population this file
+    // targets. Reads fall back to null (no stored acceptance -> the modal
+    // is shown, so the CGU still get presented); writes are best-effort.
+    function storageGet(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function storageSet(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+    }
+
     // Simple check if user is connected
     function isUserConnected() {
-      return localStorage.getItem('_ms-mem') !== null;
+      return storageGet('_ms-mem') !== null;
     }
 
     // On load: check localStorage, fallback to member.json['cgu-accepted-date']
     function checkCGUAcceptedDate() {
-      var acceptedDate = localStorage.getItem('cgu-accepted-date');
+      var acceptedDate = storageGet('cgu-accepted-date');
 
       if (!acceptedDate) {
-        var memString = localStorage.getItem('_ms-mem');
+        var memString = storageGet('_ms-mem');
         if (memString) {
           try {
             var member = JSON.parse(memString);
@@ -64,7 +75,7 @@
 
         var nowISO = new Date().toISOString();
         // Always save to localStorage (works for both connected and anonymous users)
-        localStorage.setItem('cgu-accepted-date', nowISO);
+        storageSet('cgu-accepted-date', nowISO);
 
         // Only update Memberstack if user is connected
         if (isUserConnected() && memberstack) {
