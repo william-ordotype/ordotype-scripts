@@ -64,6 +64,10 @@
             for (var j = 0; j < planConnections.length; j++) {
                 var conn = planConnections[j];
                 if (conn.status === 'ACTIVE' && groupPlanIds.indexOf(conn.planId) !== -1) {
+                    // A connection scheduled to cancel (drain after a pause taken
+                    // mid-cycle) is not a resumed subscription: keep showing the
+                    // pause card so the member can resume or cancel definitively.
+                    if (conn.payment && conn.payment.cancelAtDate) continue;
                     return true;
                 }
             }
