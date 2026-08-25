@@ -5,6 +5,7 @@
  *
  * Reads config from window.CMS_CHECKOUT_CONFIG (set by Webflow)
  * Falls back to localStorage values if CMS values are empty
+ * Without a CMS priceId, payment methods come from localStorage first
  *
  * Usage in Webflow:
  * <script>
@@ -68,13 +69,18 @@
     const couponId = config.couponId || localStorage.getItem('signup-coupon-id') || '';
     const successUrl = resolveUrl(config.successUrl) || localStorage.getItem('signup-success-url') || `${window.location.origin}/membership/mes-informations`;
     const cancelUrl = resolveUrl(config.cancelUrl) || localStorage.getItem('signup-cancel-url') || window.location.href;
-    const paymentMethodsStorage = localStorage.getItem('signup-payment-methods');
-    const paymentMethods = (config.paymentMethods && config.paymentMethods.length)
-        ? config.paymentMethods
-        : (paymentMethodsStorage ? paymentMethodsStorage.split(',') : ['card', 'sepa_debit']);
+    const parsePaymentMethods = (value) => (Array.isArray(value) ? value : String(value || '').split(','))
+        .map((v) => String(v).trim())
+        .filter(Boolean);
+    const cmsPaymentMethods = parsePaymentMethods(config.paymentMethods);
+    const storedPaymentMethods = parsePaymentMethods(localStorage.getItem('signup-payment-methods'));
+    const paymentMethods = (!config.priceId && storedPaymentMethods.length) ? storedPaymentMethods
+        : cmsPaymentMethods.length ? cmsPaymentMethods
+        : storedPaymentMethods.length ? storedPaymentMethods
+        : ['card', 'sepa_debit'];
     const option = config.option || localStorage.getItem('signup-option') || 'inscription-en-cours';
 
-    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option });
+    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods });
 
     const fnUrl = 'https://checkout.ordotype.fr/.netlify/functions/create-checkout-session';
 
