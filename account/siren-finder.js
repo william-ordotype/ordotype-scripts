@@ -32,7 +32,8 @@
   var DECLINE_KEY = 'ordo_siren_suggestion_declined_at';
   var DECLINE_DAYS = 30;
   var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
-  var DEBOUNCE_MS = 400;
+  var DEBOUNCE_MS = 600;
+  var currentScope = ''; // portée de la dernière recherche (national | dep:XX | cp:XXXXX), transmise à siren-select
   var POSTAL_FIELDS = ['code-postal', 'codepostal', 'cp', 'zip', 'postal-code'];
 
   var account = window.OrdoAccount;
@@ -95,18 +96,38 @@
     return d.length === 9 ? d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6) : d;
   }
 
+  // Même liste que le serveur (_shared/siren.js DEPARTEMENT_RE) : ce qui passe
+  // ici passe là-bas et inversement, pour que l'erreur affichée soit la nôtre
+  // (« 20 », « 96 », « 98000 »… étaient acceptés ici et refusés en 400 là-bas).
+  var DEPARTEMENT_RE = /^(0[1-9]|1[0-9]|2[1-9]|[3-8][0-9]|9[0-5]|2A|2B|97[1-8]|984|98[6-9])$/;
+
   function departementFromInput(value) {
     var s = String(value || '').trim().toUpperCase();
     var d = digits(s);
-    if (d.length === 5) {
-      if (d.indexOf('97') === 0 || d.indexOf('98') === 0) return d.slice(0, 3);
-      if (d.indexOf('20') === 0) return (d.indexOf('200') === 0 || d.indexOf('201') === 0) ? '2A' : '2B';
-      return d.slice(0, 2);
+    var code = '';
+    if (d.length === 5 && d === s) {
+      if (d.indexOf('97') === 0 || d.indexOf('98') === 0) code = d.slice(0, 3);
+      else if (d.indexOf('20') === 0) code = (d.indexOf('200') === 0 || d.indexOf('201') === 0) ? '2A' : '2B';
+      else code = d.slice(0, 2);
+    } else if (/^(2A|2B|\d{2,3})$/.test(s)) {
+      code = s;
     }
-    if (/^(2A|2B)$/.test(s)) return s;
-    if (/^\d{2}$/.test(d) && d === s) return d;
-    if (/^\d{3}$/.test(d) && d === s && (d.indexOf('97') === 0 || d.indexOf('98') === 0)) return d;
-    return '';
+    return DEPARTEMENT_RE.test(code) ? code : '';
+  }
+
+  /**
+   * Localisation de la recherche : { valid, cp, dep, scope }. Vide = nationale ;
+   * 5 chiffres = filtre code postal exact (cp) ; sinon département. `scope`
+   * est envoyé à siren-select pour tracer la portée du choix.
+   */
+  function locationFromInput(value) {
+    var s = String(value || '').trim().toUpperCase();
+    if (!s) return { valid: true, cp: '', dep: '', scope: 'national' };
+    var dep = departementFromInput(s);
+    if (!dep) return { valid: false, cp: '', dep: '', scope: '' };
+    var d = digits(s);
+    if (d.length === 5 && d === s) return { valid: true, cp: d, dep: dep, scope: 'cp:' + d };
+    return { valid: true, cp: '', dep: dep, scope: 'dep:' + dep };
   }
 
   function memberPostalCode() {
@@ -212,7 +233,7 @@
     });
   }
 
-  function apiSelect(mode, siren, siret) {
+  function apiSelect(mode, siren, siret, scope) {
     return memberToken().then(function(token) {
       if (!token) {
         var e = new Error('no member token');
@@ -223,7 +244,9 @@
         method: 'POST',
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ mode: mode, siren: siren, siret: siret || null })
+        body: JSON.stringify(scope
+          ? { mode: mode, siren: siren, siret: siret || null, scope: scope }
+          : { mode: mode, siren: siren, siret: siret || null })
       });
     }).then(function(res) {
       return res.json().catch(function() { return {}; }).then(function(body) {
@@ -406,25 +429,27 @@
 
     function run(force) {
       var q = nameInput.value.replace(/\s+/g, ' ').trim();
-      // Département facultatif : sans lui la recherche est nationale (10 premiers
-      // résultats), avec lui elle est ciblée. Fourni mais invalide = on refuse.
-      var cpRaw = cpInput.value.trim();
-      var dep = departementFromInput(cpRaw);
-      if (q.length < 3 || (cpRaw && !dep)) {
+      // Localisation facultative : code postal (filtre exact) ou département,
+      // sinon recherche nationale (10 premiers résultats). Fournie mais invalide
+      // (même liste que le serveur) = refusée ici, avec notre message.
+      var loc = locationFromInput(cpInput.value);
+      if (q.length < 3 || !loc.valid) {
         if (force) setError(panel, q.length < 3 ? 'Indiquez au moins 3 caractères.' : 'Code postal (5 chiffres) ou département invalide.');
         return;
       }
-      var key = q + '|' + dep + '|' + (withoutActivity ? 0 : 1);
+      var key = q + '|' + loc.scope + '|' + (withoutActivity ? 0 : 1);
       if (!force && key === lastKey) return;
       lastKey = key;
+      currentScope = loc.scope;
       setError(panel, '');
       clear(results);
       results.appendChild(el('div', 'ordo-siren-muted', 'Recherche en cours…'));
       btn.disabled = true;
 
-      var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom && dep
-        ? apiSearch({ mode: 'suggest', prenom: state.prenom, nom: state.nom, dep: dep })
+      var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom && loc.dep
+        ? apiSearch({ mode: 'suggest', prenom: state.prenom, nom: state.nom, dep: loc.dep })
         : Promise.resolve({ results: [] });
+      var searchParams = { mode: 'name', q: q, cp: loc.cp, dep: loc.cp ? '' : loc.dep };
 
       first.catch(function() { return { results: [] }; }).then(function(sug) {
         if (sug && sug.results && sug.results.length === 1 && key === lastKey) {
@@ -440,25 +465,36 @@
           btn.disabled = false;
           return;
         }
-        track('siren_search', { mode: 'name', act: withoutActivity ? 0 : 1 });
-        return apiSearch({ mode: 'name', q: q, dep: dep, act: withoutActivity ? '0' : '1' }).then(function(body) {
+        track('siren_search', { mode: 'name', act: withoutActivity ? 0 : 1, scope: loc.scope });
+        return apiSearch(Object.assign({}, searchParams, { act: withoutActivity ? '0' : '1' })).then(function(body) {
           if (key !== lastKey) return;
           var list = body.results || [];
           if (list.length || withoutActivity) {
-            renderResults(results, list, body.total || 0, dep, false);
+            renderResults(results, list, body.total || 0, loc, false);
             return;
           }
           // Aucun professionnel de santé à ce nom : repli automatique sur toutes
           // les entreprises (SEL, sociétés, autres activités) plutôt qu'une impasse.
-          track('siren_search', { mode: 'name', act: 0, auto: 1 });
-          return apiSearch({ mode: 'name', q: q, dep: dep, act: '0' }).then(function(all) {
+          track('siren_search', { mode: 'name', act: 0, auto: 1, scope: loc.scope });
+          return apiSearch(Object.assign({}, searchParams, { act: '0' })).then(function(all) {
             if (key !== lastKey) return;
-            renderResults(results, all.results || [], all.total || 0, dep, true);
+            renderResults(results, all.results || [], all.total || 0, loc, true);
+          }, function(err) {
+            // Le repli a échoué (429, 503…) : l'état honnête établi par la première
+            // recherche est « rien trouvé », pas une alerte qui l'effacerait.
+            if (key !== lastKey) return;
+            reportIfActionable('SirenFinder.search.fallback', err);
+            renderResults(results, [], 0, loc, true);
           });
         });
       }).catch(function(err) {
         if (key !== lastKey) return;
         clear(results);
+        if (!force && (err.status === 429 || err.status === 503)) {
+          // Frappe au clavier (recherche non demandée) : pas d'alerte rouge.
+          results.appendChild(el('div', 'ordo-siren-muted', 'Trop de recherches d\'affilée : cliquez sur Rechercher dans quelques secondes.'));
+          return;
+        }
         setError(panel, messageFor(err));
         reportIfActionable('SirenFinder.search', err);
       }).then(function() {
@@ -466,10 +502,10 @@
       });
     }
 
-    function renderResults(container, list, total, dep, auto) {
+    function renderResults(container, list, total, loc, auto) {
       clear(container);
       var unfiltered = withoutActivity || auto;
-      var where = dep ? ' dans ce département' : '';
+      var where = loc.cp ? ' pour ce code postal' : (loc.dep ? ' dans ce département' : '');
       if (!list.length) {
         container.appendChild(el('div', 'ordo-siren-muted', unfiltered
           ? 'Aucune entreprise à ce nom' + where + '. Si vous avez demandé la non-diffusion de vos données à l\'INSEE, votre nom n\'apparaît pas dans les recherches : saisissez directement votre numéro.'
@@ -490,7 +526,7 @@
         });
         container.appendChild(ul);
         if (total > list.length) {
-          container.appendChild(el('div', 'ordo-siren-muted', total + ' résultats, seuls les ' + list.length + ' premiers sont affichés : précisez le nom' + (dep ? '' : ' ou ajoutez un code postal') + '.'));
+          container.appendChild(el('div', 'ordo-siren-muted', total + ' résultats, seuls les ' + list.length + ' premiers sont affichés : précisez le nom' + (loc.cp ? '' : (loc.dep ? ' ou indiquez votre code postal' : ' ou ajoutez un code postal')) + '.'));
         }
       }
       var more = el('div', 'ordo-siren-muted');
@@ -519,7 +555,20 @@
     cpInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); run(true); } });
     btn.addEventListener('click', function() { run(true); });
 
-    if (nameInput.value.length >= 3) run(false);
+    // Recherche au chargement seulement si le membre a un code postal connu
+    // (liste courte et ciblée) ; sinon au premier focus d'un champ. Jamais pour
+    // un interne (bloc masqué) : pas de requête SIRENE sans intention.
+    if (state.statut !== 'Interne' && nameInput.value.length >= 3 && locationFromInput(cpInput.value).dep) {
+      run(false);
+    } else {
+      var once = function() {
+        nameInput.removeEventListener('focus', once);
+        cpInput.removeEventListener('focus', once);
+        run(false);
+      };
+      nameInput.addEventListener('focus', once);
+      cpInput.addEventListener('focus', once);
+    }
   }
 
   function suggestionDeclined() {
@@ -654,7 +703,9 @@
     // ne conserve le SIRET que s'il le retrouve dans SIRENE.
     var siret = c.siret_chosen || c.siret || c.siret_siege || null;
     setError(root, '');
-    apiSelect(mode, c.siren, siret).then(function(body) {
+    // Portée de la recherche qui a produit ce choix (un homonyme pris dans une
+    // liste nationale est le cas que la réconciliation vérifie en priorité).
+    apiSelect(mode, c.siren, siret, mode === 'number' ? '' : currentScope).then(function(body) {
       state.siren = body.siren;
       state.siret = body.siret || body.siren;
       input.value = state.siret;
