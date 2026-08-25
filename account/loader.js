@@ -31,6 +31,7 @@
   const scripts = [
     'styles.js',         // Must be first - hides empty Memberstack divs
     'core.js',           // Exposes window.OrdoAccount
+    'siren-finder.js',   // SIREN/SIRET self-service (facturation électronique), replaces the free-text #SIRET input
     'subscriptions.js',
     'session-stats-prefetch.js',
     'pause-state.js',

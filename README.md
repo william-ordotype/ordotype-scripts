@@ -12,6 +12,7 @@ ordotype-scripts/
 │   ├── core.js
 │   ├── subscriptions.js
 │   ├── status-selectors.js
+│   ├── siren-finder.js
 │   ├── delete-account.js
 │   ├── billing-portal.js
 │   └── phone-input.js
@@ -158,6 +159,7 @@ ordotype-scripts/
 | `core.js` | Parses Memberstack data, exposes `window.OrdoAccount` |
 | `subscriptions.js` | Shows canceled/active status for each plan |
 | `status-selectors.js` | Shows/hides form fields based on user status |
+| `siren-finder.js` | SIREN/SIRET self-service for e-invoicing: replaces the free-text `#SIRET` input with a SIRENE finder (search by name + department, number check, suggestion to confirm). Reads via `webhooks.ordotype.fr/siren-search`, writes only via `siren-select` (member cookie as Bearer). Hidden for `statut = Interne`. Console prefix `[SirenFinder]` |
 | `delete-account.js` | Account deletion flow |
 | `billing-portal.js` | Stripe billing portal access |
 | `phone-input.js` | International phone formatting |
@@ -1627,6 +1629,11 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/sty
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/subscriptions.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/billing-portal.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/status-selectors.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/siren-finder.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/pause-state.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/tab-hash.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/session-stats-prefetch.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/phone-input.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/delete-account.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js
