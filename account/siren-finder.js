@@ -177,6 +177,13 @@
   function track(eventName, params) {
     if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
     var payload = { event: eventName };
+    // Cohorte du déploiement progressif (account/loader.js) : permet de
+    // comparer les membres exposés au reste dans GA4.
+    var rollout = window.OrdoRollout && window.OrdoRollout['siren-finder.js'];
+    if (rollout) {
+      payload.rollout_percent = rollout.percent;
+      payload.rollout_bucket = rollout.bucket;
+    }
     if (params) {
       for (var k in params) {
         if (Object.prototype.hasOwnProperty.call(params, k)) payload[k] = params[k];

@@ -31,14 +31,79 @@
   // here is only loaded when window.location.hostname is in its allowlist;
   // everywhere else it is skipped and the page keeps its default behaviour.
   const HOST_GATED = {
-    // SIREN finder: sandbox only until the recette is done (2026-08-25).
-    // To ship to production, add 'www.ordotype.fr' (or remove the entry).
-    'siren-finder.js': ['sandbox-ordotype.webflow.io']
+    // SIREN finder: sandbox (recette done 2026-08-25) + production under the
+    // percentage rollout below.
+    'siren-finder.js': ['sandbox-ordotype.webflow.io', 'www.ordotype.fr']
   };
   const HOST = window.location.hostname;
+
+  // Progressive rollout per member. For a file listed here, the script is only
+  // loaded when the member's bucket (stable hash of the Memberstack member id,
+  // 0-99) is below the percentage for the current host; a host not listed gets
+  // 100 %. Ramp = edit the number, merge, bump the pinned embed. The bucket is
+  // stable, so a member enrolled at 10 % stays enrolled at 30 % and 100 %.
+  // Kill switch = 0 here, or repoint the embed to a pre-rollout commit.
+  // Manual override for testing (DevTools):
+  //   localStorage.setItem('ordo_rollout', 'siren-finder.js:on')   // or ':off'
+  //   localStorage.removeItem('ordo_rollout')                      // back to the bucket
+  const ROLLOUT = {
+    'siren-finder.js': { 'www.ordotype.fr': 10 }
+  };
+
+  function memberIdFromStorage() {
+    try {
+      const raw = localStorage.getItem('_ms-mem');
+      if (raw) {
+        const snap = JSON.parse(raw);
+        if (snap && typeof snap.id === 'string' && snap.id) return snap.id;
+      }
+      return localStorage.getItem('ms_member_id') || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // FNV-1a 32-bit → 0-99. Deterministic per member id, uniform enough for a gate.
+  function bucketOf(id) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < id.length; i++) {
+      h ^= id.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0) % 100;
+  }
+
+  const MEMBER_ID = memberIdFromStorage();
+  window.OrdoRollout = window.OrdoRollout || {};
+
+  function rolloutAllows(file) {
+    const perHost = ROLLOUT[file];
+    if (!perHost || !(HOST in perHost)) return true;
+    const percent = perHost[HOST];
+    let override = '';
+    try { override = localStorage.getItem('ordo_rollout') || ''; } catch (e) { /* no-op */ }
+    const bucket = MEMBER_ID ? bucketOf(MEMBER_ID) : null;
+    let enabled;
+    let reason;
+    if (override === file + ':on' || override === file + ':off') {
+      enabled = override.slice(-3) === ':on';
+      reason = 'override';
+    } else if (bucket === null) {
+      enabled = false;
+      reason = 'no-member';
+    } else {
+      enabled = bucket < percent;
+      reason = 'bucket';
+    }
+    window.OrdoRollout[file] = { enabled, bucket, percent, reason };
+    console.log('[OrdoAccount] Rollout ' + file + ': ' + (enabled ? 'on' : 'off') + ' (' + reason + ', bucket=' + bucket + ', percent=' + percent + ')');
+    return enabled;
+  }
+
   function allowedHere(file) {
     const hosts = HOST_GATED[file];
-    return !hosts || hosts.indexOf(HOST) !== -1;
+    if (hosts && hosts.indexOf(HOST) === -1) return false;
+    return rolloutAllows(file);
   }
 
   // Scripts to load (in order)
