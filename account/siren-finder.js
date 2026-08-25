@@ -311,11 +311,16 @@
     '.ordo-siren-tab[aria-selected="true"]{background:#1f3b73;border-color:#1f3b73;color:#fff}',
     '.ordo-siren-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}',
     '.ordo-siren-row input{flex:1 1 160px;min-width:0}',
+    '.ordo-siren-row .ordo-siren-cp{flex:0 1 240px}',
+    // Mobile (point de rupture Webflow) : un champ par ligne, pleine largeur,
+    // comme les autres champs du formulaire.
+    '@media (max-width:479px){.ordo-siren-row input,.ordo-siren-row .ordo-siren-cp{flex-basis:100%}}',
     '.ordo-siren-btn{background:#1f3b73;color:#fff;border:0;border-radius:6px;padding:9px 14px;cursor:pointer;font:inherit}',
     '.ordo-siren-btn[disabled]{opacity:.5;cursor:default}',
     '.ordo-siren-btn-secondary{background:#fff;color:#1f3b73;border:1px solid #1f3b73}',
     '.ordo-siren-list{list-style:none;margin:0;padding:0;border:1px solid #d9e2f0;border-radius:8px;overflow:hidden}',
     '.ordo-siren-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid #e6ecf5}',
+    '.ordo-siren-list li .ordo-siren-btn{flex:0 0 auto;white-space:nowrap}',
     '.ordo-siren-list li:first-child{border-top:0}',
     '.ordo-siren-list li:hover{background:#f6f8fc}',
     '.ordo-siren-muted{color:#5b6b85;font-size:13px}',
@@ -440,13 +445,12 @@
     nameInput.value = (state.prenom + ' ' + state.nom).trim();
     nameInput.setAttribute('aria-label', 'Nom de l\'entreprise ou du praticien');
     nameInput.maxLength = 80;
-    var cpInput = el('input', 'form-input w-input');
+    var cpInput = el('input', 'form-input w-input ordo-siren-cp');
     cpInput.type = 'text';
     cpInput.placeholder = 'CP ou département (facultatif)';
     cpInput.value = memberPostalCode();
     cpInput.setAttribute('aria-label', 'Code postal ou département (facultatif)');
     cpInput.maxLength = 5;
-    cpInput.style.flex = '0 1 240px';
     var btn = el('button', 'ordo-siren-btn', 'Rechercher');
     btn.type = 'button';
     row.appendChild(nameInput);
