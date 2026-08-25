@@ -312,7 +312,7 @@
     '.ordo-siren-host{max-width:none!important;min-width:0!important;grid-column:1/-1}',
     '.ordo-siren-banner{background:#f3f6fb;border:1px solid #d9e2f0;border-radius:8px;padding:12px 14px;margin-bottom:10px}',
     '.ordo-siren-banner strong{display:block;margin-bottom:2px}',
-    '.ordo-siren-tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}',
+    '.ordo-siren-alt{margin-top:6px}',
     '.ordo-siren-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}',
     '.ordo-siren-row input{flex:1 1 160px;min-width:0}',
     '.ordo-siren-row .ordo-siren-cp{flex:0 1 240px}',
@@ -410,33 +410,25 @@
     banner.appendChild(el('span', 'ordo-siren-muted', 'Le SIREN correspond aux 9 premiers chiffres de votre SIRET. Il sert uniquement à adresser vos factures électroniques à votre plateforme de facturation.'));
     root.appendChild(banner);
 
-    var tabs = el('div', 'ordo-siren-tabs');
-    tabs.setAttribute('role', 'tablist');
-    var tabSearch = el('button', BTN_SECONDARY, 'Rechercher mon entreprise');
-    var tabNumber = el('button', BTN_SECONDARY, 'J\'ai mon numéro');
-    tabSearch.type = 'button';
-    tabNumber.type = 'button';
-    tabSearch.setAttribute('role', 'tab');
-    tabNumber.setAttribute('role', 'tab');
-    tabs.appendChild(tabSearch);
-    tabs.appendChild(tabNumber);
-    root.appendChild(tabs);
-
+    // Un seul bouton d'action par mode : le mode alternatif est un lien texte
+    // (altLink) sous le formulaire, pas un second bouton « Rechercher ».
     var panel = el('div', 'ordo-siren-panel');
     root.appendChild(panel);
+    if (activeTab === 'search') renderSearch(panel); else renderNumber(panel);
+  }
 
-    function select(tab) {
-      activeTab = tab;
-      tabSearch.setAttribute('aria-selected', tab === 'search' ? 'true' : 'false');
-      tabNumber.setAttribute('aria-selected', tab === 'number' ? 'true' : 'false');
-      tabSearch.className = tab === 'search' ? BTN_PRIMARY : BTN_SECONDARY;
-      tabNumber.className = tab === 'number' ? BTN_PRIMARY : BTN_SECONDARY;
-      clear(panel);
-      if (tab === 'search') renderSearch(panel); else renderNumber(panel);
-    }
-    tabSearch.addEventListener('click', function() { select('search'); });
-    tabNumber.addEventListener('click', function() { select('number'); });
-    select(activeTab);
+  function switchMode(mode) {
+    activeTab = mode;
+    renderEmpty();
+  }
+
+  function altLink(text, label, onClick) {
+    var line = el('div', 'ordo-siren-muted ordo-siren-alt', text + ' ');
+    var link = el('button', 'ordo-siren-link', label);
+    link.type = 'button';
+    link.addEventListener('click', onClick);
+    line.appendChild(link);
+    return line;
   }
 
   // --- Onglet recherche ------------------------------------------------------------
@@ -464,6 +456,7 @@
 
     var results = el('div');
     panel.appendChild(results);
+    panel.appendChild(altLink('Vous avez déjà votre numéro ?', 'Saisir mon SIREN ou SIRET', function() { switchMode('number'); }));
 
     var lastKey = '';
     var withoutActivity = false;
@@ -617,8 +610,7 @@
       link.type = 'button';
       link.addEventListener('click', function() {
         if (unfiltered) {
-          activeTab = 'number';
-          renderEmpty();
+          switchMode('number');
         } else {
           withoutActivity = true;
           run(true);
@@ -702,6 +694,7 @@
     panel.appendChild(row);
     var out = el('div');
     panel.appendChild(out);
+    panel.appendChild(altLink('Vous ne connaissez pas votre numéro ?', 'Rechercher par nom', function() { switchMode('search'); }));
 
     numInput.addEventListener('input', function() {
       var d = digits(numInput.value);
