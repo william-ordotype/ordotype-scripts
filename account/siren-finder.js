@@ -294,6 +294,12 @@
   // UI
   // ---------------------------------------------------------------------------
 
+  // Boutons = classes Webflow du site (« Sauvegarder » = button is-gradient,
+  // « Annuler » = button is-grey) : ordo-siren-btn ne porte que l'état disabled.
+  var BTN_PRIMARY = 'button is-gradient w-button ordo-siren-btn';
+  var BTN_SECONDARY = 'button is-grey w-button ordo-siren-btn';
+  var BTN_SMALL = 'button is-grey is-small w-button ordo-siren-btn';
+
   var root = el('div', 'ordo-siren');
   root.setAttribute('aria-live', 'polite');
   var css = [
@@ -307,17 +313,13 @@
     '.ordo-siren-banner{background:#f3f6fb;border:1px solid #d9e2f0;border-radius:8px;padding:12px 14px;margin-bottom:10px}',
     '.ordo-siren-banner strong{display:block;margin-bottom:2px}',
     '.ordo-siren-tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}',
-    '.ordo-siren-tab{background:#fff;border:1px solid #c9d3e3;border-radius:999px;padding:6px 14px;cursor:pointer;font:inherit}',
-    '.ordo-siren-tab[aria-selected="true"]{background:#1f3b73;border-color:#1f3b73;color:#fff}',
     '.ordo-siren-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}',
     '.ordo-siren-row input{flex:1 1 160px;min-width:0}',
     '.ordo-siren-row .ordo-siren-cp{flex:0 1 240px}',
     // Mobile (point de rupture Webflow) : un champ par ligne, pleine largeur,
     // comme les autres champs du formulaire.
     '@media (max-width:479px){.ordo-siren-row input,.ordo-siren-row .ordo-siren-cp{flex-basis:100%}}',
-    '.ordo-siren-btn{background:#1f3b73;color:#fff;border:0;border-radius:6px;padding:9px 14px;cursor:pointer;font:inherit}',
     '.ordo-siren-btn[disabled]{opacity:.5;cursor:default}',
-    '.ordo-siren-btn-secondary{background:#fff;color:#1f3b73;border:1px solid #1f3b73}',
     '.ordo-siren-list{list-style:none;margin:0;padding:0;border:1px solid #d9e2f0;border-radius:8px;overflow:hidden}',
     '.ordo-siren-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid #e6ecf5}',
     '.ordo-siren-list li .ordo-siren-btn{flex:0 0 auto;white-space:nowrap}',
@@ -410,8 +412,8 @@
 
     var tabs = el('div', 'ordo-siren-tabs');
     tabs.setAttribute('role', 'tablist');
-    var tabSearch = el('button', 'ordo-siren-tab', 'Rechercher mon entreprise');
-    var tabNumber = el('button', 'ordo-siren-tab', 'J\'ai mon numéro');
+    var tabSearch = el('button', BTN_SECONDARY, 'Rechercher mon entreprise');
+    var tabNumber = el('button', BTN_SECONDARY, 'J\'ai mon numéro');
     tabSearch.type = 'button';
     tabNumber.type = 'button';
     tabSearch.setAttribute('role', 'tab');
@@ -427,6 +429,8 @@
       activeTab = tab;
       tabSearch.setAttribute('aria-selected', tab === 'search' ? 'true' : 'false');
       tabNumber.setAttribute('aria-selected', tab === 'number' ? 'true' : 'false');
+      tabSearch.className = tab === 'search' ? BTN_PRIMARY : BTN_SECONDARY;
+      tabNumber.className = tab === 'number' ? BTN_PRIMARY : BTN_SECONDARY;
       clear(panel);
       if (tab === 'search') renderSearch(panel); else renderNumber(panel);
     }
@@ -451,7 +455,7 @@
     cpInput.value = memberPostalCode();
     cpInput.setAttribute('aria-label', 'Code postal ou département (facultatif)');
     cpInput.maxLength = 5;
-    var btn = el('button', 'ordo-siren-btn', 'Rechercher');
+    var btn = el('button', BTN_PRIMARY, 'Rechercher');
     btn.type = 'button';
     row.appendChild(nameInput);
     row.appendChild(cpInput);
@@ -597,7 +601,7 @@
           c.scope = loc.scope; // portée réelle de la liste d'où vient ce choix
           var li = el('li');
           li.appendChild(el('span', null, candidateLabel(c)));
-          var pick = el('button', 'ordo-siren-btn ordo-siren-btn-secondary', 'C\'est moi');
+          var pick = el('button', BTN_SMALL, 'C\'est moi');
           pick.type = 'button';
           pick.addEventListener('click', function() { confirmCandidate(c, 'search', li); });
           li.appendChild(pick);
@@ -665,9 +669,9 @@
     card.appendChild(el('div', 'ordo-siren-muted', 'Proposition issue du répertoire SIRENE de l\'INSEE à partir de votre nom et de votre département. Rien n\'est enregistré sans votre confirmation.'));
     var row = el('div', 'ordo-siren-row');
     row.style.marginTop = '10px';
-    var yes = el('button', 'ordo-siren-btn', 'Oui, c\'est moi');
+    var yes = el('button', BTN_PRIMARY, 'Oui, c\'est moi');
     yes.type = 'button';
-    var no = el('button', 'ordo-siren-btn ordo-siren-btn-secondary', 'Non');
+    var no = el('button', BTN_SECONDARY, 'Non');
     no.type = 'button';
     yes.addEventListener('click', function() {
       track('siren_suggestion_confirmed');
@@ -690,7 +694,7 @@
     numInput.placeholder = 'SIREN (9 chiffres) ou SIRET (14 chiffres)';
     numInput.setAttribute('aria-label', 'SIREN ou SIRET');
     numInput.maxLength = 20;
-    var btn = el('button', 'ordo-siren-btn', 'Vérifier');
+    var btn = el('button', BTN_PRIMARY, 'Vérifier');
     btn.type = 'button';
     btn.disabled = true;
     row.appendChild(numInput);
@@ -739,7 +743,7 @@
         if (c.etat === 'C') {
           card.appendChild(el('div', 'ordo-siren-error', 'Cette entreprise est fermée dans le répertoire SIRENE : elle ne peut pas recevoir vos factures. Vérifiez votre numéro.'));
         } else {
-          var confirm = el('button', 'ordo-siren-btn', 'Confirmer');
+          var confirm = el('button', BTN_PRIMARY, 'Confirmer');
           confirm.type = 'button';
           confirm.style.marginTop = '10px';
           confirm.addEventListener('click', function() {
