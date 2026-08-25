@@ -297,8 +297,13 @@
   var root = el('div', 'ordo-siren');
   root.setAttribute('aria-live', 'polite');
   var css = [
-    '.ordo-siren{margin:8px 0 16px;font-size:15px;line-height:1.45}',
+    '.ordo-siren{margin:8px 0 16px;font-size:15px;line-height:1.45;max-width:48rem}',
     '.ordo-siren[hidden]{display:none}',
+    // La cellule Webflow qui porte le champ SIRET (.form-field-wrapper.is-short) est
+    // plafonnée à 16.75rem dans une grille à deux colonnes : le finder y était écrasé.
+    // On lui fait prendre toute la ligne ; le champ TVA passe dessous. !important
+    // car la règle Webflow (.form-field-wrapper.is-short) est plus spécifique.
+    '.ordo-siren-host{max-width:none!important;min-width:0!important;grid-column:1/-1}',
     '.ordo-siren-banner{background:#f3f6fb;border:1px solid #d9e2f0;border-radius:8px;padding:12px 14px;margin-bottom:10px}',
     '.ordo-siren-banner strong{display:block;margin-bottom:2px}',
     '.ordo-siren-tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}',
@@ -847,7 +852,12 @@
     input.style.display = 'none';
     input.setAttribute('aria-hidden', 'true');
     input.tabIndex = -1;
-    if (input.parentNode) input.parentNode.insertBefore(root, input.nextSibling);
+    var host = input.parentNode;
+    if (host) {
+      host.insertBefore(root, input.nextSibling);
+      // Voir .ordo-siren-host : la cellule de grille du champ SIRET prend toute la ligne.
+      host.classList.add('ordo-siren-host');
+    }
 
     var current = normalizeNumber(state.siret || state.siren);
     if (current) {
