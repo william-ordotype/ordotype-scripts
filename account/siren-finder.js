@@ -386,7 +386,7 @@
     nameInput.maxLength = 80;
     var cpInput = el('input', 'form-input w-input');
     cpInput.type = 'text';
-    cpInput.placeholder = 'Code postal ou département';
+    cpInput.placeholder = 'Code postal ou département (facultatif)';
     cpInput.value = memberPostalCode();
     cpInput.setAttribute('aria-label', 'Code postal ou département');
     cpInput.maxLength = 5;
@@ -406,9 +406,12 @@
 
     function run(force) {
       var q = nameInput.value.replace(/\s+/g, ' ').trim();
-      var dep = departementFromInput(cpInput.value);
-      if (q.length < 3 || !dep) {
-        if (force) setError(panel, q.length < 3 ? 'Indiquez au moins 3 caractères.' : 'Indiquez un code postal (5 chiffres) ou un département.');
+      // Département facultatif : sans lui la recherche est nationale (10 premiers
+      // résultats), avec lui elle est ciblée. Fourni mais invalide = on refuse.
+      var cpRaw = cpInput.value.trim();
+      var dep = departementFromInput(cpRaw);
+      if (q.length < 3 || (cpRaw && !dep)) {
+        if (force) setError(panel, q.length < 3 ? 'Indiquez au moins 3 caractères.' : 'Code postal (5 chiffres) ou département invalide.');
         return;
       }
       var key = q + '|' + dep + '|' + (withoutActivity ? 0 : 1);
@@ -419,7 +422,7 @@
       results.appendChild(el('div', 'ordo-siren-muted', 'Recherche en cours…'));
       btn.disabled = true;
 
-      var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom
+      var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom && dep
         ? apiSearch({ mode: 'suggest', prenom: state.prenom, nom: state.nom, dep: dep })
         : Promise.resolve({ results: [] });
 
@@ -440,7 +443,18 @@
         track('siren_search', { mode: 'name', act: withoutActivity ? 0 : 1 });
         return apiSearch({ mode: 'name', q: q, dep: dep, act: withoutActivity ? '0' : '1' }).then(function(body) {
           if (key !== lastKey) return;
-          renderResults(results, body.results || [], body.total || 0);
+          var list = body.results || [];
+          if (list.length || withoutActivity) {
+            renderResults(results, list, body.total || 0, dep, false);
+            return;
+          }
+          // Aucun professionnel de santé à ce nom : repli automatique sur toutes
+          // les entreprises (SEL, sociétés, autres activités) plutôt qu'une impasse.
+          track('siren_search', { mode: 'name', act: 0, auto: 1 });
+          return apiSearch({ mode: 'name', q: q, dep: dep, act: '0' }).then(function(all) {
+            if (key !== lastKey) return;
+            renderResults(results, all.results || [], all.total || 0, dep, true);
+          });
         });
       }).catch(function(err) {
         if (key !== lastKey) return;
@@ -452,13 +466,18 @@
       });
     }
 
-    function renderResults(container, list, total) {
+    function renderResults(container, list, total, dep, auto) {
       clear(container);
+      var unfiltered = withoutActivity || auto;
+      var where = dep ? ' dans ce département' : '';
       if (!list.length) {
-        container.appendChild(el('div', 'ordo-siren-muted', withoutActivity
-          ? 'Aucun résultat. Si vous avez demandé la non-diffusion de vos données à l\'INSEE, votre nom n\'apparaît pas dans les recherches : saisissez directement votre numéro.'
-          : 'Aucun résultat avec ce nom dans ce département.'));
+        container.appendChild(el('div', 'ordo-siren-muted', unfiltered
+          ? 'Aucune entreprise à ce nom' + where + '. Si vous avez demandé la non-diffusion de vos données à l\'INSEE, votre nom n\'apparaît pas dans les recherches : saisissez directement votre numéro.'
+          : 'Aucun résultat avec ce nom' + where + '.'));
       } else {
+        if (auto) {
+          container.appendChild(el('div', 'ordo-siren-muted', 'Aucun professionnel de santé à ce nom' + where + ' ; voici toutes les entreprises correspondantes :'));
+        }
         var ul = el('ul', 'ordo-siren-list');
         list.forEach(function(c) {
           var li = el('li');
@@ -471,14 +490,14 @@
         });
         container.appendChild(ul);
         if (total > list.length) {
-          container.appendChild(el('div', 'ordo-siren-muted', total + ' résultats, seuls les ' + list.length + ' premiers sont affichés : précisez le nom.'));
+          container.appendChild(el('div', 'ordo-siren-muted', total + ' résultats, seuls les ' + list.length + ' premiers sont affichés : précisez le nom' + (dep ? '' : ' ou ajoutez un code postal') + '.'));
         }
       }
       var more = el('div', 'ordo-siren-muted');
-      var link = el('button', 'ordo-siren-link', withoutActivity ? 'Saisir mon numéro directement' : 'Je ne trouve pas mon entreprise');
+      var link = el('button', 'ordo-siren-link', unfiltered ? 'Saisir mon numéro directement' : 'Je ne trouve pas mon entreprise');
       link.type = 'button';
       link.addEventListener('click', function() {
-        if (withoutActivity) {
+        if (unfiltered) {
           activeTab = 'number';
           renderEmpty();
         } else {
@@ -487,7 +506,7 @@
         }
       });
       more.appendChild(link);
-      if (withoutActivity) {
+      if (unfiltered) {
         more.appendChild(el('span', null, ' (les entreprises ayant demandé la non-diffusion INSEE n\'apparaissent jamais par le nom).'));
       }
       container.appendChild(more);
@@ -500,7 +519,7 @@
     cpInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); run(true); } });
     btn.addEventListener('click', function() { run(true); });
 
-    if (nameInput.value.length >= 3 && departementFromInput(cpInput.value)) run(false);
+    if (nameInput.value.length >= 3) run(false);
   }
 
   function suggestionDeclined() {
