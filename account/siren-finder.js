@@ -147,6 +147,33 @@
     try { localStorage.setItem(key, value); } catch (e) { /* private mode */ }
   }
 
+  /**
+   * Met à jour le snapshot Memberstack `_ms-mem` (celui que lisent
+   * shared/memberstack-utils.js puis core.js au chargement). L'écriture du SIREN
+   * se fait côté serveur (Admin API) : sans cette mise à jour, un rechargement
+   * relit l'ancien snapshot et le widget « oublie » le SIREN jusqu'à ce que le
+   * SDK Memberstack l'ait rafraîchi. Le SDK réécrit ensuite le même contenu.
+   */
+  function patchSnapshot(fields, meta) {
+    try {
+      var raw = localStorage.getItem('_ms-mem');
+      if (!raw) return;
+      var snap = JSON.parse(raw);
+      if (!snap || typeof snap !== 'object') return;
+      snap.customFields = snap.customFields || {};
+      for (var k in fields) {
+        if (Object.prototype.hasOwnProperty.call(fields, k)) snap.customFields[k] = fields[k];
+      }
+      if (meta) {
+        snap.metaData = snap.metaData || {};
+        for (var m in meta) {
+          if (Object.prototype.hasOwnProperty.call(meta, m)) snap.metaData[m] = meta[m];
+        }
+      }
+      localStorage.setItem('_ms-mem', JSON.stringify(snap));
+    } catch (e) { /* no-op */ }
+  }
+
   function track(eventName, params) {
     if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
     var payload = { event: eventName };
@@ -759,6 +786,7 @@
         if (window.OrdoMemberstack && window.OrdoMemberstack.customFields) {
           window.OrdoMemberstack.customFields.siret = state.siret;
         }
+        patchSnapshot({ siret: state.siret }, { 'siren-name': body.name || '', 'siren-etat': 'A' });
         track('siren_selected', { mode: mode, source: body.source, name_match: body.name_match, stripe: body.stripe });
         if (body.stripe === 'failed') {
           // Memberstack est la source de vérité : enregistré côté membre, la projection Stripe sera rattrapée.
@@ -842,6 +870,37 @@
       statutSelector.addEventListener('change', function(e) { applyStatut(e.target.value); });
     }
     console.log(PREFIX, 'Initialized', current ? '(siren set)' : '(empty)', 'statut=' + (state.statut || '?'));
+    if (!current) refreshFromMemberstack();
+  }
+
+  /**
+   * Le snapshot `_ms-mem` peut être en retard sur le serveur (SIREN enregistré
+   * depuis un autre appareil ou un autre onglet, snapshot réécrit par le SDK
+   * avant notre patch…) : on relit le membre à la source, et si un SIREN
+   * valide y est déjà, l'état « Renseigné » remplace le formulaire.
+   */
+  function refreshFromMemberstack() {
+    waitForMemberstack().then(function(ms) {
+      if (!ms || typeof ms.getCurrentMember !== 'function') return null;
+      return Promise.resolve(ms.getCurrentMember({ useCache: false })).then(function(res) {
+        var data = res && res.data;
+        return data && data.customFields ? data : null;
+      });
+    }).then(function(fresh) {
+      if (!fresh || normalizeNumber(state.siret)) return;
+      var cur = normalizeNumber(fresh.customFields.siret || '');
+      if (!cur) return;
+      var meta = fresh.metaData || {};
+      state.siret = String(fresh.customFields.siret);
+      state.siren = cur.siren;
+      input.value = state.siret;
+      customFields.siret = state.siret;
+      patchSnapshot({ siret: state.siret }, { 'siren-name': meta['siren-name'] || '', 'siren-etat': meta['siren-etat'] || 'A' });
+      renderDone({ siren: cur.siren, name: meta['siren-name'] || '', commune: '', etat: meta['siren-etat'] || 'A' });
+      console.log(PREFIX, 'Snapshot was stale: SIREN loaded from Memberstack');
+    }).catch(function(err) {
+      console.warn(PREFIX, 'Member refresh failed (best effort):', err && err.message);
+    });
   }
 
   if (document.readyState === 'loading') {
