@@ -752,7 +752,7 @@
     var scope = c.scope || (mode === 'number' ? 'number' : '');
 
     function attempt(retried) {
-        return apiSelect(mode, c.siren, siret, scope).then(function(body) {
+      return apiSelect(mode, c.siren, siret, scope).then(function(body) {
         state.siren = body.siren;
         state.siret = body.siret || body.siren;
         input.value = state.siret;
