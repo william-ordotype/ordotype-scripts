@@ -159,7 +159,7 @@ ordotype-scripts/
 | `core.js` | Parses Memberstack data, exposes `window.OrdoAccount` |
 | `subscriptions.js` | Shows canceled/active status for each plan |
 | `status-selectors.js` | Shows/hides form fields based on user status |
-| `siren-finder.js` | SIREN/SIRET self-service for e-invoicing: replaces the free-text `#SIRET` input with a SIRENE finder (search by name + department, number check, suggestion to confirm). Reads via `webhooks.ordotype.fr/siren-search`, writes only via `siren-select` (member cookie as Bearer). Hidden for `statut = Interne`. Console prefix `[SirenFinder]` |
+| `siren-finder.js` | SIREN/SIRET self-service for e-invoicing: replaces the free-text `#SIRET` input with a SIRENE finder (search by name + department, number check, suggestion to confirm). Reads via `webhooks.ordotype.fr/siren-search`, writes only via `siren-select` (member cookie as Bearer). Hidden for `statut = Interne`. Console prefix `[SirenFinder]`. **Host-gated in `loader.js` (`HOST_GATED`): loaded on `sandbox-ordotype.webflow.io` only until the recette is done; add `www.ordotype.fr` to ship it.** |
 | `delete-account.js` | Account deletion flow |
 | `billing-portal.js` | Stripe billing portal access |
 | `phone-input.js` | International phone formatting |

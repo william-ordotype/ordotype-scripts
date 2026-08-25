@@ -27,11 +27,25 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/account';
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
+  // Scripts restricted to some hostnames (progressive rollout). A file listed
+  // here is only loaded when window.location.hostname is in its allowlist;
+  // everywhere else it is skipped and the page keeps its default behaviour.
+  const HOST_GATED = {
+    // SIREN finder: sandbox only until the recette is done (2026-08-25).
+    // To ship to production, add 'www.ordotype.fr' (or remove the entry).
+    'siren-finder.js': ['sandbox-ordotype.webflow.io']
+  };
+  const HOST = window.location.hostname;
+  function allowedHere(file) {
+    const hosts = HOST_GATED[file];
+    return !hosts || hosts.indexOf(HOST) !== -1;
+  }
+
   // Scripts to load (in order)
   const scripts = [
     'styles.js',         // Must be first - hides empty Memberstack divs
     'core.js',           // Exposes window.OrdoAccount
-    'siren-finder.js',   // SIREN/SIRET self-service (facturation électronique), replaces the free-text #SIRET input
+    'siren-finder.js',   // SIREN/SIRET self-service (facturation électronique), replaces the free-text #SIRET input. HOST_GATED.
     'subscriptions.js',
     'session-stats-prefetch.js',
     'pause-state.js',
@@ -77,8 +91,10 @@
       `${SHARED_BASE}/memberstack-utils.js`,
       `${SHARED_BASE}/error-reporter.js`,
       INTL_TEL_INPUT_JS,
-      ...scripts.map(f => `${BASE}/${f}`)
+      ...scripts.filter(allowedHere).map(f => `${BASE}/${f}`)
     ];
+    const skipped = scripts.filter(f => !allowedHere(f));
+    if (skipped.length) console.log('[OrdoAccount] Skipped on ' + HOST + ':', skipped.join(', '));
 
     try {
       await Promise.all([
