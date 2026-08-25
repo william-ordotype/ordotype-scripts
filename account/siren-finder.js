@@ -48,8 +48,10 @@
   var customFields = member.customFields || {};
   var state = {
     statut: customFields.statut || '',
+    // Seul champ membre : `siret` (9 ou 14 chiffres). Le SIREN en est dérivé,
+    // il n'existe pas de customField `siren` (reporting).
     siret: String(customFields.siret || ''),
-    siren: String(customFields.siren || ''),
+    siren: '',
     nom: String(customFields.nom || ''),
     prenom: String(customFields.prnom || ''),
     suggestionShown: false
@@ -628,7 +630,6 @@
       input.value = state.siret;
       if (window.OrdoMemberstack && window.OrdoMemberstack.customFields) {
         window.OrdoMemberstack.customFields.siret = state.siret;
-        window.OrdoMemberstack.customFields.siren = state.siren;
       }
       track('siren_selected', { mode: mode, source: body.source });
       console.log(PREFIX, 'Saved', body.siren, 'source=' + body.source, 'stripe=' + body.stripe);
