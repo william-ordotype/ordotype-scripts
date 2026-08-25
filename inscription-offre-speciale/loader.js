@@ -39,13 +39,23 @@
     const PREFIX = '[OrdoOffreSpeciale]';
     const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
 
+    const BTN_NO_STRIPE_ID = 'signup-rempla-from-decouverte';
+
     // Scripts to load in order
     const scripts = [
         'inscription-offre-speciale/not-connected-handler.js',
         'shared/opacity-reveal.js',
-        'inscription-offre-speciale/countdown.js',
-        'shared/stripe-checkout.js'
+        'inscription-offre-speciale/countdown.js'
     ];
+
+    function cachedStripeCustomerId() {
+        try {
+            const member = JSON.parse(localStorage.getItem('_ms-mem') || 'null');
+            return (member && member.stripeCustomerId) || null;
+        } catch (e) {
+            return null;
+        }
+    }
 
     function loadScript(url) {
         return new Promise((resolve, reject) => {
@@ -60,6 +70,10 @@
 
     async function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
+
+        const btnNoStripe = document.getElementById(BTN_NO_STRIPE_ID);
+        const hasStripeCustomer = !!cachedStripeCustomerId();
+        if (btnNoStripe && hasStripeCustomer) btnNoStripe.style.display = 'none';
 
         // Helper to replace ${window.location.origin} placeholder with actual origin
         const resolveUrl = (url) => {
@@ -80,21 +94,28 @@
         console.log(PREFIX, 'Config:', {
             priceId: window.STRIPE_CHECKOUT_CONFIG.priceId,
             hasCoupon: !!window.STRIPE_CHECKOUT_CONFIG.couponId,
-            option: window.STRIPE_CHECKOUT_CONFIG.option
+            option: window.STRIPE_CHECKOUT_CONFIG.option,
+            hasStripeCustomer
         });
 
-        // Load scripts in order
+        let checkoutLoaded = false;
         try {
             // Load shared utilities first
             await loadScript(`${BASE}/shared/memberstack-utils.js`);
             await loadScript(`${BASE}/shared/error-reporter.js`);
 
-            for (const file of scripts) {
-                await loadScript(`${BASE}/${file}`);
-            }
+            await Promise.all([
+                loadScript(`${BASE}/shared/stripe-checkout.js`).then(() => { checkoutLoaded = true; }),
+                (async () => {
+                    for (const file of scripts) {
+                        await loadScript(`${BASE}/${file}`);
+                    }
+                })()
+            ]);
             console.log(PREFIX, 'All scripts loaded');
         } catch (err) {
             console.error(PREFIX, 'Load error:', err);
+            if (btnNoStripe && hasStripeCustomer && !checkoutLoaded) btnNoStripe.style.display = 'flex';
         }
     }
 
