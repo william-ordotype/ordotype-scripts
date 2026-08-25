@@ -297,6 +297,7 @@
     if (code === 'unknown_siren') return 'Ce numéro est inconnu du répertoire SIRENE. Vérifiez les chiffres.';
     if (code === 'closed') return 'Cette entreprise apparaît fermée dans le répertoire SIRENE. Vérifiez votre numéro.';
     if (code === 'invalid_number') return 'Numéro invalide : 9 chiffres (SIREN) ou 14 chiffres (SIRET).';
+    if (code === 'upstream_rejected' || code === 'invalid_query' || code === 'invalid_departement') return 'Recherche impossible avec ces critères : essayez un autre nom ou département, ou saisissez votre numéro.';
     if (status === 429 || status === 503) return 'Service momentanément indisponible, réessayez dans quelques secondes.';
     if (status === 0 || !status) return 'Connexion impossible. Vérifiez votre réseau puis réessayez.';
     return 'Une erreur est survenue. Réessayez, ou saisissez votre numéro directement.';
@@ -321,6 +322,9 @@
     box.appendChild(el('div', null, 'Vos factures électroniques seront adressées au SIREN ' + formatSiren(info.siren) + (who ? ' (' + who + ')' : '') + '.'));
     if (info.etat === 'C') {
       box.appendChild(el('div', 'ordo-siren-warn', 'Cette entreprise apparaît fermée dans le répertoire SIRENE, merci de vérifier.'));
+    }
+    if (info.siretNote) {
+      box.appendChild(el('div', 'ordo-siren-muted', 'L\'établissement saisi est introuvable ou fermé dans le répertoire SIRENE : seul le SIREN a été enregistré, ce qui suffit pour vos factures.'));
     }
     var edit = el('button', 'ordo-siren-link', 'Modifier');
     edit.type = 'button';
@@ -415,7 +419,7 @@
       results.appendChild(el('div', 'ordo-siren-muted', 'Recherche en cours…'));
       btn.disabled = true;
 
-      var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom
+      var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom
         ? apiSearch({ mode: 'suggest', prenom: state.prenom, nom: state.nom, dep: dep })
         : Promise.resolve({ results: [] });
 
@@ -580,6 +584,11 @@
         } else if (state.nom && !nameMatches(state.nom, c.nom)) {
           card.appendChild(el('div', 'ordo-siren-warn', 'Ce numéro correspond à « ' + c.nom + ' ». Est-ce bien votre structure ?'));
         }
+        if (num.siret && c.siret_known === false) {
+          card.appendChild(el('div', 'ordo-siren-warn', 'Cet établissement (14 chiffres) est introuvable dans le répertoire : seul le SIREN sera enregistré. Vérifiez les 5 derniers chiffres si vous tenez au SIRET.'));
+        } else if (num.siret && c.siret_etat === 'F') {
+          card.appendChild(el('div', 'ordo-siren-warn', 'Cet établissement est fermé dans le répertoire : seul le SIREN sera enregistré.'));
+        }
         if (c.etat === 'C') {
           card.appendChild(el('div', 'ordo-siren-error', 'Cette entreprise est fermée dans le répertoire SIRENE : elle ne peut pas recevoir vos factures. Vérifiez votre numéro.'));
         } else {
@@ -622,7 +631,9 @@
   function confirmCandidate(c, mode, sourceNode) {
     var buttons = sourceNode ? sourceNode.querySelectorAll('button') : [];
     for (var i = 0; i < buttons.length; i++) buttons[i].disabled = true;
-    var siret = c.siret_chosen || (mode === 'search' || mode === 'suggestion' ? (c.siret_siege || null) : null);
+    // Établissement qui a fait correspondre la recherche (sinon le siège) ; le serveur
+    // ne conserve le SIRET que s'il le retrouve dans SIRENE.
+    var siret = c.siret_chosen || c.siret || c.siret_siege || null;
     setError(root, '');
     apiSelect(mode, c.siren, siret).then(function(body) {
       state.siren = body.siren;
@@ -631,9 +642,19 @@
       if (window.OrdoMemberstack && window.OrdoMemberstack.customFields) {
         window.OrdoMemberstack.customFields.siret = state.siret;
       }
-      track('siren_selected', { mode: mode, source: body.source });
-      console.log(PREFIX, 'Saved', body.siren, 'source=' + body.source, 'stripe=' + body.stripe);
-      renderDone({ siren: body.siren, name: body.name, commune: body.commune, etat: 'A' });
+      track('siren_selected', { mode: mode, source: body.source, name_match: body.name_match, stripe: body.stripe });
+      if (body.stripe === 'failed') {
+        // Memberstack est la source de vérité : enregistré côté membre, la projection Stripe sera rattrapée.
+        console.warn(PREFIX, 'Saved in Memberstack, Stripe projection deferred (reconciliation)');
+      }
+      console.log(PREFIX, 'Saved', body.siren, 'source=' + body.source, 'match=' + body.name_match, 'stripe=' + body.stripe);
+      renderDone({
+        siren: body.siren,
+        name: body.name,
+        commune: body.commune,
+        etat: 'A',
+        siretNote: body.siret_status === 'unknown' || body.siret_status === 'closed'
+      });
     }).catch(function(err) {
       for (var j = 0; j < buttons.length; j++) buttons[j].disabled = false;
       if (err && err.code === 'interne') {
