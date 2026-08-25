@@ -254,6 +254,8 @@
           err.status = res.status;
           err.code = body && body.error;
           err.body = body;
+          // Lisible cross-origin depuis que le serveur expose l'en-tête (webhooks #19).
+          err.retryAfter = Number(res.headers && res.headers.get ? res.headers.get('Retry-After') : 0) || 0;
           throw err;
         }
         return body;
@@ -747,35 +749,51 @@
     // Portée de la recherche qui a produit ce choix, portée par le candidat lui-même
     // (un homonyme pris dans une liste nationale est le cas que la réconciliation
     // vérifie en priorité ; « number » = numéro saisi par le membre).
-    apiSelect(mode, c.siren, siret, c.scope || (mode === 'number' ? 'number' : '')).then(function(body) {
-      state.siren = body.siren;
-      state.siret = body.siret || body.siren;
-      input.value = state.siret;
-      if (window.OrdoMemberstack && window.OrdoMemberstack.customFields) {
-        window.OrdoMemberstack.customFields.siret = state.siret;
-      }
-      track('siren_selected', { mode: mode, source: body.source, name_match: body.name_match, stripe: body.stripe });
-      if (body.stripe === 'failed') {
-        // Memberstack est la source de vérité : enregistré côté membre, la projection Stripe sera rattrapée.
-        console.warn(PREFIX, 'Saved in Memberstack, Stripe projection deferred (reconciliation)');
-      }
-      console.log(PREFIX, 'Saved', body.siren, 'source=' + body.source, 'match=' + body.name_match, 'stripe=' + body.stripe);
-      renderDone({
-        siren: body.siren,
-        name: body.name,
-        commune: body.commune,
-        etat: 'A',
-        siretNote: body.siret_status === 'unknown' || body.siret_status === 'closed'
+    var scope = c.scope || (mode === 'number' ? 'number' : '');
+
+    function attempt(retried) {
+      return apiSelect(mode, c.siren, siret, scope).then(function(body) {
+        state.siren = body.siren;
+        state.siret = body.siret || body.siren;
+        input.value = state.siret;
+        if (window.OrdoMemberstack && window.OrdoMemberstack.customFields) {
+          window.OrdoMemberstack.customFields.siret = state.siret;
+        }
+        track('siren_selected', { mode: mode, source: body.source, name_match: body.name_match, stripe: body.stripe });
+        if (body.stripe === 'failed') {
+          // Memberstack est la source de vérité : enregistré côté membre, la projection Stripe sera rattrapée.
+          console.warn(PREFIX, 'Saved in Memberstack, Stripe projection deferred (reconciliation)');
+        }
+        console.log(PREFIX, 'Saved', body.siren, 'source=' + body.source, 'match=' + body.name_match, 'stripe=' + body.stripe);
+        renderDone({
+          siren: body.siren,
+          name: body.name,
+          commune: body.commune,
+          etat: 'A',
+          siretNote: body.siret_status === 'unknown' || body.siret_status === 'closed'
+        });
+      }).catch(function(err) {
+        if (!retried && err && (err.status === 503 || err.status === 429)) {
+          // Le répertoire SIRENE freine (IP de sortie Netlify partagée) : le serveur
+          // répond vite avec un Retry-After, et c'est ici, sans la limite des 10 s
+          // d'une fonction, qu'on attend avant UN nouvel essai. Boutons désactivés
+          // pendant l'attente : le membre ne doit pas devenir la boucle de relance.
+          var delay = Math.min(Math.max(Number(err.retryAfter) || 3, 2), 15);
+          setError(root, 'Le répertoire SIRENE est saturé : nouvel essai automatique dans ' + delay + ' s…', 'warn');
+          track('siren_select_retry', { status: err.status, delay: delay });
+          return new Promise(function(resolve) { setTimeout(resolve, delay * 1000); }).then(function() { return attempt(true); });
+        }
+        for (var j = 0; j < buttons.length; j++) buttons[j].disabled = false;
+        if (err && err.code === 'interne') {
+          hideAll();
+          return;
+        }
+        setError(root, messageFor(err));
+        reportIfActionable('SirenFinder.select', err);
       });
-    }).catch(function(err) {
-      for (var j = 0; j < buttons.length; j++) buttons[j].disabled = false;
-      if (err && err.code === 'interne') {
-        hideAll();
-        return;
-      }
-      setError(root, messageFor(err));
-      reportIfActionable('SirenFinder.select', err);
-    });
+    }
+
+    attempt(false);
   }
 
   // --- Visibilité (internes) ------------------------------------------------------------------
