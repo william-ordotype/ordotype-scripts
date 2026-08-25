@@ -69,6 +69,20 @@
         }
     }
 
+    // OrdoErrorReporter (Discord + Sentry) when loaded, otherwise the auth-bundle
+    // global handler, which is the only channel available before it loads
+    function report(err) {
+        try {
+            if (window.OrdoErrorReporter) {
+                window.OrdoErrorReporter.report('OffreSpecialeLoader', err);
+                return;
+            }
+            window.dispatchEvent(new ErrorEvent('error', { message: err.message, error: err }));
+        } catch (e) {
+            // never throw from the reporting path
+        }
+    }
+
     // Deepest single-child descendant, when it holds only text
     function labelElement(btn) {
         let node = btn;
@@ -97,28 +111,32 @@
             }
             if (!window.ORDO_PENDING_CHECKOUT_CLICK) {
                 window.ORDO_PENDING_CHECKOUT_CLICK = true;
-                setTimeout(() => release('held click timeout'), HELD_CLICK_TIMEOUT_MS);
+                setTimeout(() => release('OffreSpecialeHeldClickTimeout', `held click not resumed within ${HELD_CLICK_TIMEOUT_MS}ms`), HELD_CLICK_TIMEOUT_MS);
             }
             console.log(PREFIX, 'Checkout click held until stripe-checkout.js takes over');
         }
 
         document.addEventListener('click', onClick, true);
 
-        const release = (reason) => {
+        const release = (errorName, reason) => {
             if (done) return;
             done = true;
             document.removeEventListener('click', onClick, true);
             if (tookOver()) return;
             if (label && originalLabel !== null) label.textContent = originalLabel;
-            console.warn(PREFIX, 'Memberstack checkout released:', reason);
-            if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('OffreSpecialeLoader', 'Memberstack checkout released: ' + reason);
-            if (window.ORDO_PENDING_CHECKOUT_CLICK) {
+            const held = !!window.ORDO_PENDING_CHECKOUT_CLICK;
+            const message = `Memberstack checkout released: ${reason}${held ? ' (held click carried through)' : ''}`;
+            console.warn(PREFIX, message);
+            const err = new Error(message);
+            err.name = errorName;
+            report(err);
+            if (held) {
                 window.ORDO_PENDING_CHECKOUT_CLICK = false;
                 btn.click();
             }
         };
 
-        setTimeout(() => release('timeout'), CHECKOUT_TAKEOVER_TIMEOUT_MS);
+        setTimeout(() => release('OffreSpecialeCheckoutTimeout', `stripe-checkout.js did not take over within ${CHECKOUT_TAKEOVER_TIMEOUT_MS}ms`), CHECKOUT_TAKEOVER_TIMEOUT_MS);
         return release;
     }
 
@@ -168,14 +186,14 @@
             });
         } catch (err) {
             console.error(PREFIX, 'Config error:', err);
-            release('config error');
+            release('OffreSpecialeConfigError', err.message);
             return;
         }
 
         const loads = scripts.map((file) => loadScript(`${BASE}/${file}`));
         loads[scripts.indexOf(CHECKOUT_SCRIPT)].then(
-            () => release('stripe-checkout.js did not execute'),
-            (err) => release(err.message)
+            () => release('OffreSpecialeCheckoutNotExecuted', 'stripe-checkout.js loaded but did not execute'),
+            (err) => release('OffreSpecialeCheckoutLoadFailed', err.message)
         );
 
         try {
