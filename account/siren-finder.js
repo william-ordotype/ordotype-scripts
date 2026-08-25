@@ -183,6 +183,7 @@
     if (rollout) {
       payload.rollout_percent = rollout.percent;
       payload.rollout_bucket = rollout.bucket;
+      payload.rollout_reason = rollout.reason; // 'bucket' = cohorte réelle ; 'override' = testeur
     }
     if (params) {
       for (var k in params) {
@@ -640,7 +641,7 @@
     // Recherche au chargement seulement si le membre a un code postal connu
     // (liste courte et ciblée) ; sinon au premier focus d'un champ. Jamais pour
     // un interne (bloc masqué) : pas de requête SIRENE sans intention.
-    if (state.statut !== 'Interne' && nameInput.value.length >= 3 && locationFromInput(cpInput.value).dep) {
+    if (!isInterneMember() && nameInput.value.length >= 3 && locationFromInput(cpInput.value).dep) {
       run(false);
     } else {
       var once = function() {
@@ -848,9 +849,27 @@
     root.hidden = false;
   }
 
+  /**
+   * Même règle que le serveur (siren-select isInterne) : statut « Interne »
+   * sans tenir compte de la casse, OU un plan interne actif (liste partagée
+   * shared/memberstack-utils.js). Sans ce miroir, un membre sur un plan interne
+   * avec un autre statut verrait le bloc, lancerait des recherches SIRENE, puis
+   * recevrait un 409 au clic.
+   */
+  function isInterneMember() {
+    if (String(state.statut).trim().toLowerCase() === 'interne') return true;
+    var ms = window.OrdoMemberstack;
+    var ids = (ms && ms.ALLOWED_INTERN_PLAN_IDS) || [];
+    if (!ms || typeof ms.isActive !== 'function') return false;
+    for (var i = 0; i < ids.length; i++) {
+      if (ms.isActive(ids[i])) return true;
+    }
+    return false;
+  }
+
   function applyStatut(statut) {
     state.statut = statut || '';
-    if (state.statut === 'Interne') hideAll(); else showAll();
+    if (isInterneMember()) hideAll(); else showAll();
   }
 
   // --- Init ------------------------------------------------------------------------------------

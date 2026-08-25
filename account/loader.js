@@ -1,10 +1,10 @@
 /**
  * Ordotype Account - Loader
  * Loads all account scripts in the correct order.
- * 
+ *
  * Usage in Webflow:
  * <script defer src="https://cdn.jsdelivr.net/gh/YOUR_USER/YOUR_REPO@main/account/loader.js"></script>
- * 
+ *
  * To bust cache after updates, use a version tag:
  * <script defer src="https://cdn.jsdelivr.net/gh/YOUR_USER/YOUR_REPO@v1.0.1/account/loader.js"></script>
  */
@@ -27,37 +27,46 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/account';
   const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
-  // Scripts restricted to some hostnames (progressive rollout). A file listed
-  // here is only loaded when window.location.hostname is in its allowlist;
-  // everywhere else it is skipped and the page keeps its default behaviour.
-  const HOST_GATED = {
-    // SIREN finder: sandbox (recette done 2026-08-25) + production under the
-    // percentage rollout below.
-    'siren-finder.js': ['sandbox-ordotype.webflow.io', 'www.ordotype.fr']
+  // Progressive rollout, per host and per member. A file listed in GATES is
+  // loaded only on the hosts listed for it (any other host: hard skip, before
+  // any override) and, on a listed host, only for members whose bucket (stable
+  // FNV-1a hash of the Memberstack member id, 0-99) is below the percentage:
+  // 100 = everyone, 0 = nobody by bucket. The bucket is stable, so a member
+  // enrolled at 10 % stays enrolled at 30 % and 100 %.
+  //
+  // Ramp = edit the number, merge, bump the pinned embed, publish the Webflow
+  // site (staging domain first, then www). Kill switch = remove the host entry
+  // or repoint the embed to a pre-rollout commit, then publish. A pin bump
+  // ships every account script at that commit, so ramp from the current main.
+  //
+  // Override for testers (DevTools, origin-scoped, only on a listed host):
+  //   localStorage.setItem('ordo_rollout', 'siren-finder.js:on')   // or ':off'
+  //   localStorage.removeItem('ordo_rollout')                      // back to the bucket
+  // With 0 % on a host, the override is the way to verify a build there with
+  // zero member exposure (that is what the prod staging domain is for).
+  //
+  // Every decision on a listed host is published in window.OrdoRollout[file]
+  // and pushed to the dataLayer as 'siren_rollout' (control members included,
+  // so GA4 has a denominator).
+  const GATES = {
+    'siren-finder.js': {
+      'sandbox-ordotype.webflow.io': 100,
+      'ordotype.webflow.io': 0,   // prod staging domain: verification with the override
+      'www.ordotype.fr': 10
+    }
   };
   const HOST = window.location.hostname;
 
-  // Progressive rollout per member. For a file listed here, the script is only
-  // loaded when the member's bucket (stable hash of the Memberstack member id,
-  // 0-99) is below the percentage for the current host; a host not listed gets
-  // 100 %. Ramp = edit the number, merge, bump the pinned embed. The bucket is
-  // stable, so a member enrolled at 10 % stays enrolled at 30 % and 100 %.
-  // Kill switch = 0 here, or repoint the embed to a pre-rollout commit.
-  // Manual override for testing (DevTools):
-  //   localStorage.setItem('ordo_rollout', 'siren-finder.js:on')   // or ':off'
-  //   localStorage.removeItem('ordo_rollout')                      // back to the bucket
-  const ROLLOUT = {
-    'siren-finder.js': { 'www.ordotype.fr': 10 }
-  };
-
+  // Identity for the bucket = the Memberstack snapshot the account scripts
+  // themselves read (shared/memberstack-utils.js). Nothing else: a stale
+  // ms_member_id from a previous 2FA challenge could belong to another member.
   function memberIdFromStorage() {
+    let raw = null;
+    try { raw = localStorage.getItem('_ms-mem'); } catch (e) { return ''; }
+    if (!raw) return '';
     try {
-      const raw = localStorage.getItem('_ms-mem');
-      if (raw) {
-        const snap = JSON.parse(raw);
-        if (snap && typeof snap.id === 'string' && snap.id) return snap.id;
-      }
-      return localStorage.getItem('ms_member_id') || '';
+      const snap = JSON.parse(raw);
+      return snap && typeof snap.id === 'string' ? snap.id : '';
     } catch (e) {
       return '';
     }
@@ -73,16 +82,22 @@
     return (h >>> 0) % 100;
   }
 
-  const MEMBER_ID = memberIdFromStorage();
+  function readOverride() {
+    try { return localStorage.getItem('ordo_rollout') || ''; } catch (e) { return ''; }
+  }
+
   window.OrdoRollout = window.OrdoRollout || {};
 
-  function rolloutAllows(file) {
-    const perHost = ROLLOUT[file];
-    if (!perHost || !(HOST in perHost)) return true;
+  // One decision per file: { enabled, reason } with reason = 'open' (not
+  // gated), 'host' (hard skip), 'override', 'no-member' or 'bucket'.
+  function decide(file) {
+    const perHost = GATES[file];
+    if (!perHost) return { enabled: true, reason: 'open' };
+    if (!Object.prototype.hasOwnProperty.call(perHost, HOST)) return { enabled: false, reason: 'host' };
     const percent = perHost[HOST];
-    let override = '';
-    try { override = localStorage.getItem('ordo_rollout') || ''; } catch (e) { /* no-op */ }
-    const bucket = MEMBER_ID ? bucketOf(MEMBER_ID) : null;
+    const memberId = memberIdFromStorage();
+    const bucket = memberId ? bucketOf(memberId) : null;
+    const override = readOverride();
     let enabled;
     let reason;
     if (override === file + ':on' || override === file + ':off') {
@@ -95,22 +110,23 @@
       enabled = bucket < percent;
       reason = 'bucket';
     }
-    window.OrdoRollout[file] = { enabled, bucket, percent, reason };
+    if (override && reason !== 'override') console.warn('[OrdoAccount] Ignored ordo_rollout value:', override);
+    const decision = { enabled, bucket, percent, reason };
+    window.OrdoRollout[file] = decision;
     console.log('[OrdoAccount] Rollout ' + file + ': ' + (enabled ? 'on' : 'off') + ' (' + reason + ', bucket=' + bucket + ', percent=' + percent + ')');
-    return enabled;
-  }
-
-  function allowedHere(file) {
-    const hosts = HOST_GATED[file];
-    if (hosts && hosts.indexOf(HOST) === -1) return false;
-    return rolloutAllows(file);
+    if (window.dataLayer && typeof window.dataLayer.push === 'function') {
+      try {
+        window.dataLayer.push({ event: 'siren_rollout', rollout_file: file, rollout_enabled: enabled, rollout_bucket: bucket, rollout_percent: percent, rollout_reason: reason });
+      } catch (e) { /* no-op */ }
+    }
+    return decision;
   }
 
   // Scripts to load (in order)
   const scripts = [
     'styles.js',         // Must be first - hides empty Memberstack divs
     'core.js',           // Exposes window.OrdoAccount
-    'siren-finder.js',   // SIREN/SIRET self-service (facturation électronique), replaces the free-text #SIRET input. HOST_GATED.
+    'siren-finder.js',   // SIREN/SIRET self-service (facturation électronique), replaces the free-text #SIRET input. Gated by GATES.
     'subscriptions.js',
     'session-stats-prefetch.js',
     'pause-state.js',
@@ -152,14 +168,25 @@
   async function loadAll() {
     console.log('[OrdoAccount] Loading...');
 
+    // One evaluation per file (decide() logs and publishes its decision).
+    const loaded = [];
+    const skippedHost = [];
+    const skippedRollout = [];
+    for (const f of scripts) {
+      const d = decide(f);
+      if (d.enabled) loaded.push(f);
+      else if (d.reason === 'host') skippedHost.push(f);
+      else skippedRollout.push(f);
+    }
+    if (skippedHost.length) console.log('[OrdoAccount] Skipped on ' + HOST + ':', skippedHost.join(', '));
+    if (skippedRollout.length) console.log('[OrdoAccount] Not in rollout:', skippedRollout.join(', '));
+
     const orderedJS = [
       `${SHARED_BASE}/memberstack-utils.js`,
       `${SHARED_BASE}/error-reporter.js`,
       INTL_TEL_INPUT_JS,
-      ...scripts.filter(allowedHere).map(f => `${BASE}/${f}`)
+      ...loaded.map(f => `${BASE}/${f}`)
     ];
-    const skipped = scripts.filter(f => !allowedHere(f));
-    if (skipped.length) console.log('[OrdoAccount] Skipped on ' + HOST + ':', skipped.join(', '));
 
     try {
       await Promise.all([
