@@ -1185,7 +1185,7 @@ Special offer signup pages with CMS-driven pricing, coupons, and countdown timer
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order (includes shared/opacity-reveal.js) |
+| `loader.js` | Loads all scripts in correct order (shared/memberstack-utils.js, shared/error-reporter.js, not-connected-handler.js, shared/opacity-reveal.js, countdown.js, shared/stripe-checkout.js) with `script.async = false` (parallel fetch, ordered execution). When the cached `_ms-mem` has a `stripeCustomerId`, hides `#signup-rempla-from-decouverte` before loading so the Memberstack-native checkout cannot be clicked while shared/stripe-checkout.js is still loading; restores it (and reports via OrdoErrorReporter) if stripe-checkout.js fails to load or execute, or after 10 s. Residual window: from first paint until loader.js itself executes. |
 | `not-connected-handler.js` | Handles connected/not-connected view toggle |
 | `countdown.js` | Countdown timer with localStorage persistence |
 
@@ -1257,8 +1257,8 @@ localStorage.setItem('signup-payment-methods', "{{wf payment-method-types}}");
 ### Button Requirements
 
 The page needs two buttons with specific IDs:
-- `signup-rempla-from-decouverte` - Shown for non-Stripe users
-- `signup-rempla-stripe-customer` - Shown for existing Stripe customers
+- `signup-rempla-from-decouverte` - Shown for non-Stripe users (Memberstack-native checkout; pre-hidden by loader.js for cached Stripe customers, see Files)
+- `signup-rempla-stripe-customer` - Shown for existing Stripe customers (ships with the `hidden` class; revealed by shared/stripe-checkout.js)
 
 ### Console Prefixes
 
