@@ -1185,7 +1185,7 @@ Special offer signup pages with CMS-driven pricing, coupons, and countdown timer
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order (shared/memberstack-utils.js, shared/error-reporter.js, not-connected-handler.js, shared/opacity-reveal.js, countdown.js, shared/stripe-checkout.js) with `script.async = false` (parallel fetch, ordered execution). When the cached `_ms-mem` has a `stripeCustomerId`, hides `#signup-rempla-from-decouverte` before loading so the Memberstack-native checkout cannot be clicked while shared/stripe-checkout.js is still loading; restores it (and reports via OrdoErrorReporter) if stripe-checkout.js fails to load or execute, or after 10 s. Residual window: from first paint until loader.js itself executes. |
+| `loader.js` | Loads all scripts in correct order (shared/memberstack-utils.js, shared/error-reporter.js, not-connected-handler.js, shared/opacity-reveal.js, countdown.js, shared/stripe-checkout.js) with `script.async = false` (parallel fetch, ordered execution). When the cached `_ms-mem` has a `stripeCustomerId`, a capture-phase listener on `document` holds clicks on `#signup-rempla-from-decouverte` (which would otherwise open the Memberstack-native checkout with the Stripe dashboard payment methods) until shared/stripe-checkout.js takes over: the button stays visible, a held click shows `Patientez…` and sets `window.ORDO_PENDING_CHECKOUT_CLICK`, which stripe-checkout.js consumes to continue to the correct checkout. The hold is released (label restored, reported via OrdoErrorReporter) if stripe-checkout.js fails to load or execute, 4 s after a held click, or 10 s after load. On release a held click is carried through to the Memberstack checkout, so one click always ends in a checkout; the 4 s deadline keeps that programmatic click inside the browser's transient user-activation window. Residual window: from first paint until loader.js executes. |
 | `not-connected-handler.js` | Handles connected/not-connected view toggle |
 | `countdown.js` | Countdown timer with localStorage persistence |
 
@@ -1257,7 +1257,7 @@ localStorage.setItem('signup-payment-methods', "{{wf payment-method-types}}");
 ### Button Requirements
 
 The page needs two buttons with specific IDs:
-- `signup-rempla-from-decouverte` - Shown for non-Stripe users (Memberstack-native checkout; pre-hidden by loader.js for cached Stripe customers, see Files)
+- `signup-rempla-from-decouverte` - Shown for non-Stripe users (Memberstack-native checkout; clicks held by loader.js for cached Stripe customers, see Files)
 - `signup-rempla-stripe-customer` - Shown for existing Stripe customers (ships with the `hidden` class; revealed by shared/stripe-checkout.js)
 
 ### Console Prefixes

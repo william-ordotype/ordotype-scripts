@@ -1,8 +1,8 @@
 /**
  * Ordotype Inscription Offre Speciale - Loader
  * Loads countdown and stripe-checkout with config from Webflow CMS.
- * Hides the Memberstack checkout button for cached Stripe customers until
- * shared/stripe-checkout.js takes over the buttons.
+ * Holds clicks on the Memberstack checkout button for cached Stripe customers
+ * until shared/stripe-checkout.js takes over the buttons.
  *
  * Usage in Webflow:
  *
@@ -45,6 +45,8 @@
     const BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
     const CHECKOUT_SCRIPT = 'shared/stripe-checkout.js';
     const CHECKOUT_TAKEOVER_TIMEOUT_MS = 10000;
+    const HELD_CLICK_TIMEOUT_MS = 4000;
+    const WAIT_LABEL = 'Patientez…';
 
     // Scripts to load in order
     const scripts = [
@@ -67,6 +69,59 @@
         }
     }
 
+    // Deepest single-child descendant, when it holds only text
+    function labelElement(btn) {
+        let node = btn;
+        while (node.children && node.children.length === 1) node = node.children[0];
+        return (node.children && node.children.length === 0) ? node : null;
+    }
+
+    function holdMemberstackCheckout() {
+        const btn = document.getElementById(BTN_NO_STRIPE_ID);
+        if (!btn) return function() {};
+
+        const tookOver = () => typeof window.initStripeCheckout === 'function';
+        const label = labelElement(btn);
+        let originalLabel = null;
+        let done = false;
+
+        function onClick(e) {
+            if (done || tookOver()) return;
+            const el = e.target;
+            if (!el || typeof el.closest !== 'function' || !el.closest('#' + BTN_NO_STRIPE_ID)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (label && originalLabel === null) {
+                originalLabel = label.textContent;
+                label.textContent = WAIT_LABEL;
+            }
+            if (!window.ORDO_PENDING_CHECKOUT_CLICK) {
+                window.ORDO_PENDING_CHECKOUT_CLICK = true;
+                setTimeout(() => release('held click timeout'), HELD_CLICK_TIMEOUT_MS);
+            }
+            console.log(PREFIX, 'Checkout click held until stripe-checkout.js takes over');
+        }
+
+        document.addEventListener('click', onClick, true);
+
+        const release = (reason) => {
+            if (done) return;
+            done = true;
+            document.removeEventListener('click', onClick, true);
+            if (tookOver()) return;
+            if (label && originalLabel !== null) label.textContent = originalLabel;
+            console.warn(PREFIX, 'Memberstack checkout released:', reason);
+            if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('OffreSpecialeLoader', 'Memberstack checkout released: ' + reason);
+            if (window.ORDO_PENDING_CHECKOUT_CLICK) {
+                window.ORDO_PENDING_CHECKOUT_CLICK = false;
+                btn.click();
+            }
+        };
+
+        setTimeout(() => release('timeout'), CHECKOUT_TAKEOVER_TIMEOUT_MS);
+        return release;
+    }
+
     // script.async = false → browser fetches in parallel but executes in
     // insertion order.
     function loadScript(url) {
@@ -83,20 +138,8 @@
 
     async function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
-
-        const hiddenMsBtn = hasCachedStripeCustomer() ? document.getElementById(BTN_NO_STRIPE_ID) : null;
-        if (hiddenMsBtn) hiddenMsBtn.style.display = 'none';
-
-        const checkoutTookOver = () => typeof window.initStripeCheckout === 'function';
-        let restored = false;
-        const restoreMsBtn = (reason) => {
-            if (restored || !hiddenMsBtn || checkoutTookOver()) return;
-            restored = true;
-            hiddenMsBtn.style.display = '';
-            console.warn(PREFIX, 'Memberstack button restored:', reason);
-            if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('OffreSpecialeLoader', 'Memberstack button restored: ' + reason);
-        };
-        if (hiddenMsBtn) setTimeout(() => restoreMsBtn('timeout'), CHECKOUT_TAKEOVER_TIMEOUT_MS);
+        const hasStripeCustomer = hasCachedStripeCustomer();
+        const release = hasStripeCustomer ? holdMemberstackCheckout() : function() {};
 
         try {
             // Helper to replace ${window.location.origin} placeholder with actual origin
@@ -121,18 +164,18 @@
                 priceId: window.STRIPE_CHECKOUT_CONFIG.priceId,
                 hasCoupon: !!window.STRIPE_CHECKOUT_CONFIG.couponId,
                 option: window.STRIPE_CHECKOUT_CONFIG.option,
-                hasStripeCustomer: !!hiddenMsBtn
+                hasStripeCustomer
             });
         } catch (err) {
             console.error(PREFIX, 'Config error:', err);
-            restoreMsBtn('config error');
+            release('config error');
             return;
         }
 
         const loads = scripts.map((file) => loadScript(`${BASE}/${file}`));
         loads[scripts.indexOf(CHECKOUT_SCRIPT)].then(
-            () => restoreMsBtn('stripe-checkout.js did not execute'),
-            (err) => restoreMsBtn(err.message)
+            () => release('stripe-checkout.js did not execute'),
+            (err) => release(err.message)
         );
 
         try {
