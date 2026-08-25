@@ -45,6 +45,7 @@
     const BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
     const CHECKOUT_SCRIPT = 'shared/stripe-checkout.js';
     const CHECKOUT_TAKEOVER_TIMEOUT_MS = 10000;
+    const HELD_CLICK_TIMEOUT_MS = 4000;
     const WAIT_LABEL = 'Patientez…';
 
     // Scripts to load in order
@@ -90,10 +91,13 @@
             if (!el || typeof el.closest !== 'function' || !el.closest('#' + BTN_NO_STRIPE_ID)) return;
             e.preventDefault();
             e.stopImmediatePropagation();
-            window.ORDO_PENDING_CHECKOUT_CLICK = true;
             if (label && originalLabel === null) {
                 originalLabel = label.textContent;
                 label.textContent = WAIT_LABEL;
+            }
+            if (!window.ORDO_PENDING_CHECKOUT_CLICK) {
+                window.ORDO_PENDING_CHECKOUT_CLICK = true;
+                setTimeout(() => release('held click timeout'), HELD_CLICK_TIMEOUT_MS);
             }
             console.log(PREFIX, 'Checkout click held until stripe-checkout.js takes over');
         }
@@ -106,9 +110,12 @@
             document.removeEventListener('click', onClick, true);
             if (tookOver()) return;
             if (label && originalLabel !== null) label.textContent = originalLabel;
-            window.ORDO_PENDING_CHECKOUT_CLICK = false;
             console.warn(PREFIX, 'Memberstack checkout released:', reason);
             if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('OffreSpecialeLoader', 'Memberstack checkout released: ' + reason);
+            if (window.ORDO_PENDING_CHECKOUT_CLICK) {
+                window.ORDO_PENDING_CHECKOUT_CLICK = false;
+                btn.click();
+            }
         };
 
         setTimeout(() => release('timeout'), CHECKOUT_TAKEOVER_TIMEOUT_MS);
