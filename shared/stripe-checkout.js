@@ -40,6 +40,14 @@ async function initStripeCheckout() {
     const signupBtnNoStripe = document.getElementById(btnNoStripeId);
     const signupBtnStripe = document.getElementById(btnStripeId);
 
+    // A loader may have held a click on the fallback button while this script loaded
+    function resumeHeldClick(btn) {
+        if (!window.ORDO_PENDING_CHECKOUT_CLICK || !btn) return;
+        window.ORDO_PENDING_CHECKOUT_CLICK = false;
+        console.log(PREFIX, 'Resuming held checkout click');
+        btn.click();
+    }
+
     // Memberstack data (from shared utility)
     const ms = window.OrdoMemberstack || {};
     const stripeCustomerId = ms.stripeCustomerId;
@@ -50,6 +58,7 @@ async function initStripeCheckout() {
         console.log(PREFIX, 'No Stripe customer – showing non-Stripe flow');
         if (signupBtnStripe) signupBtnStripe.style.display = 'none';
         if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
+        resumeHeldClick(signupBtnNoStripe);
         return;
     }
 
@@ -57,6 +66,7 @@ async function initStripeCheckout() {
     if (!signupBtnStripe) {
         console.warn(PREFIX, 'Stripe button not found, skipping checkout session');
         if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
+        resumeHeldClick(signupBtnNoStripe);
         return;
     }
     if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
@@ -113,6 +123,7 @@ async function initStripeCheckout() {
             // Show fallback button so user can still proceed via Memberstack
             if (signupBtnStripe) signupBtnStripe.style.display = 'none';
             if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
+            resumeHeldClick(signupBtnNoStripe);
             return;
         }
         sessionId = data.sessionId;
@@ -125,6 +136,7 @@ async function initStripeCheckout() {
         // Show fallback button so user can still proceed via Memberstack
         if (signupBtnStripe) signupBtnStripe.style.display = 'none';
         if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
+        resumeHeldClick(signupBtnNoStripe);
         return;
     }
 
@@ -184,6 +196,8 @@ async function initStripeCheckout() {
         // Redirect to Stripe Checkout
         window.location.href = checkoutUrl;
     });
+
+    resumeHeldClick(signupBtnStripe);
 }
 
 // Run immediately if DOM is ready, otherwise wait for DOMContentLoaded
