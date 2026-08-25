@@ -1,6 +1,8 @@
 /**
  * Ordotype Inscription Offre Speciale - Loader
  * Loads countdown and stripe-checkout with config from Webflow CMS.
+ * Hides the Memberstack checkout button for cached Stripe customers until
+ * shared/stripe-checkout.js takes over the buttons.
  *
  * Usage in Webflow:
  *
@@ -40,27 +42,38 @@
     const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
 
     const BTN_NO_STRIPE_ID = 'signup-rempla-from-decouverte';
+    const BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
+    const CHECKOUT_SCRIPT = 'shared/stripe-checkout.js';
+    const CHECKOUT_TAKEOVER_TIMEOUT_MS = 10000;
 
     // Scripts to load in order
     const scripts = [
+        'shared/memberstack-utils.js',
+        'shared/error-reporter.js',
         'inscription-offre-speciale/not-connected-handler.js',
         'shared/opacity-reveal.js',
-        'inscription-offre-speciale/countdown.js'
+        'inscription-offre-speciale/countdown.js',
+        CHECKOUT_SCRIPT
     ];
 
-    function cachedStripeCustomerId() {
+    function hasCachedStripeCustomer() {
+        const ms = window.OrdoMemberstack;
+        if (ms) return !!ms.stripeCustomerId;
         try {
-            const member = JSON.parse(localStorage.getItem('_ms-mem') || 'null');
-            return (member && member.stripeCustomerId) || null;
+            const member = JSON.parse(localStorage.getItem('_ms-mem'));
+            return !!(member && member.stripeCustomerId);
         } catch (e) {
-            return null;
+            return false;
         }
     }
 
+    // script.async = false → browser fetches in parallel but executes in
+    // insertion order.
     function loadScript(url) {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.crossOrigin = 'anonymous';
+            script.async = false;
             script.src = url;
             script.onload = resolve;
             script.onerror = () => reject(new Error(`Failed to load: ${url}`));
@@ -71,51 +84,62 @@
     async function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
 
-        const btnNoStripe = document.getElementById(BTN_NO_STRIPE_ID);
-        const hasStripeCustomer = !!cachedStripeCustomerId();
-        if (btnNoStripe && hasStripeCustomer) btnNoStripe.style.display = 'none';
+        const hiddenMsBtn = hasCachedStripeCustomer() ? document.getElementById(BTN_NO_STRIPE_ID) : null;
+        if (hiddenMsBtn) hiddenMsBtn.style.display = 'none';
 
-        // Helper to replace ${window.location.origin} placeholder with actual origin
-        const resolveUrl = (url) => {
-            if (!url) return url;
-            return url.replace(/\$\{window\.location\.origin\}/g, window.location.origin);
+        const checkoutTookOver = () => typeof window.initStripeCheckout === 'function';
+        let restored = false;
+        const restoreMsBtn = (reason) => {
+            if (restored || !hiddenMsBtn || checkoutTookOver()) return;
+            restored = true;
+            hiddenMsBtn.style.display = '';
+            console.warn(PREFIX, 'Memberstack button restored:', reason);
+            if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('OffreSpecialeLoader', 'Memberstack button restored: ' + reason);
         };
+        if (hiddenMsBtn) setTimeout(() => restoreMsBtn('timeout'), CHECKOUT_TAKEOVER_TIMEOUT_MS);
 
-        // Use CMS config, with defaults
-        window.STRIPE_CHECKOUT_CONFIG = {
-            priceId: cmsConfig.priceId || '',
-            couponId: cmsConfig.couponId || '',
-            successUrl: resolveUrl(cmsConfig.successUrl) || `${window.location.origin}/membership/mes-informations`,
-            cancelUrl: resolveUrl(cmsConfig.cancelUrl) || window.location.href,
-            paymentMethods: cmsConfig.paymentMethods || ['card', 'sepa_debit'],
-            option: cmsConfig.option || 'offre-speciale'
-        };
-
-        console.log(PREFIX, 'Config:', {
-            priceId: window.STRIPE_CHECKOUT_CONFIG.priceId,
-            hasCoupon: !!window.STRIPE_CHECKOUT_CONFIG.couponId,
-            option: window.STRIPE_CHECKOUT_CONFIG.option,
-            hasStripeCustomer
-        });
-
-        let checkoutLoaded = false;
         try {
-            // Load shared utilities first
-            await loadScript(`${BASE}/shared/memberstack-utils.js`);
-            await loadScript(`${BASE}/shared/error-reporter.js`);
+            // Helper to replace ${window.location.origin} placeholder with actual origin
+            const resolveUrl = (url) => {
+                if (!url) return url;
+                return url.replace(/\$\{window\.location\.origin\}/g, window.location.origin);
+            };
 
-            await Promise.all([
-                loadScript(`${BASE}/shared/stripe-checkout.js`).then(() => { checkoutLoaded = true; }),
-                (async () => {
-                    for (const file of scripts) {
-                        await loadScript(`${BASE}/${file}`);
-                    }
-                })()
-            ]);
+            // Use CMS config, with defaults
+            window.STRIPE_CHECKOUT_CONFIG = {
+                btnNoStripeId: BTN_NO_STRIPE_ID,
+                btnStripeId: BTN_STRIPE_ID,
+                priceId: cmsConfig.priceId || '',
+                couponId: cmsConfig.couponId || '',
+                successUrl: resolveUrl(cmsConfig.successUrl) || `${window.location.origin}/membership/mes-informations`,
+                cancelUrl: resolveUrl(cmsConfig.cancelUrl) || window.location.href,
+                paymentMethods: cmsConfig.paymentMethods || ['card', 'sepa_debit'],
+                option: cmsConfig.option || 'offre-speciale'
+            };
+
+            console.log(PREFIX, 'Config:', {
+                priceId: window.STRIPE_CHECKOUT_CONFIG.priceId,
+                hasCoupon: !!window.STRIPE_CHECKOUT_CONFIG.couponId,
+                option: window.STRIPE_CHECKOUT_CONFIG.option,
+                hasStripeCustomer: !!hiddenMsBtn
+            });
+        } catch (err) {
+            console.error(PREFIX, 'Config error:', err);
+            restoreMsBtn('config error');
+            return;
+        }
+
+        const loads = scripts.map((file) => loadScript(`${BASE}/${file}`));
+        loads[scripts.indexOf(CHECKOUT_SCRIPT)].then(
+            () => restoreMsBtn('stripe-checkout.js did not execute'),
+            (err) => restoreMsBtn(err.message)
+        );
+
+        try {
+            await Promise.all(loads);
             console.log(PREFIX, 'All scripts loaded');
         } catch (err) {
             console.error(PREFIX, 'Load error:', err);
-            if (btnNoStripe && hasStripeCustomer && !checkoutLoaded) btnNoStripe.style.display = 'flex';
         }
     }
 

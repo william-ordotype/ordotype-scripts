@@ -54,8 +54,13 @@ async function initStripeCheckout() {
     }
 
     console.log(PREFIX, 'Stripe customer found');
+    if (!signupBtnStripe) {
+        console.warn(PREFIX, 'Stripe button not found, skipping checkout session');
+        if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
+        return;
+    }
     if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
-    if (signupBtnStripe) signupBtnStripe.style.display = 'flex';
+    signupBtnStripe.style.display = 'flex';
 
     // Configuration with defaults
     const priceId = config.priceId || 'price_1REohrKEPftl7d7iemVKnl9Y';
