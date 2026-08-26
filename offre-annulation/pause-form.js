@@ -98,6 +98,9 @@
             })
             .catch(function(err) {
                 console.error(PREFIX, 'Error:', err);
+                if (window.OrdoErrorReporter) {
+                    OrdoErrorReporter.report('PauseForm', (err && err.message) || String(err));
+                }
                 hideElement(waiting);
                 showElement(form);
                 showElement(error);

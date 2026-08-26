@@ -27,6 +27,11 @@
     var REDIRECT_DELAY = 3000;
     var REQUEST_TIMEOUT = 10000;
 
+    function report(actionName, detail) {
+        if (!window.OrdoErrorReporter) return;
+        OrdoErrorReporter.report('PauseState', actionName + ': ' + detail);
+    }
+
     // Group key → display label mapping
     var GROUP_LABELS = {
         'bouton-compte-praticien-only': 'Module MG - Compte Praticien',
@@ -189,10 +194,15 @@
         xhr.timeout = REQUEST_TIMEOUT;
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 
+        var actionName = webhookUrl === RESUME_WEBHOOK ? 'resume' : 'cancel-definitive';
+
         xhr.onload = function() {
             console.log(PREFIX, 'Response status:', xhr.status);
             console.log(PREFIX, 'Response body:', xhr.responseText);
             if (waiting) waiting.style.display = 'none';
+            if (xhr.status !== 200) {
+                report(actionName, 'HTTP ' + xhr.status);
+            }
             if (xhr.status === 200) {
                 if (success) {
                     success.textContent = successMessage;
@@ -212,12 +222,14 @@
 
         xhr.onerror = function() {
             console.error(PREFIX, 'XHR error (network)');
+            report(actionName, 'network error');
             if (waiting) waiting.style.display = 'none';
             showError();
         };
 
         xhr.ontimeout = function() {
             console.error(PREFIX, 'XHR timeout after', REQUEST_TIMEOUT, 'ms');
+            report(actionName, 'timeout after ' + REQUEST_TIMEOUT + 'ms');
             if (waiting) waiting.style.display = 'none';
             showError();
         };

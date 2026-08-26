@@ -22,6 +22,27 @@
   const PREFIX = '[RedeemCancelForms]';
   const REDIRECT_DELAY = 3000;
   const REQUEST_TIMEOUT = 10000;
+  const SELF_PATH = 'shared/redeem-cancel-forms.js';
+  const REPORTER_PATH = 'shared/error-reporter.js';
+
+  /**
+   * Pages that load this script through a page loader already have the reporter.
+   * The cancel pages include it directly, so pull it in when it is missing.
+   */
+  function ensureReporter() {
+    if (window.OrdoErrorReporter) return;
+    const self = document.querySelector('script[src*="' + SELF_PATH + '"]');
+    if (!self) return;
+    const script = document.createElement('script');
+    script.src = self.src.replace(SELF_PATH, REPORTER_PATH);
+    script.crossOrigin = 'anonymous';
+    document.head.appendChild(script);
+  }
+
+  function report(formName, detail) {
+    if (!window.OrdoErrorReporter) return;
+    OrdoErrorReporter.report('RedeemCancelForms', formName + ': ' + detail);
+  }
 
   /**
    * Form configuration
@@ -52,6 +73,8 @@
       console.warn(PREFIX, 'Memberstack not available');
       return;
     }
+
+    ensureReporter();
 
     // Setup each form
     let formsFound = 0;
@@ -134,6 +157,7 @@
 
     } catch (err) {
       console.error(PREFIX, `Error in ${formName}:`, err);
+      report(formName, (err && err.message) || String(err));
       hideElement(waiting);
       showElement(form);
       showElement(error);
