@@ -898,10 +898,14 @@
       } else {
         renderEmpty();
       }
-      track('siren_finder_open', { from: 'empty' });
     }
 
     applyStatut(state.statut);
+    // Impression réelle : un interne est dans la cohorte et charge le script,
+    // mais applyStatut vient de masquer le bloc — il n'a rien vu. Suivre
+    // l'ouverture AVANT ce masquage gonflerait l'étape « widget vu » de
+    // l'entonnoir GA4 (cf. dimension rollout_enabled).
+    if (!current && !root.hidden) track('siren_finder_open', { from: 'empty' });
     var statutSelector = document.getElementById('mon-statut-2');
     if (statutSelector) {
       statutSelector.addEventListener('change', function(e) { applyStatut(e.target.value); });
