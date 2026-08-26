@@ -51,7 +51,8 @@
   const GATES = {
     'siren-finder.js': {
       'sandbox-ordotype.webflow.io': 100,
-      'ordotype.webflow.io': 0,   // prod staging domain: verification with the override
+      'ordotype.webflow.io': 100, // prod staging domain: everyone, so a build can
+                                  // be verified there without the localStorage override
       'www.ordotype.fr': 10
     }
   };
