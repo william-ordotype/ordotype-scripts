@@ -840,13 +840,27 @@
 
   // --- Visibilité (internes) ------------------------------------------------------------------
 
+  /**
+   * Le libellé « SIREN ou SIRET » est un frère de l'input, dans le même
+   * .form-field-wrapper que le widget. Masquer seulement le widget et l'input
+   * laissait donc le libellé seul au-dessus d'un trou. On masque la cellule
+   * entière, en style inline pour passer devant la grille Webflow.
+   */
+  function fieldCell() {
+    return input.parentNode;
+  }
+
   function hideAll() {
     root.hidden = true;
     input.style.display = 'none';
+    var cell = fieldCell();
+    if (cell && cell.style) cell.style.display = 'none';
   }
 
   function showAll() {
     root.hidden = false;
+    var cell = fieldCell();
+    if (cell && cell.style) cell.style.display = '';
   }
 
   /**
