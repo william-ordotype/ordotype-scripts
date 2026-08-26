@@ -22,6 +22,22 @@
     var REDIRECT_DELAY = 3000;
     var REQUEST_TIMEOUT = 10000;
 
+    // Reporter when it is there, ErrorEvent channel when it is not: the pages
+    // where a pause fails are also the ones where the CDN can be blocked.
+    function report(name, detail) {
+        try {
+            var err = new Error(detail);
+            err.name = name;
+            if (window.OrdoErrorReporter) {
+                OrdoErrorReporter.report('PauseForm', err);
+                return;
+            }
+            window.dispatchEvent(new ErrorEvent('error', { message: detail, error: err }));
+        } catch (e) {
+            // never throw from the reporting path
+        }
+    }
+
     // Plan IDs that use the offre-annulation cancel page (Module MG)
     var MG_PLAN_IDS = [
         'pln_compte-praticien-offre-speciale-500-premiers--893z0o60',
@@ -93,14 +109,13 @@
                         window.location.href = '/membership/abonnement-en-pause';
                     }, REDIRECT_DELAY);
                 } else {
-                    throw new Error('Server returned ' + response.status);
+                    var detail = response.body ? ' — ' + String(response.body).slice(0, 200) : '';
+                    throw new Error('Server returned ' + response.status + detail);
                 }
             })
             .catch(function(err) {
                 console.error(PREFIX, 'Error:', err);
-                if (window.OrdoErrorReporter) {
-                    OrdoErrorReporter.report('PauseForm', (err && err.message) || String(err));
-                }
+                report('PauseFormSubmitFailed', (err && err.message) || String(err));
                 hideElement(waiting);
                 showElement(form);
                 showElement(error);
@@ -112,7 +127,9 @@
             var xhr = new XMLHttpRequest();
             xhr.open('POST', form.action);
             xhr.timeout = REQUEST_TIMEOUT;
-            xhr.onload = function() { resolve({ ok: xhr.status === 200, status: xhr.status }); };
+            xhr.onload = function() {
+                resolve({ ok: xhr.status === 200, status: xhr.status, body: xhr.responseText });
+            };
             xhr.onerror = function() { reject(new Error('Network error')); };
             xhr.ontimeout = function() { reject(new Error('Request timeout')); };
             var data = new FormData(form);
