@@ -22,6 +22,46 @@
   const PREFIX = '[RedeemCancelForms]';
   const REDIRECT_DELAY = 3000;
   const REQUEST_TIMEOUT = 10000;
+  const SELF_PATH = 'shared/redeem-cancel-forms.js';
+  const REPORTER_PATH = 'shared/error-reporter.js';
+  const CDN_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/';
+
+  /**
+   * Pages that load this script through a page loader already have the reporter.
+   * The cancel pages include it directly, so pull it in when it is missing.
+   */
+  function ensureReporter() {
+    if (window.OrdoErrorReporter) return;
+    const tag = document.querySelector('script[src*="' + SELF_PATH + '"]');
+    const script = document.createElement('script');
+    script.src = tag ? tag.src.replace(SELF_PATH, REPORTER_PATH) : CDN_BASE + REPORTER_PATH;
+    script.crossOrigin = 'anonymous';
+    script.onerror = () => report('reporter', 'ReporterUnavailable', 'error-reporter.js blocked');
+    document.head.appendChild(script);
+  }
+
+  /**
+   * Reports through the shared reporter, falling back to the ErrorEvent channel
+   * the auth bundle listens on. The fallback is the point: the networks that
+   * break a cancellation are the ones that also block the CDN the reporter is
+   * served from, so returning early on a missing reporter would drop exactly
+   * the reports worth having. Each cause carries its own error name so Sentry
+   * keeps them as distinct issues.
+   */
+  function report(formName, name, detail) {
+    try {
+      const message = formName + ': ' + detail;
+      const err = new Error(message);
+      err.name = name;
+      if (window.OrdoErrorReporter) {
+        OrdoErrorReporter.report('RedeemCancelForms', err);
+        return;
+      }
+      window.dispatchEvent(new ErrorEvent('error', { message: message, error: err }));
+    } catch (e) {
+      // never throw from the reporting path
+    }
+  }
 
   /**
    * Form configuration
@@ -47,9 +87,15 @@
    * Initialize the module
    */
   function init() {
-    // Wait for Memberstack to be ready
+    // Before the Memberstack guard: without a listener the browser submits the
+    // form natively with an empty Stripe id, so the member sees a confirmation
+    // while nothing is cancelled. That is the failure worth hearing about, and
+    // reporting it needs the reporter loaded first.
+    ensureReporter();
+
     if (!window.$memberstackDom) {
       console.warn(PREFIX, 'Memberstack not available');
+      report('init', 'CancelFormNoMemberstack', 'Memberstack SDK absent, forms left unbound');
       return;
     }
 
@@ -61,6 +107,8 @@
 
     if (formsFound > 0) {
       console.log(PREFIX, `Initialized (${formsFound} form(s))`);
+    } else {
+      report('init', 'CancelFormNotFound', 'no redeem or cancel form on ' + window.location.pathname);
     }
   }
 
@@ -129,11 +177,13 @@
           window.location.href = '/';
         }, REDIRECT_DELAY);
       } else {
-        throw new Error(`Server returned ${response.status}`);
+        const detail = response.body ? ` — ${String(response.body).slice(0, 200)}` : '';
+        throw new Error(`Server returned ${response.status}${detail}`);
       }
 
     } catch (err) {
       console.error(PREFIX, `Error in ${formName}:`, err);
+      report(formName, 'CancelFormSubmitFailed', (err && err.message) || String(err));
       hideElement(waiting);
       showElement(form);
       showElement(error);
@@ -149,7 +199,8 @@
       xhr.open('POST', form.action);
       xhr.timeout = REQUEST_TIMEOUT;
 
-      xhr.onload = () => resolve({ ok: xhr.status === 200, status: xhr.status });
+      xhr.onload = () =>
+        resolve({ ok: xhr.status === 200, status: xhr.status, body: xhr.responseText });
       xhr.onerror = () => reject(new Error('Network error'));
       xhr.ontimeout = () => reject(new Error('Request timeout'));
 

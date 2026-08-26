@@ -617,7 +617,7 @@ Parses Memberstack data from `localStorage` (`_ms-mem` key) and exposes it as `w
 
 Sends frontend error reports to Discord via the Netlify webhook proxy. Exposes `window.OrdoErrorReporter`.
 
-**Loaded by loaders that include checkout or setup scripts.**
+**Loaded by loaders that include checkout or setup scripts**, and self-loaded by `shared/redeem-cancel-forms.js` on the cancellation pages that include it directly (no loader). Every caller falls back to `window.dispatchEvent(new ErrorEvent(...))` when the reporter itself could not be fetched, so a blocked CDN does not silence the report.
 
 ```html
 <script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/error-reporter.js"></script>
@@ -1367,11 +1367,14 @@ These pages all use the shared `redeem-cancel-forms.js` script:
 
 | File | Purpose |
 |------|---------|
-| `shared/redeem-cancel-forms.js` | Handles redeem and cancel form submissions with Stripe Customer ID injection |
+| `shared/redeem-cancel-forms.js` | Handles redeem and cancel form submissions with Stripe Customer ID injection. Reports every failure branch (init without Memberstack, form not found, network, timeout, non-200) and injects `shared/error-reporter.js` itself when the page has no loader. |
 
 ### Usage in Webflow
 
 **For annulation-abonnement and desabonnement-module (no countdown):**
+
+These pages have no loader, so `redeem-cancel-forms.js` fetches `shared/error-reporter.js` on its own (same pinned ref as its own `src`, `@main` if it cannot be resolved). Nothing to add to the embed.
+
 ```html
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>

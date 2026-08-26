@@ -27,6 +27,23 @@
     var REDIRECT_DELAY = 3000;
     var REQUEST_TIMEOUT = 10000;
 
+    // Reporter when it is there, ErrorEvent channel when it is not: the pages
+    // where a resume fails are also the ones where the CDN can be blocked.
+    function report(actionName, name, detail) {
+        try {
+            var message = actionName + ': ' + detail;
+            var err = new Error(message);
+            err.name = name;
+            if (window.OrdoErrorReporter) {
+                OrdoErrorReporter.report('PauseState', err);
+                return;
+            }
+            window.dispatchEvent(new ErrorEvent('error', { message: message, error: err }));
+        } catch (e) {
+            // never throw from the reporting path
+        }
+    }
+
     // Group key → display label mapping
     var GROUP_LABELS = {
         'bouton-compte-praticien-only': 'Module MG - Compte Praticien',
@@ -152,7 +169,7 @@
         if (resumeBtn) {
             resumeBtn.addEventListener('click', function(e) {
                 e.preventDefault();
-                handleAction(RESUME_WEBHOOK, 'Votre abonnement a été réactivé !', '/membership/abonnement-repris');
+                handleAction(RESUME_WEBHOOK, 'Votre abonnement a été réactivé !', '/membership/abonnement-repris', 'resume');
             });
         }
 
@@ -160,19 +177,25 @@
             cancelBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 if (confirm('Êtes-vous sûr de vouloir annuler définitivement votre abonnement ?')) {
-                    handleAction(CANCEL_DEFINITIVE_WEBHOOK, 'Votre abonnement a été annulé.');
+                    handleAction(CANCEL_DEFINITIVE_WEBHOOK, 'Votre abonnement a été annulé.', null, 'cancel-definitive');
                 }
             });
         }
     }
 
-    function handleAction(webhookUrl, successMessage, redirectUrl) {
+    function handleAction(webhookUrl, successMessage, redirectUrl, actionName) {
         var resumeBtn = document.getElementById('resume-btn');
         var cancelBtn = document.getElementById('cancel-definitive-btn');
         var waiting = document.getElementById('pause-action-waiting');
         var success = document.getElementById('pause-action-success');
         var error = document.getElementById('pause-action-error');
-        var memberId = document.getElementById('pause-member-id').value;
+        // init() treats this input as optional, so dereferencing it here would
+        // throw before the spinner, the error message and the report.
+        var memberIdInput = document.getElementById('pause-member-id');
+        var memberId = memberIdInput ? memberIdInput.value : '';
+        if (!memberId) {
+            report(actionName, 'PauseStateMissingMemberId', '#pause-member-id absent ou vide');
+        }
 
         // Hide buttons, show waiting
         if (resumeBtn) resumeBtn.style.display = 'none';
@@ -185,9 +208,6 @@
         console.log(PREFIX, 'Payload:', payload);
 
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', webhookUrl);
-        xhr.timeout = REQUEST_TIMEOUT;
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 
         xhr.onload = function() {
             console.log(PREFIX, 'Response status:', xhr.status);
@@ -206,18 +226,22 @@
                     }
                 }, REDIRECT_DELAY);
             } else {
+                var body = xhr.responseText ? ' — ' + String(xhr.responseText).slice(0, 200) : '';
+                report(actionName, 'PauseStateActionFailed', 'HTTP ' + xhr.status + body);
                 showError();
             }
         };
 
         xhr.onerror = function() {
             console.error(PREFIX, 'XHR error (network)');
+            report(actionName, 'PauseStateNetworkError', 'network error');
             if (waiting) waiting.style.display = 'none';
             showError();
         };
 
         xhr.ontimeout = function() {
             console.error(PREFIX, 'XHR timeout after', REQUEST_TIMEOUT, 'ms');
+            report(actionName, 'PauseStateTimeout', 'timeout after ' + REQUEST_TIMEOUT + 'ms');
             if (waiting) waiting.style.display = 'none';
             showError();
         };
@@ -228,7 +252,20 @@
             if (cancelBtn) cancelBtn.style.display = '';
         }
 
-        xhr.send(payload);
+        // open/setRequestHeader/send can throw synchronously behind a CSP rule
+        // or a privacy extension. Without this, none of the handlers above ever
+        // runs and the member is left on a spinner with both buttons hidden.
+        try {
+            xhr.open('POST', webhookUrl);
+            xhr.timeout = REQUEST_TIMEOUT;
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.send(payload);
+        } catch (err) {
+            console.error(PREFIX, 'XHR send failed:', err);
+            report(actionName, 'PauseStateSendFailed', (err && err.message) || String(err));
+            if (waiting) waiting.style.display = 'none';
+            showError();
+        }
     }
 
     // Init after DOM ready
