@@ -1442,6 +1442,16 @@ function (repo `ordotype-webhooks`).
   hard-coded fallback so the popup still renders correctly if it is ever served
   on a page where the tokens are not loaded.
 - Six reasons, several can be ticked; `Autre` reveals a free-text field.
+- The copy exists to remove one specific misunderstanding: the member has just
+  clicked "annuler mon abonnement" and believes they are done. So the title is
+  "Dernière étape avant la résiliation", the first words are "Votre abonnement
+  n'est pas encore résilié", the question is labelled `obligatoire`, and the way
+  out reads "Finalement, je ne résilie pas".
+- The answer is delivered **once**, through `navigator.sendBeacon`, with `fetch`
+  only as a fallback when the beacon is refused. Do not put them back in a
+  primary/`catch` pair: with `keepalive`, a page that navigates away mid-request
+  (which is what a cancellation does) still delivers it while rejecting the
+  promise, so the fallback duplicated the row (seen in production 2026-08-27).
 - The submit button carries `aria-disabled` rather than `disabled` — a disabled
   button emits no click, so a member who insists would get no explanation.
   Clicking it while nothing is ticked shows an inline alert instead.
