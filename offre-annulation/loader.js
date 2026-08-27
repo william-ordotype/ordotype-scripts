@@ -25,6 +25,11 @@
     const VERSION = detectVersion();
     const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION;
 
+    // The reason popup gates the offer grid, so it must not queue behind the
+    // rest: it is started first and in parallel, and it reads Memberstack from
+    // localStorage itself rather than waiting for memberstack-utils.js.
+    const FIRST = 'offre-annulation/cancel-reason-modal.js';
+
     // Scripts to load in order
     // Note: tracking-churn-offers.js is injected site-wide by shared/global-utils.js
     // (path-guarded to cancel URLs) so it lives on every cancel page from one source.
@@ -53,6 +58,12 @@
         // Set countdown storage key (preserve existing key for this page)
         window.COUNTDOWN_CONFIG = { storageKey: 'countdownDateTime' };
 
+        // Fired before the awaits below, never awaited inline: a rejection here
+        // must not skip the rest, and the grid must not wait on the queue.
+        const reasonModal = loadScript(`${BASE}/${FIRST}`).catch((err) => {
+            console.error(PREFIX, 'Load error:', err);
+        });
+
         try {
             // Load shared utilities first
             await loadScript(`${BASE}/shared/memberstack-utils.js`);
@@ -61,6 +72,7 @@
             for (const file of scripts) {
                 await loadScript(`${BASE}/${file}`);
             }
+            await reasonModal;
             console.log(PREFIX, 'All scripts loaded');
         } catch (err) {
             console.error(PREFIX, 'Load error:', err);
