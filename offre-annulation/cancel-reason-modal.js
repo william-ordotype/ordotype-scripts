@@ -30,13 +30,19 @@
     var ACCOUNT_URL = '/membership/compte';
 
     /**
-     * 'load'   : la modale s'ouvre à l'arrivée sur la page et masque la grille
-     *            d'offres tant qu'aucun motif n'est coché (comportement par
-     *            défaut : on capte le motif de tout le monde, y compris de ceux
-     *            qui finissent par accepter les -50 % ou la pause).
-     * 'cancel' : la modale ne s'ouvre qu'au clic sur « annuler mon abonnement ».
+     * 'cancel' : la modale s'intercale au clic sur « annuler mon abonnement »
+     *            (choix de William le 27/08/2026). On ne capte donc que le
+     *            motif de ceux qui résilient vraiment : une ligne par
+     *            résiliation, qui se recoupe avec l'onglet Désinscription.
+     *            La grille étant déjà sous les yeux du membre, la modale est
+     *            refermable — revenir en arrière n'est pas contourner la
+     *            question, c'est renoncer à résilier.
+     * 'load'    : la modale s'ouvre à l'arrivée sur la page et garde la grille
+     *            d'offres tant qu'aucun motif n'est coché. On capte alors le
+     *            motif de tout le monde, y compris de ceux qui acceptent les
+     *            -50 % ou la pause, et il n'y a pas de sortie sans répondre.
      */
-    var TRIGGER = 'load';
+    var TRIGGER = 'cancel';
 
     // Les libellés font foi côté serveur : le navigateur n'envoie que les codes,
     // la fonction Netlify réécrit les libellés depuis sa propre table. Toucher
@@ -154,12 +160,13 @@
         'background:rgba(16,24,44,.55);display:flex;align-items:flex-start;justify-content:center;',
         'padding:24px 16px;overflow-y:auto;opacity:0;transition:opacity 200ms ease}',
         '.ordo-reason-backdrop.is-open{opacity:1}',
-        '.ordo-reason-dialog{margin:auto;width:100%;max-width:560px;background:#fff;border-radius:16px;',
+        '.ordo-reason-dialog{position:relative;margin:auto;width:100%;max-width:560px;background:#fff;border-radius:16px;',
         'box-shadow:0 18px 50px rgba(0,0,0,.25);padding:32px 32px 24px;box-sizing:border-box;',
         'transform:translateY(14px);transition:transform 220ms ease;font-family:inherit;color:#1a2b4a;',
         '-webkit-font-smoothing:antialiased}',
         '.ordo-reason-backdrop.is-open .ordo-reason-dialog{transform:none}',
-        '.ordo-reason-dialog h2{font-size:22px;line-height:1.3;font-weight:700;color:#1a2b4a;margin:0 0 8px}',
+        // padding-right : garde le titre à l'écart de la croix de fermeture.
+        '.ordo-reason-dialog h2{font-size:22px;line-height:1.3;font-weight:700;color:#1a2b4a;margin:0 0 8px;padding-right:34px}',
         '.ordo-reason-intro{font-size:15px;line-height:1.5;color:#666;margin:0 0 22px}',
         '.ordo-reason-fieldset{border:0;margin:0;padding:0}',
         '.ordo-reason-legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
@@ -195,8 +202,13 @@
         '@keyframes ordoReasonShake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(4px)}',
         '50%{transform:translateX(-4px)}100%{transform:none}}',
         '.ordo-reason-escape{display:block;text-align:center;margin:16px 0 0;font-size:13px;color:#9ca3af}',
-        '.ordo-reason-escape a{color:#9ca3af;text-decoration:underline}',
-        '.ordo-reason-escape a:hover{color:#6b7280}',
+        '.ordo-reason-escape a,.ordo-reason-escape button{color:#9ca3af;text-decoration:underline;background:none;',
+        'border:0;padding:0;font-family:inherit;font-size:13px;cursor:pointer}',
+        '.ordo-reason-escape a:hover,.ordo-reason-escape button:hover{color:#6b7280}',
+        '.ordo-reason-close{position:absolute;top:14px;right:14px;width:34px;height:34px;border:0;border-radius:50%;',
+        'background:none;color:#9ca3af;font-size:22px;line-height:1;cursor:pointer;font-family:inherit;',
+        'transition:background-color 140ms ease,color 140ms ease}',
+        '.ordo-reason-close:hover{background:#f3f4f6;color:#4b5563}',
         '@media (max-width:640px){.ordo-reason-backdrop{padding:12px}',
         '.ordo-reason-dialog{padding:24px 20px 20px;border-radius:14px}',
         '.ordo-reason-dialog h2{font-size:19px}.ordo-reason-intro{font-size:14px;margin-bottom:18px}}',
@@ -226,15 +238,33 @@
         return node;
     }
 
+    /** En mode 'cancel' la grille est déjà là : refermer, c'est y retourner. */
+    function dismissible() {
+        return TRIGGER === 'cancel';
+    }
+
     function buildDialog(submitLabel) {
         var backdrop = el('div', 'ordo-reason-backdrop');
         backdrop.setAttribute('role', 'presentation');
+        if (dismissible()) {
+            backdrop.addEventListener('click', function (event) {
+                if (event.target === backdrop) dismiss();
+            });
+        }
 
         var dialog = el('div', 'ordo-reason-dialog');
         dialog.setAttribute('role', 'dialog');
         dialog.setAttribute('aria-modal', 'true');
         dialog.setAttribute('aria-labelledby', 'ordo-reason-title');
         dialog.setAttribute('aria-describedby', 'ordo-reason-intro');
+
+        if (dismissible()) {
+            var closeBtn = el('button', 'ordo-reason-close', '×');
+            closeBtn.type = 'button';
+            closeBtn.setAttribute('aria-label', 'Fermer et revenir aux offres');
+            closeBtn.addEventListener('click', dismiss);
+            dialog.appendChild(closeBtn);
+        }
 
         var title = el('h2', null, 'Avant de partir, dites-nous pourquoi');
         title.id = 'ordo-reason-title';
@@ -310,9 +340,16 @@
         els.submit = submit;
 
         var escape = el('p', 'ordo-reason-escape');
-        var link = el('a', null, 'Revenir à mon compte');
-        link.href = ACCOUNT_URL;
-        escape.appendChild(link);
+        if (dismissible()) {
+            var back = el('button', null, 'Revenir en arrière');
+            back.type = 'button';
+            back.addEventListener('click', dismiss);
+            escape.appendChild(back);
+        } else {
+            var link = el('a', null, 'Revenir à mon compte');
+            link.href = ACCOUNT_URL;
+            escape.appendChild(link);
+        }
         dialog.appendChild(escape);
 
         backdrop.appendChild(dialog);
@@ -388,6 +425,14 @@
 
     // --------------------------------------------------------- ouvrir/fermer
 
+    function onKeydown(event) {
+        if (dismissible() && (event.key === 'Escape' || event.keyCode === 27)) {
+            dismiss();
+            return;
+        }
+        trapFocus(event);
+    }
+
     function trapFocus(event) {
         if (event.key !== 'Tab' && event.keyCode !== 9) return;
         var focusables = els.dialog.querySelectorAll('input,textarea,button,a[href]');
@@ -405,12 +450,15 @@
 
     function open() {
         injectStyles();
-        var label = TRIGGER === 'cancel' ? 'Continuer' : 'Voir mes options';
+        // Le libellé doit dire ce que le bouton fait vraiment : en mode
+        // 'cancel', il relance la résiliation dans la foulée.
+        var label = dismissible() ? 'Confirmer la résiliation' : 'Voir mes options';
         var backdrop = buildDialog(label);
+        submitting = false;
         lastFocus = document.activeElement;
         document.body.appendChild(backdrop);
         document.documentElement.className += ' ordo-reason-lock';
-        document.addEventListener('keydown', trapFocus, true);
+        document.addEventListener('keydown', onKeydown, true);
         // Laisser un tick au navigateur pour poser l'état initial de la
         // transition, sinon l'ouverture est sèche.
         window.setTimeout(function () {
@@ -420,8 +468,19 @@
         console.log(PREFIX, 'Modal opened (trigger: ' + TRIGGER + ')');
     }
 
+    /**
+     * Fermeture SANS réponse : le membre renonce à résilier et retrouve la
+     * grille. Rien n'est enregistré, la question se reposera au prochain clic.
+     */
+    function dismiss() {
+        if (submitting) return;
+        onValidated = null;
+        close();
+        console.log(PREFIX, 'Dismissed, subscription untouched');
+    }
+
     function close() {
-        document.removeEventListener('keydown', trapFocus, true);
+        document.removeEventListener('keydown', onKeydown, true);
         var backdrop = els.backdrop;
         var html = document.documentElement;
         html.className = html.className.replace(/\s*\bordo-reason-lock\b/g, '');

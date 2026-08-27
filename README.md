@@ -1430,28 +1430,37 @@ Footer:
 
 ### Exit-reason popup (offre-annulation only)
 
-`cancel-reason-modal.js` asks why the member is leaving **before** the offer
-grid is usable, then writes the answer to the `Motifs formulaire` tab of the
-"Motifs désinscriptions" GSheet through the `cancel-reason` Netlify function
-(repo `ordotype-webhooks`).
+`cancel-reason-modal.js` asks why the member is leaving **before** the
+cancellation goes through, then writes the answer to the `Motifs formulaire` tab
+of the "Motifs désinscriptions" GSheet through the `cancel-reason` Netlify
+function (repo `ordotype-webhooks`).
 
 - Nothing to add in Webflow: the popup builds its own markup and its own CSS.
 - Six reasons, several can be ticked; `Autre` reveals a free-text field.
 - The submit button carries `aria-disabled` rather than `disabled` — a disabled
   button emits no click, so a member who insists would get no explanation.
   Clicking it while nothing is ticked shows an inline alert instead.
-- While the popup is open, `.page-wrapper` is blurred and inert. It closes for
-  good once a reason is given (`sessionStorage`, per member), so a reload does
-  not ask twice nor write a second row.
+- It listens on `#cancel-form` in capture and stops the propagation, so it runs
+  **before** `redeem-cancel-forms.js`; once the reason is given it calls
+  `requestSubmit()` again behind a flag and the cancellation resumes untouched.
+  It is loaded ahead of `redeem-cancel-forms.js` on purpose: listeners on the
+  same element fire in registration order.
+- Closing without answering (×, `Échap`, backdrop, "Revenir en arrière") is
+  giving up on cancelling, not skipping the question: nothing is recorded and
+  the popup comes back at the next click.
+- Once a reason is given it is remembered per member (`sessionStorage`), so a
+  retry after a failed webhook does not ask twice nor write a second row.
 - The reason is also copied into `#cancel-form`, `#redeem-form` and
   `#pause-form` as `cancelReasonCodes` / `cancelReasonLabels` /
   `cancelReasonOther`. Make ignores fields it does not know, so nothing breaks
   until someone re-determines the webhook structure to map them.
 - Writing the reason never blocks a cancellation: the request is fire-and-forget
   and a failure only reaches Sentry.
-- `TRIGGER` at the top of the file switches between `'load'` (default: the
-  popup gates the grid) and `'cancel'` (the popup only opens on the
-  « annuler mon abonnement » click).
+- `TRIGGER` at the top of the file switches between `'cancel'` (default: the
+  popup opens on the « annuler mon abonnement » click and is dismissible) and
+  `'load'` (the popup opens on arrival and gates the offer grid, with no way
+  out but leaving the page — that variant catches the reason of the members who
+  end up accepting the 50 % or the pause too).
 
 Reason codes (`REASONS`) must stay aligned with the table in the Netlify
 function: the browser only sends codes, the French labels written to the sheet
