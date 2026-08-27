@@ -1436,6 +1436,11 @@ of the "Motifs désinscriptions" GSheet through the `cancel-reason` Netlify
 function (repo `ordotype-webhooks`).
 
 - Nothing to add in Webflow: the popup builds its own markup and its own CSS.
+- Colours come from the **design system** variables of the Webflow stylesheet
+  (`--primary-500`, `--base-900`, `--neutral-400/500`, `--gris300`, `--error-*`),
+  not from the page embed, which has blues of its own. Every `var()` carries a
+  hard-coded fallback so the popup still renders correctly if it is ever served
+  on a page where the tokens are not loaded.
 - Six reasons, several can be ticked; `Autre` reveals a free-text field.
 - The submit button carries `aria-disabled` rather than `disabled` — a disabled
   button emits no click, so a member who insists would get no explanation.

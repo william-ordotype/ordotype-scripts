@@ -153,62 +153,90 @@
 
     // ----------------------------------------------------------------- styles
 
+    /**
+     * Couleurs prises aux variables du design system Webflow (`:root` de
+     * ordotype.webflow.shared.css) plutôt qu'à l'embed de la page, qui a ses
+     * propres bleus inventés. Chaque `var()` porte son repli en dur : la
+     * modale reste correcte si elle est servie sur une page où les tokens
+     * n'ont pas encore été chargés.
+     *
+     *   --primary-500 #3454f6   bleu de marque (boutons, case cochée)
+     *   --primary-600 #263fd3   survol du bouton
+     *   --primary-50  #f0f3ff   fond d'une option cochée
+     *   --base-900    #0c0e16   texte courant
+     *   --neutral-500 #47505c   texte secondaire
+     *   --neutral-400 #858c95   texte discret
+     *   --neutral-100 #f7f7fb   surface claire
+     *   --gris300     #ecedef   bordures
+     *   --error-50/300/700      alerte
+     */
     var CSS = [
         '.ordo-reason-lock .page-wrapper{filter:blur(3px);pointer-events:none;user-select:none;-webkit-user-select:none}',
         '.ordo-reason-lock,.ordo-reason-lock body{overflow:hidden}',
         '.ordo-reason-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;',
-        'background:rgba(16,24,44,.55);display:flex;align-items:flex-start;justify-content:center;',
+        'background:rgba(12,14,22,.55);display:flex;align-items:flex-start;justify-content:center;',
         'padding:24px 16px;overflow-y:auto;opacity:0;transition:opacity 200ms ease}',
         '.ordo-reason-backdrop.is-open{opacity:1}',
         '.ordo-reason-dialog{position:relative;margin:auto;width:100%;max-width:560px;background:#fff;border-radius:16px;',
-        'box-shadow:0 18px 50px rgba(0,0,0,.25);padding:32px 32px 24px;box-sizing:border-box;',
-        'transform:translateY(14px);transition:transform 220ms ease;font-family:inherit;color:#1a2b4a;',
-        '-webkit-font-smoothing:antialiased}',
+        'box-shadow:0 18px 50px rgba(12,14,22,.28);padding:32px 32px 24px;box-sizing:border-box;',
+        'transform:translateY(14px);transition:transform 220ms ease;font-family:inherit;',
+        'color:var(--base-900,#0c0e16);-webkit-font-smoothing:antialiased}',
         '.ordo-reason-backdrop.is-open .ordo-reason-dialog{transform:none}',
         // padding-right : garde le titre à l'écart de la croix de fermeture.
-        '.ordo-reason-dialog h2{font-size:22px;line-height:1.3;font-weight:700;color:#1a2b4a;margin:0 0 8px;padding-right:34px}',
-        '.ordo-reason-intro{font-size:15px;line-height:1.5;color:#666;margin:0 0 22px}',
+        '.ordo-reason-dialog h2{font-size:22px;line-height:1.3;font-weight:700;margin:0 0 8px;padding-right:34px;',
+        'color:var(--base-900,#0c0e16)}',
+        '.ordo-reason-intro{font-size:15px;line-height:1.5;margin:0 0 22px;color:var(--neutral-500,#47505c)}',
         '.ordo-reason-fieldset{border:0;margin:0;padding:0}',
         '.ordo-reason-legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-        '.ordo-reason-option{display:block;position:relative;border:2px solid #e5e7eb;border-radius:12px;',
+        '.ordo-reason-option{display:block;position:relative;border:2px solid var(--gris300,#ecedef);border-radius:12px;',
         'padding:15px 16px 15px 50px;margin:0 0 10px;cursor:pointer;background:#fff;',
         'transition:border-color 140ms ease,background-color 140ms ease}',
-        '.ordo-reason-option:hover{border-color:#c7d6f7;background:#fafbff}',
-        '.ordo-reason-option.is-checked{border-color:#2563eb;background:#f8faff}',
+        '.ordo-reason-option:hover{border-color:var(--primary-100,#d6dffe);background:var(--neutral-100,#f7f7fb)}',
+        '.ordo-reason-option.is-checked{border-color:var(--primary-500,#3454f6);background:var(--primary-50,#f0f3ff)}',
         '.ordo-reason-option input{position:absolute;left:18px;top:19px;width:1px;height:1px;opacity:0;margin:0}',
-        '.ordo-reason-box{position:absolute;left:17px;top:17px;width:20px;height:20px;border:2px solid #cbd5e1;',
-        'border-radius:6px;background:#fff;box-sizing:border-box;transition:border-color 140ms ease,background-color 140ms ease}',
-        '.ordo-reason-option.is-checked .ordo-reason-box{border-color:#2563eb;background:#2563eb}',
+        '.ordo-reason-box{position:absolute;left:17px;top:17px;width:20px;height:20px;background:#fff;',
+        'border:2px solid var(--base-300,#0c0e164d);border-radius:6px;box-sizing:border-box;',
+        'transition:border-color 140ms ease,background-color 140ms ease}',
+        '.ordo-reason-option.is-checked .ordo-reason-box{border-color:var(--primary-500,#3454f6);',
+        'background:var(--primary-500,#3454f6)}',
         '.ordo-reason-box:after{content:"";position:absolute;left:5px;top:1px;width:5px;height:10px;',
         'border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);opacity:0}',
         '.ordo-reason-option.is-checked .ordo-reason-box:after{opacity:1}',
-        '.ordo-reason-option input:focus + .ordo-reason-box{box-shadow:0 0 0 3px rgba(37,99,235,.28)}',
-        '.ordo-reason-text{display:block;font-size:15px;font-weight:600;line-height:1.35;color:#1a2b4a}',
-        '.ordo-reason-hint{display:block;font-size:13px;line-height:1.45;color:#6b7280;margin-top:4px;font-weight:400}',
+        '.ordo-reason-option input:focus + .ordo-reason-box{box-shadow:0 0 0 3px rgba(52,84,246,.28)}',
+        '.ordo-reason-text{display:block;font-size:15px;font-weight:600;line-height:1.35;color:var(--base-900,#0c0e16)}',
+        '.ordo-reason-hint{display:block;font-size:13px;line-height:1.45;margin-top:4px;font-weight:400;',
+        'color:var(--neutral-400,#858c95)}',
         '.ordo-reason-other{display:none;margin:-2px 0 12px}',
         '.ordo-reason-other.is-visible{display:block}',
-        '.ordo-reason-other textarea{width:100%;box-sizing:border-box;min-height:86px;border:2px solid #e5e7eb;',
-        'border-radius:10px;padding:12px 14px;font-family:inherit;font-size:14px;line-height:1.45;color:#1a2b4a;resize:vertical}',
-        '.ordo-reason-other textarea:focus{outline:none;border-color:#2563eb}',
-        '.ordo-reason-alert{display:none;margin:0 0 14px;padding:11px 14px;border-radius:10px;background:#fef2f2;',
-        'border:1px solid #fecaca;color:#991b1b;font-size:14px;line-height:1.45}',
+        '.ordo-reason-other textarea{width:100%;box-sizing:border-box;min-height:86px;border-radius:10px;',
+        'border:2px solid var(--gris300,#ecedef);padding:12px 14px;font-family:inherit;font-size:14px;',
+        'line-height:1.45;color:var(--base-900,#0c0e16);resize:vertical}',
+        '.ordo-reason-other textarea:focus{outline:none;border-color:var(--primary-500,#3454f6)}',
+        '.ordo-reason-alert{display:none;margin:0 0 14px;padding:11px 14px;border-radius:10px;',
+        'background:var(--error-50,#fef1f1);border:1px solid var(--error-300,#fca6a6);',
+        'color:var(--error-700,#ba1b1b);font-size:14px;line-height:1.45}',
         '.ordo-reason-alert.is-visible{display:block}',
-        '.ordo-reason-submit{display:block;width:100%;padding:14px;border:0;border-radius:10px;background:#2563eb;',
-        'color:#fff;font-family:inherit;font-size:15px;font-weight:600;line-height:1.2;cursor:pointer;',
-        'transition:background-color 140ms ease}',
-        '.ordo-reason-submit:hover{background:#1d4ed8}',
-        '.ordo-reason-submit[aria-disabled="true"]{background:#e9eaee;color:#9ca3af;cursor:not-allowed}',
+        // Rayon 4px et graisse 600 : ceux de `.button` du design system.
+        '.ordo-reason-submit{display:block;width:100%;padding:14px;border:0;border-radius:4px;',
+        'background:var(--primary-500,#3454f6);color:#fff;font-family:inherit;font-size:15px;font-weight:600;',
+        'line-height:1.2;cursor:pointer;transition:background-color 200ms ease}',
+        '.ordo-reason-submit:hover{background:var(--primary-600,#263fd3)}',
+        // --neutral-500 et pas --neutral-400 : le bouton reste cliquable (il
+        // affiche l'alerte) et son libellé dit ce qui va se passer, il doit donc
+        // rester lisible. --neutral-400 sur --gris300 tombe à 2,7:1.
+        '.ordo-reason-submit[aria-disabled="true"]{background:var(--gris300,#ecedef);',
+        'color:var(--neutral-500,#47505c);cursor:not-allowed}',
         '.ordo-reason-submit.is-shaking{animation:ordoReasonShake 320ms ease}',
         '@keyframes ordoReasonShake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(4px)}',
         '50%{transform:translateX(-4px)}100%{transform:none}}',
-        '.ordo-reason-escape{display:block;text-align:center;margin:16px 0 0;font-size:13px;color:#9ca3af}',
-        '.ordo-reason-escape a,.ordo-reason-escape button{color:#9ca3af;text-decoration:underline;background:none;',
-        'border:0;padding:0;font-family:inherit;font-size:13px;cursor:pointer}',
-        '.ordo-reason-escape a:hover,.ordo-reason-escape button:hover{color:#6b7280}',
+        '.ordo-reason-escape{display:block;text-align:center;margin:16px 0 0;font-size:13px}',
+        '.ordo-reason-escape a,.ordo-reason-escape button{color:var(--neutral-400,#858c95);text-decoration:underline;',
+        'background:none;border:0;padding:0;font-family:inherit;font-size:13px;cursor:pointer}',
+        '.ordo-reason-escape a:hover,.ordo-reason-escape button:hover{color:var(--neutral-500,#47505c)}',
         '.ordo-reason-close{position:absolute;top:14px;right:14px;width:34px;height:34px;border:0;border-radius:50%;',
-        'background:none;color:#9ca3af;font-size:22px;line-height:1;cursor:pointer;font-family:inherit;',
-        'transition:background-color 140ms ease,color 140ms ease}',
-        '.ordo-reason-close:hover{background:#f3f4f6;color:#4b5563}',
+        'background:none;color:var(--neutral-400,#858c95);font-size:22px;line-height:1;cursor:pointer;',
+        'font-family:inherit;transition:background-color 140ms ease,color 140ms ease}',
+        '.ordo-reason-close:hover{background:var(--neutral-100,#f7f7fb);color:var(--base-900,#0c0e16)}',
         '@media (max-width:640px){.ordo-reason-backdrop{padding:12px}',
         '.ordo-reason-dialog{padding:24px 20px 20px;border-radius:14px}',
         '.ordo-reason-dialog h2{font-size:19px}.ordo-reason-intro{font-size:14px;margin-bottom:18px}}',
