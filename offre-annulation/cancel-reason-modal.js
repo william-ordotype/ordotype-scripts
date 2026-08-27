@@ -64,7 +64,7 @@
         { code: 'autre', label: 'Autre', other: true }
     ];
 
-    var MSG_NO_CHOICE = 'Sélectionnez au moins un motif pour continuer.';
+    var MSG_NO_CHOICE = 'Sélectionnez au moins un motif pour résilier votre abonnement.';
     var MSG_OTHER_EMPTY = 'Ajoutez une précision dans le champ « Autre » pour continuer.';
 
     if (window.__ordoCancelReasonInstalled) return;
@@ -185,21 +185,27 @@
         // padding-right : garde le titre à l'écart de la croix de fermeture.
         '.ordo-reason-dialog h2{font-size:22px;line-height:1.3;font-weight:700;margin:0 0 8px;padding-right:34px;',
         'color:var(--base-900,#0c0e16)}',
-        '.ordo-reason-intro{font-size:15px;line-height:1.5;margin:0 0 22px;color:var(--neutral-500,#47505c)}',
+        '.ordo-reason-intro{font-size:15px;line-height:1.5;margin:0 0 20px;color:var(--neutral-500,#47505c)}',
+        '.ordo-reason-warning{color:var(--base-900,#0c0e16);font-weight:600}',
         '.ordo-reason-fieldset{border:0;margin:0;padding:0}',
-        '.ordo-reason-legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-        '.ordo-reason-option{display:block;position:relative;border:2px solid var(--gris300,#ecedef);border-radius:12px;',
-        'padding:15px 16px 15px 50px;margin:0 0 10px;cursor:pointer;background:#fff;',
+        '.ordo-reason-legend{display:block;float:left;width:100%;padding:0;margin:0 0 12px;font-size:13px;',
+        'font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--neutral-400,#858c95)}',
+        '.ordo-reason-required{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:10px;',
+        'background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:11px;',
+        'font-weight:600;text-transform:none;letter-spacing:0;vertical-align:1px}',
+        '.ordo-reason-option{display:flex;align-items:center;position:relative;border-radius:12px;',
+        'border:2px solid var(--gris300,#ecedef);padding:15px 16px;margin:0 0 10px;cursor:pointer;background:#fff;',
         'transition:border-color 140ms ease,background-color 140ms ease}',
         '.ordo-reason-option:hover{border-color:var(--primary-100,#d6dffe);background:var(--neutral-100,#f7f7fb)}',
         '.ordo-reason-option.is-checked{border-color:var(--primary-500,#3454f6);background:var(--primary-50,#f0f3ff)}',
-        '.ordo-reason-option input{position:absolute;left:18px;top:19px;width:1px;height:1px;opacity:0;margin:0}',
-        '.ordo-reason-box{position:absolute;left:17px;top:17px;width:20px;height:20px;background:#fff;',
+        '.ordo-reason-option input{position:absolute;left:18px;top:50%;width:1px;height:1px;opacity:0;margin:0}',
+        '.ordo-reason-box{position:relative;flex:0 0 auto;width:20px;height:20px;margin-right:14px;background:#fff;',
         'border:2px solid var(--base-300,#0c0e164d);border-radius:6px;box-sizing:border-box;',
         'transition:border-color 140ms ease,background-color 140ms ease}',
+        '.ordo-reason-content{flex:1 1 auto;min-width:0}',
         '.ordo-reason-option.is-checked .ordo-reason-box{border-color:var(--primary-500,#3454f6);',
         'background:var(--primary-500,#3454f6)}',
-        '.ordo-reason-box:after{content:"";position:absolute;left:5px;top:1px;width:5px;height:10px;',
+        '.ordo-reason-box:after{content:"";position:absolute;left:7px;top:3px;width:4px;height:9px;',
         'border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);opacity:0}',
         '.ordo-reason-option.is-checked .ordo-reason-box:after{opacity:1}',
         '.ordo-reason-option input:focus + .ordo-reason-box{box-shadow:0 0 0 3px rgba(52,84,246,.28)}',
@@ -289,22 +295,32 @@
         if (dismissible()) {
             var closeBtn = el('button', 'ordo-reason-close', '×');
             closeBtn.type = 'button';
-            closeBtn.setAttribute('aria-label', 'Fermer et revenir aux offres');
+            closeBtn.setAttribute('aria-label', 'Fermer sans résilier');
             closeBtn.addEventListener('click', dismiss);
             dialog.appendChild(closeBtn);
         }
 
-        var title = el('h2', null, 'Avant de partir, dites-nous pourquoi');
+        var title = el('h2', null, 'Dernière étape avant la résiliation');
         title.id = 'ordo-reason-title';
         dialog.appendChild(title);
 
-        var intro = el('p', 'ordo-reason-intro',
-            'Votre réponse nous aide à améliorer Ordotype. Plusieurs choix possibles.');
+        // Le membre vient de cliquer sur « annuler mon abonnement » : il croit
+        // en avoir fini. Le premier mot doit être que non, et que sa réponse est
+        // ce qui déclenche la résiliation — pas une enquête de satisfaction
+        // qu'on peut ignorer.
+        var intro = el('p', 'ordo-reason-intro');
+        intro.appendChild(el('strong', 'ordo-reason-warning',
+            'Votre abonnement n\u2019est pas encore résilié.'));
+        intro.appendChild(document.createTextNode(
+            ' Dites-nous ce qui vous fait partir, puis confirmez ci-dessous.'));
         intro.id = 'ordo-reason-intro';
         dialog.appendChild(intro);
 
         var fieldset = el('fieldset', 'ordo-reason-fieldset');
-        var legend = el('legend', 'ordo-reason-legend', 'Motif de départ');
+        // Légende visible, et pas seulement pour les lecteurs d'écran : c'est
+        // elle qui dit que la question n'est pas facultative.
+        var legend = el('legend', 'ordo-reason-legend', 'Pourquoi partez-vous ?');
+        legend.appendChild(el('span', 'ordo-reason-required', 'obligatoire'));
         fieldset.appendChild(legend);
 
         els.inputs = [];
@@ -320,8 +336,13 @@
             input.setAttribute('data-index', String(index));
             option.appendChild(input);
             option.appendChild(el('span', 'ordo-reason-box'));
-            option.appendChild(el('span', 'ordo-reason-text', reason.label));
-            if (reason.hint) option.appendChild(el('span', 'ordo-reason-hint', reason.hint));
+            // Case et texte sont deux colonnes d'un flex : la case reste centrée
+            // sur la hauteur de l'option, y compris quand le sous-titre la fait
+            // tenir sur trois lignes.
+            var content = el('span', 'ordo-reason-content');
+            content.appendChild(el('span', 'ordo-reason-text', reason.label));
+            if (reason.hint) content.appendChild(el('span', 'ordo-reason-hint', reason.hint));
+            option.appendChild(content);
 
             input.addEventListener('change', function () {
                 option.className = 'ordo-reason-option' + (input.checked ? ' is-checked' : '');
@@ -369,7 +390,7 @@
 
         var escape = el('p', 'ordo-reason-escape');
         if (dismissible()) {
-            var back = el('button', null, 'Revenir en arrière');
+            var back = el('button', null, 'Finalement, je ne résilie pas');
             back.type = 'button';
             back.addEventListener('click', dismiss);
             escape.appendChild(back);
@@ -576,13 +597,32 @@
     }
 
     /**
-     * Requête "simple" au sens CORS (text/plain) : pas de préflight, donc pas
-     * de tour de réseau supplémentaire avant l'ouverture de la grille.
-     * sendBeacon en secours, pour les navigateurs où fetch est absent ou
-     * refusé par une extension.
+     * Une seule livraison, quoi qu'il arrive.
+     *
+     * La version précédente envoyait un `fetch(keepalive)` et retombait sur
+     * `sendBeacon` dans le `.catch` — ce qui a produit deux lignes identiques
+     * dans la feuille le 27/08/2026. Avec `keepalive`, quand la page se ferme
+     * pendant la requête (et ici elle se ferme : la résiliation repart juste
+     * après et redirige), le navigateur LIVRE quand même la requête mais
+     * rejette la promesse côté JS. Le secours partait donc sur une requête
+     * déjà arrivée.
+     *
+     * `sendBeacon` est fait exactement pour ce cas : le navigateur prend le
+     * corps en charge, le livre une fois, et survit à la navigation. Son
+     * `false` est synchrone et fiable (file pleine, corps trop gros), donc le
+     * repli sur `fetch` ne peut pas faire doublon. On perd la lecture du code
+     * de réponse : les échecs se voient côté fonction, dans Sentry.
      */
+    var sent = false;
+
     function send(payload) {
+        if (sent) return;
+        sent = true;
         var body = JSON.stringify(payload);
+        if (beacon(body)) {
+            console.log(PREFIX, 'Reason queued');
+            return;
+        }
         if (typeof window.fetch === 'function') {
             window.fetch(ENDPOINT, {
                 method: 'POST',
@@ -594,11 +634,11 @@
                 if (!res.ok) report('CancelReasonWriteFailed', 'sheet write answered ' + res.status);
                 else console.log(PREFIX, 'Reason recorded');
             }).catch(function (err) {
-                if (!beacon(body)) report('CancelReasonWriteFailed', (err && err.message) || String(err));
+                report('CancelReasonWriteFailed', (err && err.message) || String(err));
             });
             return;
         }
-        if (!beacon(body)) report('CancelReasonWriteFailed', 'no transport available');
+        report('CancelReasonWriteFailed', 'no transport available');
     }
 
     function beacon(body) {
