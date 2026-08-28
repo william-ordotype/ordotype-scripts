@@ -1270,6 +1270,46 @@ The page needs two buttons with specific IDs:
 - `[OpacityReveal]` - Clock reveal (from shared)
 - `[Countdown]` - Countdown timer
 - `[StripeCheckout]` - Checkout (from shared)
+- `[WinbackGate]` - Gate des offres réservées aux désabonnés (voir ci-dessous)
+
+### Offre réservée aux désabonnés (winback)
+
+Un item de cette collection peut être réservé aux personnes désabonnées depuis
+moins de 31 jours, via le champ CMS **« Réservé aux désabonnés ? »**. Le lien est
+envoyé dans les mails winback Brevo :
+
+```
+https://www.ordotype.fr/inscription-offre-speciale/<slug>?m={{contact.EXT_ID}}
+```
+
+**Le coupon ne doit pas être dans la page.** Le champ CMS `Code_promo_ID` reste
+**vide** sur un item winback : c'est `create-checkout-session` qui applique
+l'offre après avoir revérifié l'éligibilité. Sans ça, le coupon serait lisible
+dans le HTML et le bouton Memberstack natif l'appliquerait sans aucun contrôle.
+Conséquence utile : si le champ ou le script tombe, la page vend au prix normal,
+jamais l'inverse.
+
+**Config supplémentaire dans le custom code du gabarit :**
+
+```html
+window.WINBACK_GATE = {{wf reserve-aux-desabonnes}};
+```
+
+`loader.js` charge alors `winback-gate.js` à la place de `countdown.js` et de
+`shared/stripe-checkout.js`. Le gate :
+
+1. masque `#signup-rempla-from-decouverte` (checkout Memberstack natif, non
+   contrôlable côté serveur) et rend `#signup-rempla-stripe-customer` visible
+   mais inerte pendant la vérification, donc rien ne peut partir avant le verdict ;
+2. appelle `winback-eligibility` avec le `mem_…` de l'URL, sinon le membre connecté ;
+3. non éligible : `location.replace('/offre-expiree')` ;
+4. éligible : écrit la vraie date limite dans la clé localStorage que lit
+   `countdown.js`, charge le countdown, et câble le bouton sur
+   `create-checkout-session` avec `offer: 'winback-6m'`.
+
+Si l'endpoint d'éligibilité est en panne, le bouton reste actif : une panne ne
+doit pas éjecter un désabonné légitime, et le verrou qui compte est de toute
+façon côté serveur.
 
 ---
 

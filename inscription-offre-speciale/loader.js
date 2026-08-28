@@ -48,8 +48,17 @@
     const HELD_CLICK_TIMEOUT_MS = 4000;
     const WAIT_LABEL = 'Patientez…';
 
+    // Offre réservée aux désabonnés récents (champ CMS « Réservé aux désabonnés ? »).
+    // Le gate remplace countdown.js et stripe-checkout.js : il vérifie l'éligibilité
+    // côté serveur, puis charge lui-même le countdown avec la vraie date limite.
+    const IS_WINBACK = window.WINBACK_GATE === true;
+
     // Scripts to load in order
-    const scripts = [
+    const scripts = IS_WINBACK ? [
+        'shared/memberstack-utils.js',
+        'shared/error-reporter.js',
+        'inscription-offre-speciale/winback-gate.js'
+    ] : [
         'shared/memberstack-utils.js',
         'shared/error-reporter.js',
         'inscription-offre-speciale/not-connected-handler.js',
@@ -157,7 +166,9 @@
     async function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
         const hasStripeCustomer = hasCachedStripeCustomer();
-        const release = hasStripeCustomer ? holdMemberstackCheckout() : function() {};
+        // En mode winback c'est le gate qui pilote les deux boutons : pas de hold,
+        // dont la libération finirait par cliquer le bouton Memberstack natif.
+        const release = (hasStripeCustomer && !IS_WINBACK) ? holdMemberstackCheckout() : function() {};
 
         try {
             // Helper to replace ${window.location.origin} placeholder with actual origin
@@ -191,10 +202,13 @@
         }
 
         const loads = scripts.map((file) => loadScript(`${BASE}/${file}`));
-        loads[scripts.indexOf(CHECKOUT_SCRIPT)].then(
-            () => release('OffreSpecialeCheckoutNotExecuted', 'stripe-checkout.js loaded but did not execute'),
-            (err) => release('OffreSpecialeCheckoutLoadFailed', err.message)
-        );
+        const checkoutIndex = scripts.indexOf(CHECKOUT_SCRIPT);
+        if (checkoutIndex !== -1) {
+            loads[checkoutIndex].then(
+                () => release('OffreSpecialeCheckoutNotExecuted', 'stripe-checkout.js loaded but did not execute'),
+                (err) => release('OffreSpecialeCheckoutLoadFailed', err.message)
+            );
+        }
 
         try {
             await Promise.all(loads);
