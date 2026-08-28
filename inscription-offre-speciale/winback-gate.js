@@ -38,6 +38,21 @@
  * Les deux premiers sont masqués parce qu'ils ouvrent des parcours que le serveur
  * ne contrôle pas : la page gatée ne doit exposer qu'un seul bouton vivant.
  *
+ * Paramètres d'URL, pour les tests :
+ * - ?winback_preview=login|expired|offer  affiche un écran sans rien demander au
+ *   serveur et sans compter d'événement. Purement visuel : le coupon ne vit que
+ *   dans create-checkout-session, qui refusera le clic d'un non-éligible.
+ * - ?winback_test=cus_…                   fait juger l'éligibilité sur ce client
+ *   Stripe. Le serveur ne l'accepte que s'il est listé dans
+ *   WINBACK_TEST_CUSTOMERS, vide en temps normal. Il n'accorde aucun droit : la
+ *   règle Stripe tourne pour de vrai sur ce dossier.
+ *
+ * Mesure (GA4 via GTM-MPMWHVV) : winback_login_required, winback_login_click,
+ * winback_offer_shown, winback_refused, puis le stripe_signup_click existant.
+ * Sans ces quatre-là, tout ce qui précède le clic est invisible, à commencer par
+ * le passage écran de connexion → offre, qui est la mesure de l'arbitrage
+ * « connexion d'abord ».
+ *
  * ES2019 max (parc Chrome 78 / Safari 13, cf. eslint.config.js) : pas de `gap`
  * flexbox dans le CSS non plus, il n'arrive que dans Safari 14.1.
  */
@@ -72,6 +87,18 @@
     var BTN_MS_ID = 'signup-rempla-from-decouverte';
     var BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
 
+    var PREVIEW_PARAM = 'winback_preview';
+    var TEST_PARAM = 'winback_test';
+
+    // Un aperçu ne doit rien peser dans les rapports : il gonflerait les
+    // impressions d'un écran que personne n'a vraiment vu.
+    var previewing = false;
+
+    // Le mode test, lui, DOIT émettre : c'est par lui qu'on vérifie que le tunnel
+    // remonte bien. D'où un marqueur sur chaque événement, pour pouvoir les
+    // exclure des rapports au lieu de les confondre avec du vrai trafic.
+    var testing = false;
+
     var CSS = [
         '.ordo-expired{display:flex;align-items:center;justify-content:center;',
         'min-height:60vh;padding:80px 24px;background:var(--neutral-100,#f7f7fb);}',
@@ -97,6 +124,39 @@
         '@media (max-width:479px){.ordo-expired{padding:48px 16px;}',
         '.ordo-expired-card{padding:36px 24px;}.ordo-expired-title{font-size:24px;}}'
     ].join('');
+
+    function param(name) {
+        try {
+            return new URLSearchParams(window.location.search).get(name);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Même forme de payload que shared/tracking-churn-offers.js : GTM récupère
+    // chaque clé par une DLV, donc le nom compte autant que la valeur.
+    function track(eventName, extra) {
+        if (previewing) return;
+        try {
+            var ms = window.OrdoMemberstack || {};
+            var payload = {
+                event: eventName,
+                member_id: ms.memberId || null,
+                page_location: window.location.href,
+                winback_test: testing
+            };
+            if (extra) {
+                for (var k in extra) {
+                    if (Object.prototype.hasOwnProperty.call(extra, k)) payload[k] = extra[k];
+                }
+            }
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push(payload);
+            console.log(PREFIX, eventName, payload);
+        } catch (e) {
+            // la mesure ne doit jamais casser la page
+        }
+    }
 
     function report(name, err) {
         try {
@@ -239,6 +299,17 @@
         );
     }
 
+    // Le clic sur « Se connecter » est le seul point du tunnel où l'on quitte la
+    // page : sans lui on ne saurait pas distinguer « personne ne clique » de
+    // « ils cliquent mais ne reviennent pas ».
+    function trackLoginClick() {
+        var btn = document.querySelector('.ordo-expired-actions .button');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+            track('winback_login_click');
+        });
+    }
+
     // Vide le contenu de la page, en gardant la barre de navigation et le footer :
     // ils encadrent .main-wrapper, seul bloc de contenu du gabarit.
     //
@@ -277,7 +348,18 @@
     // le droit à l'offre se juge sur la fiche Stripe du client, pas sur l'URL.
     // On préfère le client Stripe quand le cache l'a, ça évite au serveur un appel
     // à l'API Memberstack pour traduire mem_ en cus_.
+    //
+    // Seule exception, ?winback_test=cus_… : il ne prouve rien non plus, mais le
+    // serveur ne l'honore que pour les clients listés dans WINBACK_TEST_CUSTOMERS,
+    // vide en temps normal. Sans quoi le verdict retombe sur « non éligible » et
+    // le visiteur voit l'écran « offre expirée », ce qui est le bon comportement.
     function identity() {
+        var test = param(TEST_PARAM);
+        if (test) {
+            testing = true;
+            return { testCustomerId: test, source: 'test' };
+        }
+
         var ms = window.OrdoMemberstack || {};
         if (ms.stripeCustomerId) return { stripeCustomerId: ms.stripeCustomerId, source: 'session' };
         if (ms.memberId) return { memberId: ms.memberId, source: 'session' };
@@ -333,6 +415,7 @@
                 offer: OFFER_ID,
                 memberId: who.memberId || null,
                 stripeCustomerId: who.stripeCustomerId || null,
+                winbackTestCustomerId: who.testCustomerId || null,
                 priceId: config.priceId,
                 payment_method_types: config.paymentMethods,
                 // Le gabarit renvoie tout le monde vers /membership/mes-informations.
@@ -343,8 +426,7 @@
                 cancelUrl: config.cancelUrl
             };
 
-            window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({ event: 'stripe_signup_click', option: OFFER_ID });
+            track('stripe_signup_click', { option: OFFER_ID });
 
             fetch(FN_BASE + '/create-checkout-session', {
                 method: 'POST',
@@ -352,7 +434,9 @@
                 body: JSON.stringify(payload)
             }).then(function(resp) {
                 if (resp.status === 403) {
-                    // L'éligibilité a changé entre l'affichage et le clic.
+                    // L'éligibilité a changé entre l'affichage et le clic, ou la
+                    // page a été activée sans verdict (endpoint en panne).
+                    track('winback_refused', { reason: 'refused_at_checkout' });
                     showScreen(expiredScreen(windowDays), 'Offer no longer available');
                     return null;
                 }
@@ -413,6 +497,31 @@
             bindCheckout(stripeBtn, who, windowDays);
         }
 
+        // Aperçu : on choisit l'écran à la main, sans appeler le serveur. Utile
+        // pour relire les textes et la mise en page à deux, sans avoir à fabriquer
+        // un compte éligible. Ne donne aucun droit : sur l'écran « offre », le
+        // bouton part quand même vers create-checkout-session, qui refusera si le
+        // visiteur ne l'est pas vraiment.
+        var preview = param(PREVIEW_PARAM);
+        if (preview === 'login' || preview === 'expired' || preview === 'offer') {
+            previewing = true;
+            console.log(PREFIX, 'Preview mode:', preview);
+
+            if (preview === 'login') { showScreen(loginScreen(), 'Preview: login'); return; }
+            if (preview === 'expired') { showScreen(expiredScreen(DEFAULT_WINDOW_DAYS), 'Preview: expired'); return; }
+
+            activate({ source: 'preview' }, DEFAULT_WINDOW_DAYS);
+            var fakeDeadline = new Date(Date.now() + DEFAULT_WINDOW_DAYS * 86400000).toISOString();
+            if (seedCountdown(fakeDeadline)) {
+                loadScript(BASE + '/inscription-offre-speciale/countdown.js')
+                    .catch(function(err) {
+                        console.warn(PREFIX, 'Countdown script failed to load:', err.message);
+                    });
+            }
+            return;
+        }
+        if (preview) console.warn(PREFIX, 'Unknown preview value, ignored:', preview);
+
         var who = identity();
         console.log(PREFIX, 'Identity source:', who.source);
 
@@ -420,11 +529,15 @@
         // on explique pourquoi on demande la connexion. Un écran, un clic.
         if (who.source === 'none') {
             showScreen(loginScreen(), 'Not logged in');
+            track('winback_login_required');
+            trackLoginClick();
             return;
         }
 
-        var query = who.stripeCustomerId ? 'c=' + encodeURIComponent(who.stripeCustomerId)
-                                         : 'm=' + encodeURIComponent(who.memberId);
+        var query;
+        if (who.testCustomerId) query = 't=' + encodeURIComponent(who.testCustomerId);
+        else if (who.stripeCustomerId) query = 'c=' + encodeURIComponent(who.stripeCustomerId);
+        else query = 'm=' + encodeURIComponent(who.memberId);
 
         var timeout = new Promise(function(_, reject) {
             setTimeout(function() { reject(new Error('eligibility timeout')); }, ELIGIBILITY_TIMEOUT_MS);
@@ -442,18 +555,24 @@
                     // Le bouton reste actif, create-checkout-session tranchera.
                     console.warn(PREFIX, 'Eligibility check unavailable, deferring to checkout');
                     report('WinbackEligibilityUnavailable', new Error('eligibility endpoint returned error'));
+                    // Compté comme une offre montrée, avec le motif qui dit qu'elle
+                    // ne l'a pas été sur un verdict : sinon ces visites disparaissent
+                    // du tunnel et le taux de passage est faussé à la hausse.
                     activate(who, windowDays);
+                    track('winback_offer_shown', { days_left: null, reason: 'check_unavailable' });
                     return;
                 }
 
                 if (!data || !data.eligible) {
                     console.log(PREFIX, 'Not eligible');
                     showScreen(expiredScreen(windowDays), 'Not eligible');
+                    track('winback_refused', { reason: (data && data.reason) || 'unknown' });
                     return;
                 }
 
                 console.log(PREFIX, 'Eligible,', data.daysLeft, 'day(s) left');
                 activate(who, windowDays);
+                track('winback_offer_shown', { days_left: data.daysLeft, reason: 'eligible' });
 
                 // Le compteur est un bonus : s'il ne peut pas recevoir la vraie date
                 // limite, on vend l'offre sans lui plutôt que de le laisser conclure
@@ -477,6 +596,7 @@
                 console.error(PREFIX, 'Eligibility call failed:', err);
                 report('WinbackEligibilityFailed', err);
                 activate(who, DEFAULT_WINDOW_DAYS);
+                track('winback_offer_shown', { days_left: null, reason: 'check_failed' });
             });
     }
 

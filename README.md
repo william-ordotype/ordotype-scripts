@@ -1361,6 +1361,43 @@ Chemins dégradés, tous testés : endpoint en panne, endpoint qui ne répond pa
 actif et vendable. Une panne ne doit pas éjecter un désabonné légitime, et le
 verrou qui compte est de toute façon côté serveur.
 
+#### Tester la page
+
+Le cas qui compte demande un abonnement résilié il y a moins de 31 jours :
+impossible à fabriquer sur son propre compte, et on ne se connecte pas à celui
+d'un client. Deux paramètres d'URL, qui répondent à deux besoins différents.
+
+| Paramètre | Ce qu'il fait | Ce qu'il n'est pas |
+|-----------|---------------|--------------------|
+| `?winback_preview=login\|expired\|offer` | Affiche l'écran demandé sans appeler le serveur | Il n'accorde rien : sur `offer`, le bouton part quand même vers `create-checkout-session`, qui refuse un non-éligible. Aucun événement GA4 n'est émis |
+| `?winback_test=cus_…` | Fait juger l'éligibilité sur ce client Stripe | Il ne prouve rien : le serveur ne l'honore que si le client est listé dans `WINBACK_TEST_CUSTOMERS`, vide en temps normal. La règle Stripe tourne pour de vrai sur ce dossier, un client de test qui ne la satisfait pas est refusé comme les autres |
+
+L'aperçu sert à relire textes et mise en page à deux. Le mode test sert à
+éprouver la chaîne complète, GA4 compris : ses événements **sont** émis, avec
+`winback_test: true` pour pouvoir les exclure des rapports.
+
+Fabriquer un client éligible prend trois appels Stripe, sans carte et sans un
+centime : voir la section « Tester le chemin éligible » du README de
+`netlify-stripe-checkout-sessions`.
+
+#### Mesure (GA4 via GTM-MPMWHVV)
+
+| Événement | Quand | Paramètres |
+|-----------|-------|------------|
+| `winback_login_required` | Écran « connectez-vous » affiché | — |
+| `winback_login_click` | Clic sur « Se connecter » | — |
+| `winback_offer_shown` | Bouton activé | `days_left`, `reason` (`eligible`, `check_unavailable`, `check_failed`) |
+| `winback_refused` | Écran « offre expirée » affiché | `reason` (motif renvoyé par le serveur, ou `refused_at_checkout`) |
+| `stripe_signup_click` | Clic sur le CTA | `option: winback-6m` — événement existant, déjà câblé dans GTM |
+
+Tous portent aussi `member_id`, `page_location` et `winback_test`. Les quatre
+premiers sont ce qui rend mesurable le passage **écran de connexion → offre**,
+c'est-à-dire l'arbitrage « connexion d'abord » lui-même. Sans eux, seul le clic
+final est visible et l'on ne sait pas ce qu'on a perdu avant.
+
+Prérequis GTM : les déclencheurs, balises et DLV correspondants sont créés par
+`webflow-scripts/gtm/add_winback_tracking.py` (dry-run par défaut).
+
 ---
 
 ## Probleme de Paiement Page (`/membership/probleme-de-paiement`)
