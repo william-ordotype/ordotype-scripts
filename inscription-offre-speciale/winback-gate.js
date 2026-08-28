@@ -11,9 +11,21 @@
  * l'éligibilité côté serveur. Ce script ne fait donc que de l'affichage :
  * même contourné, il ne donne aucune réduction.
  *
- * Identification : ?m=mem_… porté par le lien du mail winback Brevo
- * ({{contact.EXT_ID}}), sinon le membre connecté. Aucun login n'est imposé,
- * envoyer un désabonné dans un OTP 2FA en plein tunnel coûterait la conversion.
+ * Identification : la session Memberstack, et rien d'autre. Le lien du mail
+ * winback est une URL nue. On a d'abord conçu l'inverse, avec l'identifiant
+ * membre dans l'URL pour éviter la connexion, mais un lien d'e-mail qui mène à
+ * une page de paiement sans que le médecin ait vu qu'il était sur son compte
+ * ressemble à du phishing. Pour cette audience, la lisibilité vaut mieux que les
+ * points de conversion gagnés en sautant la connexion.
+ *
+ * Un identifiant dans l'URL n'aurait de toute façon rien prouvé : le droit à
+ * l'offre se juge sur la fiche Stripe du client, pas sur un paramètre que
+ * n'importe qui peut écrire.
+ *
+ * Retour après connexion : /membership/login-redirect-rempla?redirect=… écrit la
+ * cible dans localStorage.locat, Memberstack renvoie sur
+ * /membership/successful-login après la connexion ET après la 2FA, et cette page
+ * relit locat pour ramener ici. Chaîne existante, rien à construire.
  *
  * Aucun élément à ajouter dans Webflow : l'écran « offre expirée » est construit
  * ici, comme la modale de offre-annulation/cancel-reason-modal.js.
@@ -39,8 +51,17 @@
     var CHECKING_LABEL = 'Vérification…';
     var REDIRECT_LABEL = 'Patientez…';
     var OFFERS_URL = '/nos-offres';
-    var LOGIN_URL = '/membership/login-ms';
     var DEFAULT_WINDOW_DAYS = 31;
+
+    // Page de connexion générique du site : elle prend un ?redirect=, le pose dans
+    // `locat` et ramène ici après connexion. Elle revérifie aussi la session via le
+    // SDK Memberstack, donc elle rattrape le cas où le cache _ms-mem est vide alors
+    // qu'une session existe. Son nom dit « rempla », son comportement est générique.
+    var LOGIN_REDIRECT_URL = '/membership/login-redirect-rempla';
+
+    // Où atterrit le médecin après avoir payé. Il est connecté à ce moment-là,
+    // donc pas de détour : la page de bienvenue directement.
+    var AFTER_PAYMENT_URL = '/membership/prise-en-main';
 
     // Au-delà, on considère que l'appel ne répondra pas. Sans cette borne, une
     // requête qui pend (réseau mobile qui décroche, portail captif) laisse le
@@ -53,7 +74,7 @@
 
     var CSS = [
         '.ordo-expired{display:flex;align-items:center;justify-content:center;',
-        'min-height:60vh;padding:64px 24px;background:var(--neutral-100,#f7f7fb);}',
+        'min-height:60vh;padding:80px 24px;background:var(--neutral-100,#f7f7fb);}',
         '.ordo-expired-card{width:100%;max-width:560px;padding:48px 40px;text-align:center;',
         'background:#fff;border:1px solid var(--gris300,#ecedef);border-radius:16px;',
         'box-shadow:0 1px 2px rgba(12,14,22,.04),0 12px 32px rgba(12,14,22,.06);}',
@@ -66,13 +87,14 @@
         'color:var(--neutral-500,#47505c);}',
         '.ordo-expired-actions{display:flex;flex-direction:column;align-items:center;margin-top:32px;}',
         '.ordo-expired-actions>*+*{margin-top:16px;}',
-        '.ordo-expired-btn{display:inline-block;padding:14px 28px;border-radius:8px;',
-        'background:var(--primary-500,#3454f6);color:#fff;font-size:16px;font-weight:500;',
-        'text-decoration:none;transition:background .2s ease;}',
-        '.ordo-expired-btn:hover{background:var(--primary-600,#263fd3);color:#fff;}',
+        // Le CTA principal porte les classes .button.is-gradient du site. On ne
+        // retouche que sa taille pour l'échelle de la carte, jamais ses couleurs :
+        // les redéfinir ferait diverger la page du design system à la prochaine
+        // refonte.
+        '.ordo-expired-actions .button{padding:.75rem 1.5rem;}',
         '.ordo-expired-link{font-size:15px;color:var(--neutral-500,#47505c);text-decoration:underline;}',
         '.ordo-expired-link:hover{color:var(--primary-500,#3454f6);}',
-        '@media (max-width:479px){.ordo-expired{padding:40px 16px;}',
+        '@media (max-width:479px){.ordo-expired{padding:48px 16px;}',
         '.ordo-expired-card{padding:36px 24px;}.ordo-expired-title{font-size:24px;}}'
     ].join('');
 
@@ -156,9 +178,21 @@
 
         var row = el('div', 'ordo-expired-actions');
         actions.forEach(function(a) {
-            var link = el('a', a.primary ? 'ordo-expired-btn' : 'ordo-expired-link', a.label);
-            link.href = a.href;
-            row.appendChild(link);
+            if (!a.primary) {
+                var link = el('a', 'ordo-expired-link', a.label);
+                link.href = a.href;
+                row.appendChild(link);
+                return;
+            }
+            // Le CTA principal réutilise le composant bouton du site plutôt que
+            // d'en réimiter les couleurs : même dégradé, même rayon, et il suivra
+            // tout seul une future refonte du design system.
+            var btn = el('a', 'button is-gradient w-inline-block');
+            btn.href = a.href;
+            var content = el('div', 'button-content outer');
+            content.appendChild(el('div', null, a.label));
+            btn.appendChild(content);
+            row.appendChild(btn);
         });
         box.appendChild(row);
 
@@ -182,26 +216,35 @@
         );
     }
 
-    // Sans identifiant, on ne sait RIEN de cette personne : lui annoncer une offre
-    // expirée serait un mensonge une fois sur deux. On lui demande de se connecter,
-    // le gate rejouera avec l'identité de la session.
+    function loginUrl() {
+        return LOGIN_REDIRECT_URL + '?redirect='
+            + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+
+    // Tant qu'on ne sait pas qui est là, on ne sait rien : annoncer une offre
+    // expirée serait faux une fois sur deux. On explique pourquoi on demande la
+    // connexion, et le gate rejouera tout seul au retour.
     function loginScreen() {
         return card(
-            'Connectez-vous pour accéder à votre offre',
+            'Connectez-vous pour récupérer votre offre',
             [
-                'Cette offre est réservée aux médecins ayant résilié leur abonnement '
-                    + 'récemment. Connectez-vous pour que nous puissions vérifier votre compte.',
-                'Le lien reçu par e-mail ouvre l’offre directement, sans connexion.'
+                'Ces 6 mois offerts sont réservés à votre compte Ordotype. '
+                    + 'Connectez-vous pour que nous puissions vérifier votre éligibilité.',
+                'Vous reviendrez sur cette page automatiquement après la connexion.'
             ],
             [
-                { label: 'Se connecter', href: LOGIN_URL, primary: true },
+                { label: 'Se connecter', href: loginUrl(), primary: true },
                 { label: 'Voir les offres Ordotype', href: OFFERS_URL }
             ]
         );
     }
 
-    // Remplace le contenu de la page, en gardant la barre de navigation et le
-    // footer : ils encadrent .main-wrapper, seul bloc de contenu du gabarit.
+    // Vide le contenu de la page, en gardant la barre de navigation et le footer :
+    // ils encadrent .main-wrapper, seul bloc de contenu du gabarit.
+    //
+    // On VIDE .main-wrapper au lieu de le remplacer : il porte lui-même le
+    // padding-top de 4.5rem qui compense la navbar `position: fixed`. Le
+    // remplacer collait l'écran sous la barre de navigation.
     function showScreen(screen, logLine) {
         injectStyle();
 
@@ -209,8 +252,9 @@
         var notConnected = document.getElementById('page-wrapper-not-connected');
         var main = connected ? connected.querySelector('.main-wrapper') : null;
 
-        if (main && main.parentNode) {
-            main.parentNode.replaceChild(screen, main);
+        if (main) {
+            while (main.firstChild) main.removeChild(main.firstChild);
+            main.appendChild(screen);
         } else {
             // Gabarit modifié : on masque les wrappers qu'on trouve et on insère
             // l'écran EN TÊTE de body. En l'ajoutant à la fin il passerait sous une
@@ -228,19 +272,15 @@
         console.log(PREFIX, logLine);
     }
 
-    // La session PRIME sur l'URL. Un lien winback transféré à un confrère déjà
-    // connecté créerait sinon le checkout sur le compte de l'expéditeur : le
-    // confrère saisirait sa carte, et les 6 mois iraient à quelqu'un d'autre.
+    // L'identité vient UNIQUEMENT de la session Memberstack. Un identifiant passé
+    // dans l'URL serait une affirmation, pas une preuve, et n'apporterait rien :
+    // le droit à l'offre se juge sur la fiche Stripe du client, pas sur l'URL.
+    // On préfère le client Stripe quand le cache l'a, ça évite au serveur un appel
+    // à l'API Memberstack pour traduire mem_ en cus_.
     function identity() {
         var ms = window.OrdoMemberstack || {};
-        if (ms.memberId) return { memberId: ms.memberId, source: 'session' };
         if (ms.stripeCustomerId) return { stripeCustomerId: ms.stripeCustomerId, source: 'session' };
-
-        var params = new URLSearchParams(window.location.search);
-        var fromUrl = params.get('m');
-        if (fromUrl && fromUrl.indexOf('mem_') === 0) {
-            return { memberId: fromUrl, source: 'url' };
-        }
+        if (ms.memberId) return { memberId: ms.memberId, source: 'session' };
         return { source: 'none' };
     }
 
@@ -295,7 +335,11 @@
                 stripeCustomerId: who.stripeCustomerId || null,
                 priceId: config.priceId,
                 payment_method_types: config.paymentMethods,
-                successUrl: config.successUrl,
+                // Le gabarit renvoie tout le monde vers /membership/mes-informations.
+                // Pour un médecin qui revient, la page de bienvenue est plus juste
+                // qu'un formulaire de profil, et elle n'a pas besoin d'être connue
+                // du CMS : on la fixe ici, sans toucher aux autres offres.
+                successUrl: window.location.origin + AFTER_PAYMENT_URL,
                 cancelUrl: config.cancelUrl
             };
 
@@ -372,14 +416,15 @@
         var who = identity();
         console.log(PREFIX, 'Identity source:', who.source);
 
+        // Pas de session : on ne redirige pas d'autorité depuis un lien d'e-mail,
+        // on explique pourquoi on demande la connexion. Un écran, un clic.
         if (who.source === 'none') {
-            console.log(PREFIX, 'No identity, asking for login');
-            showScreen(loginScreen(), 'No identity');
+            showScreen(loginScreen(), 'Not logged in');
             return;
         }
 
-        var query = who.memberId ? 'm=' + encodeURIComponent(who.memberId)
-                                 : 'c=' + encodeURIComponent(who.stripeCustomerId);
+        var query = who.stripeCustomerId ? 'c=' + encodeURIComponent(who.stripeCustomerId)
+                                         : 'm=' + encodeURIComponent(who.memberId);
 
         var timeout = new Promise(function(_, reject) {
             setTimeout(function() { reject(new Error('eligibility timeout')); }, ELIGIBILITY_TIMEOUT_MS);

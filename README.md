@@ -1275,12 +1275,22 @@ The page needs two buttons with specific IDs:
 ### Offre réservée aux désabonnés (winback)
 
 Un item de cette collection peut être réservé aux personnes désabonnées depuis
-moins de 31 jours, via le champ CMS **« Réservé aux désabonnés ? »**. Le lien est
-envoyé dans les mails winback Brevo :
+moins de 31 jours, via le champ CMS **« Réservé aux désabonnés ? »**. Le lien
+envoyé dans les mails winback Brevo est une **URL nue**, sans paramètre :
 
 ```
-https://www.ordotype.fr/inscription-offre-speciale/<slug>?m={{contact.EXT_ID}}
+https://www.ordotype.fr/inscription-offre-speciale/<slug>
 ```
+
+**La connexion Memberstack vient avant l'offre.** Une première version passait
+l'identifiant membre dans l'URL pour éviter la connexion, mais un lien d'e-mail
+qui mène à une page de paiement sans que le médecin ait vu qu'il était sur son
+compte ressemble à du phishing. Pour cette audience, la lisibilité vaut mieux que
+les points de conversion gagnés en sautant la connexion.
+
+Un identifiant dans l'URL n'aurait de toute façon rien prouvé : **le droit à
+l'offre se juge sur la fiche Stripe du client**, jamais sur un paramètre que
+n'importe qui peut écrire. La session, elle, est authentifiée.
 
 **Le coupon ne doit pas être dans la page.** Le champ CMS `Code_promo_ID` reste
 **vide** sur un item winback : c'est `create-checkout-session` qui applique
@@ -1309,22 +1319,35 @@ Le gate :
    laisser visible mettrait un « En profiter » mort en première position ;
 2. rend `#signup-rempla-stripe-customer` visible mais inerte pendant la
    vérification, donc rien ne peut partir avant le verdict ;
-3. appelle `winback-eligibility` avec l'identité de la session si elle existe,
-   sinon le `mem_…` de l'URL. **La session prime sur l'URL** : un lien transféré
-   à un confrère déjà connecté créerait sinon le checkout sur le compte de
-   l'expéditeur, et le confrère paierait pour l'offre de quelqu'un d'autre ;
+3. appelle `winback-eligibility` avec l'identité de la session, en préférant le
+   `cus_…` du cache quand il est là, ce qui évite au serveur un appel à l'API
+   Memberstack pour traduire `mem_` en `cus_` ;
 4. non éligible : remplace `.main-wrapper` par l'écran « offre expirée », en
    gardant la barre de navigation et le footer qui l'encadrent. **Rien à ajouter
    dans Webflow** : l'écran est construit par le script, comme la modale de
    `offre-annulation/cancel-reason-modal.js`. La durée annoncée vient du serveur
    (`windowDays`), pour qu'un changement de `WINBACK_WINDOW_DAYS` ne laisse pas
    la page raconter 31 jours quand le serveur en accorde 45 ;
-5. aucune identité (query string mangée par un client mail, URL nue partagée) :
-   écran « connectez-vous », **pas** l'écran expiré. Sans identifiant on ne sait
-   rien de la personne, l'éjecter serait faux une fois sur deux ;
+5. pas de session, le cas normal après une résiliation : écran « connectez-vous
+   pour récupérer votre offre », avec un CTA vers
+   `/membership/login-redirect-rempla?redirect=<page courante>`. **Pas** l'écran
+   expiré : tant qu'on ne sait pas qui est là, l'éjecter serait faux une fois sur
+   deux. Un écran et un clic plutôt qu'une redirection d'autorité, parce qu'on
+   arrive d'un lien d'e-mail et qu'un rebond immédiat vers une page de connexion
+   inquiète autant qu'il informe.
+
+   Le retour est assuré par une chaîne existante : la page de connexion écrit la
+   cible dans `localStorage.locat`, Memberstack renvoie sur
+   `/membership/successful-login` après la connexion **et après la 2FA**, et
+   cette page relit `locat` pour ramener ici, avec son propre anti-boucle de 5 s ;
 6. éligible : câble le bouton sur `create-checkout-session` avec
    `offer: 'winback-6m'`, puis écrit la vraie date limite dans la clé localStorage
    que lit `countdown.js` et ne charge le compteur **que si l'écriture a réussi**.
+
+Le `successUrl` du paiement est forcé sur `/membership/prise-en-main`, la page de
+bienvenue, au lieu du `/membership/mes-informations` que le gabarit impose à
+toutes les offres : pour un médecin qui revient, un formulaire de profil est un
+accueil étrange. Il est connecté à ce moment-là, donc pas de détour nécessaire.
 
 Ce dernier point n'est pas une précaution théorique : les attributs
 `ms-code-time-*` du gabarit sont vides, donc sans la clé `countdown.js` calcule
