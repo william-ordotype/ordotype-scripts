@@ -1270,6 +1270,73 @@ The page needs two buttons with specific IDs:
 - `[OpacityReveal]` - Clock reveal (from shared)
 - `[Countdown]` - Countdown timer
 - `[StripeCheckout]` - Checkout (from shared)
+- `[WinbackGate]` - Gate des offres réservées aux désabonnés (voir ci-dessous)
+
+### Offre réservée aux désabonnés (winback)
+
+Un item de cette collection peut être réservé aux personnes désabonnées depuis
+moins de 31 jours, via le champ CMS **« Réservé aux désabonnés ? »**. Le lien est
+envoyé dans les mails winback Brevo :
+
+```
+https://www.ordotype.fr/inscription-offre-speciale/<slug>?m={{contact.EXT_ID}}
+```
+
+**Le coupon ne doit pas être dans la page.** Le champ CMS `Code_promo_ID` reste
+**vide** sur un item winback : c'est `create-checkout-session` qui applique
+l'offre après avoir revérifié l'éligibilité. Sans ça, le coupon serait lisible
+dans le HTML et le bouton Memberstack natif l'appliquerait sans aucun contrôle.
+Conséquence utile : si le champ ou le script tombe, la page vend au prix normal,
+jamais l'inverse.
+
+**Config supplémentaire dans le custom code du gabarit :**
+
+```html
+window.WINBACK_GATE = {{wf reserve-aux-desabonnes}};
+```
+
+`loader.js` remplace alors `countdown.js` et `shared/stripe-checkout.js` par
+`winback-gate.js` dans la liste de base, par filtrage et non par une liste
+parallèle : `not-connected-handler.js` et `shared/opacity-reveal.js` restent
+chargés, et tout script ajouté à la page plus tard s'applique aux deux modes.
+
+Le gate :
+
+1. masque les **deux** autres CTA du bloc. `#signup-rempla-from-decouverte`
+   (checkout Memberstack natif) et `#not-connected-animation` ouvrent des
+   parcours que le serveur ne contrôle pas. Le second est celui que Memberstack
+   montre aux visiteurs **déconnectés**, donc à la cible même du winback : le
+   laisser visible mettrait un « En profiter » mort en première position ;
+2. rend `#signup-rempla-stripe-customer` visible mais inerte pendant la
+   vérification, donc rien ne peut partir avant le verdict ;
+3. appelle `winback-eligibility` avec l'identité de la session si elle existe,
+   sinon le `mem_…` de l'URL. **La session prime sur l'URL** : un lien transféré
+   à un confrère déjà connecté créerait sinon le checkout sur le compte de
+   l'expéditeur, et le confrère paierait pour l'offre de quelqu'un d'autre ;
+4. non éligible : remplace `.main-wrapper` par l'écran « offre expirée », en
+   gardant la barre de navigation et le footer qui l'encadrent. **Rien à ajouter
+   dans Webflow** : l'écran est construit par le script, comme la modale de
+   `offre-annulation/cancel-reason-modal.js`. La durée annoncée vient du serveur
+   (`windowDays`), pour qu'un changement de `WINBACK_WINDOW_DAYS` ne laisse pas
+   la page raconter 31 jours quand le serveur en accorde 45 ;
+5. aucune identité (query string mangée par un client mail, URL nue partagée) :
+   écran « connectez-vous », **pas** l'écran expiré. Sans identifiant on ne sait
+   rien de la personne, l'éjecter serait faux une fois sur deux ;
+6. éligible : câble le bouton sur `create-checkout-session` avec
+   `offer: 'winback-6m'`, puis écrit la vraie date limite dans la clé localStorage
+   que lit `countdown.js` et ne charge le compteur **que si l'écriture a réussi**.
+
+Ce dernier point n'est pas une précaution théorique : les attributs
+`ms-code-time-*` du gabarit sont vides, donc sans la clé `countdown.js` calcule
+une date limite égale à maintenant, se croit expiré et supprime les
+`[ms-code-countdown="hide-on-end"]`, c'est-à-dire le bloc qui contient le bouton.
+En navigation privée Safari, un éligible se retrouverait devant « Offre expirée »
+sans bouton.
+
+Chemins dégradés, tous testés : endpoint en panne, endpoint qui ne répond pas
+(borne à 8 s), CDN qui ne sert pas le compteur. Dans tous les cas le bouton reste
+actif et vendable. Une panne ne doit pas éjecter un désabonné légitime, et le
+verrou qui compte est de toute façon côté serveur.
 
 ---
 

@@ -48,15 +48,33 @@
     const HELD_CLICK_TIMEOUT_MS = 4000;
     const WAIT_LABEL = 'Patientez…';
 
+    // Offre réservée aux désabonnés récents (champ CMS « Réservé aux désabonnés ? »).
+    // Le gate remplace countdown.js et stripe-checkout.js : il vérifie l'éligibilité
+    // côté serveur, puis charge lui-même le countdown avec la vraie date limite.
+    const IS_WINBACK = window.WINBACK_GATE === true;
+    const WINBACK_SCRIPT = 'inscription-offre-speciale/winback-gate.js';
+    const COUNTDOWN_SCRIPT = 'inscription-offre-speciale/countdown.js';
+
     // Scripts to load in order
-    const scripts = [
+    const BASE_SCRIPTS = [
         'shared/memberstack-utils.js',
         'shared/error-reporter.js',
         'inscription-offre-speciale/not-connected-handler.js',
         'shared/opacity-reveal.js',
-        'inscription-offre-speciale/countdown.js',
+        COUNTDOWN_SCRIPT,
         CHECKOUT_SCRIPT
     ];
+
+    // Le mode winback SWAP deux scripts au lieu de reconstruire la liste : tout ce
+    // qui est ajouté à la page plus tard s'applique aux deux modes, et on ne perd
+    // pas par inadvertance un script dont l'absence ne se voit pas (opacity-reveal
+    // laisserait le compteur invisible, not-connected-handler laisserait mort le
+    // bouton que Memberstack affiche aux visiteurs déconnectés).
+    const scripts = IS_WINBACK
+        ? BASE_SCRIPTS
+            .filter((file) => file !== COUNTDOWN_SCRIPT && file !== CHECKOUT_SCRIPT)
+            .concat([WINBACK_SCRIPT])
+        : BASE_SCRIPTS;
 
     function hasCachedStripeCustomer() {
         const ms = window.OrdoMemberstack;
@@ -157,7 +175,9 @@
     async function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
         const hasStripeCustomer = hasCachedStripeCustomer();
-        const release = hasStripeCustomer ? holdMemberstackCheckout() : function() {};
+        // En mode winback c'est le gate qui pilote les deux boutons : pas de hold,
+        // dont la libération finirait par cliquer le bouton Memberstack natif.
+        const release = (hasStripeCustomer && !IS_WINBACK) ? holdMemberstackCheckout() : function() {};
 
         try {
             // Helper to replace ${window.location.origin} placeholder with actual origin
@@ -191,10 +211,13 @@
         }
 
         const loads = scripts.map((file) => loadScript(`${BASE}/${file}`));
-        loads[scripts.indexOf(CHECKOUT_SCRIPT)].then(
-            () => release('OffreSpecialeCheckoutNotExecuted', 'stripe-checkout.js loaded but did not execute'),
-            (err) => release('OffreSpecialeCheckoutLoadFailed', err.message)
-        );
+        const checkoutIndex = scripts.indexOf(CHECKOUT_SCRIPT);
+        if (checkoutIndex !== -1) {
+            loads[checkoutIndex].then(
+                () => release('OffreSpecialeCheckoutNotExecuted', 'stripe-checkout.js loaded but did not execute'),
+                (err) => release('OffreSpecialeCheckoutLoadFailed', err.message)
+            );
+        }
 
         try {
             await Promise.all(loads);
