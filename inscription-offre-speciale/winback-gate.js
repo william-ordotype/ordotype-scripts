@@ -39,8 +39,17 @@
     var CHECKING_LABEL = 'Vérification…';
     var REDIRECT_LABEL = 'Patientez…';
     var OFFERS_URL = '/nos-offres';
-    var LOGIN_URL = '/membership/login-ms';
     var DEFAULT_WINDOW_DAYS = 31;
+
+    // Page de connexion générique du site : elle prend un ?redirect=, le pose dans
+    // `locat` et ramène ici après connexion. Elle revérifie aussi la session via le
+    // SDK Memberstack, donc elle rattrape le cas où le cache _ms-mem est vide alors
+    // qu'une session existe. Son nom dit « rempla », son comportement est générique.
+    var LOGIN_REDIRECT_URL = '/membership/login-redirect-rempla';
+
+    // Un aller-retour et un seul. Si on revient toujours sans identité (cache
+    // _ms-mem présent mais inexploitable), on s'arrête et on montre l'écran.
+    var LOGIN_BOUNCE_KEY = 'ordo_winback_login_bounce';
 
     // Au-delà, on considère que l'appel ne répondra pas. Sans cette borne, une
     // requête qui pend (réseau mobile qui décroche, portail captif) laisse le
@@ -195,6 +204,11 @@
         );
     }
 
+    function loginUrl() {
+        return LOGIN_REDIRECT_URL + '?redirect='
+            + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+
     // Sans identifiant, on ne sait RIEN de cette personne : lui annoncer une offre
     // expirée serait un mensonge une fois sur deux. On lui demande de se connecter,
     // le gate rejouera avec l'identité de la session.
@@ -207,10 +221,34 @@
                 'Le lien reçu par e-mail ouvre l’offre directement, sans connexion.'
             ],
             [
-                { label: 'Se connecter', href: LOGIN_URL, primary: true },
+                { label: 'Se connecter', href: loginUrl(), primary: true },
                 { label: 'Voir les offres Ordotype', href: OFFERS_URL }
             ]
         );
+    }
+
+    // Aucun identifiant : plutôt qu'un écran de plus, on passe par la page de
+    // connexion du site, qui ramène ici. Elle interroge le SDK Memberstack, donc
+    // elle récupère une session que notre cache local n'avait pas vue, et dans ce
+    // cas la personne ne voit qu'une redirection.
+    function goLogin() {
+        var bounced;
+        try {
+            bounced = sessionStorage.getItem(LOGIN_BOUNCE_KEY);
+            if (!bounced) sessionStorage.setItem(LOGIN_BOUNCE_KEY, '1');
+        } catch (e) {
+            // Pas de sessionStorage : on ne peut pas garantir l'aller simple.
+            showScreen(loginScreen(), 'No identity, sessionStorage unavailable');
+            return;
+        }
+
+        if (bounced) {
+            showScreen(loginScreen(), 'No identity after login round-trip');
+            return;
+        }
+
+        console.log(PREFIX, 'No identity, bouncing through login');
+        window.location.replace(loginUrl());
     }
 
     // Vide le contenu de la page, en gardant la barre de navigation et le footer :
@@ -391,10 +429,13 @@
         console.log(PREFIX, 'Identity source:', who.source);
 
         if (who.source === 'none') {
-            console.log(PREFIX, 'No identity, asking for login');
-            showScreen(loginScreen(), 'No identity');
+            goLogin();
             return;
         }
+
+        // Identité retrouvée : le garde-fou de l'aller-retour est consommé, une
+        // visite ultérieure repartira d'une page blanche.
+        try { sessionStorage.removeItem(LOGIN_BOUNCE_KEY); } catch (e) { /* no-op */ }
 
         var query = who.memberId ? 'm=' + encodeURIComponent(who.memberId)
                                  : 'c=' + encodeURIComponent(who.stripeCustomerId);

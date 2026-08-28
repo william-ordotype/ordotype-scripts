@@ -1320,8 +1320,15 @@ Le gate :
    (`windowDays`), pour qu'un changement de `WINBACK_WINDOW_DAYS` ne laisse pas
    la page raconter 31 jours quand le serveur en accorde 45 ;
 5. aucune identité (query string mangée par un client mail, URL nue partagée) :
-   écran « connectez-vous », **pas** l'écran expiré. Sans identifiant on ne sait
-   rien de la personne, l'éjecter serait faux une fois sur deux ;
+   passage par `/membership/login-redirect-rempla?redirect=<page courante>`, la
+   page de connexion générique du site, qui pose la cible dans `locat` et ramène
+   ici. Surtout, elle interroge le SDK Memberstack : elle récupère donc une
+   session que notre cache `_ms-mem` n'avait pas vue, et la personne ne voit
+   qu'une redirection. **Pas** l'écran expiré : sans identifiant on ne sait rien
+   d'elle, l'éjecter serait faux une fois sur deux. Un aller-retour et un seul,
+   gardé par `sessionStorage`, sinon on affiche un écran « connectez-vous » ;
+   ce détour n'a de sens que pour le winback, dont toute la cible a un compte,
+   d'où son cantonnement aux items portant le switch ;
 6. éligible : câble le bouton sur `create-checkout-session` avec
    `offer: 'winback-6m'`, puis écrit la vraie date limite dans la clé localStorage
    que lit `countdown.js` et ne charge le compteur **que si l'écriture a réussi**.
