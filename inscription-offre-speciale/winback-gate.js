@@ -423,7 +423,12 @@
                 // qu'un formulaire de profil, et elle n'a pas besoin d'être connue
                 // du CMS : on la fixe ici, sans toucher aux autres offres.
                 successUrl: window.location.origin + AFTER_PAYMENT_URL,
-                cancelUrl: config.cancelUrl
+                // Le gabarit renvoie sur l'URL nue du slug, sans query string. Pour
+                // un vrai visiteur c'est la même page, mais un retour arrière depuis
+                // Stripe perdait ?winback_test= et ?winback_preview= : on revenait
+                // sur la page jugée sur sa propre session, donc sur « offre expirée »
+                // en plein test. window.location.href ramène exactement d'où l'on part.
+                cancelUrl: window.location.href
             };
 
             track('stripe_signup_click', { option: OFFER_ID });
