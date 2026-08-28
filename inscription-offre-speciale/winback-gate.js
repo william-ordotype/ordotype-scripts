@@ -66,10 +66,11 @@
         'color:var(--neutral-500,#47505c);}',
         '.ordo-expired-actions{display:flex;flex-direction:column;align-items:center;margin-top:32px;}',
         '.ordo-expired-actions>*+*{margin-top:16px;}',
-        '.ordo-expired-btn{display:inline-block;padding:14px 28px;border-radius:8px;',
-        'background:var(--primary-500,#3454f6);color:#fff;font-size:16px;font-weight:500;',
-        'text-decoration:none;transition:background .2s ease;}',
-        '.ordo-expired-btn:hover{background:var(--primary-600,#263fd3);color:#fff;}',
+        // Le CTA principal porte les classes .button.is-gradient du site. On ne
+        // retouche que sa taille pour l'échelle de la carte, jamais ses couleurs :
+        // les redéfinir ferait diverger la page du design system à la prochaine
+        // refonte.
+        '.ordo-expired-actions .button{padding:.75rem 1.5rem;}',
         '.ordo-expired-link{font-size:15px;color:var(--neutral-500,#47505c);text-decoration:underline;}',
         '.ordo-expired-link:hover{color:var(--primary-500,#3454f6);}',
         '@media (max-width:479px){.ordo-expired{padding:48px 16px;}',
@@ -156,9 +157,21 @@
 
         var row = el('div', 'ordo-expired-actions');
         actions.forEach(function(a) {
-            var link = el('a', a.primary ? 'ordo-expired-btn' : 'ordo-expired-link', a.label);
-            link.href = a.href;
-            row.appendChild(link);
+            if (!a.primary) {
+                var link = el('a', 'ordo-expired-link', a.label);
+                link.href = a.href;
+                row.appendChild(link);
+                return;
+            }
+            // Le CTA principal réutilise le composant bouton du site plutôt que
+            // d'en réimiter les couleurs : même dégradé, même rayon, et il suivra
+            // tout seul une future refonte du design system.
+            var btn = el('a', 'button is-gradient w-inline-block');
+            btn.href = a.href;
+            var content = el('div', 'button-content outer');
+            content.appendChild(el('div', null, a.label));
+            btn.appendChild(content);
+            row.appendChild(btn);
         });
         box.appendChild(row);
 
