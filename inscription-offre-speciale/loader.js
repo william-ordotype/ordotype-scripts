@@ -52,20 +52,29 @@
     // Le gate remplace countdown.js et stripe-checkout.js : il vérifie l'éligibilité
     // côté serveur, puis charge lui-même le countdown avec la vraie date limite.
     const IS_WINBACK = window.WINBACK_GATE === true;
+    const WINBACK_SCRIPT = 'inscription-offre-speciale/winback-gate.js';
+    const COUNTDOWN_SCRIPT = 'inscription-offre-speciale/countdown.js';
 
     // Scripts to load in order
-    const scripts = IS_WINBACK ? [
-        'shared/memberstack-utils.js',
-        'shared/error-reporter.js',
-        'inscription-offre-speciale/winback-gate.js'
-    ] : [
+    const BASE_SCRIPTS = [
         'shared/memberstack-utils.js',
         'shared/error-reporter.js',
         'inscription-offre-speciale/not-connected-handler.js',
         'shared/opacity-reveal.js',
-        'inscription-offre-speciale/countdown.js',
+        COUNTDOWN_SCRIPT,
         CHECKOUT_SCRIPT
     ];
+
+    // Le mode winback SWAP deux scripts au lieu de reconstruire la liste : tout ce
+    // qui est ajouté à la page plus tard s'applique aux deux modes, et on ne perd
+    // pas par inadvertance un script dont l'absence ne se voit pas (opacity-reveal
+    // laisserait le compteur invisible, not-connected-handler laisserait mort le
+    // bouton que Memberstack affiche aux visiteurs déconnectés).
+    const scripts = IS_WINBACK
+        ? BASE_SCRIPTS
+            .filter((file) => file !== COUNTDOWN_SCRIPT && file !== CHECKOUT_SCRIPT)
+            .concat([WINBACK_SCRIPT])
+        : BASE_SCRIPTS;
 
     function hasCachedStripeCustomer() {
         const ms = window.OrdoMemberstack;

@@ -19,10 +19,15 @@
  * ici, comme la modale de offre-annulation/cancel-reason-modal.js.
  *
  * Required DOM elements (déjà présents sur le gabarit d'offre) :
+ * - #not-connected-animation      - CTA montré par MS aux déconnectés, masqué ici
  * - #signup-rempla-from-decouverte - bouton Memberstack natif, masqué ici
  * - #signup-rempla-stripe-customer - bouton de l'offre
  *
- * ES2019 max (parc Chrome 78 / Safari 13, cf. eslint.config.js).
+ * Les deux premiers sont masqués parce qu'ils ouvrent des parcours que le serveur
+ * ne contrôle pas : la page gatée ne doit exposer qu'un seul bouton vivant.
+ *
+ * ES2019 max (parc Chrome 78 / Safari 13, cf. eslint.config.js) : pas de `gap`
+ * flexbox dans le CSS non plus, il n'arrive que dans Safari 14.1.
  */
 (function() {
     'use strict';
@@ -34,7 +39,15 @@
     var CHECKING_LABEL = 'Vérification…';
     var REDIRECT_LABEL = 'Patientez…';
     var OFFERS_URL = '/nos-offres';
+    var LOGIN_URL = '/membership/login-ms';
+    var DEFAULT_WINDOW_DAYS = 31;
 
+    // Au-delà, on considère que l'appel ne répondra pas. Sans cette borne, une
+    // requête qui pend (réseau mobile qui décroche, portail captif) laisse le
+    // bouton grisé « Vérification… » pour toujours : ni .then ni .catch ne partent.
+    var ELIGIBILITY_TIMEOUT_MS = 8000;
+
+    var BTN_NOT_CONNECTED_ID = 'not-connected-animation';
     var BTN_MS_ID = 'signup-rempla-from-decouverte';
     var BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
 
@@ -51,7 +64,8 @@
         'color:var(--base-900,#0c0e16);}',
         '.ordo-expired-text{margin:0 auto 8px;max-width:44ch;font-size:16px;line-height:1.6;',
         'color:var(--neutral-500,#47505c);}',
-        '.ordo-expired-actions{display:flex;flex-direction:column;align-items:center;gap:16px;margin-top:32px;}',
+        '.ordo-expired-actions{display:flex;flex-direction:column;align-items:center;margin-top:32px;}',
+        '.ordo-expired-actions>*+*{margin-top:16px;}',
         '.ordo-expired-btn{display:inline-block;padding:14px 28px;border-radius:8px;',
         'background:var(--primary-500,#3454f6);color:#fff;font-size:16px;font-weight:500;',
         'text-decoration:none;transition:background .2s ease;}',
@@ -127,38 +141,68 @@
         (document.head || document.documentElement).appendChild(style);
     }
 
-    function expiredScreen() {
+    function card(title, paragraphs, actions) {
         var wrap = el('div', 'ordo-expired');
-        var card = el('div', 'ordo-expired-card');
+        var box = el('div', 'ordo-expired-card');
 
         var badge = el('div', 'ordo-expired-badge');
         badge.appendChild(clockIcon());
-        card.appendChild(badge);
+        box.appendChild(badge);
 
-        card.appendChild(el('h1', 'ordo-expired-title', 'Cette offre n’est plus disponible'));
-        card.appendChild(el('p', 'ordo-expired-text',
-            'Les 6 mois offerts étaient réservés aux médecins ayant résilié leur '
-            + 'abonnement, pendant les 31 jours suivant la fin de leur accès. Ce délai est '
-            + 'passé, ou cette offre a déjà été utilisée sur votre compte.'));
-        card.appendChild(el('p', 'ordo-expired-text',
-            'Vous pouvez reprendre votre abonnement à tout moment, sans engagement.'));
+        box.appendChild(el('h1', 'ordo-expired-title', title));
+        paragraphs.forEach(function(text) {
+            box.appendChild(el('p', 'ordo-expired-text', text));
+        });
 
-        var actions = el('div', 'ordo-expired-actions');
-        var cta = el('a', 'ordo-expired-btn', 'Voir les offres Ordotype');
-        cta.href = OFFERS_URL;
-        var home = el('a', 'ordo-expired-link', 'Retour à l’accueil');
-        home.href = '/';
-        actions.appendChild(cta);
-        actions.appendChild(home);
-        card.appendChild(actions);
+        var row = el('div', 'ordo-expired-actions');
+        actions.forEach(function(a) {
+            var link = el('a', a.primary ? 'ordo-expired-btn' : 'ordo-expired-link', a.label);
+            link.href = a.href;
+            row.appendChild(link);
+        });
+        box.appendChild(row);
 
-        wrap.appendChild(card);
+        wrap.appendChild(box);
         return wrap;
+    }
+
+    function expiredScreen(windowDays) {
+        return card(
+            'Cette offre n’est plus disponible',
+            [
+                'Les 6 mois offerts étaient réservés aux médecins ayant résilié leur '
+                    + 'abonnement, pendant les ' + windowDays + ' jours suivant la fin de leur '
+                    + 'accès. Ce délai est passé, ou cette offre a déjà été utilisée sur votre compte.',
+                'Vous pouvez reprendre votre abonnement à tout moment, sans engagement.'
+            ],
+            [
+                { label: 'Voir les offres Ordotype', href: OFFERS_URL, primary: true },
+                { label: 'Retour à l’accueil', href: '/' }
+            ]
+        );
+    }
+
+    // Sans identifiant, on ne sait RIEN de cette personne : lui annoncer une offre
+    // expirée serait un mensonge une fois sur deux. On lui demande de se connecter,
+    // le gate rejouera avec l'identité de la session.
+    function loginScreen() {
+        return card(
+            'Connectez-vous pour accéder à votre offre',
+            [
+                'Cette offre est réservée aux médecins ayant résilié leur abonnement '
+                    + 'récemment. Connectez-vous pour que nous puissions vérifier votre compte.',
+                'Le lien reçu par e-mail ouvre l’offre directement, sans connexion.'
+            ],
+            [
+                { label: 'Se connecter', href: LOGIN_URL, primary: true },
+                { label: 'Voir les offres Ordotype', href: OFFERS_URL }
+            ]
+        );
     }
 
     // Remplace le contenu de la page, en gardant la barre de navigation et le
     // footer : ils encadrent .main-wrapper, seul bloc de contenu du gabarit.
-    function showExpired() {
+    function showScreen(screen, logLine) {
         injectStyle();
 
         var connected = document.getElementById('page-wrapper-connected');
@@ -166,28 +210,37 @@
         var main = connected ? connected.querySelector('.main-wrapper') : null;
 
         if (main && main.parentNode) {
-            main.parentNode.replaceChild(expiredScreen(), main);
+            main.parentNode.replaceChild(screen, main);
         } else {
-            // Gabarit modifié : on masque tout et l'écran se suffit à lui-même,
-            // ses deux liens assurant la navigation.
+            // Gabarit modifié : on masque les wrappers qu'on trouve et on insère
+            // l'écran EN TÊTE de body. En l'ajoutant à la fin il passerait sous une
+            // page d'offre restée visible, ce qui vendrait l'offre à un non éligible.
             if (connected) connected.style.display = 'none';
-            document.body.appendChild(expiredScreen());
+            if (notConnected) notConnected.style.display = 'none';
+            document.body.insertBefore(screen, document.body.firstChild);
+            window.scrollTo(0, 0);
+            console.log(PREFIX, logLine, '(fallback: wrappers introuvables)');
+            return;
         }
 
         if (notConnected) notConnected.style.display = 'none';
         window.scrollTo(0, 0);
-        console.log(PREFIX, 'Offer not available, expired screen shown');
+        console.log(PREFIX, logLine);
     }
 
+    // La session PRIME sur l'URL. Un lien winback transféré à un confrère déjà
+    // connecté créerait sinon le checkout sur le compte de l'expéditeur : le
+    // confrère saisirait sa carte, et les 6 mois iraient à quelqu'un d'autre.
     function identity() {
+        var ms = window.OrdoMemberstack || {};
+        if (ms.memberId) return { memberId: ms.memberId, source: 'session' };
+        if (ms.stripeCustomerId) return { stripeCustomerId: ms.stripeCustomerId, source: 'session' };
+
         var params = new URLSearchParams(window.location.search);
         var fromUrl = params.get('m');
         if (fromUrl && fromUrl.indexOf('mem_') === 0) {
             return { memberId: fromUrl, source: 'url' };
         }
-        var ms = window.OrdoMemberstack || {};
-        if (ms.memberId) return { memberId: ms.memberId, source: 'session' };
-        if (ms.stripeCustomerId) return { stripeCustomerId: ms.stripeCustomerId, source: 'session' };
         return { source: 'none' };
     }
 
@@ -206,17 +259,26 @@
     // countdown.js lit cette clé si elle existe. On l'écrase à chaque visite avec
     // la date renvoyée par le serveur : la deadline est propre au membre, une
     // valeur laissée par une visite précédente ne doit jamais gagner.
+    //
+    // Le retour compte : sans cette clé, countdown.js retombe sur les attributs du
+    // gabarit, qui sont VIDES, calcule une date limite égale à maintenant, se croit
+    // expiré et supprime les [ms-code-countdown="hide-on-end"] — c'est-à-dire le
+    // bloc qui contient le bouton. On ne charge donc le compteur que si la vraie
+    // date limite est bien en place.
     function seedCountdown(deadline) {
         var slug = (window.COUNTDOWN_CONFIG || {}).slug || '';
-        if (!slug || !deadline) return;
+        if (!slug || !deadline) return false;
         try {
-            localStorage.setItem('modifiedCountdownDateTimeISO-' + slug, deadline);
+            var key = 'modifiedCountdownDateTimeISO-' + slug;
+            localStorage.setItem(key, deadline);
+            return localStorage.getItem(key) === deadline;
         } catch (e) {
             console.warn(PREFIX, 'localStorage unavailable:', e.message);
+            return false;
         }
     }
 
-    function bindCheckout(btn, who) {
+    function bindCheckout(btn, who, windowDays) {
         var config = window.STRIPE_CHECKOUT_CONFIG || {};
         var redirecting = false;
 
@@ -247,7 +309,7 @@
             }).then(function(resp) {
                 if (resp.status === 403) {
                     // L'éligibilité a changé entre l'affichage et le clic.
-                    showExpired();
+                    showScreen(expiredScreen(windowDays), 'Offer no longer available');
                     return null;
                 }
                 return resp.json();
@@ -266,12 +328,17 @@
     }
 
     function init() {
-        var msBtn = document.getElementById(BTN_MS_ID);
         var stripeBtn = document.getElementById(BTN_STRIPE_ID);
 
-        // Le bouton Memberstack natif ouvre un checkout entièrement côté client :
-        // il ne doit jamais être cliquable sur une page gatée.
-        if (msBtn) msBtn.style.display = 'none';
+        // Les deux autres CTA du bloc ouvrent des parcours que le serveur ne
+        // contrôle pas : le checkout Memberstack natif pour les membres connectés,
+        // et le basculement vers le formulaire d'inscription pour les déconnectés.
+        // Ce dernier est justement celui que Memberstack montre à la cible du
+        // winback : le laisser visible mettrait un « En profiter » mort en tête.
+        [BTN_NOT_CONNECTED_ID, BTN_MS_ID].forEach(function(id) {
+            var btn = document.getElementById(id);
+            if (btn) btn.style.display = 'none';
+        });
 
         if (!stripeBtn) {
             console.warn(PREFIX, 'Checkout button not found');
@@ -289,55 +356,82 @@
         stripeBtn.style.opacity = '0.6';
         setLabel(stripeBtn, CHECKING_LABEL);
 
-        function activate(who) {
+        var activated = false;
+        function activate(who, windowDays) {
+            // Un seul câblage possible : deux appels poseraient deux écouteurs de
+            // clic, chacun avec son propre verrou anti-double-clic, donc deux
+            // sessions Stripe et deux conversions comptées pour un seul clic.
+            if (activated) return;
+            activated = true;
             setLabel(stripeBtn, initialLabel);
             stripeBtn.style.pointerEvents = '';
             stripeBtn.style.opacity = '';
-            bindCheckout(stripeBtn, who);
+            bindCheckout(stripeBtn, who, windowDays);
         }
 
         var who = identity();
         console.log(PREFIX, 'Identity source:', who.source);
 
         if (who.source === 'none') {
-            console.log(PREFIX, 'No identity');
-            showExpired();
+            console.log(PREFIX, 'No identity, asking for login');
+            showScreen(loginScreen(), 'No identity');
             return;
         }
 
         var query = who.memberId ? 'm=' + encodeURIComponent(who.memberId)
                                  : 'c=' + encodeURIComponent(who.stripeCustomerId);
 
-        fetch(FN_BASE + '/winback-eligibility?' + query, { method: 'GET' })
-            .then(function(resp) { return resp.json(); })
+        var timeout = new Promise(function(_, reject) {
+            setTimeout(function() { reject(new Error('eligibility timeout')); }, ELIGIBILITY_TIMEOUT_MS);
+        });
+
+        var call = fetch(FN_BASE + '/winback-eligibility?' + query, { method: 'GET' })
+            .then(function(resp) { return resp.json(); });
+
+        Promise.race([call, timeout])
             .then(function(data) {
+                var windowDays = (data && data.windowDays) || DEFAULT_WINDOW_DAYS;
+
                 if (data && data.error) {
                     // Panne de l'endpoint : on n'éjecte pas un désabonné légitime.
                     // Le bouton reste actif, create-checkout-session tranchera.
                     console.warn(PREFIX, 'Eligibility check unavailable, deferring to checkout');
                     report('WinbackEligibilityUnavailable', new Error('eligibility endpoint returned error'));
-                    activate(who);
-                    return null;
+                    activate(who, windowDays);
+                    return;
                 }
 
                 if (!data || !data.eligible) {
                     console.log(PREFIX, 'Not eligible');
-                    showExpired();
-                    return null;
+                    showScreen(expiredScreen(windowDays), 'Not eligible');
+                    return;
                 }
 
                 console.log(PREFIX, 'Eligible,', data.daysLeft, 'day(s) left');
-                seedCountdown(data.deadline);
-                activate(who);
+                activate(who, windowDays);
 
-                return loadScript(BASE + '/inscription-offre-speciale/countdown.js')
-                    .then(function() { return loadScript(BASE + '/shared/opacity-reveal.js'); });
+                // Le compteur est un bonus : s'il ne peut pas recevoir la vraie date
+                // limite, on vend l'offre sans lui plutôt que de le laisser conclure
+                // « expirée » et supprimer le bouton qu'on vient d'activer.
+                if (!seedCountdown(data.deadline)) {
+                    console.warn(PREFIX, 'Countdown skipped, deadline could not be stored');
+                    return;
+                }
+
+                // Le chargement du compteur est volontairement HORS de la chaîne
+                // rattrapée par le .catch ci-dessous : un échec CDN ne doit pas être
+                // pris pour une panne d'éligibilité ni rejouer activate().
+                loadScript(BASE + '/inscription-offre-speciale/countdown.js')
+                    .catch(function(err) {
+                        console.warn(PREFIX, 'Countdown script failed to load:', err.message);
+                    });
             })
             .catch(function(err) {
-                // Réseau injoignable : même raisonnement, on laisse le bouton vivre.
+                // Réseau injoignable ou trop lent : même raisonnement, on laisse le
+                // bouton vivre. Le verrou côté serveur, lui, ne bouge pas.
                 console.error(PREFIX, 'Eligibility call failed:', err);
                 report('WinbackEligibilityFailed', err);
-                activate(who);
+                activate(who, DEFAULT_WINDOW_DAYS);
             });
     }
 
