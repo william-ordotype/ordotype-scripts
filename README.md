@@ -1302,7 +1302,10 @@ window.WINBACK_GATE = {{wf reserve-aux-desabonnes}};
    contrôlable côté serveur) et rend `#signup-rempla-stripe-customer` visible
    mais inerte pendant la vérification, donc rien ne peut partir avant le verdict ;
 2. appelle `winback-eligibility` avec le `mem_…` de l'URL, sinon le membre connecté ;
-3. non éligible : `location.replace('/offre-expiree')` ;
+3. non éligible : remplace `.main-wrapper` par l'écran « offre expirée », en
+   gardant la barre de navigation et le footer qui l'encadrent. **Rien à ajouter
+   dans Webflow** : l'écran est construit par le script, comme la modale de
+   `offre-annulation/cancel-reason-modal.js` ;
 4. éligible : écrit la vraie date limite dans la clé localStorage que lit
    `countdown.js`, charge le countdown, et câble le bouton sur
    `create-checkout-session` avec `offer: 'winback-6m'`.

@@ -3,7 +3,8 @@
  *
  * Page « 6 mois offerts » réservée aux personnes désabonnées depuis moins de
  * 31 jours. Chargé par loader.js à la place de countdown.js et de
- * shared/stripe-checkout.js quand window.WINBACK_GATE vaut true.
+ * shared/stripe-checkout.js quand window.WINBACK_GATE vaut true, c'est-à-dire
+ * quand le champ CMS « Réservé aux désabonnés ? » est coché.
  *
  * Le coupon n'est PAS dans la page : le champ CMS Code_promo_ID reste vide et
  * c'est create-checkout-session qui applique l'offre après avoir revérifié
@@ -11,11 +12,17 @@
  * même contourné, il ne donne aucune réduction.
  *
  * Identification : ?m=mem_… porté par le lien du mail winback Brevo
- * ({{contact.EXT_ID}}), sinon le membre connecté. Aucun login n'est requis.
+ * ({{contact.EXT_ID}}), sinon le membre connecté. Aucun login n'est imposé,
+ * envoyer un désabonné dans un OTP 2FA en plein tunnel coûterait la conversion.
+ *
+ * Aucun élément à ajouter dans Webflow : l'écran « offre expirée » est construit
+ * ici, comme la modale de offre-annulation/cancel-reason-modal.js.
  *
  * Required DOM elements (déjà présents sur le gabarit d'offre) :
  * - #signup-rempla-from-decouverte - bouton Memberstack natif, masqué ici
  * - #signup-rempla-stripe-customer - bouton de l'offre
+ *
+ * ES2019 max (parc Chrome 78 / Safari 13, cf. eslint.config.js).
  */
 (function() {
     'use strict';
@@ -24,12 +31,36 @@
     var BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
     var FN_BASE = 'https://checkout.ordotype.fr/.netlify/functions';
     var OFFER_ID = 'winback-6m';
-    var EXPIRED_URL = '/offre-expiree';
     var CHECKING_LABEL = 'Vérification…';
     var REDIRECT_LABEL = 'Patientez…';
+    var OFFERS_URL = '/nos-offres';
 
     var BTN_MS_ID = 'signup-rempla-from-decouverte';
     var BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
+
+    var CSS = [
+        '.ordo-expired{display:flex;align-items:center;justify-content:center;',
+        'min-height:60vh;padding:64px 24px;background:var(--neutral-100,#f7f7fb);}',
+        '.ordo-expired-card{width:100%;max-width:560px;padding:48px 40px;text-align:center;',
+        'background:#fff;border:1px solid var(--gris300,#ecedef);border-radius:16px;',
+        'box-shadow:0 1px 2px rgba(12,14,22,.04),0 12px 32px rgba(12,14,22,.06);}',
+        '.ordo-expired-badge{display:inline-flex;align-items:center;justify-content:center;',
+        'width:56px;height:56px;margin-bottom:24px;border-radius:50%;',
+        'background:var(--primary-50,#f0f3ff);color:var(--primary-500,#3454f6);}',
+        '.ordo-expired-title{margin:0 0 12px;font-size:28px;line-height:1.25;font-weight:600;',
+        'color:var(--base-900,#0c0e16);}',
+        '.ordo-expired-text{margin:0 auto 8px;max-width:44ch;font-size:16px;line-height:1.6;',
+        'color:var(--neutral-500,#47505c);}',
+        '.ordo-expired-actions{display:flex;flex-direction:column;align-items:center;gap:16px;margin-top:32px;}',
+        '.ordo-expired-btn{display:inline-block;padding:14px 28px;border-radius:8px;',
+        'background:var(--primary-500,#3454f6);color:#fff;font-size:16px;font-weight:500;',
+        'text-decoration:none;transition:background .2s ease;}',
+        '.ordo-expired-btn:hover{background:var(--primary-600,#263fd3);color:#fff;}',
+        '.ordo-expired-link{font-size:15px;color:var(--neutral-500,#47505c);text-decoration:underline;}',
+        '.ordo-expired-link:hover{color:var(--primary-500,#3454f6);}',
+        '@media (max-width:479px){.ordo-expired{padding:40px 16px;}',
+        '.ordo-expired-card{padding:36px 24px;}.ordo-expired-title{font-size:24px;}}'
+    ].join('');
 
     function report(name, err) {
         try {
@@ -54,6 +85,98 @@
     function setLabel(btn, text) {
         var el = labelElement(btn);
         if (el) el.textContent = text;
+    }
+
+    function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.appendChild(document.createTextNode(text));
+        return node;
+    }
+
+    function clockIcon() {
+        var NS = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('width', '28');
+        svg.setAttribute('height', '28');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '1.8');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+
+        var circle = document.createElementNS(NS, 'circle');
+        circle.setAttribute('cx', '12');
+        circle.setAttribute('cy', '12');
+        circle.setAttribute('r', '9');
+
+        var hands = document.createElementNS(NS, 'path');
+        hands.setAttribute('d', 'M12 7v5l3 2');
+
+        svg.appendChild(circle);
+        svg.appendChild(hands);
+        return svg;
+    }
+
+    function injectStyle() {
+        if (document.getElementById('ordo-expired-css')) return;
+        var style = document.createElement('style');
+        style.id = 'ordo-expired-css';
+        style.appendChild(document.createTextNode(CSS));
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    function expiredScreen() {
+        var wrap = el('div', 'ordo-expired');
+        var card = el('div', 'ordo-expired-card');
+
+        var badge = el('div', 'ordo-expired-badge');
+        badge.appendChild(clockIcon());
+        card.appendChild(badge);
+
+        card.appendChild(el('h1', 'ordo-expired-title', 'Cette offre n’est plus disponible'));
+        card.appendChild(el('p', 'ordo-expired-text',
+            'Les 6 mois offerts étaient réservés aux médecins ayant résilié leur '
+            + 'abonnement, pendant les 31 jours suivant la fin de leur accès. Ce délai est '
+            + 'passé, ou cette offre a déjà été utilisée sur votre compte.'));
+        card.appendChild(el('p', 'ordo-expired-text',
+            'Vous pouvez reprendre votre abonnement à tout moment, sans engagement.'));
+
+        var actions = el('div', 'ordo-expired-actions');
+        var cta = el('a', 'ordo-expired-btn', 'Voir les offres Ordotype');
+        cta.href = OFFERS_URL;
+        var home = el('a', 'ordo-expired-link', 'Retour à l’accueil');
+        home.href = '/';
+        actions.appendChild(cta);
+        actions.appendChild(home);
+        card.appendChild(actions);
+
+        wrap.appendChild(card);
+        return wrap;
+    }
+
+    // Remplace le contenu de la page, en gardant la barre de navigation et le
+    // footer : ils encadrent .main-wrapper, seul bloc de contenu du gabarit.
+    function showExpired() {
+        injectStyle();
+
+        var connected = document.getElementById('page-wrapper-connected');
+        var notConnected = document.getElementById('page-wrapper-not-connected');
+        var main = connected ? connected.querySelector('.main-wrapper') : null;
+
+        if (main && main.parentNode) {
+            main.parentNode.replaceChild(expiredScreen(), main);
+        } else {
+            // Gabarit modifié : on masque tout et l'écran se suffit à lui-même,
+            // ses deux liens assurant la navigation.
+            if (connected) connected.style.display = 'none';
+            document.body.appendChild(expiredScreen());
+        }
+
+        if (notConnected) notConnected.style.display = 'none';
+        window.scrollTo(0, 0);
+        console.log(PREFIX, 'Offer not available, expired screen shown');
     }
 
     function identity() {
@@ -93,12 +216,6 @@
         }
     }
 
-    function goExpired() {
-        // replace : la page d'offre ne reste pas dans l'historique, donc pas de
-        // boucle quand la personne fait retour.
-        window.location.replace(EXPIRED_URL);
-    }
-
     function bindCheckout(btn, who) {
         var config = window.STRIPE_CHECKOUT_CONFIG || {};
         var redirecting = false;
@@ -130,7 +247,7 @@
             }).then(function(resp) {
                 if (resp.status === 403) {
                     // L'éligibilité a changé entre l'affichage et le clic.
-                    goExpired();
+                    showExpired();
                     return null;
                 }
                 return resp.json();
@@ -164,19 +281,27 @@
 
         // Visible mais inerte pendant la vérification : rien ne peut partir avant
         // le verdict, et la page ne clignote pas.
-        var initialLabel = (labelElement(stripeBtn) || {}).textContent || '';
+        var labelNode = labelElement(stripeBtn);
+        var initialLabel = labelNode ? labelNode.textContent : '';
         stripeBtn.classList.remove('hidden');
         stripeBtn.style.display = 'flex';
         stripeBtn.style.pointerEvents = 'none';
         stripeBtn.style.opacity = '0.6';
         setLabel(stripeBtn, CHECKING_LABEL);
 
+        function activate(who) {
+            setLabel(stripeBtn, initialLabel);
+            stripeBtn.style.pointerEvents = '';
+            stripeBtn.style.opacity = '';
+            bindCheckout(stripeBtn, who);
+        }
+
         var who = identity();
         console.log(PREFIX, 'Identity source:', who.source);
 
         if (who.source === 'none') {
-            console.log(PREFIX, 'No identity, offer not available');
-            goExpired();
+            console.log(PREFIX, 'No identity');
+            showExpired();
             return;
         }
 
@@ -191,19 +316,19 @@
                     // Le bouton reste actif, create-checkout-session tranchera.
                     console.warn(PREFIX, 'Eligibility check unavailable, deferring to checkout');
                     report('WinbackEligibilityUnavailable', new Error('eligibility endpoint returned error'));
-                } else if (!data || !data.eligible) {
-                    console.log(PREFIX, 'Not eligible');
-                    goExpired();
-                    return;
-                } else {
-                    console.log(PREFIX, 'Eligible,', data.daysLeft, 'day(s) left');
-                    seedCountdown(data.deadline);
+                    activate(who);
+                    return null;
                 }
 
-                setLabel(stripeBtn, initialLabel);
-                stripeBtn.style.pointerEvents = '';
-                stripeBtn.style.opacity = '';
-                bindCheckout(stripeBtn, who);
+                if (!data || !data.eligible) {
+                    console.log(PREFIX, 'Not eligible');
+                    showExpired();
+                    return null;
+                }
+
+                console.log(PREFIX, 'Eligible,', data.daysLeft, 'day(s) left');
+                seedCountdown(data.deadline);
+                activate(who);
 
                 return loadScript(BASE + '/inscription-offre-speciale/countdown.js')
                     .then(function() { return loadScript(BASE + '/shared/opacity-reveal.js'); });
@@ -212,10 +337,7 @@
                 // Réseau injoignable : même raisonnement, on laisse le bouton vivre.
                 console.error(PREFIX, 'Eligibility call failed:', err);
                 report('WinbackEligibilityFailed', err);
-                setLabel(stripeBtn, initialLabel);
-                stripeBtn.style.pointerEvents = '';
-                stripeBtn.style.opacity = '';
-                bindCheckout(stripeBtn, who);
+                activate(who);
             });
     }
 
