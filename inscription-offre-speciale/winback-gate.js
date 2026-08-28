@@ -53,7 +53,7 @@
 
     var CSS = [
         '.ordo-expired{display:flex;align-items:center;justify-content:center;',
-        'min-height:60vh;padding:64px 24px;background:var(--neutral-100,#f7f7fb);}',
+        'min-height:60vh;padding:80px 24px;background:var(--neutral-100,#f7f7fb);}',
         '.ordo-expired-card{width:100%;max-width:560px;padding:48px 40px;text-align:center;',
         'background:#fff;border:1px solid var(--gris300,#ecedef);border-radius:16px;',
         'box-shadow:0 1px 2px rgba(12,14,22,.04),0 12px 32px rgba(12,14,22,.06);}',
@@ -72,7 +72,7 @@
         '.ordo-expired-btn:hover{background:var(--primary-600,#263fd3);color:#fff;}',
         '.ordo-expired-link{font-size:15px;color:var(--neutral-500,#47505c);text-decoration:underline;}',
         '.ordo-expired-link:hover{color:var(--primary-500,#3454f6);}',
-        '@media (max-width:479px){.ordo-expired{padding:40px 16px;}',
+        '@media (max-width:479px){.ordo-expired{padding:48px 16px;}',
         '.ordo-expired-card{padding:36px 24px;}.ordo-expired-title{font-size:24px;}}'
     ].join('');
 
@@ -200,8 +200,12 @@
         );
     }
 
-    // Remplace le contenu de la page, en gardant la barre de navigation et le
-    // footer : ils encadrent .main-wrapper, seul bloc de contenu du gabarit.
+    // Vide le contenu de la page, en gardant la barre de navigation et le footer :
+    // ils encadrent .main-wrapper, seul bloc de contenu du gabarit.
+    //
+    // On VIDE .main-wrapper au lieu de le remplacer : il porte lui-même le
+    // padding-top de 4.5rem qui compense la navbar `position: fixed`. Le
+    // remplacer collait l'écran sous la barre de navigation.
     function showScreen(screen, logLine) {
         injectStyle();
 
@@ -209,8 +213,9 @@
         var notConnected = document.getElementById('page-wrapper-not-connected');
         var main = connected ? connected.querySelector('.main-wrapper') : null;
 
-        if (main && main.parentNode) {
-            main.parentNode.replaceChild(screen, main);
+        if (main) {
+            while (main.firstChild) main.removeChild(main.firstChild);
+            main.appendChild(screen);
         } else {
             // Gabarit modifié : on masque les wrappers qu'on trouve et on insère
             // l'écran EN TÊTE de body. En l'ajoutant à la fin il passerait sous une
