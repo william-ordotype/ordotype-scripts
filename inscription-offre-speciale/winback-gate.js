@@ -11,9 +11,21 @@
  * l'éligibilité côté serveur. Ce script ne fait donc que de l'affichage :
  * même contourné, il ne donne aucune réduction.
  *
- * Identification : ?m=mem_… porté par le lien du mail winback Brevo
- * ({{contact.EXT_ID}}), sinon le membre connecté. Aucun login n'est imposé,
- * envoyer un désabonné dans un OTP 2FA en plein tunnel coûterait la conversion.
+ * Identification : la session Memberstack, et rien d'autre. Le lien du mail
+ * winback est une URL nue. On a d'abord conçu l'inverse, avec l'identifiant
+ * membre dans l'URL pour éviter la connexion, mais un lien d'e-mail qui mène à
+ * une page de paiement sans que le médecin ait vu qu'il était sur son compte
+ * ressemble à du phishing. Pour cette audience, la lisibilité vaut mieux que les
+ * points de conversion gagnés en sautant la connexion.
+ *
+ * Un identifiant dans l'URL n'aurait de toute façon rien prouvé : le droit à
+ * l'offre se juge sur la fiche Stripe du client, pas sur un paramètre que
+ * n'importe qui peut écrire.
+ *
+ * Retour après connexion : /membership/login-redirect-rempla?redirect=… écrit la
+ * cible dans localStorage.locat, Memberstack renvoie sur
+ * /membership/successful-login après la connexion ET après la 2FA, et cette page
+ * relit locat pour ramener ici. Chaîne existante, rien à construire.
  *
  * Aucun élément à ajouter dans Webflow : l'écran « offre expirée » est construit
  * ici, comme la modale de offre-annulation/cancel-reason-modal.js.
@@ -47,9 +59,9 @@
     // qu'une session existe. Son nom dit « rempla », son comportement est générique.
     var LOGIN_REDIRECT_URL = '/membership/login-redirect-rempla';
 
-    // Un aller-retour et un seul. Si on revient toujours sans identité (cache
-    // _ms-mem présent mais inexploitable), on s'arrête et on montre l'écran.
-    var LOGIN_BOUNCE_KEY = 'ordo_winback_login_bounce';
+    // Où atterrit le médecin après avoir payé. Il est connecté à ce moment-là,
+    // donc pas de détour : la page de bienvenue directement.
+    var AFTER_PAYMENT_URL = '/membership/prise-en-main';
 
     // Au-delà, on considère que l'appel ne répondra pas. Sans cette borne, une
     // requête qui pend (réseau mobile qui décroche, portail captif) laisse le
@@ -209,46 +221,22 @@
             + encodeURIComponent(window.location.pathname + window.location.search);
     }
 
-    // Sans identifiant, on ne sait RIEN de cette personne : lui annoncer une offre
-    // expirée serait un mensonge une fois sur deux. On lui demande de se connecter,
-    // le gate rejouera avec l'identité de la session.
+    // Tant qu'on ne sait pas qui est là, on ne sait rien : annoncer une offre
+    // expirée serait faux une fois sur deux. On explique pourquoi on demande la
+    // connexion, et le gate rejouera tout seul au retour.
     function loginScreen() {
         return card(
-            'Connectez-vous pour accéder à votre offre',
+            'Connectez-vous pour récupérer votre offre',
             [
-                'Cette offre est réservée aux médecins ayant résilié leur abonnement '
-                    + 'récemment. Connectez-vous pour que nous puissions vérifier votre compte.',
-                'Le lien reçu par e-mail ouvre l’offre directement, sans connexion.'
+                'Ces 6 mois offerts sont réservés à votre compte Ordotype. '
+                    + 'Connectez-vous pour que nous puissions vérifier votre éligibilité.',
+                'Vous reviendrez sur cette page automatiquement après la connexion.'
             ],
             [
                 { label: 'Se connecter', href: loginUrl(), primary: true },
                 { label: 'Voir les offres Ordotype', href: OFFERS_URL }
             ]
         );
-    }
-
-    // Aucun identifiant : plutôt qu'un écran de plus, on passe par la page de
-    // connexion du site, qui ramène ici. Elle interroge le SDK Memberstack, donc
-    // elle récupère une session que notre cache local n'avait pas vue, et dans ce
-    // cas la personne ne voit qu'une redirection.
-    function goLogin() {
-        var bounced;
-        try {
-            bounced = sessionStorage.getItem(LOGIN_BOUNCE_KEY);
-            if (!bounced) sessionStorage.setItem(LOGIN_BOUNCE_KEY, '1');
-        } catch (e) {
-            // Pas de sessionStorage : on ne peut pas garantir l'aller simple.
-            showScreen(loginScreen(), 'No identity, sessionStorage unavailable');
-            return;
-        }
-
-        if (bounced) {
-            showScreen(loginScreen(), 'No identity after login round-trip');
-            return;
-        }
-
-        console.log(PREFIX, 'No identity, bouncing through login');
-        window.location.replace(loginUrl());
     }
 
     // Vide le contenu de la page, en gardant la barre de navigation et le footer :
@@ -284,19 +272,15 @@
         console.log(PREFIX, logLine);
     }
 
-    // La session PRIME sur l'URL. Un lien winback transféré à un confrère déjà
-    // connecté créerait sinon le checkout sur le compte de l'expéditeur : le
-    // confrère saisirait sa carte, et les 6 mois iraient à quelqu'un d'autre.
+    // L'identité vient UNIQUEMENT de la session Memberstack. Un identifiant passé
+    // dans l'URL serait une affirmation, pas une preuve, et n'apporterait rien :
+    // le droit à l'offre se juge sur la fiche Stripe du client, pas sur l'URL.
+    // On préfère le client Stripe quand le cache l'a, ça évite au serveur un appel
+    // à l'API Memberstack pour traduire mem_ en cus_.
     function identity() {
         var ms = window.OrdoMemberstack || {};
-        if (ms.memberId) return { memberId: ms.memberId, source: 'session' };
         if (ms.stripeCustomerId) return { stripeCustomerId: ms.stripeCustomerId, source: 'session' };
-
-        var params = new URLSearchParams(window.location.search);
-        var fromUrl = params.get('m');
-        if (fromUrl && fromUrl.indexOf('mem_') === 0) {
-            return { memberId: fromUrl, source: 'url' };
-        }
+        if (ms.memberId) return { memberId: ms.memberId, source: 'session' };
         return { source: 'none' };
     }
 
@@ -351,7 +335,11 @@
                 stripeCustomerId: who.stripeCustomerId || null,
                 priceId: config.priceId,
                 payment_method_types: config.paymentMethods,
-                successUrl: config.successUrl,
+                // Le gabarit renvoie tout le monde vers /membership/mes-informations.
+                // Pour un médecin qui revient, la page de bienvenue est plus juste
+                // qu'un formulaire de profil, et elle n'a pas besoin d'être connue
+                // du CMS : on la fixe ici, sans toucher aux autres offres.
+                successUrl: window.location.origin + AFTER_PAYMENT_URL,
                 cancelUrl: config.cancelUrl
             };
 
@@ -428,17 +416,15 @@
         var who = identity();
         console.log(PREFIX, 'Identity source:', who.source);
 
+        // Pas de session : on ne redirige pas d'autorité depuis un lien d'e-mail,
+        // on explique pourquoi on demande la connexion. Un écran, un clic.
         if (who.source === 'none') {
-            goLogin();
+            showScreen(loginScreen(), 'Not logged in');
             return;
         }
 
-        // Identité retrouvée : le garde-fou de l'aller-retour est consommé, une
-        // visite ultérieure repartira d'une page blanche.
-        try { sessionStorage.removeItem(LOGIN_BOUNCE_KEY); } catch (e) { /* no-op */ }
-
-        var query = who.memberId ? 'm=' + encodeURIComponent(who.memberId)
-                                 : 'c=' + encodeURIComponent(who.stripeCustomerId);
+        var query = who.stripeCustomerId ? 'c=' + encodeURIComponent(who.stripeCustomerId)
+                                         : 'm=' + encodeURIComponent(who.memberId);
 
         var timeout = new Promise(function(_, reject) {
             setTimeout(function() { reject(new Error('eligibility timeout')); }, ELIGIBILITY_TIMEOUT_MS);
