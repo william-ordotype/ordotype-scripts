@@ -78,8 +78,34 @@
 
     const isPastDueBrique = ms.hasPlan('pln_brique-past-due-os1c808ai');
     const isSepaTemporary = ms.hasPlan('pln_sepa-temporary-lj4w0oky');
+    // Account plans, i.e. the ones a failed payment must be signalled for. Add-ons
+    // (modules, extra storage) are deliberately absent: losing an add-on must not lock
+    // the whole site. Listed explicitly rather than matched on a prefix, because naming
+    // does not separate the two families reliably and the two mistakes are not
+    // symmetrical: a missing entry only means the member is not warned, while a wrong
+    // match locks a paying member out of the product.
+    //
+    // Keep in sync with homepage/member-redirects.js.
+    const ACCOUNT_PLAN_IDS = [
+        'pln_compte-praticien-offre-speciale-500-premiers--893z0o60', // Module Médecine Générale (FR) — compte principal
+        'pln_compte-interne-sy4j0oft', // Compte Interne (FR)
+        'pln_compte-interne-img-nl410oxc', // Compte Interne IMG
+        'pln_compte-praticien-ov4d0oln', // Compte Praticien (remplaçant)
+        'pln_compte-ide-1gq10bkx', // Profession paramédicale
+        'pln_compte-m-decin-hu490oka', // Compte Médecin (archivé, abonnements actifs)
+        'pln_praticien-belgique-2p70qka', // Module Médecine Générale (BE)
+        'pln_praticien-marocain-in470oks', // Praticien marocain (archivé, abonnements actifs)
+        'pln_m-decin-exer-ant-en-mauritanie-j5430ol3', // Médecin en Mauritanie (archivé, abonnements actifs)
+        'pln_module-m-decine-g-n-rale-lu--5yfe0f08', // Module Médecine générale (LU)
+        'pln_module-m-decine-g-n-rale-1-an-cm4c0b2p', // Module Médecine générale - 1 an
+        'pln_modume-m-decine-g-n-rale-9ze80shk', // Module Médecine générale
+        'pln_ordotype-plus-rhumatologie-jzz0k85', // MG & Rhumatologie
+        'pln_ordotype-plus-module-soins-palliatifs-qph60vfs', // MG & Soins palliatifs (archivé, abonnements actifs)
+        'pln_modules-mg-rhumato-et-soins-palliatifs-rc4b0dyw', // Modules MG, Rhumato et Soins palliatifs
+        'pln_modules-m-decine-g-n-rale-soins-palliatifs-et-rhumatologie-rq7q0trl', // Modules MG, Soins palliatifs et Rhumatologie
+    ];
     const hasPastDuePlan = planConnections.some(plan =>
-        plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
+        ACCOUNT_PLAN_IDS.indexOf(plan.planId) !== -1 &&
         plan.status !== 'CANCELED' && plan.status === 'REQUIRES_PAYMENT'
     );
 
