@@ -75,10 +75,10 @@
     // couperait l'accès à toute une cohorte, plusieurs semestres trop tôt.
     // Vérifier chaque entrée AVANT de décommenter quoi que ce soit.
     var SPECIALIZATION_DURATIONS = {
-        // Médecine générale : 8 depuis la réforme de 2026, 6 auparavant.
-        8: ["Médecine générale", "Médecine générale "],
+        // 8 depuis la réforme de 2026, 6 auparavant. Plus aucune spécialité de
+        // cette table ne dure 6 semestres, la clé a donc disparu.
+        8: ["Médecine générale", "Médecine générale ", "Médecine palliative", "Soins palliatifs"],
         // Les durées ci-dessous n'ont pas été revérifiées depuis leur écriture.
-        6: ["Médecine palliative", "Soins palliatifs"],
         10: ["Anatomie pathologique", "Anesthésiologie", "Anesthésie réanimation", "Cardiologie",
             "Gastro-entérologie", "Hématologie", "Hépatologie", "Immunologie", "Infectiologie",
             "Médecine intensive-réanimation", "Médecine interne", "Néonatologie", "Néphrologie", "Oncologie", "Pédiatrie",
