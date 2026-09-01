@@ -75,14 +75,20 @@
     // couperait l'accès à toute une cohorte, plusieurs semestres trop tôt.
     // Vérifier chaque entrée AVANT de décommenter quoi que ce soit.
     var SPECIALIZATION_DURATIONS = {
-        // 8 depuis la réforme de 2026, 6 auparavant. Plus aucune spécialité de
-        // cette table ne dure 6 semestres, la clé a donc disparu.
+        // 4 ans. Le défaut de getRequiredSemester vaut déjà 8, donc tous les autres
+        // DES de 4 ans (médecine d'urgence, dermatologie, gériatrie, neurologie,
+        // rhumatologie, santé publique, biologie médicale, chirurgie orale…) n'ont
+        // pas à figurer ici. La médecine générale y figure quand même : c'est la
+        // population principale du site, et la ligne dit noir sur blanc que la
+        // réforme de 2026 a été prise en compte. Elle valait 6 auparavant.
         8: ["Médecine générale", "Médecine générale ", "Médecine palliative", "Soins palliatifs"],
-        // Les durées ci-dessous n'ont pas été revérifiées depuis leur écriture.
+        // 5 ans. « Psychiatrie » manquait et tombait donc sur le défaut de 8,
+        // soit deux semestres trop tôt (ajoutée le 01/09/2026).
         10: ["Anatomie pathologique", "Anesthésiologie", "Anesthésie réanimation", "Cardiologie",
             "Gastro-entérologie", "Hématologie", "Hépatologie", "Immunologie", "Infectiologie",
             "Médecine intensive-réanimation", "Médecine interne", "Néonatologie", "Néphrologie", "Oncologie", "Pédiatrie",
-            "Pneumologie", "Radiologie", "Radiothérapie"],
+            "Pneumologie", "Psychiatrie", "Radiologie", "Radiothérapie"],
+        // 6 ans.
         12: ["Chirurgie cardiaque", "Chirurgie générale", "Chirurgie gynécologique",
             "Chirurgie maxillo-faciale", "Chirurgie oculaire", "Chirurgie pédiatrique",
             "Chirurgie plastique, reconstructive et esthétique", "Chirurgie thoracique",
