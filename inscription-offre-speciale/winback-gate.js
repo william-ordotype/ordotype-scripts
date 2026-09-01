@@ -66,7 +66,10 @@
     var CHECKING_LABEL = 'Vérification…';
     var REDIRECT_LABEL = 'Patientez…';
     var OFFERS_URL = '/nos-offres';
-    var DEFAULT_WINDOW_DAYS = 31;
+    // Repli, utilisé seulement si la réponse serveur n'annonce pas la fenêtre.
+    // Le serveur fait autorité : cette valeur ne sert qu'à ne pas afficher un
+    // écran vide, et doit suivre le défaut de la fonction d'éligibilité.
+    var DEFAULT_WINDOW_DAYS = 33;
 
     // Page de connexion générique du site : elle prend un ?redirect=, le pose dans
     // `locat` et ramène ici après connexion. Elle revérifie aussi la session via le
