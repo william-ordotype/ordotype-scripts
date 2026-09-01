@@ -63,8 +63,22 @@
         'pln_sau-interne-811d0aht' // SAU partnership interne (free) — same intern lifecycle as above
     ];
 
+    // Durée du cursus en semestres, par spécialité.
+    //
+    // ⚠️ Cette table n'a aujourd'hui AUCUN consommateur vivant : ses deux usages,
+    // dans homepage/member-redirects.js et pathology/member-redirects.js, sont dans
+    // des blocs commentés. L'accès est coupé par le champ auto-déclaré
+    // `semestre = "Internat terminé"`, pas par un compte de semestres.
+    //
+    // Elle reste donc silencieusement fausse tant que personne ne la lit, et c'est
+    // exactement ce qui la rend dangereuse : la réactiver avec une durée périmée
+    // couperait l'accès à toute une cohorte, plusieurs semestres trop tôt.
+    // Vérifier chaque entrée AVANT de décommenter quoi que ce soit.
     var SPECIALIZATION_DURATIONS = {
-        6: ["Médecine générale", "Médecine générale ", "Médecine palliative", "Soins palliatifs"],
+        // Médecine générale : 8 depuis la réforme de 2026, 6 auparavant.
+        8: ["Médecine générale", "Médecine générale "],
+        // Les durées ci-dessous n'ont pas été revérifiées depuis leur écriture.
+        6: ["Médecine palliative", "Soins palliatifs"],
         10: ["Anatomie pathologique", "Anesthésiologie", "Anesthésie réanimation", "Cardiologie",
             "Gastro-entérologie", "Hématologie", "Hépatologie", "Immunologie", "Infectiologie",
             "Médecine intensive-réanimation", "Médecine interne", "Néonatologie", "Néphrologie", "Oncologie", "Pédiatrie",
