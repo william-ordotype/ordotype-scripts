@@ -63,12 +63,32 @@
         'pln_sau-interne-811d0aht' // SAU partnership interne (free) — same intern lifecycle as above
     ];
 
+    // Durée du cursus en semestres, par spécialité.
+    //
+    // ⚠️ Cette table n'a aujourd'hui AUCUN consommateur vivant : ses deux usages,
+    // dans homepage/member-redirects.js et pathology/member-redirects.js, sont dans
+    // des blocs commentés. L'accès est coupé par le champ auto-déclaré
+    // `semestre = "Internat terminé"`, pas par un compte de semestres.
+    //
+    // Elle reste donc silencieusement fausse tant que personne ne la lit, et c'est
+    // exactement ce qui la rend dangereuse : la réactiver avec une durée périmée
+    // couperait l'accès à toute une cohorte, plusieurs semestres trop tôt.
+    // Vérifier chaque entrée AVANT de décommenter quoi que ce soit.
     var SPECIALIZATION_DURATIONS = {
-        6: ["Médecine générale", "Médecine générale ", "Médecine palliative", "Soins palliatifs"],
+        // 4 ans. Le défaut de getRequiredSemester vaut déjà 8, donc tous les autres
+        // DES de 4 ans (médecine d'urgence, dermatologie, gériatrie, neurologie,
+        // rhumatologie, santé publique, biologie médicale, chirurgie orale…) n'ont
+        // pas à figurer ici. La médecine générale y figure quand même : c'est la
+        // population principale du site, et la ligne dit noir sur blanc que la
+        // réforme de 2026 a été prise en compte. Elle valait 6 auparavant.
+        8: ["Médecine générale", "Médecine générale ", "Médecine palliative", "Soins palliatifs"],
+        // 5 ans. « Psychiatrie » manquait et tombait donc sur le défaut de 8,
+        // soit deux semestres trop tôt (ajoutée le 01/09/2026).
         10: ["Anatomie pathologique", "Anesthésiologie", "Anesthésie réanimation", "Cardiologie",
             "Gastro-entérologie", "Hématologie", "Hépatologie", "Immunologie", "Infectiologie",
             "Médecine intensive-réanimation", "Médecine interne", "Néonatologie", "Néphrologie", "Oncologie", "Pédiatrie",
-            "Pneumologie", "Radiologie", "Radiothérapie"],
+            "Pneumologie", "Psychiatrie", "Radiologie", "Radiothérapie"],
+        // 6 ans.
         12: ["Chirurgie cardiaque", "Chirurgie générale", "Chirurgie gynécologique",
             "Chirurgie maxillo-faciale", "Chirurgie oculaire", "Chirurgie pédiatrique",
             "Chirurgie plastique, reconstructive et esthétique", "Chirurgie thoracique",
