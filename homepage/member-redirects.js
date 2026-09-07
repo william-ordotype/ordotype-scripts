@@ -313,10 +313,18 @@
             // deterministically attributed — unlike the click/close tags, which
             // re-derive the id from the live Memberstack global at fire time.
             // One push per pageview where the banner is shown.
-            (window.dataLayer = window.dataLayer || []).push({
-                event: 'sau_signup_banner_view',
-                member_id: member.id
-            });
+            try {
+                (window.dataLayer = window.dataLayer || []).push({
+                    event: 'sau_signup_banner_view',
+                    member_id: member.id
+                });
+            } catch (err) {
+                try {
+                    if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+                        window.OrdoErrorReporter.reportSideEffect('MemberRedirects', err);
+                    }
+                } catch (ignored) {}
+            }
         }
         else if (noPhone) {
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });

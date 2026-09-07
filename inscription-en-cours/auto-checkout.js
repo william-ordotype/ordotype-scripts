@@ -53,13 +53,13 @@
         }
     }
 
-    // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface
-    // son propre témoin. Canal d'erreurs du site s'il est chargé, sinon un
-    // ErrorEvent que le handler global capte.
+    // Ce script est chargé directement par Webflow, sans passer par un loader :
+    // shared/error-reporter.js n'est donc pas garanti présent. On délègue quand
+    // il est là, sinon repli minimal.
     function reportSideEffect(err) {
         try {
-            if (window.OrdoErrorReporter) {
-                window.OrdoErrorReporter.report('AutoCheckout', err);
+            if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+                window.OrdoErrorReporter.reportSideEffect('AutoCheckout', err);
                 return;
             }
             var e = err instanceof Error ? err : new Error(String(err));
@@ -67,14 +67,58 @@
         } catch (ignored) {}
     }
 
-    // La mesure ne doit jamais casser la page : tout push passe par ici.
     function track(payload) {
         try {
+            if (window.OrdoErrorReporter && window.OrdoErrorReporter.track) {
+                window.OrdoErrorReporter.track(payload);
+                return;
+            }
             window.dataLayer = window.dataLayer || [];
             window.dataLayer.push(payload);
         } catch (err) {
             reportSideEffect(err);
         }
+    }
+
+    // Lecture de Memberstack. Reproduit la MÊME normalisation que
+    // shared/memberstack-utils.js (`userId` en repli d'`id`, `email` à plat en
+    // repli d'`auth.email`) : toute divergence ferait partir le webhook
+    // abandon-cart sans identifiant ni e-mail.
+    function readMemberstack() {
+        var ms = window.OrdoMemberstack;
+        if (ms && ms.stripeCustomerId) return ms;
+        try {
+            var raw = localStorage.getItem('_ms-mem');
+            var parsed = raw ? JSON.parse(raw) : {};
+            return {
+                stripeCustomerId: parsed.stripeCustomerId || null,
+                memberId: parsed.id || parsed.userId || null,
+                email: (parsed.auth && parsed.auth.email) || parsed.email || null
+            };
+        } catch (e) {
+            return ms || {};
+        }
+    }
+
+    // Délègue à shared/memberstack-utils.js quand il est là, sinon sonde
+    // localement. Court-circuite si le stockage est inutilisable : la réponse
+    // ne changera pas, inutile de sonder pendant 2 s en navigation privée.
+    async function waitForStripeCustomer(timeoutMs) {
+        if (window.OrdoMemberstack && window.OrdoMemberstack.waitFor) {
+            return window.OrdoMemberstack.waitFor('stripeCustomerId', timeoutMs);
+        }
+        var storageUsable = true;
+        try { localStorage.getItem('_ms-mem'); } catch (e) { storageUsable = false; }
+
+        var ms = readMemberstack();
+        if (ms.stripeCustomerId || !storageUsable) return ms;
+
+        var deadline = Date.now() + timeoutMs;
+        while (!ms.stripeCustomerId && Date.now() < deadline) {
+            await new Promise(function(r) { setTimeout(r, 50); });
+            ms = readMemberstack();
+        }
+        return ms;
     }
 
     // Same signature in every emitter, so the block can be copied between files
@@ -93,33 +137,37 @@
         await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
     }
 
-    // Memberstack data (prefer shared utility, fallback to inline parsing)
-    var ms = window.OrdoMemberstack;
-    if (!ms) {
-        try {
-            var raw = localStorage.getItem('_ms-mem');
-            var parsed = raw ? JSON.parse(raw) : {};
-            ms = { stripeCustomerId: parsed.stripeCustomerId, memberId: parsed.id, email: (parsed.auth && parsed.auth.email) || null };
-        } catch (e) {
-            ms = {};
-        }
-    }
-    const stripeCustomerId = ms.stripeCustomerId;
+    // On arrive ici quelques secondes après la création du compte : le SDK
+    // Memberstack peut n'avoir pas encore écrit `stripeCustomerId` dans
+    // `_ms-mem`. Sans attente, le script abandonnait et l'inscription ne
+    // démarrait jamais.
+    //
+    // ⚠️ Cette page N'EMBARQUE PAS shared/memberstack-utils.js : elle charge
+    // seulement global-utils.js et ce fichier. L'attente ne peut donc pas se
+    // contenter de déléguer, elle doit exister ici aussi — sinon le correctif
+    // ne s'exécute jamais sur la seule page qui en a besoin.
+    const MS_WAIT_TIMEOUT_MS = 2000;
+    var ms = await waitForStripeCustomer(MS_WAIT_TIMEOUT_MS);
+    var stripeCustomerId = ms.stripeCustomerId;
 
     if (!stripeCustomerId) {
-        console.error(PREFIX, 'No Stripe customer ID found');
+        // Après l'attente, l'absence est un vrai échec et non une course :
+        // `no_customer_id` redevient un chiffre exploitable. Le bouton de repli
+        // reste VISIBLE : c'est le seul chemin qu'il reste à l'utilisateur.
+        console.error(PREFIX, 'No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms');
+        reportSideEffect(new Error('No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms'));
         trackCheckoutFailure('no_customer_id');
         return;
     }
 
     console.log(PREFIX, 'Stripe customer found');
 
-    const customerEmail = ms.email;
-    const userId = ms.memberId;
-
-    // Get button and hide it initially
+    // Masqué seulement maintenant : on sait qu'on va prendre la main dessus.
     const btn = document.getElementById('checkoutStripe');
     if (btn) btn.style.display = 'none';
+
+    const customerEmail = ms.email;
+    const userId = ms.memberId;
 
     // Get config from CMS or localStorage fallback
     const config = window.CMS_CHECKOUT_CONFIG || {};

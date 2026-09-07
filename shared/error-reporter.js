@@ -8,6 +8,20 @@
  * Usage:
  *   OrdoErrorReporter.report('StripeCheckout', 'Checkout session creation failed');
  *   OrdoErrorReporter.report('StripeSetup', err);
+ *
+ *   // Un accessoire (mesure, webhook, stash) qui a échoué sans empêcher
+ *   // l'utilisateur d'agir. Passe par report(), donc Discord + Sentry : une
+ *   // panne muette efface son propre témoin.
+ *   OrdoErrorReporter.reportSideEffect('AutoCheckout', err);
+ *
+ *   // Le seul point d'entrée du dataLayer. Ne jette jamais, signale l'échec.
+ *   OrdoErrorReporter.track({ event: 'stripe_signup_click', option: 'rempla' });
+ *
+ * Version: 1.1.0 (2026-09-07)
+ *   1.0.0 — report() vers le webhook Discord.
+ *   1.1.0 — reportSideEffect() et track() partagés, pour que la règle « une
+ *           mesure ne doit jamais casser la page » vive à un seul endroit au
+ *           lieu d'être recopiée dans chaque script.
  */
 (function() {
     'use strict';
@@ -73,6 +87,38 @@
                 }
             } catch (e) {
                 // Never throw from the error reporter itself
+            }
+        },
+
+        /**
+         * Un accessoire a échoué sans empêcher l'utilisateur d'agir.
+         * report() normalise déjà les throws non-Error (`throw 'oops'`,
+         * `throw null`) et couvre Discord + Sentry.
+         */
+        reportSideEffect: function(context, error) {
+            // report() fait DÉJÀ Discord + captureException Sentry. Y ajouter un
+            // ErrorEvent créerait un second ticket Sentry pour la même cause, avec
+            // une empreinte différente. Le repli par ErrorEvent appartient aux
+            // scripts qui n'ont pas ce fichier sur la page, pas à ce fichier.
+            try {
+                window.OrdoErrorReporter.report(context, error);
+            } catch (e) {}
+        },
+
+        /**
+         * Seul point d'entrée du dataLayer. Ne jette jamais.
+         *
+         * ⚠️ Le payload est construit par l'appelant, donc AVANT d'entrer ici :
+         * si un throw dans sa construction peut casser quelque chose (une
+         * redirection, une résiliation, une connexion), c'est à l'appelant de
+         * mettre cette construction dans son propre try.
+         */
+        track: function(payload) {
+            try {
+                window.dataLayer = window.dataLayer || [];
+                window.dataLayer.push(payload);
+            } catch (err) {
+                window.OrdoErrorReporter.reportSideEffect('OrdoTrack', err);
             }
         }
     };

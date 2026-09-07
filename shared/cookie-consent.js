@@ -68,19 +68,49 @@
 
   // Update GTM consent — push directly to dataLayer so we don't depend on
   // window.gtag being defined (it may not be if GA4 Config hasn't loaded yet).
+  // C'est le seul push de ce dépôt qui ait une portée légale : le cookie est
+  // déjà écrit et la bannière va disparaître, donc un échec silencieux
+  // laisserait un consentement enregistré que GTM n'a jamais appliqué.
+  // Toute la fonction est protégée, l'appel à Clarity compris : sinon un throw
+  // de son shim interromprait le gestionnaire avant de masquer la bannière.
+  function reportConsentFailure(err) {
+    try {
+      if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+        window.OrdoErrorReporter.reportSideEffect('CookieConsent', err);
+        return;
+      }
+      var e = err instanceof Error ? err : new Error(String(err));
+      window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+    } catch (ignored) {}
+  }
+
   function updateGtagConsent(consents) {
-    window.dataLayer = window.dataLayer || [];
-    function localGtag() { window.dataLayer.push(arguments); }
-    localGtag('consent', 'update', {
-      'ad_storage': consents.marketing ? 'granted' : 'denied',
-      'ad_user_data': consents.marketing ? 'granted' : 'denied',
-      'ad_personalization': consents.personalization ? 'granted' : 'denied',
-      'analytics_storage': consents.analytics ? 'granted' : 'denied',
-      'functionality_storage': consents.personalization ? 'granted' : 'denied',
-      'personalization_storage': consents.personalization ? 'granted' : 'denied'
-    });
-    if (window.clarity) {
-      window.clarity('consent', consents.analytics);
+    // Forme gtag inchangée : on pousse l'objet `arguments`, pas un tableau.
+    // C'est ce que GTM attend pour un signal de consentement, et ce n'est pas
+    // le moment de changer cette sémantique.
+    try {
+      window.dataLayer = window.dataLayer || [];
+      function localGtag() { window.dataLayer.push(arguments); }
+      localGtag('consent', 'update', {
+        'ad_storage': consents.marketing ? 'granted' : 'denied',
+        'ad_user_data': consents.marketing ? 'granted' : 'denied',
+        'ad_personalization': consents.personalization ? 'granted' : 'denied',
+        'analytics_storage': consents.analytics ? 'granted' : 'denied',
+        'functionality_storage': consents.personalization ? 'granted' : 'denied',
+        'personalization_storage': consents.personalization ? 'granted' : 'denied'
+      });
+    } catch (err) {
+      // Pas de réessai : dataLayer.push exécute les callbacks GTM de façon
+      // synchrone, donc au moment où l'exception remonte le consentement a
+      // DÉJÀ été appliqué — c'est un tag en aval qui a jeté. Repousser le même
+      // signal ferait partir deux fois tous les tags déclenchés dessus.
+      reportConsentFailure(err);
+    }
+
+    try {
+      if (window.clarity) window.clarity('consent', consents.analytics);
+    } catch (err) {
+      reportConsentFailure(err);
     }
   }
 

@@ -18,7 +18,7 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f811999b9f853a3ef5451
  *
- * Version: 1.5.0 (2026-04-24)
+ * Version: 1.6.0 (2026-09-07)
  *   1.0.0 — initial fetch proxy implementation.
  *   1.1.0 — add XMLHttpRequest wrapper (Memberstack/axios uses XHR, fetch
  *           proxy alone never fires on /otp/verify).
@@ -37,6 +37,10 @@
  *               firing abandoned.
  *           (c) bounce filter: skip abandoned when attempt_count=0 AND
  *               time_on_page_sec<3 (pre-form misclicks / back-button).
+ *   1.6.0 — toute la mesure passe par safely() : la construction du payload
+ *           est protégée autant que son envoi, et la promesse rendue à
+ *           Memberstack par le proxy /otp/verify ne peut plus être rejetée
+ *           par une erreur de mesure.
  */
 
 (function () {
@@ -46,6 +50,44 @@
   window.__ordotype2faEventsInstalled = true;
   window.dataLayer = window.dataLayer || [];
 
+  // Ce fichier s'exécute DANS la promesse rendue à Memberstack par le proxy
+  // fetch de /otp/verify. Une exception ici rejetterait cette promesse : la
+  // vérification réussirait côté serveur et l'utilisateur ne serait jamais
+  // connecté. Toute la mesure passe donc par `safely()`, qui enveloppe la
+  // CONSTRUCTION du payload autant que son envoi — envelopper le seul push ne
+  // suffirait pas, l'objet étant construit au point d'appel.
+  function reportSideEffect(err) {
+    try {
+      if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+        window.OrdoErrorReporter.reportSideEffect('2faEvents', err);
+        return;
+      }
+      var e = err instanceof Error ? err : new Error(String(err));
+      window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+    } catch (ignored) {}
+  }
+
+  function safely(fn) {
+    try {
+      fn();
+    } catch (err) {
+      reportSideEffect(err);
+    }
+  }
+
+  function track(payload) {
+    try {
+      if (window.OrdoErrorReporter && window.OrdoErrorReporter.track) {
+        window.OrdoErrorReporter.track(payload);
+        return;
+      }
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
+    } catch (err) {
+      reportSideEffect(err);
+    }
+  }
+
   // On /membership/connexion-2fa, _ms-mem isn't populated yet (auth not
   // complete), but ms_member_id IS set in localStorage just before the 2FA
   // challenge renders. Use it to attribute events to the member.
@@ -54,19 +96,24 @@
 
   // Update user_id for this session (gtag pattern, works before/after gtag.js).
   if (memberIdOnPage) {
-    (function() {
-      function _gtag() { window.dataLayer.push(arguments); }
+    safely(function () {
+      // Forme gtag : on pousse l'objet `arguments`, pas un tableau. GTM ne
+      // reconnaît la commande `set` que sous cette forme, et sans elle
+      // `user_id` n'est jamais posé pour la session.
+      function _gtag() { track(arguments); }
       _gtag('set', { user_id: memberIdOnPage });
-    })();
+    });
   }
 
   // Replaces the former GA4 Admin "Create event" rule that synthesized
   // membership_2fa_view from page_view on /membership/connexion-2fa.
   // member_id populates the {{memberstack - member_id}} DLV so subsequent
   // tag firings on this page get attribution even though _ms-mem is empty.
-  var viewPayload = { event: '2fa_view' };
-  if (memberIdOnPage) viewPayload.member_id = memberIdOnPage;
-  window.dataLayer.push(viewPayload);
+  safely(function () {
+    var viewPayload = { event: '2fa_view' };
+    if (memberIdOnPage) viewPayload.member_id = memberIdOnPage;
+    track(viewPayload);
+  });
 
   // --- Timers ---------------------------------------------------------------
   var pageLoadedAt = Date.now();
@@ -118,33 +165,39 @@
   // would each emit their own correct attempt index.
   function onVerifySuccess(attemptNumber) {
     successFired = true;
-    window.dataLayer.push({
-      event: '2fa_otp_success',
-      attempt_number: attemptNumber,
-      time_on_page_sec: sec(),
-      resent_before_success: resendCount > 0,
+    safely(function () {
+      track({
+        event: '2fa_otp_success',
+        attempt_number: attemptNumber,
+        time_on_page_sec: sec(),
+        resent_before_success: resendCount > 0,
+      });
     });
   }
 
   function onVerifyFailureFromBody(attemptNumber, body) {
-    var reason;
-    if (body && body.code === 'OTP_EXPIRED') reason = 'expired';
-    else if (body && body.code === 'OTP_INVALID') reason = 'invalid';
-    else reason = ttlReason();
-    window.dataLayer.push({
-      event: '2fa_otp_failure',
-      error_reason: reason,
-      attempt_number: attemptNumber,
-      resend_count: resendCount,
+    safely(function () {
+      var reason;
+      if (body && body.code === 'OTP_EXPIRED') reason = 'expired';
+      else if (body && body.code === 'OTP_INVALID') reason = 'invalid';
+      else reason = ttlReason();
+      track({
+        event: '2fa_otp_failure',
+        error_reason: reason,
+        attempt_number: attemptNumber,
+        resend_count: resendCount,
+      });
     });
   }
 
   function onVerifyFailureNoBody(attemptNumber) {
-    window.dataLayer.push({
-      event: '2fa_otp_failure',
-      error_reason: ttlReason(),
-      attempt_number: attemptNumber,
-      resend_count: resendCount,
+    safely(function () {
+      track({
+        event: '2fa_otp_failure',
+        error_reason: ttlReason(),
+        attempt_number: attemptNumber,
+        resend_count: resendCount,
+      });
     });
   }
 
@@ -180,20 +233,25 @@
     if (!isVerify) return promise;
 
     var attemptNumber = registerVerifyAttempt();
+    // Cette promesse est celle que Memberstack reçoit : elle doit se résoudre
+    // avec `resp` quoi qu'il arrive dans la mesure, sinon la connexion casse
+    // alors que la vérification a réussi côté serveur.
     return promise.then(function (resp) {
-      if (resp && resp.ok) {
-        onVerifySuccess(attemptNumber);
-        return resp;
-      }
-      resp
-        .clone()
-        .json()
-        .then(function (body) {
-          onVerifyFailureFromBody(attemptNumber, body);
-        })
-        .catch(function () {
-          onVerifyFailureNoBody(attemptNumber);
-        });
+      safely(function () {
+        if (resp && resp.ok) {
+          onVerifySuccess(attemptNumber);
+          return;
+        }
+        resp
+          .clone()
+          .json()
+          .then(function (body) {
+            onVerifyFailureFromBody(attemptNumber, body);
+          })
+          .catch(function () {
+            onVerifyFailureNoBody(attemptNumber);
+          });
+      });
       return resp;
     });
   };
@@ -284,11 +342,13 @@
     // abandonment of the 2FA challenge.
     if (attemptCount === 0 && sec() < 3) return;
     abandonFired = true;
-    window.dataLayer.push({
-      event: '2fa_abandoned',
-      time_on_page_sec: sec(),
-      attempt_number: attemptCount,
-      resend_count: resendCount,
+    safely(function () {
+      track({
+        event: '2fa_abandoned',
+        time_on_page_sec: sec(),
+        attempt_number: attemptCount,
+        resend_count: resendCount,
+      });
     });
   }
   window.addEventListener('pagehide', pushAbandonedOnce);

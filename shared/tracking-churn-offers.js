@@ -37,11 +37,14 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f8106ab1cd5a29bee81b2
  *
- * Version: 1.1.0 (2026-04-23)
+ * Version: 1.2.0 (2026-09-07)
  *   1.0.0 — initial implementation.
  *   1.1.0 — delay churn_offer_shown until OrdoMemberstack populates (up to
  *           2s poll) so `plan` is attributed correctly on the impression
  *           event — loader.js races tracking-churn-offers.js injection.
+ *   1.2.0 — push() enveloppe la construction du payload : appelé depuis les
+ *           écouteurs submit des formulaires, il ne doit jamais empêcher
+ *           une résiliation.
  */
 (function () {
   'use strict';
@@ -83,19 +86,35 @@
     return offers;
   }
 
+  // Appelée depuis les écouteurs `submit` des formulaires de résiliation et de
+  // rétention. Rien ici ne doit empêcher un membre de résilier : la
+  // CONSTRUCTION du payload est dans le try, pas seulement l'envoi.
   function push(eventName, extra) {
-    var info = memberInfo();
-    var payload = {
-      event: eventName,
-      member_id: info.member_id,
-      plan: info.plan,
-      page_location: window.location.href,
-    };
-    if (extra) {
-      for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) payload[k] = extra[k];
+    try {
+      var info = memberInfo();
+      var payload = {
+        event: eventName,
+        member_id: info.member_id,
+        plan: info.plan,
+        page_location: window.location.href,
+      };
+      if (extra) {
+        for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) payload[k] = extra[k];
+      }
+      if (window.OrdoErrorReporter && window.OrdoErrorReporter.track) {
+        window.OrdoErrorReporter.track(payload);
+      } else {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push(payload);
+      }
+      console.log(PREFIX, eventName, payload);
+    } catch (err) {
+      try {
+        if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+          window.OrdoErrorReporter.reportSideEffect('ChurnTracking', err);
+        }
+      } catch (ignored) {}
     }
-    window.dataLayer.push(payload);
-    console.log(PREFIX, eventName, payload);
   }
 
   // ---------- Wait for OrdoMemberstack -----------------------------------
