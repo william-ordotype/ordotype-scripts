@@ -31,12 +31,18 @@
         window.OrdoErrorReporter.track(payload);
         return;
       }
-            track(payload);
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
     } catch (err) {
+      // Signaler même sans le reporter : une mesure qui échoue en silence
+      // efface la preuve qu'il s'est passé quelque chose.
       try {
         if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
           window.OrdoErrorReporter.reportSideEffect('PricingEvents', err);
+          return;
         }
+        var e = err instanceof Error ? err : new Error(String(err));
+        window.dispatchEvent(new ErrorEvent('error', { message: 'PricingEvents: ' + e.message, error: e }));
       } catch (ignored) {}
     }
   }

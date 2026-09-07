@@ -97,7 +97,11 @@
   // Update user_id for this session (gtag pattern, works before/after gtag.js).
   if (memberIdOnPage) {
     safely(function () {
-      track(['set', { user_id: memberIdOnPage }]);
+      // Forme gtag : on pousse l'objet `arguments`, pas un tableau. GTM ne
+      // reconnaît la commande `set` que sous cette forme, et sans elle
+      // `user_id` n'est jamais posé pour la session.
+      function _gtag() { track(arguments); }
+      _gtag('set', { user_id: memberIdOnPage });
     });
   }
 

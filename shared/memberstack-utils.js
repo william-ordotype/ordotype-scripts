@@ -194,28 +194,48 @@
     // `localStorageUsable` évite de sonder 40 fois une lecture qui ne peut que
     // échouer (navigation privée, stockage bloqué) : la réponse ne changera pas.
 
-    var localStorageUsable = true;
-    try {
-        localStorage.getItem('_ms-mem');
-    } catch (e) {
-        localStorageUsable = false;
-    }
+    // Dérivé de la lecture déjà faite plus haut : safeGetItem() renvoie null et
+    // journalise quand le stockage est inaccessible, inutile de re-sonder.
+    var localStorageUsable = safeGetItem('_ms-mem') !== null || (function() {
+        try { localStorage.getItem('_ms-mem'); return true; } catch (e) { return false; }
+    })();
 
+    // FUSION, pas remplacement. Le SDK Memberstack réécrit `_ms-mem` plusieurs
+    // fois par session, y compris des instantanés partiels : écraser
+    // inconditionnellement effacerait un `stripeCustomerId` déjà valide sous les
+    // pieds d'un consommateur qui l'avait lu. On ne remplace donc que par une
+    // valeur non vide, et on garnit les tableaux/objets EN PLACE pour ne pas
+    // périmer les références que d'autres modules ont aliasées au chargement.
     function applyMember(parsed) {
         member = parsed;
-        planConnections = Array.isArray(member.planConnections) ? member.planConnections : [];
-        customFields = member.customFields || {};
-        metaData = member.metaData || {};
-
         var api = window.OrdoMemberstack;
         if (!api) return;
+
         api.member = member;
-        api.stripeCustomerId = member.stripeCustomerId || null;
-        api.memberId = member.id || member.userId || null;
-        api.email = (member.auth && member.auth.email) || member.email || null;
-        api.planConnections = planConnections;
-        api.customFields = customFields;
-        api.metaData = metaData;
+        if (member.stripeCustomerId) api.stripeCustomerId = member.stripeCustomerId;
+        var id = member.id || member.userId;
+        if (id) api.memberId = id;
+        var mail = (member.auth && member.auth.email) || member.email;
+        if (mail) api.email = mail;
+
+        if (Array.isArray(member.planConnections)) {
+            planConnections.length = 0;
+            Array.prototype.push.apply(planConnections, member.planConnections);
+        }
+        if (member.customFields) {
+            for (var k in member.customFields) {
+                if (Object.prototype.hasOwnProperty.call(member.customFields, k)) {
+                    customFields[k] = member.customFields[k];
+                }
+            }
+        }
+        if (member.metaData) {
+            for (var m in member.metaData) {
+                if (Object.prototype.hasOwnProperty.call(member.metaData, m)) {
+                    metaData[m] = member.metaData[m];
+                }
+            }
+        }
     }
 
     /**
@@ -249,7 +269,7 @@
         // Rien ne peut changer si on ne peut pas relire le stockage.
         if (!localStorageUsable) return Promise.resolve(api);
 
-        var deadline = Date.now() + (timeoutMs || WAIT_TIMEOUT_MS);
+        var deadline = Date.now() + (typeof timeoutMs === 'number' ? timeoutMs : WAIT_TIMEOUT_MS);
         return new Promise(function(resolve) {
             var timer = setInterval(function() {
                 var cur = refresh();

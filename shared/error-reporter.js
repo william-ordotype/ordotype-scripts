@@ -10,8 +10,8 @@
  *   OrdoErrorReporter.report('StripeSetup', err);
  *
  *   // Un accessoire (mesure, webhook, stash) qui a échoué sans empêcher
- *   // l'utilisateur d'agir. Part vers Discord ET vers le handler global, donc
- *   // Sentry, parce qu'une panne muette efface son propre témoin.
+ *   // l'utilisateur d'agir. Passe par report(), donc Discord + Sentry : une
+ *   // panne muette efface son propre témoin.
  *   OrdoErrorReporter.reportSideEffect('AutoCheckout', err);
  *
  *   // Le seul point d'entrée du dataLayer. Ne jette jamais, signale l'échec.
@@ -92,28 +92,16 @@
 
         /**
          * Un accessoire a échoué sans empêcher l'utilisateur d'agir.
-         * Part vers Discord (report) ET vers le handler global d'erreurs de la
-         * page, seul chemin par lequel Sentry voit une erreur front ici.
-         * Normalise les throws non-Error : `throw 'oops'` ou `throw null`
-         * arriveraient sinon avec un message vide et sans pile.
+         * report() normalise déjà les throws non-Error (`throw 'oops'`,
+         * `throw null`) et couvre Discord + Sentry.
          */
         reportSideEffect: function(context, error) {
+            // report() fait DÉJÀ Discord + captureException Sentry. Y ajouter un
+            // ErrorEvent créerait un second ticket Sentry pour la même cause, avec
+            // une empreinte différente. Le repli par ErrorEvent appartient aux
+            // scripts qui n'ont pas ce fichier sur la page, pas à ce fichier.
             try {
                 window.OrdoErrorReporter.report(context, error);
-            } catch (e) {}
-            try {
-                var err;
-                if (error instanceof Error) {
-                    err = error;
-                } else if (typeof error === 'string') {
-                    err = new Error(error);
-                } else {
-                    err = new Error((error && error.message) || String(error));
-                }
-                window.dispatchEvent(new ErrorEvent('error', {
-                    message: context + ': ' + err.message,
-                    error: err
-                }));
             } catch (e) {}
         },
 

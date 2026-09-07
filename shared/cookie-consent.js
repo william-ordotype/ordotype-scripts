@@ -71,9 +71,8 @@
   // C'est le seul push de ce dépôt qui ait une portée légale : le cookie est
   // déjà écrit et la bannière va disparaître, donc un échec silencieux
   // laisserait un consentement enregistré que GTM n'a jamais appliqué.
-  // Toute la fonction est protégée (l'appel à Clarity aussi, sinon un throw
-  // de son shim interromprait le gestionnaire avant de masquer la bannière),
-  // et un échec du push déclenche UN réessai au tick suivant.
+  // Toute la fonction est protégée, l'appel à Clarity compris : sinon un throw
+  // de son shim interromprait le gestionnaire avant de masquer la bannière.
   function reportConsentFailure(err) {
     try {
       if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
@@ -85,7 +84,7 @@
     } catch (ignored) {}
   }
 
-  function updateGtagConsent(consents, isRetry) {
+  function updateGtagConsent(consents) {
     // Forme gtag inchangée : on pousse l'objet `arguments`, pas un tableau.
     // C'est ce que GTM attend pour un signal de consentement, et ce n'est pas
     // le moment de changer cette sémantique.
@@ -101,11 +100,11 @@
         'personalization_storage': consents.personalization ? 'granted' : 'denied'
       });
     } catch (err) {
+      // Pas de réessai : dataLayer.push exécute les callbacks GTM de façon
+      // synchrone, donc au moment où l'exception remonte le consentement a
+      // DÉJÀ été appliqué — c'est un tag en aval qui a jeté. Repousser le même
+      // signal ferait partir deux fois tous les tags déclenchés dessus.
       reportConsentFailure(err);
-      if (!isRetry) {
-        setTimeout(function() { updateGtagConsent(consents, true); }, 0);
-        return;
-      }
     }
 
     try {

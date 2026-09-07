@@ -509,8 +509,26 @@ Use `OrdoMemberstack.waitFor(field, timeoutMs)` rather than re-reading
 localStorage by hand — a hand-rolled read loses the normalization
 (`userId` as a fallback for `id`, a flat `email` for `auth.email`) and would
 send the abandon-cart webhook without an identity. `refresh()` re-reads on
-demand. Both short-circuit when localStorage is unusable, so a private window
-fails in microseconds instead of polling for the whole timeout.
+demand and **merges**: it never blanks a field that already had a value, since
+the SDK writes partial snapshots. Both short-circuit when localStorage is
+unusable, so a private window fails in microseconds instead of polling.
+
+⚠️ `/inscription-en-cours/*` does **not** load `shared/memberstack-utils.js` —
+only `global-utils.js` and `auto-checkout.js`. That script therefore carries its
+own copy of the wait, with the same normalization. Delegating alone would have
+meant the wait never running on the one page that needs it.
+
+### Tests
+
+```bash
+node test/smoke-tracking.js            # un événement atteint-il vraiment dataLayer ?
+node test/no-naked-datalayer-push.js   # aucun push hors try/catch
+```
+
+`smoke-tracking.js` runs each emitter twice, with and without
+`window.OrdoErrorReporter`, and asserts an event actually lands. `node --check`
+is not enough: it happily accepted a `track()` that called itself, so five
+files pushed nothing at all while staying valid JavaScript.
 
 ---
 

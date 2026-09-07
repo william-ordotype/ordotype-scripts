@@ -80,10 +80,11 @@
         }
     }
 
-    // Repli quand shared/memberstack-utils.js n'est pas sur la page. Reproduit
-    // la MÊME normalisation que lui : toute divergence ici ferait partir le
-    // webhook abandon-cart sans identifiant ni e-mail.
-    function readMemberstackFallback() {
+    // Lecture de Memberstack. Reproduit la MÊME normalisation que
+    // shared/memberstack-utils.js (`userId` en repli d'`id`, `email` à plat en
+    // repli d'`auth.email`) : toute divergence ferait partir le webhook
+    // abandon-cart sans identifiant ni e-mail.
+    function readMemberstack() {
         var ms = window.OrdoMemberstack;
         if (ms && ms.stripeCustomerId) return ms;
         try {
@@ -97,6 +98,27 @@
         } catch (e) {
             return ms || {};
         }
+    }
+
+    // Délègue à shared/memberstack-utils.js quand il est là, sinon sonde
+    // localement. Court-circuite si le stockage est inutilisable : la réponse
+    // ne changera pas, inutile de sonder pendant 2 s en navigation privée.
+    async function waitForStripeCustomer(timeoutMs) {
+        if (window.OrdoMemberstack && window.OrdoMemberstack.waitFor) {
+            return window.OrdoMemberstack.waitFor('stripeCustomerId', timeoutMs);
+        }
+        var storageUsable = true;
+        try { localStorage.getItem('_ms-mem'); } catch (e) { storageUsable = false; }
+
+        var ms = readMemberstack();
+        if (ms.stripeCustomerId || !storageUsable) return ms;
+
+        var deadline = Date.now() + timeoutMs;
+        while (!ms.stripeCustomerId && Date.now() < deadline) {
+            await new Promise(function(r) { setTimeout(r, 50); });
+            ms = readMemberstack();
+        }
+        return ms;
     }
 
     // Same signature in every emitter, so the block can be copied between files
@@ -115,33 +137,23 @@
         await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
     }
 
-    // Le bouton de repli est masqué AVANT toute attente : sinon il reste
-    // cliquable sans gestionnaire pendant que l'on attend Memberstack, et un
-    // clic ne fait rien.
-    const btn = document.getElementById('checkoutStripe');
-    if (btn) btn.style.display = 'none';
-
     // On arrive ici quelques secondes après la création du compte : le SDK
     // Memberstack peut n'avoir pas encore écrit `stripeCustomerId` dans
     // `_ms-mem`. Sans attente, le script abandonnait et l'inscription ne
-    // démarrait jamais. L'attente vit dans shared/memberstack-utils.js, qui
-    // relit le stockage et applique la normalisation (`userId` en repli d'`id`,
-    // `email` à plat en repli d'`auth.email`) — normalisation qu'une relecture
-    // maison perdrait, et avec elle l'identité dans le webhook abandon-cart.
+    // démarrait jamais.
+    //
+    // ⚠️ Cette page N'EMBARQUE PAS shared/memberstack-utils.js : elle charge
+    // seulement global-utils.js et ce fichier. L'attente ne peut donc pas se
+    // contenter de déléguer, elle doit exister ici aussi — sinon le correctif
+    // ne s'exécute jamais sur la seule page qui en a besoin.
     const MS_WAIT_TIMEOUT_MS = 2000;
-    let ms;
-    if (window.OrdoMemberstack && window.OrdoMemberstack.waitFor) {
-        ms = await window.OrdoMemberstack.waitFor('stripeCustomerId', MS_WAIT_TIMEOUT_MS);
-    } else {
-        // Repli : ce script peut être chargé sans memberstack-utils.js.
-        ms = readMemberstackFallback();
-    }
-
-    const stripeCustomerId = ms.stripeCustomerId;
+    var ms = await waitForStripeCustomer(MS_WAIT_TIMEOUT_MS);
+    var stripeCustomerId = ms.stripeCustomerId;
 
     if (!stripeCustomerId) {
         // Après l'attente, l'absence est un vrai échec et non une course :
-        // `no_customer_id` redevient un chiffre exploitable.
+        // `no_customer_id` redevient un chiffre exploitable. Le bouton de repli
+        // reste VISIBLE : c'est le seul chemin qu'il reste à l'utilisateur.
         console.error(PREFIX, 'No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms');
         reportSideEffect(new Error('No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms'));
         trackCheckoutFailure('no_customer_id');
@@ -149,6 +161,10 @@
     }
 
     console.log(PREFIX, 'Stripe customer found');
+
+    // Masqué seulement maintenant : on sait qu'on va prendre la main dessus.
+    const btn = document.getElementById('checkoutStripe');
+    if (btn) btn.style.display = 'none';
 
     const customerEmail = ms.email;
     const userId = ms.memberId;
