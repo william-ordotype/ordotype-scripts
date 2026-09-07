@@ -15,7 +15,7 @@
  * /nos-offres is public (anonymous visitors expected) — member_id is pushed
  * only when _ms-mem is populated.
  *
- * Related: /Users/williamdebroucker/Documents/Scripts/ordotype-scripts/connexion-2fa/ga4-events.js
+ * Related: connexion-2fa/ga4-events.js
  * Version: 1.1.0 (2026-09-07)
  *   1.1.0 — les pushs passent par OrdoErrorReporter.track().
  */
