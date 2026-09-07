@@ -443,17 +443,48 @@ left on the page (usually behind a fallback button).
 
 Emitted by `pricing/stripe-checkout.js`, `pricing-v2/stripe-checkout.js`,
 `inscription-en-cours/auto-checkout.js`,
-`inscription-non-terminee/comeback-checkout.js`, `shared/stripe-checkout.js`,
-`winback-gate.js` and `inscription-offre-speciale/winback-gate.js`.
+`inscription-non-terminee/comeback-checkout.js`, `shared/stripe-checkout.js`
+and `inscription-offre-speciale/winback-gate.js`.
 
 Each emitter also reports to Sentry through `OrdoErrorReporter` when it is
 loaded on the page; the dataLayer event is what makes the failure *rate*
-readable per page, next to the click. The push always runs **after** the
-fallback UI is restored: `dataLayer.push` runs GTM's tag callbacks
+readable per page, next to the click. On a failure path the push runs **after**
+the fallback UI is restored: `dataLayer.push` runs GTM's tag callbacks
 synchronously, so it must never sit between the user and their fallback button.
 
 `shared/stripe-setup-session.js` (payment-method setup, not checkout) is not
 covered by this event.
+
+### Two invariants for anything added to these files
+
+**1. Never push to `dataLayer` directly — call the file's `track(payload)`.**
+It wraps the push in a `try/catch` and routes any failure to
+`reportSideEffect()`, which uses `OrdoErrorReporter` when present and otherwise
+dispatches an `ErrorEvent` the page's global handler picks up. A measurement
+that fails silently is worse than one that fails loudly: it deletes the evidence
+that anything went wrong.
+
+**2. In a click handler that navigates, the navigation goes in a `finally`.**
+Everything else — tracking, the abandon-cart webhook, the comeback stash — is
+accessory and runs inside the `try`:
+
+```js
+try {
+    notifyAbandonCart();
+    stashCheckoutSessionForComeback();
+    track({ event: 'stripe_signup_click', option, /* … */ });
+} catch (err) {
+    reportSideEffect(err);
+} finally {
+    window.location.href = checkoutUrl;
+}
+```
+
+`track()` alone is not enough: the payload object is built at the **call site**,
+outside the helper's `try`, so a bad reference inside it still throws out of the
+handler. Only the `finally` guarantees the user reaches Stripe. Order the
+accessories from most to least important (webhook, stash, then measurement), and
+keep the push before the navigation so `sendBeacon` has time to flush.
 
 Known limitation: on `/inscription-en-cours`, `no_customer_id` fires as soon as
 `_ms-mem` has no `stripeCustomerId` at DOM-ready. Some of those are the

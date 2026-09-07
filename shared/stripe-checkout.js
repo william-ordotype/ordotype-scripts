@@ -25,16 +25,31 @@ async function initStripeCheckout() {
     const PREFIX = '[StripeCheckout]';
     const config = window.STRIPE_CHECKOUT_CONFIG || {};
 
-    // La mesure ne doit jamais casser la page. Le push du clic se trouve juste
-    // avant la redirection vers Stripe : une erreur dedans empêcherait le
-    // paiement. C'est exactement ce qui a tué le bouton de la page comeback
-    // pendant dix semaines. Tout push passe par ici.
-    const track = (payload) => {
+    // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface
+    // son propre témoin. Canal d'erreurs du site s'il est chargé, sinon un
+    // ErrorEvent que le handler global capte.
+    function reportSideEffect(err) {
+        try {
+            if (window.OrdoErrorReporter) {
+                window.OrdoErrorReporter.report('StripeCheckout', err);
+                return;
+            }
+            var e = err instanceof Error ? err : new Error(String(err));
+            window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+        } catch (ignored) {}
+    }
+
+    // La mesure ne doit jamais casser la page : tout push passe par ici.
+    // Déclaration de fonction (hissée) et non const/arrow, pour rester
+    // utilisable au-dessus de sa définition comme dans les autres émetteurs.
+    function track(payload) {
         try {
             window.dataLayer = window.dataLayer || [];
             window.dataLayer.push(payload);
-        } catch (e) {}
-    };
+        } catch (err) {
+            reportSideEffect(err);
+        }
+    }
 
     // GA4: the checkout session could not be created, so the user never reaches
     // Stripe. Pairs with stripe_signup_click, which only fires once a session
@@ -235,17 +250,22 @@ async function initStripeCheckout() {
             paymentMethods
         };
 
-        notifyAbandonCart(abandonPayload);
-
-        // Push GTM event
-        track({
-            event: 'stripe_signup_click',
-            option,
-            checkoutSessionId: sessionId
-        });
-
-        // Redirect to Stripe Checkout
-        window.location.href = checkoutUrl;
+        // Webhook et mesure sont accessoires : ils s'exécutent sous try, la
+        // redirection part du finally. Le push reste avant la navigation pour
+        // que sendBeacon ait le temps de partir.
+        try {
+            notifyAbandonCart(abandonPayload);
+            track({
+                event: 'stripe_signup_click',
+                option,
+                checkoutSessionId: sessionId
+            });
+        } catch (err) {
+            reportSideEffect(err);
+        } finally {
+            // Redirect to Stripe Checkout
+            window.location.href = checkoutUrl;
+        }
     });
 
     resumeHeldClick(signupBtnStripe);

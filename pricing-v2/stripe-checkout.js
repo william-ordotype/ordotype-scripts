@@ -23,15 +23,28 @@
     return 'other';
   }
 
-  // La mesure ne doit jamais casser la page. Les pushs de ce fichier se trouvent
-  // juste avant la redirection vers Stripe : une erreur dedans empêcherait le
-  // paiement. C'est exactement ce qui a tué le bouton de la page comeback
-  // pendant dix semaines. Tout push passe par ici.
+  // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface son
+  // propre témoin. Canal d'erreurs du site s'il est chargé, sinon un ErrorEvent
+  // que le handler global capte.
+  function reportSideEffect(err) {
+    try {
+      if (window.OrdoErrorReporter) {
+        window.OrdoErrorReporter.report('StripeCheckoutV2', err);
+        return;
+      }
+      var e = err instanceof Error ? err : new Error(String(err));
+      window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+    } catch (ignored) {}
+  }
+
+  // La mesure ne doit jamais casser la page : tout push passe par ici.
   function track(payload) {
     try {
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push(payload);
-    } catch (e) {}
+    } catch (err) {
+      reportSideEffect(err);
+    }
   }
 
   // Same signature in every emitter, so the block can be copied between files
@@ -227,28 +240,37 @@
         isRedirecting = true;
         btn1.innerText = 'Patientez…';
         btn1.disabled = true;
-        stashCheckoutSession('praticien-cb', sessionId1, url1);
-        notifyWebhook({
-          timestamp: new Date().toISOString(),
-          checkoutSessionId: sessionId1,
-          url: url1,
-          stripeCustomerId: stripeCustomerId,
-          memberstackUserId: memberstackUserId,
-          memberstackEmail: memberstackEmail,
-          option: 'praticien',
-          priceId: priceId1,
-          coupon: couponId1,
-          originPage: window.location.href,
-          paymentMethods: paymentMethods
-        });
-        track({
-          event: 'stripe_signup_click',
-          option: 'praticien',
-          priceId: priceId1,
-          coupon: couponId1,
-          checkoutSessionId: sessionId1
-        });
-        window.location.href = url1;
+        // Stash, webhook et mesure sont accessoires : ils s'exécutent sous try,
+        // la redirection part du finally. Un accessoire qui jette ne peut donc
+        // pas laisser l'utilisateur sur un bouton « Patientez… » mort. Les
+        // pushs restent avant la navigation pour que sendBeacon parte.
+        try {
+          stashCheckoutSession('praticien-cb', sessionId1, url1);
+          notifyWebhook({
+            timestamp: new Date().toISOString(),
+            checkoutSessionId: sessionId1,
+            url: url1,
+            stripeCustomerId: stripeCustomerId,
+            memberstackUserId: memberstackUserId,
+            memberstackEmail: memberstackEmail,
+            option: 'praticien',
+            priceId: priceId1,
+            coupon: couponId1,
+            originPage: window.location.href,
+            paymentMethods: paymentMethods
+          });
+          track({
+            event: 'stripe_signup_click',
+            option: 'praticien',
+            priceId: priceId1,
+            coupon: couponId1,
+            checkoutSessionId: sessionId1
+          });
+        } catch (err) {
+          reportSideEffect(err);
+        } finally {
+          window.location.href = url1;
+        }
       });
 
       // Bind button #2
@@ -258,28 +280,35 @@
         isRedirecting = true;
         btn2.innerText = 'Patientez…';
         btn2.disabled = true;
-        stashCheckoutSession('rempla-cb', sessionId2, url2);
-        notifyWebhook({
-          timestamp: new Date().toISOString(),
-          checkoutSessionId: sessionId2,
-          url: url2,
-          stripeCustomerId: stripeCustomerId,
-          memberstackUserId: memberstackUserId,
-          memberstackEmail: memberstackEmail,
-          option: 'rempla',
-          priceId: priceId2,
-          coupon: couponId2,
-          originPage: window.location.href,
-          paymentMethods: paymentMethods
-        });
-        track({
-          event: 'stripe_signup_click',
-          option: 'rempla',
-          priceId: priceId2,
-          coupon: couponId2,
-          checkoutSessionId: sessionId2
-        });
-        window.location.href = url2;
+        // Même contrat que le bouton #1 : accessoires sous try, navigation
+        // dans le finally.
+        try {
+          stashCheckoutSession('rempla-cb', sessionId2, url2);
+          notifyWebhook({
+            timestamp: new Date().toISOString(),
+            checkoutSessionId: sessionId2,
+            url: url2,
+            stripeCustomerId: stripeCustomerId,
+            memberstackUserId: memberstackUserId,
+            memberstackEmail: memberstackEmail,
+            option: 'rempla',
+            priceId: priceId2,
+            coupon: couponId2,
+            originPage: window.location.href,
+            paymentMethods: paymentMethods
+          });
+          track({
+            event: 'stripe_signup_click',
+            option: 'rempla',
+            priceId: priceId2,
+            coupon: couponId2,
+            checkoutSessionId: sessionId2
+          });
+        } catch (err) {
+          reportSideEffect(err);
+        } finally {
+          window.location.href = url2;
+        }
       });
 
       console.log('[StripeCheckoutV2] Buttons bound');
