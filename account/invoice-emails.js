@@ -116,35 +116,87 @@
     if (anchor) anchor.style.display = 'none';
   }
 
+  // Les couleurs viennent des jetons `:root` du système de design, avec un
+  // repli littéral au cas où la feuille ne serait pas encore appliquée.
+  var STYLE_ID = 'ordo-invmail-style';
+  var CSS = [
+    '.ordo-invmail-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
+    '.ordo-invmail-text{flex:1 1 auto}',
+    '.ordo-invmail-help{margin-top:2px;color:var(--base-600,#0c0e1699)}',
+    '.ordo-invmail-sw{position:relative;display:inline-block;width:44px;height:26px;flex:0 0 auto}',
+    '.ordo-invmail-sw input{position:absolute;top:0;left:0;width:100%;height:100%;margin:0;opacity:0;z-index:2;cursor:pointer}',
+    '.ordo-invmail-track{position:absolute;top:0;left:0;right:0;bottom:0;border-radius:999px;background:var(--base-300,#0c0e164d);transition:background .2s ease}',
+    '.ordo-invmail-knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s ease}',
+    '.ordo-invmail-sw input:checked~.ordo-invmail-track{background:var(--primary-500,#3454f6)}',
+    '.ordo-invmail-sw input:checked~.ordo-invmail-knob{transform:translateX(18px)}',
+    '.ordo-invmail-sw input:disabled{cursor:default}',
+    '.ordo-invmail-sw input:disabled~.ordo-invmail-track{opacity:.5}',
+    '.ordo-invmail-sw input:focus-visible~.ordo-invmail-track{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}'
+  ].join('');
+
+  function injectStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
+
   function render(enabled) {
     // Une seconde exécution (embed dupliqué, bundle périmé servi à côté du
-    // bundle épinglé) produirait deux cases portant le même id : les libellés
-    // pointeraient tous sur la première, le code lirait la seconde, et le
-    // membre écrirait l'inverse de ce qu'il voit.
+    // bundle épinglé) produirait deux interrupteurs portant le même id : les
+    // libellés pointeraient tous sur le premier, le code lirait le second, et
+    // le membre écrirait l'inverse de ce qu'il voit.
     if (anchor.firstChild) {
       console.log(PREFIX + ' Already rendered');
       return;
     }
+    injectStyle();
 
     var row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.alignItems = 'flex-start';
+    row.className = 'ordo-invmail-row';
 
-    input = document.createElement('input');
-    input.type = 'checkbox';
-    input.className = 'checkbox';
-    input.id = INPUT_ID;
-    input.checked = Boolean(enabled);
-    input.style.marginRight = '10px';
-    input.style.marginTop = '2px';
+    var text = document.createElement('div');
+    text.className = 'ordo-invmail-text';
 
     var label = document.createElement('label');
     label.setAttribute('for', INPUT_ID);
-    label.style.fontWeight = 'normal';
-    label.textContent = 'Recevoir mes factures par e-mail dès leur émission';
+    label.className = 'text-weight-semibold';
+    label.style.cursor = 'pointer';
+    label.textContent = 'Recevoir mes factures par e-mail';
 
-    row.appendChild(input);
-    row.appendChild(label);
+    var help = document.createElement('div');
+    help.className = 'text-size-small ordo-invmail-help';
+    help.textContent = 'Chaque facture vous sera envoyée automatiquement dès son émission, '
+      + 'sans que vous ayez à venir la chercher dans votre espace.';
+
+    text.appendChild(label);
+    text.appendChild(help);
+
+    // L'interrupteur reste une vraie case à cocher, seulement rendue
+    // invisible : le clavier, les lecteurs d'écran et l'évènement `change`
+    // continuent de fonctionner sans qu'on ait à les réimplémenter.
+    var sw = document.createElement('span');
+    sw.className = 'ordo-invmail-sw';
+
+    input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = INPUT_ID;
+    input.setAttribute('role', 'switch');
+    input.checked = Boolean(enabled);
+    input.setAttribute('aria-checked', enabled ? 'true' : 'false');
+
+    var track = document.createElement('span');
+    track.className = 'ordo-invmail-track';
+    var knob = document.createElement('span');
+    knob.className = 'ordo-invmail-knob';
+
+    sw.appendChild(input);
+    sw.appendChild(track);
+    sw.appendChild(knob);
+
+    row.appendChild(text);
+    row.appendChild(sw);
 
     status = document.createElement('div');
     status.className = 'text-size-small';
@@ -167,7 +219,12 @@
 
     function release() {
       busy = false;
-      if (input) input.disabled = false;
+      if (input) {
+        input.disabled = false;
+        // L'état annoncé aux lecteurs d'écran doit suivre l'état réel, y
+        // compris après un retour en arrière.
+        input.setAttribute('aria-checked', input.checked ? 'true' : 'false');
+      }
     }
 
     request('POST', { enabled: wanted }).then(function(payload) {
