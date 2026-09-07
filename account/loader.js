@@ -58,10 +58,14 @@
                                   // be verified there without the localStorage override
       'www.ordotype.fr': 10
     },
+    // 🔴 Les deux domaines de recette font tourner Memberstack et Stripe en mode
+    // TEST, et l'opt-in est adossé au registre LIVE : le serveur refuse les
+    // membres du mode test plutôt que d'y écrire un identifiant client de test.
+    // Ces hôtes ne peuvent donc PAS éprouver cette fonctionnalité, quel que soit
+    // le pourcentage. La vérification se fait sur www avec l'override, qui
+    // n'expose aucun autre membre.
     'invoice-emails.js': {
-      'sandbox-ordotype.webflow.io': 100,
-      'ordotype.webflow.io': 100,
-      'www.ordotype.fr': 0 // ouvrir après une vérification sur le domaine de recette
+      'www.ordotype.fr': 0
     }
   };
   const HOST = window.location.hostname;
