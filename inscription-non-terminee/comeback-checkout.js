@@ -53,18 +53,27 @@
     return 'other';
   }
 
+  // La mesure ne doit jamais casser la page. Ce fichier a servi dix semaines
+  // avec un push nu placé entre le clic et la redirection : la moindre erreur
+  // dedans (ici une variable hors portée) tuait le bouton, et emportait avec
+  // elle les trois signaux qui auraient permis de le voir. Tout push passe
+  // désormais par ici.
+  function track(payload) {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
+    } catch (e) {}
+  }
+
   // Same signature in every emitter, so the block can be copied between files
   // without silently changing what lands in `failure_reason`.
   function trackCheckoutFailure(reason, option) {
-    try {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        event: 'checkout_failed',
-        checkout_source: 'comeback',
-        failure_reason: reason,
-        option: option || ''
-      });
-    } catch (e) {}
+    track({
+      event: 'checkout_failed',
+      checkout_source: 'comeback',
+      failure_reason: reason,
+      option: option || ''
+    });
   }
 
   // A stashed Stripe Checkout Session URL is good for ~24h. Be a little
@@ -85,8 +94,7 @@
 
     // GA4: user abandoned Stripe Checkout and landed on the comeback page.
     // Pairs with comeback_resume_click (below) to measure recovery rate.
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({ event: 'comeback_view', option: option });
+    track({ event: 'comeback_view', option: option });
 
     // Memberstack data (prefer shared utility, fallback to inline parsing)
     var ms = window.OrdoMemberstack;
@@ -241,8 +249,7 @@
       // canonical "recovery attempt" step. Pushed before navigation so GA4's
       // sendBeacon can flush. (stripe_signup_click below only fires on the
       // fresh-session path, where we have a brand-new session id to report.)
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
+      track({
         event: 'comeback_resume_click',
         option: option,
         reused: !abandonCtx   // true = re-opened abandoned session, false = fresh
@@ -262,8 +269,7 @@
           originPage: window.location.href,
           paymentMethods: abandonCtx.paymentMethods
         });
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
+        track({
           event: 'stripe_signup_click',
           option: abandonCtx.option,
           priceId: abandonCtx.priceId,

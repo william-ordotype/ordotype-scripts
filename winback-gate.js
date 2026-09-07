@@ -90,16 +90,24 @@
         return 'other';
     }
 
-    function trackCheckoutFailure(reason, option) {
+    // La mesure ne doit jamais casser la page. Le push du clic précède l'appel
+    // qui crée la session : une erreur dedans empêcherait le paiement. C'est
+    // exactement ce qui a tué le bouton de la page comeback pendant dix
+    // semaines. Tout push passe par ici.
+    function track(payload) {
         try {
             window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({
-                event: 'checkout_failed',
-                checkout_source: 'winback',
-                failure_reason: reason,
-                option: option || ''
-            });
+            window.dataLayer.push(payload);
         } catch (e) {}
+    }
+
+    function trackCheckoutFailure(reason, option) {
+        track({
+            event: 'checkout_failed',
+            checkout_source: 'winback',
+            failure_reason: reason,
+            option: option || ''
+        });
     }
 
     function report(name, err) {
@@ -330,8 +338,7 @@
                 cancelUrl: config.cancelUrl
             };
 
-            window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({ event: 'stripe_signup_click', option: OFFER_ID });
+            track({ event: 'stripe_signup_click', option: OFFER_ID });
 
             fetch(FN_BASE + '/create-checkout-session', {
                 method: 'POST',

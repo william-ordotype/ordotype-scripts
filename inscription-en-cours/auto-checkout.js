@@ -53,18 +53,26 @@
         }
     }
 
+    // La mesure ne doit jamais casser la page. Le push du clic précède le
+    // webhook abandon-cart, le stash pour la page comeback ET la redirection :
+    // une erreur dedans emporterait les trois. C'est exactement ce qui a tué le
+    // bouton de la page comeback pendant dix semaines. Tout push passe par ici.
+    function track(payload) {
+        try {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push(payload);
+        } catch (e) {}
+    }
+
     // Same signature in every emitter, so the block can be copied between files
     // without silently changing what lands in `failure_reason`.
     function trackCheckoutFailure(reason, option) {
-        try {
-            window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({
-                event: 'checkout_failed',
-                checkout_source: 'inscription-en-cours',
-                failure_reason: reason,
-                option: option || resolveOption()
-            });
-        } catch (e) {}
+        track({
+            event: 'checkout_failed',
+            checkout_source: 'inscription-en-cours',
+            failure_reason: reason,
+            option: option || resolveOption()
+        });
     }
 
     // Wait for DOM if needed
@@ -231,8 +239,7 @@
 
     // Push GTM event and send abandon cart before redirect.
     // Push goes first so GA4's sendBeacon can flush before navigation.
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({
+    track({
         event: 'stripe_signup_click',
         option,
         priceId: resolvedPriceId,

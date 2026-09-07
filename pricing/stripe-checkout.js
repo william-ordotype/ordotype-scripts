@@ -22,18 +22,26 @@
     return 'other';
   }
 
+  // La mesure ne doit jamais casser la page. Les pushs de ce fichier se trouvent
+  // juste avant la redirection vers Stripe : une erreur dedans empêcherait le
+  // paiement. C'est exactement ce qui a tué le bouton de la page comeback
+  // pendant dix semaines. Tout push passe par ici.
+  function track(payload) {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
+    } catch (e) {}
+  }
+
   // Same signature in every emitter, so the block can be copied between files
   // without silently changing what lands in `failure_reason`.
   function trackCheckoutFailure(reason, option) {
-    try {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        event: 'checkout_failed',
-        checkout_source: 'pricing',
-        failure_reason: reason,
-        option: option || ''
-      });
-    } catch (e) {}
+    track({
+      event: 'checkout_failed',
+      checkout_source: 'pricing',
+      failure_reason: reason,
+      option: option || ''
+    });
   }
 
   function init() {
@@ -237,8 +245,7 @@
           originPage: window.location.href,
           paymentMethods: paymentMethods
         });
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
+        track({
           event: 'stripe_signup_click',
           option: 'praticien',
           priceId: priceId1,
@@ -269,8 +276,7 @@
           originPage: window.location.href,
           paymentMethods: paymentMethods
         });
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
+        track({
           event: 'stripe_signup_click',
           option: 'rempla',
           priceId: priceId2,

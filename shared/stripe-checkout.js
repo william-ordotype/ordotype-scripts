@@ -25,6 +25,17 @@ async function initStripeCheckout() {
     const PREFIX = '[StripeCheckout]';
     const config = window.STRIPE_CHECKOUT_CONFIG || {};
 
+    // La mesure ne doit jamais casser la page. Le push du clic se trouve juste
+    // avant la redirection vers Stripe : une erreur dedans empêcherait le
+    // paiement. C'est exactement ce qui a tué le bouton de la page comeback
+    // pendant dix semaines. Tout push passe par ici.
+    const track = (payload) => {
+        try {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push(payload);
+        } catch (e) {}
+    };
+
     // GA4: the checkout session could not be created, so the user never reaches
     // Stripe. Pairs with stripe_signup_click, which only fires once a session
     // exists — without this event a broken checkout leaves no trace in analytics.
@@ -47,15 +58,12 @@ async function initStripeCheckout() {
     // defaults to the same value stripe_signup_click reports, so the failure
     // and the click land on the same GA4 dimension value.
     const trackCheckoutFailure = (reason, option) => {
-        try {
-            window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({
-                event: 'checkout_failed',
-                checkout_source: config.checkoutSource || 'shared',
-                failure_reason: reason,
-                option: option || config.option || 'default'
-            });
-        } catch (e) {}
+        track({
+            event: 'checkout_failed',
+            checkout_source: config.checkoutSource || 'shared',
+            failure_reason: reason,
+            option: option || config.option || 'default'
+        });
     };
 
     // Helper to replace ${window.location.origin} placeholder with actual origin
@@ -230,8 +238,7 @@ async function initStripeCheckout() {
         notifyAbandonCart(abandonPayload);
 
         // Push GTM event
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
+        track({
             event: 'stripe_signup_click',
             option,
             checkoutSessionId: sessionId
