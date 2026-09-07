@@ -25,6 +25,32 @@ async function initStripeCheckout() {
     const PREFIX = '[StripeCheckout]';
     const config = window.STRIPE_CHECKOUT_CONFIG || {};
 
+    // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface
+    // son propre témoin. Canal d'erreurs du site s'il est chargé, sinon un
+    // ErrorEvent que le handler global capte.
+    function reportSideEffect(err) {
+        try {
+            if (window.OrdoErrorReporter) {
+                window.OrdoErrorReporter.report('StripeCheckout', err);
+                return;
+            }
+            var e = err instanceof Error ? err : new Error(String(err));
+            window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+        } catch (ignored) {}
+    }
+
+    // La mesure ne doit jamais casser la page : tout push passe par ici.
+    // Déclaration de fonction (hissée) et non const/arrow, pour rester
+    // utilisable au-dessus de sa définition comme dans les autres émetteurs.
+    function track(payload) {
+        try {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push(payload);
+        } catch (err) {
+            reportSideEffect(err);
+        }
+    }
+
     // GA4: the checkout session could not be created, so the user never reaches
     // Stripe. Pairs with stripe_signup_click, which only fires once a session
     // exists — without this event a broken checkout leaves no trace in analytics.
@@ -47,15 +73,12 @@ async function initStripeCheckout() {
     // defaults to the same value stripe_signup_click reports, so the failure
     // and the click land on the same GA4 dimension value.
     const trackCheckoutFailure = (reason, option) => {
-        try {
-            window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({
-                event: 'checkout_failed',
-                checkout_source: config.checkoutSource || 'shared',
-                failure_reason: reason,
-                option: option || config.option || 'default'
-            });
-        } catch (e) {}
+        track({
+            event: 'checkout_failed',
+            checkout_source: config.checkoutSource || 'shared',
+            failure_reason: reason,
+            option: option || config.option || 'default'
+        });
     };
 
     // Helper to replace ${window.location.origin} placeholder with actual origin
@@ -227,18 +250,22 @@ async function initStripeCheckout() {
             paymentMethods
         };
 
-        notifyAbandonCart(abandonPayload);
-
-        // Push GTM event
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
-            event: 'stripe_signup_click',
-            option,
-            checkoutSessionId: sessionId
-        });
-
-        // Redirect to Stripe Checkout
-        window.location.href = checkoutUrl;
+        // Webhook et mesure sont accessoires : ils s'exécutent sous try, la
+        // redirection part du finally. Le push reste avant la navigation pour
+        // que sendBeacon ait le temps de partir.
+        try {
+            notifyAbandonCart(abandonPayload);
+            track({
+                event: 'stripe_signup_click',
+                option,
+                checkoutSessionId: sessionId
+            });
+        } catch (err) {
+            reportSideEffect(err);
+        } finally {
+            // Redirect to Stripe Checkout
+            window.location.href = checkoutUrl;
+        }
     });
 
     resumeHeldClick(signupBtnStripe);

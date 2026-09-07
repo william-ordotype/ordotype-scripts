@@ -53,18 +53,39 @@
         }
     }
 
+    // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface
+    // son propre témoin. Canal d'erreurs du site s'il est chargé, sinon un
+    // ErrorEvent que le handler global capte.
+    function reportSideEffect(err) {
+        try {
+            if (window.OrdoErrorReporter) {
+                window.OrdoErrorReporter.report('AutoCheckout', err);
+                return;
+            }
+            var e = err instanceof Error ? err : new Error(String(err));
+            window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+        } catch (ignored) {}
+    }
+
+    // La mesure ne doit jamais casser la page : tout push passe par ici.
+    function track(payload) {
+        try {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push(payload);
+        } catch (err) {
+            reportSideEffect(err);
+        }
+    }
+
     // Same signature in every emitter, so the block can be copied between files
     // without silently changing what lands in `failure_reason`.
     function trackCheckoutFailure(reason, option) {
-        try {
-            window.dataLayer = window.dataLayer || [];
-            window.dataLayer.push({
-                event: 'checkout_failed',
-                checkout_source: 'inscription-en-cours',
-                failure_reason: reason,
-                option: option || resolveOption()
-            });
-        } catch (e) {}
+        track({
+            event: 'checkout_failed',
+            checkout_source: 'inscription-en-cours',
+            failure_reason: reason,
+            option: option || resolveOption()
+        });
     }
 
     // Wait for DOM if needed
@@ -229,19 +250,26 @@
         }
     }
 
-    // Push GTM event and send abandon cart before redirect.
-    // Push goes first so GA4's sendBeacon can flush before navigation.
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({
-        event: 'stripe_signup_click',
-        option,
-        priceId: resolvedPriceId,
-        coupon: resolvedCouponId,
-        checkoutSessionId: sessionId
-    });
-    notifyAbandonCart();
-    stashCheckoutSessionForComeback();
-    window.location.href = checkoutUrl;
+    // Webhook et stash d'abord, mesure ensuite : la mesure est la moins
+    // critique des trois, elle passe donc en dernier. Le push reste malgré tout
+    // avant la navigation, sinon sendBeacon n'aurait pas le temps de partir.
+    // Le tout est accessoire : la redirection part du finally, donc aucun de
+    // ces trois appels ne peut retenir l'utilisateur sur la page.
+    try {
+        notifyAbandonCart();
+        stashCheckoutSessionForComeback();
+        track({
+            event: 'stripe_signup_click',
+            option,
+            priceId: resolvedPriceId,
+            coupon: resolvedCouponId,
+            checkoutSessionId: sessionId
+        });
+    } catch (err) {
+        reportSideEffect(err);
+    } finally {
+        window.location.href = checkoutUrl;
+    }
 
     // Show button after delay as fallback if redirect doesn't work
     setTimeout(() => {

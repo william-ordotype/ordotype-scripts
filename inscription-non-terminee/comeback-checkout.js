@@ -53,18 +53,39 @@
     return 'other';
   }
 
+  // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface son
+  // propre témoin. Canal d'erreurs du site s'il est chargé, sinon un ErrorEvent
+  // que le handler global capte.
+  function reportSideEffect(err) {
+    try {
+      if (window.OrdoErrorReporter) {
+        window.OrdoErrorReporter.report('ComebackCheckout', err);
+        return;
+      }
+      var e = err instanceof Error ? err : new Error(String(err));
+      window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+    } catch (ignored) {}
+  }
+
+  // La mesure ne doit jamais casser la page : tout push passe par ici.
+  function track(payload) {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
+    } catch (err) {
+      reportSideEffect(err);
+    }
+  }
+
   // Same signature in every emitter, so the block can be copied between files
   // without silently changing what lands in `failure_reason`.
   function trackCheckoutFailure(reason, option) {
-    try {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        event: 'checkout_failed',
-        checkout_source: 'comeback',
-        failure_reason: reason,
-        option: option || ''
-      });
-    } catch (e) {}
+    track({
+      event: 'checkout_failed',
+      checkout_source: 'comeback',
+      failure_reason: reason,
+      option: option || ''
+    });
   }
 
   // A stashed Stripe Checkout Session URL is good for ~24h. Be a little
@@ -85,8 +106,7 @@
 
     // GA4: user abandoned Stripe Checkout and landed on the comeback page.
     // Pairs with comeback_resume_click (below) to measure recovery rate.
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({ event: 'comeback_view', option: option });
+    track({ event: 'comeback_view', option: option });
 
     // Memberstack data (prefer shared utility, fallback to inline parsing)
     var ms = window.OrdoMemberstack;
@@ -236,43 +256,47 @@
       btn.innerText = 'Patientez…';
       btn.disabled = true;
 
-      // GA4: user clicked "Finaliser l'inscription" to resume their checkout.
-      // Fires for BOTH the reused-session and fresh-session paths, so it's the
-      // canonical "recovery attempt" step. Pushed before navigation so GA4's
-      // sendBeacon can flush. (stripe_signup_click below only fires on the
-      // fresh-session path, where we have a brand-new session id to report.)
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        event: 'comeback_resume_click',
-        option: option,
-        reused: !abandonCtx   // true = re-opened abandoned session, false = fresh
-      });
+      // Mesure et webhook sont accessoires : ils s'exécutent sous try, la
+      // redirection part du finally. Un accessoire qui jette ne peut donc pas
+      // laisser l'utilisateur sur un bouton « Patientez… » mort. Les pushs
+      // restent avant la navigation pour que sendBeacon ait le temps de partir.
+      try {
+        // Fires for BOTH the reused-session and fresh-session paths, so it's
+        // the canonical "recovery attempt" step. (stripe_signup_click below
+        // only fires on the fresh-session path, where we have a new session id.)
+        track({
+          event: 'comeback_resume_click',
+          option: option,
+          reused: !abandonCtx   // true = re-opened abandoned session, false = fresh
+        });
 
-      if (abandonCtx) {
-        notifyWebhook({
-          timestamp: new Date().toISOString(),
-          checkoutSessionId: sessionId,
-          url: checkoutUrl,
-          stripeCustomerId: abandonCtx.stripeCustomerId,
-          memberstackUserId: abandonCtx.memberstackUserId,
-          memberstackEmail: abandonCtx.memberstackEmail,
-          option: abandonCtx.option,
-          priceId: abandonCtx.priceId,
-          coupon: abandonCtx.couponId,
-          originPage: window.location.href,
-          paymentMethods: abandonCtx.paymentMethods
-        });
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
-          event: 'stripe_signup_click',
-          option: abandonCtx.option,
-          priceId: abandonCtx.priceId,
-          coupon: abandonCtx.couponId,
-          checkoutSessionId: sessionId
-        });
+        if (abandonCtx) {
+          notifyWebhook({
+            timestamp: new Date().toISOString(),
+            checkoutSessionId: sessionId,
+            url: checkoutUrl,
+            stripeCustomerId: abandonCtx.stripeCustomerId,
+            memberstackUserId: abandonCtx.memberstackUserId,
+            memberstackEmail: abandonCtx.memberstackEmail,
+            option: abandonCtx.option,
+            priceId: abandonCtx.priceId,
+            coupon: abandonCtx.couponId,
+            originPage: window.location.href,
+            paymentMethods: abandonCtx.paymentMethods
+          });
+          track({
+            event: 'stripe_signup_click',
+            option: abandonCtx.option,
+            priceId: abandonCtx.priceId,
+            coupon: abandonCtx.couponId,
+            checkoutSessionId: sessionId
+          });
+        }
+      } catch (err) {
+        reportSideEffect(err);
+      } finally {
+        window.location.href = checkoutUrl;
       }
-
-      window.location.href = checkoutUrl;
     });
     console.log(PREFIX, 'Button bound');
   }
