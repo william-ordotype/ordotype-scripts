@@ -419,28 +419,46 @@ This is the B variant of the A/B test. Main differences from V1:
 
 ## Checkout Analytics Events
 
-Every script that creates a Stripe Checkout session pushes `stripe_signup_click`
-just before sending the user to Stripe. That event only exists once a session
-has been created, so on its own it cannot distinguish "nobody clicked" from
-"the session could not be created". `checkout_failed` fills that gap.
+Every script that creates a Stripe Checkout session pushes `stripe_signup_click`.
+On its own that event cannot distinguish "nobody clicked" from "the session could
+not be created", and the two families of scripts fail differently:
+
+- `pricing`, `pricing-v2`, `shared`, `inscription-en-cours` and `comeback`
+  create the session **up front** and only push the click once it exists, so a
+  failure shows up as a missing click.
+- the two `winback-gate.js` push the click **before** the fetch, so a failure
+  shows up as a click that converted to nothing — it inflates the offer's
+  apparent conversion.
+
+`checkout_failed` covers both.
 
 **`checkout_failed`** — pushed whenever session creation fails and the user is
-left on the page (usually behind the Memberstack fallback button).
+left on the page (usually behind a fallback button).
 
 | Parameter | Values |
 |-----------------|-------------------------------------------------------------|
-| `checkout_source` | `pricing`, `pricing-v2`, `inscription-en-cours`, `comeback`, `shared` |
-| `failure_reason`  | `network`, `api_<http status>`, `invalid_payload`, `no_customer_id`, `other` |
-| `option`          | the offer slug, where the script knows it |
+| `checkout_source` | `pricing`, `pricing-v2`, `inscription-en-cours`, `comeback`, `shared`, `winback` |
+| `failure_reason`  | `network`, `api_<http status>`, `invalid_payload`, `no_customer_id`, `no_price_id`, `other` |
+| `option`          | the offer slug — always the same value the page's `stripe_signup_click` reports |
 
 Emitted by `pricing/stripe-checkout.js`, `pricing-v2/stripe-checkout.js`,
 `inscription-en-cours/auto-checkout.js`,
-`inscription-non-terminee/comeback-checkout.js` and `shared/stripe-checkout.js`.
-Failures also go to Sentry through `OrdoErrorReporter`; the dataLayer event is
-what makes the failure *rate* readable per page, next to the click.
+`inscription-non-terminee/comeback-checkout.js`, `shared/stripe-checkout.js`,
+`winback-gate.js` and `inscription-offre-speciale/winback-gate.js`.
+
+Each emitter also reports to Sentry through `OrdoErrorReporter` when it is
+loaded on the page; the dataLayer event is what makes the failure *rate*
+readable per page, next to the click. The push always runs **after** the
+fallback UI is restored: `dataLayer.push` runs GTM's tag callbacks
+synchronously, so it must never sit between the user and their fallback button.
 
 `shared/stripe-setup-session.js` (payment-method setup, not checkout) is not
 covered by this event.
+
+Known limitation: on `/inscription-en-cours`, `no_customer_id` fires as soon as
+`_ms-mem` has no `stripeCustomerId` at DOM-ready. Some of those are the
+Memberstack SDK not having written yet rather than a real failure, so treat that
+one value as an upper bound until the readiness race is handled.
 
 ---
 

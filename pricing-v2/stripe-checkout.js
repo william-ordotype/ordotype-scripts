@@ -11,20 +11,28 @@
   // exists — without this event a broken checkout leaves no trace in analytics.
   function checkoutFailureReason(err) {
     var msg = (err && err.message) || '';
-    if (err && err.name === 'TypeError') return 'network';
     var status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
     if (status) return 'api_' + status[1];
     if (/Invalid (session payload|checkout session response)/.test(msg)) return 'invalid_payload';
+    // Only a genuine fetch failure. A TypeError raised while reading a property
+    // off a malformed response is a server problem, not a connectivity one, and
+    // must not be filed as 'network'.
+    if (err && err.name === 'TypeError' && /fetch|network|load failed|connection/i.test(msg)) {
+      return 'network';
+    }
     return 'other';
   }
 
-  function trackCheckoutFailure(err) {
+  // Same signature in every emitter, so the block can be copied between files
+  // without silently changing what lands in `failure_reason`.
+  function trackCheckoutFailure(reason, option) {
     try {
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push({
         event: 'checkout_failed',
         checkout_source: 'pricing-v2',
-        failure_reason: checkoutFailureReason(err)
+        failure_reason: reason,
+        option: option || ''
       });
     } catch (e) {}
   }
@@ -136,14 +144,22 @@
           },
           2, 1000
         );
+        // fetchWithRetry only retries network errors, so a 4xx/5xx arrives here
+        // as a perfectly readable Response. Without this check the JSON error
+        // body parses, url1/url2 come out undefined, the catch never runs and
+        // the buttons end up bound to `undefined`.
+        if (!resp.ok) throw new Error('Session API error: ' + resp.status);
+
         var data = await resp.json();
 
         // Check for currency mismatch redirect
-        if (data.reason === 'currency_mismatch' && data.redirectUrl) {
+        if (data && data.reason === 'currency_mismatch' && data.redirectUrl) {
           console.log('[StripeCheckoutV2] Currency mismatch - redirecting to:', data.redirectUrl);
           window.location.href = data.redirectUrl;
           return;
         }
+
+        if (!data || !data.url1 || !data.url2) throw new Error('Invalid session payload');
 
         sessionId1 = data.sessionId1;
         url1 = data.url1;
@@ -152,12 +168,13 @@
       } catch (err) {
         console.error('[StripeCheckoutV2] Fetch error:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckoutV2', err);
-        trackCheckoutFailure(err);
-        // Show fallback buttons so user can still proceed via Memberstack
+        // Restore the Memberstack fallback first: the user must never wait on a
+        // tag callback, and dataLayer.push runs GTM's callbacks synchronously.
         if (btn1) btn1.style.display = 'none';
         if (btn2) btn2.style.display = 'none';
         if (noStripe1) noStripe1.style.display = 'flex';
         if (noStripe2) noStripe2.style.display = 'flex';
+        trackCheckoutFailure(checkoutFailureReason(err));
         return;
       }
 

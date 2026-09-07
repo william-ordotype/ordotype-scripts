@@ -30,21 +30,30 @@ async function initStripeCheckout() {
     // exists — without this event a broken checkout leaves no trace in analytics.
     const checkoutFailureReason = (err) => {
         const msg = (err && err.message) || '';
-        if (err && err.name === 'TypeError') return 'network';
         const status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
         if (status) return 'api_' + status[1];
         if (/Invalid (session payload|checkout session response)/.test(msg)) return 'invalid_payload';
+        // Only a genuine fetch failure. A TypeError raised while reading a
+        // property off a malformed response is a server problem, not a
+        // connectivity one, and must not be filed as 'network'.
+        if (err && err.name === 'TypeError' && /fetch|network|load failed|connection/i.test(msg)) {
+            return 'network';
+        }
         return 'other';
     };
 
-    const trackCheckoutFailure = (reason) => {
+    // Same signature in every emitter, so the block can be copied between files
+    // without silently changing what lands in `failure_reason`. `option`
+    // defaults to the same value stripe_signup_click reports, so the failure
+    // and the click land on the same GA4 dimension value.
+    const trackCheckoutFailure = (reason, option) => {
         try {
             window.dataLayer = window.dataLayer || [];
             window.dataLayer.push({
                 event: 'checkout_failed',
-                checkout_source: 'shared',
+                checkout_source: config.checkoutSource || 'shared',
                 failure_reason: reason,
-                option: config.option || ''
+                option: option || config.option || 'default'
             });
         } catch (e) {}
     };
@@ -139,16 +148,24 @@ async function initStripeCheckout() {
             body: JSON.stringify(payload)
         }, 2, 1000);
 
+        // fetchWithRetry only retries network errors, so a 4xx/5xx arrives here
+        // as a readable Response whose JSON error body parses fine. Without this
+        // check an HTTP failure was reported as `invalid_payload`, hiding the
+        // status code that says which side broke.
+        if (!resp.ok) throw new Error('Session API error: ' + resp.status);
+
         const data = await resp.json();
 
-        if (!data.sessionId || !data.url) {
+        if (!data || !data.sessionId || !data.url) {
             console.error(PREFIX, 'Invalid response');
             if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', 'Invalid checkout session response');
-            trackCheckoutFailure('invalid_payload');
-            // Show fallback button so user can still proceed via Memberstack
+            // Restore the Memberstack fallback first: the user must never wait
+            // on a tag callback, and dataLayer.push runs GTM's callbacks
+            // synchronously.
             if (signupBtnStripe) signupBtnStripe.style.display = 'none';
             if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
             resumeHeldClick(signupBtnNoStripe);
+            trackCheckoutFailure('invalid_payload');
             return;
         }
         sessionId = data.sessionId;
@@ -158,11 +175,12 @@ async function initStripeCheckout() {
     } catch (err) {
         console.error(PREFIX, 'Error creating checkout session:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', err);
-        trackCheckoutFailure(checkoutFailureReason(err));
-        // Show fallback button so user can still proceed via Memberstack
+        // Restore the Memberstack fallback first: the user must never wait on a
+        // tag callback, and dataLayer.push runs GTM's callbacks synchronously.
         if (signupBtnStripe) signupBtnStripe.style.display = 'none';
         if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
         resumeHeldClick(signupBtnNoStripe);
+        trackCheckoutFailure(checkoutFailureReason(err));
         return;
     }
 
