@@ -41,7 +41,10 @@
   //
   // Override for testers (DevTools, origin-scoped, only on a listed host):
   //   localStorage.setItem('ordo_rollout', 'siren-finder.js:on')   // or ':off'
+  //   localStorage.setItem('ordo_rollout', 'siren-finder.js:on,invoice-emails.js:on')
   //   localStorage.removeItem('ordo_rollout')                      // back to the bucket
+  // Comma-separated, one entry per gated file: with more than one gate, a
+  // single slot could no longer express what a member actually sees.
   // With 0 % on a host, the override is the way to verify a build there with
   // zero member exposure (that is what the prod staging domain is for).
   //
@@ -88,8 +91,23 @@
     return (h >>> 0) % 100;
   }
 
+  // Un seul emplacement de stockage, mais plusieurs fichiers gatés : la valeur
+  // accepte donc une LISTE séparée par des virgules, sinon deux fonctionnalités
+  // gatées ne peuvent plus être essayées ensemble sur la même page, ce qui est
+  // pourtant ce qu'un membre verrait.
+  //   localStorage.setItem('ordo_rollout', 'siren-finder.js:on,invoice-emails.js:on')
   function readOverride() {
-    try { return localStorage.getItem('ordo_rollout') || ''; } catch (e) { return ''; }
+    let raw = '';
+    try { raw = localStorage.getItem('ordo_rollout') || ''; } catch (e) { return []; }
+    return raw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  }
+
+  function overrideFor(entries, file) {
+    for (const entry of entries) {
+      if (entry === file + ':on') return true;
+      if (entry === file + ':off') return false;
+    }
+    return null;
   }
 
   window.OrdoRollout = window.OrdoRollout || {};
@@ -103,11 +121,12 @@
     const percent = perHost[HOST];
     const memberId = memberIdFromStorage();
     const bucket = memberId ? bucketOf(memberId) : null;
-    const override = readOverride();
+    const entries = readOverride();
+    const forced = overrideFor(entries, file);
     let enabled;
     let reason;
-    if (override === file + ':on' || override === file + ':off') {
-      enabled = override.slice(-3) === ':on';
+    if (forced !== null) {
+      enabled = forced;
       reason = 'override';
     } else if (bucket === null) {
       enabled = false;
@@ -116,13 +135,25 @@
       enabled = bucket < percent;
       reason = 'bucket';
     }
-    if (override && reason !== 'override') console.warn('[OrdoAccount] Ignored ordo_rollout value:', override);
+    // On n'avertit que pour une entrée qui ne désigne aucun fichier gaté : une
+    // entrée destinée à un AUTRE fichier est honorée à son tour, l'annoncer
+    // ignorée ici ferait mentir la console.
+    const orphans = entries.filter(function(e) {
+      const name = e.split(':')[0];
+      return !Object.prototype.hasOwnProperty.call(GATES, name);
+    });
+    if (orphans.length) console.warn('[OrdoAccount] Ignored ordo_rollout entries:', orphans.join(', '));
     const decision = { enabled, bucket, percent, reason };
     window.OrdoRollout[file] = decision;
     console.log('[OrdoAccount] Rollout ' + file + ': ' + (enabled ? 'on' : 'off') + ' (' + reason + ', bucket=' + bucket + ', percent=' + percent + ')');
+    // 🔴 `siren_rollout` reste RÉSERVÉ à siren-finder.js. GA4 s'en sert comme
+    // dénominateur du déploiement SIREN, témoins compris : le pousser aussi
+    // pour un second fichier gaté doublerait ce compte à partir de la mise en
+    // ligne, en silence et sans erreur nulle part. Tout autre fichier émet
+    // `ordo_rollout`, qui porte les mêmes champs.
     if (window.dataLayer && typeof window.dataLayer.push === 'function') {
       try {
-        window.dataLayer.push({ event: 'siren_rollout', rollout_file: file, rollout_enabled: enabled, rollout_bucket: bucket, rollout_percent: percent, rollout_reason: reason });
+        window.dataLayer.push({ event: file === 'siren-finder.js' ? 'siren_rollout' : 'ordo_rollout', rollout_file: file, rollout_enabled: enabled, rollout_bucket: bucket, rollout_percent: percent, rollout_reason: reason });
       } catch (e) { /* no-op */ }
     }
     return decision;
