@@ -24,6 +24,49 @@
     const PREFIX = '[AutoCheckout]';
     console.log(PREFIX, 'Initializing...');
 
+    // GA4: the checkout session could not be created, so the user never reaches
+    // Stripe. Pairs with stripe_signup_click, which only fires once a session
+    // exists — without this event a broken checkout leaves no trace in analytics.
+    function checkoutFailureReason(err) {
+        const msg = (err && err.message) || '';
+        const status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
+        if (status) return 'api_' + status[1];
+        if (/Invalid (session payload|checkout session response)/.test(msg)) return 'invalid_payload';
+        // Only a genuine fetch failure. A TypeError raised while reading a
+        // property off a malformed response is a server problem, not a
+        // connectivity one, and must not be filed as 'network'.
+        if (err && err.name === 'TypeError' && /fetch|network|load failed|connection/i.test(msg)) {
+            return 'network';
+        }
+        return 'other';
+    }
+
+    // The single source of `option` for this file. stripe_signup_click and
+    // checkout_failed must report the same value or the failure rate per offer
+    // divides one dimension value by another.
+    function resolveOption() {
+        const cfg = window.CMS_CHECKOUT_CONFIG || {};
+        try {
+            return cfg.option || localStorage.getItem('signup-option') || 'inscription-en-cours';
+        } catch (e) {
+            return cfg.option || 'inscription-en-cours';
+        }
+    }
+
+    // Same signature in every emitter, so the block can be copied between files
+    // without silently changing what lands in `failure_reason`.
+    function trackCheckoutFailure(reason, option) {
+        try {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({
+                event: 'checkout_failed',
+                checkout_source: 'inscription-en-cours',
+                failure_reason: reason,
+                option: option || resolveOption()
+            });
+        } catch (e) {}
+    }
+
     // Wait for DOM if needed
     if (document.readyState === 'loading') {
         await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
@@ -44,6 +87,7 @@
 
     if (!stripeCustomerId) {
         console.error(PREFIX, 'No Stripe customer ID found');
+        trackCheckoutFailure('no_customer_id');
         return;
     }
 
@@ -78,7 +122,7 @@
         : cmsPaymentMethods.length ? cmsPaymentMethods
         : storedPaymentMethods.length ? storedPaymentMethods
         : ['card', 'sepa_debit'];
-    const option = config.option || localStorage.getItem('signup-option') || 'inscription-en-cours';
+    const option = resolveOption();
 
     console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods });
 
@@ -128,8 +172,11 @@
 
     } catch (err) {
         console.error(PREFIX, 'Error creating session:', err);
-        // Show fallback button
+        if (window.OrdoErrorReporter) OrdoErrorReporter.report('AutoCheckout', err);
+        // Restore the fallback button first: the user must never wait on a tag
+        // callback, and dataLayer.push runs GTM's callbacks synchronously.
         if (btn) btn.style.display = 'flex';
+        trackCheckoutFailure(checkoutFailureReason(err));
         return;
     }
 

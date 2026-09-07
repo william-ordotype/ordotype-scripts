@@ -36,6 +36,37 @@
 
   var PREFIX = '[ComebackCheckout]';
 
+  // GA4: the fresh checkout session could not be created, so the button has no
+  // Stripe URL to send the user to. Pairs with comeback_resume_click — without
+  // this event a broken fallback looks like a user who simply did not click.
+  function checkoutFailureReason(err) {
+    var msg = (err && err.message) || '';
+    var status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
+    if (status) return 'api_' + status[1];
+    if (/Invalid (session payload|checkout session response)/.test(msg)) return 'invalid_payload';
+    // Only a genuine fetch failure. A TypeError raised while reading a property
+    // off a malformed response is a server problem, not a connectivity one, and
+    // must not be filed as 'network'.
+    if (err && err.name === 'TypeError' && /fetch|network|load failed|connection/i.test(msg)) {
+      return 'network';
+    }
+    return 'other';
+  }
+
+  // Same signature in every emitter, so the block can be copied between files
+  // without silently changing what lands in `failure_reason`.
+  function trackCheckoutFailure(reason, option) {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'checkout_failed',
+        checkout_source: 'comeback',
+        failure_reason: reason,
+        option: option || ''
+      });
+    } catch (e) {}
+  }
+
   // A stashed Stripe Checkout Session URL is good for ~24h. Be a little
   // conservative (23h) so we never hand the user an about-to-expire link.
   var SESSION_MAX_AGE_MS = 23 * 60 * 60 * 1000;
@@ -80,7 +111,7 @@
     var pendingUrl = readStashedSessionUrl(option);
     if (pendingUrl) {
       console.log(PREFIX, 'Reusing abandoned session for option:', option);
-      bindButton(btn, pendingUrl);
+      bindButton(btn, pendingUrl, option);
       return;
     }
 
@@ -90,6 +121,7 @@
     if (!stripeCustomerId) {
       console.warn(PREFIX, 'No Stripe customer ID — cannot create fresh session');
       // Leave the button as-is; its native href (e.g. /nos-offres) still works.
+      trackCheckoutFailure('no_customer_id', option);
       return;
     }
 
@@ -101,6 +133,7 @@
 
     if (!priceId) {
       console.warn(PREFIX, 'No priceId in COMEBACK_CONFIG — cannot create fresh session');
+      trackCheckoutFailure('no_price_id', option);
       return;
     }
 
@@ -114,7 +147,7 @@
       option: option
     }).then(function(session) {
       if (session && session.url) {
-        bindButton(btn, session.url, session.sessionId, {
+        bindButton(btn, session.url, option, session.sessionId, {
           priceId: priceId,
           couponId: couponId,
           option: option,
@@ -182,6 +215,7 @@
     }).catch(function(err) {
       console.error(PREFIX, 'Fresh session error:', err);
       if (window.OrdoErrorReporter) OrdoErrorReporter.report('ComebackCheckout', err);
+      trackCheckoutFailure(checkoutFailureReason(err), ctx && ctx.option);
       return null;
     });
   }
@@ -189,7 +223,11 @@
   // Bind the "Finaliser l'inscription" button to a checkout URL.
   // `abandonCtx` (optional) is only present for fresh sessions, where we want
   // a fresh abandon-cart webhook + GTM event on click.
-  function bindButton(btn, checkoutUrl, sessionId, abandonCtx) {
+  // `option` is passed in: this function is a sibling of init(), not nested in
+  // it, so it cannot read init()'s local. Reading it from the enclosing scope
+  // threw a ReferenceError under 'use strict' and killed the click handler
+  // before the redirect, leaving the button dead.
+  function bindButton(btn, checkoutUrl, option, sessionId, abandonCtx) {
     var isRedirecting = false;
     btn.addEventListener('click', function(e) {
       e.preventDefault();
