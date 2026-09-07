@@ -321,6 +321,8 @@
     '.ordo-siren-banner{background:#f3f6fb;border:1px solid #d9e2f0;border-radius:8px;padding:12px 14px;margin-bottom:10px}',
     '.ordo-siren-banner strong{display:block;margin-bottom:2px}',
     '.ordo-siren-alt{margin-top:6px}',
+    '.ordo-siren-direct{margin-top:14px;padding-top:12px;border-top:1px solid #e6ecf5}',
+    '.ordo-siren-direct>.ordo-siren-muted:first-child{margin-bottom:6px}',
     '.ordo-siren-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}',
     '.ordo-siren-row input{flex:1 1 160px;min-width:0}',
     '.ordo-siren-row .ordo-siren-cp{flex:0 1 240px}',
@@ -464,10 +466,19 @@
 
     var results = el('div');
     panel.appendChild(results);
-    panel.appendChild(altLink('Vous avez déjà votre numéro ?', 'Saisir mon SIREN ou SIRET', function() { switchMode('number'); }));
+
+    // La saisie directe reste visible sous la recherche au lieu d'être un lien
+    // vers un autre panneau : 3 des 4 premiers enregistrements en production
+    // sont venus de ce chemin, et une recherche vide ne doit pas obliger le
+    // membre à comprendre qu'une autre porte existe ailleurs.
+    var direct = el('div', 'ordo-siren-direct');
+    direct.appendChild(el('div', 'ordo-siren-muted', 'Ou, si vous le connaissez, saisissez directement votre numéro :'));
+    renderNumber(direct, { altLink: false });
+    panel.appendChild(direct);
 
     var lastKey = '';
     var withoutActivity = false;
+    var searchedOnce = false;
     var pausedUntil = 0; // après un 429/503 : plus de recherche automatique jusque-là
 
     // Une chaîne est vivante si elle est la dernière lancée ET si le panneau
@@ -488,16 +499,23 @@
      * (SEL, sociétés, pharmacies…). Une frappe au clavier s'arrête au premier
      * barreau : pas de copie « non-diffusion » ni de rafale sur un nom incomplet.
      */
-    function ladder(loc, force) {
+    function ladder(loc, full) {
       if (withoutActivity) return [{ loc: loc, act: '0', note: '' }];
       var steps = [{ loc: loc, act: '1', note: '' }];
-      if (!force) return steps;
-      var wide = loc;
+      if (!full) return steps;
+      // C'est le filtre « santé » qui bloque en pratique, pas la localisation :
+      // sur les 14 premiers jours en production, 17 recherches « santé + code
+      // postal » sur 19 sont revenues vides, alors que les 4 recherches lancées
+      // sans filtre d'activité ont toutes trouvé quelque chose. Une SELARL, une
+      // SCI ou une holding au nom du praticien n'a pas de code NAF de santé, et
+      // l'API indexe déjà les dirigeants : elle est trouvable, le filtre
+      // l'écarte. On élargit donc l'activité AVANT la zone, ce qui garde la
+      // liste courte et locale (moins d'homonymes qu'un département entier).
+      steps.push({ loc: loc, act: '0', note: 'Aucun cabinet médical ou paramédical à ce nom' + whereLabel(loc) + ' ; voici toutes les entreprises correspondantes :' });
       if (loc.cp) {
-        wide = { valid: true, cp: '', dep: loc.dep, scope: 'dep:' + loc.dep };
-        steps.push({ loc: wide, act: '1', note: 'Aucun résultat pour ce code postal ; voici le département :' });
+        var dep = { valid: true, cp: '', dep: loc.dep, scope: 'dep:' + loc.dep };
+        steps.push({ loc: dep, act: '0', note: 'Rien à ce code postal ; voici tout le département :' });
       }
-      steps.push({ loc: wide, act: '0', note: 'Aucun cabinet médical ou paramédical à ce nom' + whereLabel(wide) + ' ; voici les entreprises correspondantes (toutes activités) :' });
       return steps;
     }
 
@@ -516,6 +534,13 @@
       var key = q + '|' + loc.scope + '|' + (withoutActivity ? 0 : 1);
       if (!force && key === lastKey) return;
       lastKey = key;
+      // Échelle complète sur une recherche demandée (clic, Entrée) ET sur la
+      // toute première, celle qui part seule au chargement avec le nom et le
+      // code postal préremplis : c'est elle qui laissait le membre devant une
+      // liste vide. Les frappes suivantes restent au premier barreau pour ne
+      // pas multiplier les appels SIRENE à chaque pause de saisie.
+      var full = force || !searchedOnce;
+      searchedOnce = true;
       setError(panel, '');
       clear(results);
       results.appendChild(el('div', 'ordo-siren-muted', 'Recherche en cours…'));
@@ -524,7 +549,7 @@
       var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom && loc.dep
         ? apiSearch({ mode: 'suggest', prenom: state.prenom, nom: state.nom, dep: loc.dep })
         : Promise.resolve({ results: [] });
-      var steps = ladder(loc, force);
+      var steps = ladder(loc, full);
 
       function step(i) {
         var s = steps[i];
@@ -593,8 +618,11 @@
       var where = whereLabel(loc);
       if (!list.length) {
         container.appendChild(el('div', 'ordo-siren-muted', unfiltered
-          ? 'Aucune entreprise à ce nom' + where + '. Si vous avez demandé la non-diffusion de vos données à l\'INSEE, votre nom n\'apparaît pas dans les recherches : saisissez directement votre numéro.'
-          : 'Aucun résultat avec ce nom' + where + '.'));
+          // Près de 4 praticiens sur 10 ont demandé la non-diffusion à l'INSEE
+          // (mesuré à la calibration) : aucune recherche par nom ne les trouvera
+          // jamais. Le dire, et pointer le champ numéro juste en dessous.
+          ? 'Aucune entreprise à ce nom' + where + '. Beaucoup de praticiens ont demandé la non-diffusion de leurs données à l\'INSEE : leur entreprise n\'apparaît alors dans aucune recherche par nom. Saisissez votre numéro ci-dessous, il reste vérifié auprès du répertoire.'
+          : 'Aucun résultat avec ce nom' + where + ' : cliquez sur Rechercher pour élargir à toutes les activités.'));
       } else {
         if (note) container.appendChild(el('div', 'ordo-siren-muted', note));
         var ul = el('ul', 'ordo-siren-list');
@@ -613,22 +641,19 @@
           container.appendChild(el('div', 'ordo-siren-muted', total + ' résultats, seuls les ' + list.length + ' premiers sont affichés : précisez le nom' + (loc.cp ? '' : (loc.dep ? ' ou indiquez votre code postal' : ' ou ajoutez un code postal')) + '.'));
         }
       }
-      var more = el('div', 'ordo-siren-muted');
-      var link = el('button', 'ordo-siren-link', unfiltered ? 'Saisir mon numéro directement' : 'Je ne trouve pas mon entreprise');
-      link.type = 'button';
-      link.addEventListener('click', function() {
-        if (unfiltered) {
-          switchMode('number');
-        } else {
+      // Quand la liste est déjà élargie à toutes les activités, il n'y a plus
+      // rien à proposer ici : le champ numéro est juste en dessous du panneau.
+      if (!unfiltered) {
+        var more = el('div', 'ordo-siren-muted');
+        var link = el('button', 'ordo-siren-link', 'Je ne trouve pas mon entreprise');
+        link.type = 'button';
+        link.addEventListener('click', function() {
           withoutActivity = true;
           run(true);
-        }
-      });
-      more.appendChild(link);
-      if (unfiltered) {
-        more.appendChild(el('span', null, ' (les entreprises ayant demandé la non-diffusion INSEE n\'apparaissent jamais par le nom).'));
+        });
+        more.appendChild(link);
+        container.appendChild(more);
       }
-      container.appendChild(more);
     }
 
     var debounced = debounce(function() { run(false); }, DEBOUNCE_MS);
@@ -686,7 +711,8 @@
 
   // --- Onglet numéro ---------------------------------------------------------------------
 
-  function renderNumber(panel) {
+  function renderNumber(panel, opts) {
+    opts = opts || {};
     var row = el('div', 'ordo-siren-row');
     var numInput = el('input', 'form-input w-input');
     numInput.type = 'text';
@@ -702,7 +728,10 @@
     panel.appendChild(row);
     var out = el('div');
     panel.appendChild(out);
-    panel.appendChild(altLink('Vous ne connaissez pas votre numéro ?', 'Rechercher par nom', function() { switchMode('search'); }));
+    // Pas de renvoi vers la recherche quand ce bloc est déjà sous elle.
+    if (opts.altLink !== false) {
+      panel.appendChild(altLink('Vous ne connaissez pas votre numéro ?', 'Rechercher par nom', function() { switchMode('search'); }));
+    }
 
     numInput.addEventListener('input', function() {
       var d = digits(numInput.value);
