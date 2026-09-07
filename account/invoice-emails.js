@@ -15,9 +15,13 @@
  *
  * Le balisage est produit ici, pas dans Webflow : la page ne porte qu'un point
  * d'ancrage vide, comme le bloc de double authentification. Faire évoluer
- * l'interrupteur ne demande donc pas de republier le site. L'ancrage doit
- * contenir le bloc en entier, libellé compris : quand il n'y a rien à afficher
- * le module le masque, et un titre resté en dehors surplomberait un trou.
+ * l'interrupteur ne demande donc pas de republier le site.
+ *
+ * Quand il n'y a rien à afficher, le module masque l'ancrage ET le conteneur
+ * `.w-embed` qui l'entoure. L'Embed peut donc recevoir librement marges et
+ * espacements depuis le Designer : ils disparaissent avec le bloc. En revanche
+ * un titre placé EN DEHORS de l'Embed surplomberait un trou, comme le finder
+ * SIREN l'a appris à ses dépens.
  *
  * Depends on: core.js (window.OrdoAccount), shared/error-reporter.js
  */
@@ -112,8 +116,28 @@
     status.className = 'text-size-small' + (isError ? ' text-color-error' : '');
   }
 
+  /**
+   * Masquer l'ancrage ne suffit pas : dans Webflow il vit à l'intérieur d'un
+   * conteneur `.w-embed`, et tout espacement posé sur cet Embed depuis le
+   * Designer survivrait au masquage. Chaque membre qui ne voit pas le bloc
+   * verrait alors un blanc inexpliqué à sa place. On masque donc aussi le
+   * conteneur, ce qui rend l'Embed librement stylable côté Webflow.
+   */
+  function wrapper() {
+    var p = anchor && anchor.parentElement;
+    return p && p.classList && p.classList.contains('w-embed') ? p : null;
+  }
+
   function hide() {
     if (anchor) anchor.style.display = 'none';
+    var w = wrapper();
+    if (w) w.style.display = 'none';
+  }
+
+  function show() {
+    if (anchor) anchor.style.display = '';
+    var w = wrapper();
+    if (w) w.style.display = '';
   }
 
   // Les couleurs viennent des jetons `:root` du système de design, avec un
@@ -205,7 +229,7 @@
 
     anchor.appendChild(row);
     anchor.appendChild(status);
-    anchor.style.display = '';
+    show();
 
     input.addEventListener('change', onChange);
   }
