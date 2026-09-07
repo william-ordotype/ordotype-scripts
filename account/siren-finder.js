@@ -893,21 +893,16 @@
   }
 
   /**
-   * Même règle que le serveur (siren-select isInterne) : statut « Interne »
-   * sans tenir compte de la casse, OU un plan interne actif (liste partagée
-   * shared/memberstack-utils.js). Sans ce miroir, un membre sur un plan interne
-   * avec un autre statut verrait le bloc, lancerait des recherches SIRENE, puis
-   * recevrait un 409 au clic.
+   * Même règle que le serveur (siren-select isInterne) : le statut DÉCLARÉ fait
+   * foi. Le plan interne ne compte plus : mesuré sur l'export du 2026-09-03,
+   * 16 membres payants portent un vieux plan interne tout en ayant déclaré
+   * Médecin ou Résident. Ils facturent, donc le bloc doit leur être visible ;
+   * il leur était masqué ici et le serveur les refusait par 409. Ce miroir doit
+   * rester aligné sur siren-select : sinon le membre voit le bloc, cherche,
+   * puis se fait refuser au clic.
    */
   function isInterneMember() {
-    if (String(state.statut).trim().toLowerCase() === 'interne') return true;
-    var ms = window.OrdoMemberstack;
-    var ids = (ms && ms.ALLOWED_INTERN_PLAN_IDS) || [];
-    if (!ms || typeof ms.isActive !== 'function') return false;
-    for (var i = 0; i < ids.length; i++) {
-      if (ms.isActive(ids[i])) return true;
-    }
-    return false;
+    return String(state.statut).trim().toLowerCase() === 'interne';
   }
 
   function applyStatut(statut) {
