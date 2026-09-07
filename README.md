@@ -455,16 +455,33 @@ synchronously, so it must never sit between the user and their fallback button.
 `shared/stripe-setup-session.js` (payment-method setup, not checkout) is not
 covered by this event.
 
-### Two invariants for anything added to these files
+### Three invariants for anything added to these files
 
-**1. Never push to `dataLayer` directly — call the file's `track(payload)`.**
-It wraps the push in a `try/catch` and routes any failure to
-`reportSideEffect()`, which uses `OrdoErrorReporter` when present and otherwise
-dispatches an `ErrorEvent` the page's global handler picks up. A measurement
-that fails silently is worse than one that fails loudly: it deletes the evidence
-that anything went wrong.
+**1. Never push to `dataLayer` directly — call `OrdoErrorReporter.track(payload)`.**
+It wraps the push and routes any failure to `OrdoErrorReporter.reportSideEffect()`,
+which reports to Discord *and* dispatches an `ErrorEvent` the page's global
+handler picks up, normalizing non-`Error` throws on the way. A measurement that
+fails silently is worse than one that fails loudly: it deletes the evidence that
+anything went wrong. Scripts loaded directly by Webflow rather than through a
+loader (`auto-checkout.js`, `comeback-checkout.js`) keep a short local fallback
+for the case where `shared/error-reporter.js` is not on the page.
 
-**2. In a click handler that navigates, the navigation goes in a `finally`.**
+**2. `track()` does not protect the payload — the caller does.**
+The object is built at the **call site**, outside the helper's `try`. Wherever a
+throw would break something the user came for, wrap the construction too:
+
+```js
+safely(function () {
+    track({ event: '2fa_otp_success', time_on_page_sec: sec() });
+});
+```
+
+`connexion-2fa/ga4-events.js` is the clearest case — its emitters run inside the
+promise returned to Memberstack by the `/otp/verify` proxy, so an exception
+there rejects that promise and the member is never logged in even though the
+backend verified the code.
+
+**3. In a click handler that navigates, the navigation goes in a `finally`.**
 Everything else — tracking, the abandon-cart webhook, the comeback stash — is
 accessory and runs inside the `try`:
 
@@ -480,16 +497,20 @@ try {
 }
 ```
 
-`track()` alone is not enough: the payload object is built at the **call site**,
-outside the helper's `try`, so a bad reference inside it still throws out of the
-handler. Only the `finally` guarantees the user reaches Stripe. Order the
-accessories from most to least important (webhook, stash, then measurement), and
-keep the push before the navigation so `sendBeacon` has time to flush.
+Order the accessories from most to least important (webhook, stash, then
+measurement), and keep the push before the navigation so `sendBeacon` has time
+to flush.
 
-Known limitation: on `/inscription-en-cours`, `no_customer_id` fires as soon as
-`_ms-mem` has no `stripeCustomerId` at DOM-ready. Some of those are the
-Memberstack SDK not having written yet rather than a real failure, so treat that
-one value as an upper bound until the readiness race is handled.
+### Waiting for Memberstack
+
+`shared/memberstack-utils.js` parses `_ms-mem` once at load, so
+`window.OrdoMemberstack` is a snapshot the Memberstack SDK can still overwrite.
+Use `OrdoMemberstack.waitFor(field, timeoutMs)` rather than re-reading
+localStorage by hand — a hand-rolled read loses the normalization
+(`userId` as a fallback for `id`, a flat `email` for `auth.email`) and would
+send the abandon-cart webhook without an identity. `refresh()` re-reads on
+demand. Both short-circuit when localStorage is unusable, so a private window
+fails in microseconds instead of polling for the whole timeout.
 
 ---
 

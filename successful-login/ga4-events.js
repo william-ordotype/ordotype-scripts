@@ -16,11 +16,31 @@
  *
  * Related Notion : https://www.notion.so/34a30a1b750f811999b9f853a3ef5451
  *
- * Version: 1.0.0 (2026-04-22)
+ * Version: 1.1.0 (2026-09-07)
+ *   1.1.0 — les pushs passent par OrdoErrorReporter.track().
  */
 
 (function () {
   'use strict';
+
+  // La mesure ne doit jamais casser la page. L'implémentation vit dans
+  // shared/error-reporter.js ; ce repli couvre le cas où il n'est pas chargé.
+  function track(payload) {
+    try {
+      if (window.OrdoErrorReporter && window.OrdoErrorReporter.track) {
+        window.OrdoErrorReporter.track(payload);
+        return;
+      }
+            track(payload);
+    } catch (err) {
+      try {
+        if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+          window.OrdoErrorReporter.reportSideEffect('SuccessfulLoginEvents', err);
+        }
+      } catch (ignored) {}
+    }
+  }
+
 
   if (!window || window.__ordotypeSuccessfulLoginInstalled) return;
   window.__ordotypeSuccessfulLoginInstalled = true;
@@ -29,7 +49,7 @@
   var ref = document.referrer || '';
   var cameFrom2fa = /\/membership\/connexion-2fa\b/.test(ref);
 
-  window.dataLayer.push({
+  track({
     event: '2fa_login_confirmed',
     came_from_2fa: cameFrom2fa,
   });

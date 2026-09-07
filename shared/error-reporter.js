@@ -8,6 +8,20 @@
  * Usage:
  *   OrdoErrorReporter.report('StripeCheckout', 'Checkout session creation failed');
  *   OrdoErrorReporter.report('StripeSetup', err);
+ *
+ *   // Un accessoire (mesure, webhook, stash) qui a échoué sans empêcher
+ *   // l'utilisateur d'agir. Part vers Discord ET vers le handler global, donc
+ *   // Sentry, parce qu'une panne muette efface son propre témoin.
+ *   OrdoErrorReporter.reportSideEffect('AutoCheckout', err);
+ *
+ *   // Le seul point d'entrée du dataLayer. Ne jette jamais, signale l'échec.
+ *   OrdoErrorReporter.track({ event: 'stripe_signup_click', option: 'rempla' });
+ *
+ * Version: 1.1.0 (2026-09-07)
+ *   1.0.0 — report() vers le webhook Discord.
+ *   1.1.0 — reportSideEffect() et track() partagés, pour que la règle « une
+ *           mesure ne doit jamais casser la page » vive à un seul endroit au
+ *           lieu d'être recopiée dans chaque script.
  */
 (function() {
     'use strict';
@@ -73,6 +87,50 @@
                 }
             } catch (e) {
                 // Never throw from the error reporter itself
+            }
+        },
+
+        /**
+         * Un accessoire a échoué sans empêcher l'utilisateur d'agir.
+         * Part vers Discord (report) ET vers le handler global d'erreurs de la
+         * page, seul chemin par lequel Sentry voit une erreur front ici.
+         * Normalise les throws non-Error : `throw 'oops'` ou `throw null`
+         * arriveraient sinon avec un message vide et sans pile.
+         */
+        reportSideEffect: function(context, error) {
+            try {
+                window.OrdoErrorReporter.report(context, error);
+            } catch (e) {}
+            try {
+                var err;
+                if (error instanceof Error) {
+                    err = error;
+                } else if (typeof error === 'string') {
+                    err = new Error(error);
+                } else {
+                    err = new Error((error && error.message) || String(error));
+                }
+                window.dispatchEvent(new ErrorEvent('error', {
+                    message: context + ': ' + err.message,
+                    error: err
+                }));
+            } catch (e) {}
+        },
+
+        /**
+         * Seul point d'entrée du dataLayer. Ne jette jamais.
+         *
+         * ⚠️ Le payload est construit par l'appelant, donc AVANT d'entrer ici :
+         * si un throw dans sa construction peut casser quelque chose (une
+         * redirection, une résiliation, une connexion), c'est à l'appelant de
+         * mettre cette construction dans son propre try.
+         */
+        track: function(payload) {
+            try {
+                window.dataLayer = window.dataLayer || [];
+                window.dataLayer.push(payload);
+            } catch (err) {
+                window.OrdoErrorReporter.reportSideEffect('OrdoTrack', err);
             }
         }
     };

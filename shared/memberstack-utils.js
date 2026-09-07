@@ -183,6 +183,84 @@
         return plan ? (plan.status === 'ACTIVE' || plan.status === 'TRIALING') : false;
     }
 
+    // --- Hydratation tardive ------------------------------------------------
+    // `_ms-mem` est parsé UNE fois au chargement, et les champs sont figés dans
+    // window.OrdoMemberstack. Or le SDK Memberstack peut écrire après nous :
+    // sur /inscription-en-cours on arrive quelques secondes après la création
+    // du compte, et `stripeCustomerId` n'est pas encore là. Chaque consommateur
+    // se débrouillait avec son propre sondage et sa propre relecture de
+    // localStorage, en perdant au passage la normalisation ci-dessous.
+    //
+    // `localStorageUsable` évite de sonder 40 fois une lecture qui ne peut que
+    // échouer (navigation privée, stockage bloqué) : la réponse ne changera pas.
+
+    var localStorageUsable = true;
+    try {
+        localStorage.getItem('_ms-mem');
+    } catch (e) {
+        localStorageUsable = false;
+    }
+
+    function applyMember(parsed) {
+        member = parsed;
+        planConnections = Array.isArray(member.planConnections) ? member.planConnections : [];
+        customFields = member.customFields || {};
+        metaData = member.metaData || {};
+
+        var api = window.OrdoMemberstack;
+        if (!api) return;
+        api.member = member;
+        api.stripeCustomerId = member.stripeCustomerId || null;
+        api.memberId = member.id || member.userId || null;
+        api.email = (member.auth && member.auth.email) || member.email || null;
+        api.planConnections = planConnections;
+        api.customFields = customFields;
+        api.metaData = metaData;
+    }
+
+    /**
+     * Relit `_ms-mem` et met à jour les champs exposés, en place.
+     * Renvoie window.OrdoMemberstack.
+     */
+    function refresh() {
+        if (!localStorageUsable) return window.OrdoMemberstack;
+        try {
+            var raw = safeGetItem('_ms-mem');
+            if (!raw) return window.OrdoMemberstack;
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') applyMember(parsed);
+        } catch (e) {
+            // snapshot illisible : on garde le précédent
+        }
+        return window.OrdoMemberstack;
+    }
+
+    var WAIT_TIMEOUT_MS = 2000;
+    var WAIT_POLL_MS = 50;
+
+    /**
+     * Attend que `field` (ex. 'stripeCustomerId', 'memberId') soit renseigné.
+     * Résout avec window.OrdoMemberstack, que le champ soit arrivé ou non :
+     * c'est à l'appelant de décider quoi faire d'une absence après le délai.
+     */
+    function waitFor(field, timeoutMs) {
+        var api = refresh();
+        if (api && api[field]) return Promise.resolve(api);
+        // Rien ne peut changer si on ne peut pas relire le stockage.
+        if (!localStorageUsable) return Promise.resolve(api);
+
+        var deadline = Date.now() + (timeoutMs || WAIT_TIMEOUT_MS);
+        return new Promise(function(resolve) {
+            var timer = setInterval(function() {
+                var cur = refresh();
+                if ((cur && cur[field]) || Date.now() >= deadline) {
+                    clearInterval(timer);
+                    resolve(cur);
+                }
+            }, WAIT_POLL_MS);
+        });
+    }
+
     // --- Expose globally ---
 
     window.OrdoMemberstack = {
@@ -193,6 +271,10 @@
         planConnections: planConnections,
         customFields: customFields,
         metaData: metaData,
+
+        // Hydratation tardive
+        refresh: refresh,
+        waitFor: waitFor,
 
         // Helpers
         hasPlan: hasPlan,

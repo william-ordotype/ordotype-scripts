@@ -53,13 +53,13 @@
         }
     }
 
-    // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface
-    // son propre témoin. Canal d'erreurs du site s'il est chargé, sinon un
-    // ErrorEvent que le handler global capte.
+    // Ce script est chargé directement par Webflow, sans passer par un loader :
+    // shared/error-reporter.js n'est donc pas garanti présent. On délègue quand
+    // il est là, sinon repli minimal.
     function reportSideEffect(err) {
         try {
-            if (window.OrdoErrorReporter) {
-                window.OrdoErrorReporter.report('AutoCheckout', err);
+            if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+                window.OrdoErrorReporter.reportSideEffect('AutoCheckout', err);
                 return;
             }
             var e = err instanceof Error ? err : new Error(String(err));
@@ -67,13 +67,35 @@
         } catch (ignored) {}
     }
 
-    // La mesure ne doit jamais casser la page : tout push passe par ici.
     function track(payload) {
         try {
+            if (window.OrdoErrorReporter && window.OrdoErrorReporter.track) {
+                window.OrdoErrorReporter.track(payload);
+                return;
+            }
             window.dataLayer = window.dataLayer || [];
             window.dataLayer.push(payload);
         } catch (err) {
             reportSideEffect(err);
+        }
+    }
+
+    // Repli quand shared/memberstack-utils.js n'est pas sur la page. Reproduit
+    // la MÊME normalisation que lui : toute divergence ici ferait partir le
+    // webhook abandon-cart sans identifiant ni e-mail.
+    function readMemberstackFallback() {
+        var ms = window.OrdoMemberstack;
+        if (ms && ms.stripeCustomerId) return ms;
+        try {
+            var raw = localStorage.getItem('_ms-mem');
+            var parsed = raw ? JSON.parse(raw) : {};
+            return {
+                stripeCustomerId: parsed.stripeCustomerId || null,
+                memberId: parsed.id || parsed.userId || null,
+                email: (parsed.auth && parsed.auth.email) || parsed.email || null
+            };
+        } catch (e) {
+            return ms || {};
         }
     }
 
@@ -93,21 +115,35 @@
         await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
     }
 
-    // Memberstack data (prefer shared utility, fallback to inline parsing)
-    var ms = window.OrdoMemberstack;
-    if (!ms) {
-        try {
-            var raw = localStorage.getItem('_ms-mem');
-            var parsed = raw ? JSON.parse(raw) : {};
-            ms = { stripeCustomerId: parsed.stripeCustomerId, memberId: parsed.id, email: (parsed.auth && parsed.auth.email) || null };
-        } catch (e) {
-            ms = {};
-        }
+    // Le bouton de repli est masqué AVANT toute attente : sinon il reste
+    // cliquable sans gestionnaire pendant que l'on attend Memberstack, et un
+    // clic ne fait rien.
+    const btn = document.getElementById('checkoutStripe');
+    if (btn) btn.style.display = 'none';
+
+    // On arrive ici quelques secondes après la création du compte : le SDK
+    // Memberstack peut n'avoir pas encore écrit `stripeCustomerId` dans
+    // `_ms-mem`. Sans attente, le script abandonnait et l'inscription ne
+    // démarrait jamais. L'attente vit dans shared/memberstack-utils.js, qui
+    // relit le stockage et applique la normalisation (`userId` en repli d'`id`,
+    // `email` à plat en repli d'`auth.email`) — normalisation qu'une relecture
+    // maison perdrait, et avec elle l'identité dans le webhook abandon-cart.
+    const MS_WAIT_TIMEOUT_MS = 2000;
+    let ms;
+    if (window.OrdoMemberstack && window.OrdoMemberstack.waitFor) {
+        ms = await window.OrdoMemberstack.waitFor('stripeCustomerId', MS_WAIT_TIMEOUT_MS);
+    } else {
+        // Repli : ce script peut être chargé sans memberstack-utils.js.
+        ms = readMemberstackFallback();
     }
+
     const stripeCustomerId = ms.stripeCustomerId;
 
     if (!stripeCustomerId) {
-        console.error(PREFIX, 'No Stripe customer ID found');
+        // Après l'attente, l'absence est un vrai échec et non une course :
+        // `no_customer_id` redevient un chiffre exploitable.
+        console.error(PREFIX, 'No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms');
+        reportSideEffect(new Error('No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms'));
         trackCheckoutFailure('no_customer_id');
         return;
     }
@@ -116,10 +152,6 @@
 
     const customerEmail = ms.email;
     const userId = ms.memberId;
-
-    // Get button and hide it initially
-    const btn = document.getElementById('checkoutStripe');
-    if (btn) btn.style.display = 'none';
 
     // Get config from CMS or localStorage fallback
     const config = window.CMS_CHECKOUT_CONFIG || {};
