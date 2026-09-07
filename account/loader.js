@@ -56,7 +56,11 @@
       'sandbox-ordotype.webflow.io': 100,
       'ordotype.webflow.io': 100, // prod staging domain: everyone, so a build can
                                   // be verified there without the localStorage override
-      'www.ordotype.fr': 10
+      // 100 % depuis le 2026-09-07 : 13 jours à 10 % sans un seul incident
+      // (82 recherches, 4 enregistrements réels, 0 saturation SIRENE, 0 échec
+      // de projection Stripe, 0 erreur JS, 0 alerte). Les membres déjà enrôlés
+      // le restent : le bucket est stable.
+      'www.ordotype.fr': 100
     },
     // 🔴 Les deux domaines de recette font tourner Memberstack et Stripe en mode
     // TEST, et l'opt-in est adossé au registre LIVE : le serveur refuse les
