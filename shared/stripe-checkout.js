@@ -25,6 +25,30 @@ async function initStripeCheckout() {
     const PREFIX = '[StripeCheckout]';
     const config = window.STRIPE_CHECKOUT_CONFIG || {};
 
+    // GA4: the checkout session could not be created, so the user never reaches
+    // Stripe. Pairs with stripe_signup_click, which only fires once a session
+    // exists — without this event a broken checkout leaves no trace in analytics.
+    const checkoutFailureReason = (err) => {
+        const msg = (err && err.message) || '';
+        if (err && err.name === 'TypeError') return 'network';
+        const status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
+        if (status) return 'api_' + status[1];
+        if (/Invalid (session payload|checkout session response)/.test(msg)) return 'invalid_payload';
+        return 'other';
+    };
+
+    const trackCheckoutFailure = (reason) => {
+        try {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({
+                event: 'checkout_failed',
+                checkout_source: 'shared',
+                failure_reason: reason,
+                option: config.option || ''
+            });
+        } catch (e) {}
+    };
+
     // Helper to replace ${window.location.origin} placeholder with actual origin
     const resolveUrl = (url) => {
         if (!url) return url;
@@ -120,6 +144,7 @@ async function initStripeCheckout() {
         if (!data.sessionId || !data.url) {
             console.error(PREFIX, 'Invalid response');
             if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', 'Invalid checkout session response');
+            trackCheckoutFailure('invalid_payload');
             // Show fallback button so user can still proceed via Memberstack
             if (signupBtnStripe) signupBtnStripe.style.display = 'none';
             if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
@@ -133,6 +158,7 @@ async function initStripeCheckout() {
     } catch (err) {
         console.error(PREFIX, 'Error creating checkout session:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', err);
+        trackCheckoutFailure(checkoutFailureReason(err));
         // Show fallback button so user can still proceed via Memberstack
         if (signupBtnStripe) signupBtnStripe.style.display = 'none';
         if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';

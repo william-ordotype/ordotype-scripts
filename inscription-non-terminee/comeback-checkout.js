@@ -36,6 +36,30 @@
 
   var PREFIX = '[ComebackCheckout]';
 
+  // GA4: the fresh checkout session could not be created, so the button has no
+  // Stripe URL to send the user to. Pairs with comeback_resume_click — without
+  // this event a broken fallback looks like a user who simply did not click.
+  function checkoutFailureReason(err) {
+    var msg = (err && err.message) || '';
+    if (err && err.name === 'TypeError') return 'network';
+    var status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
+    if (status) return 'api_' + status[1];
+    if (/Invalid session payload/.test(msg)) return 'invalid_payload';
+    return 'other';
+  }
+
+  function trackCheckoutFailure(err, option) {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'checkout_failed',
+        checkout_source: 'comeback',
+        failure_reason: checkoutFailureReason(err),
+        option: option || ''
+      });
+    } catch (e) {}
+  }
+
   // A stashed Stripe Checkout Session URL is good for ~24h. Be a little
   // conservative (23h) so we never hand the user an about-to-expire link.
   var SESSION_MAX_AGE_MS = 23 * 60 * 60 * 1000;
@@ -182,6 +206,7 @@
     }).catch(function(err) {
       console.error(PREFIX, 'Fresh session error:', err);
       if (window.OrdoErrorReporter) OrdoErrorReporter.report('ComebackCheckout', err);
+      trackCheckoutFailure(err, ctx && ctx.option);
       return null;
     });
   }

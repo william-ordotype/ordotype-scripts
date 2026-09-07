@@ -24,6 +24,31 @@
     const PREFIX = '[AutoCheckout]';
     console.log(PREFIX, 'Initializing...');
 
+    // GA4: the checkout session could not be created, so the user never reaches
+    // Stripe. Pairs with stripe_signup_click, which only fires once a session
+    // exists — without this event a broken checkout leaves no trace in analytics.
+    function checkoutFailureReason(err) {
+        const msg = (err && err.message) || '';
+        if (err && err.name === 'TypeError') return 'network';
+        const status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
+        if (status) return 'api_' + status[1];
+        if (/Invalid session payload/.test(msg)) return 'invalid_payload';
+        return 'other';
+    }
+
+    function trackCheckoutFailure(reason) {
+        try {
+            const cfg = window.CMS_CHECKOUT_CONFIG || {};
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({
+                event: 'checkout_failed',
+                checkout_source: 'inscription-en-cours',
+                failure_reason: reason,
+                option: cfg.option || ''
+            });
+        } catch (e) {}
+    }
+
     // Wait for DOM if needed
     if (document.readyState === 'loading') {
         await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
@@ -44,6 +69,7 @@
 
     if (!stripeCustomerId) {
         console.error(PREFIX, 'No Stripe customer ID found');
+        trackCheckoutFailure('no_customer_id');
         return;
     }
 
@@ -128,6 +154,7 @@
 
     } catch (err) {
         console.error(PREFIX, 'Error creating session:', err);
+        trackCheckoutFailure(checkoutFailureReason(err));
         // Show fallback button
         if (btn) btn.style.display = 'flex';
         return;

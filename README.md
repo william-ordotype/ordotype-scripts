@@ -417,6 +417,33 @@ This is the B variant of the A/B test. Main differences from V1:
 
 ---
 
+## Checkout Analytics Events
+
+Every script that creates a Stripe Checkout session pushes `stripe_signup_click`
+just before sending the user to Stripe. That event only exists once a session
+has been created, so on its own it cannot distinguish "nobody clicked" from
+"the session could not be created". `checkout_failed` fills that gap.
+
+**`checkout_failed`** — pushed whenever session creation fails and the user is
+left on the page (usually behind the Memberstack fallback button).
+
+| Parameter | Values |
+|-----------------|-------------------------------------------------------------|
+| `checkout_source` | `pricing`, `pricing-v2`, `inscription-en-cours`, `comeback`, `shared` |
+| `failure_reason`  | `network`, `api_<http status>`, `invalid_payload`, `no_customer_id`, `other` |
+| `option`          | the offer slug, where the script knows it |
+
+Emitted by `pricing/stripe-checkout.js`, `pricing-v2/stripe-checkout.js`,
+`inscription-en-cours/auto-checkout.js`,
+`inscription-non-terminee/comeback-checkout.js` and `shared/stripe-checkout.js`.
+Failures also go to Sentry through `OrdoErrorReporter`; the dataLayer event is
+what makes the failure *rate* readable per page, next to the click.
+
+`shared/stripe-setup-session.js` (payment-method setup, not checkout) is not
+covered by this event.
+
+---
+
 ## Inscription Non Terminée Page (`/inscription-non-terminee/[slug]`)
 
 The "comeback" page Stripe returns to when the user **cancels** a checkout opened

@@ -6,6 +6,29 @@
 (function() {
   'use strict';
 
+  // GA4: the checkout session could not be created, so the user never reaches
+  // Stripe. Pairs with stripe_signup_click, which only fires once a session
+  // exists — without this event a broken checkout leaves no trace in analytics.
+  function checkoutFailureReason(err) {
+    var msg = (err && err.message) || '';
+    if (err && err.name === 'TypeError') return 'network';
+    var status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
+    if (status) return 'api_' + status[1];
+    if (/Invalid (session payload|checkout session response)/.test(msg)) return 'invalid_payload';
+    return 'other';
+  }
+
+  function trackCheckoutFailure(err) {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'checkout_failed',
+        checkout_source: 'pricing-v2',
+        failure_reason: checkoutFailureReason(err)
+      });
+    } catch (e) {}
+  }
+
   function init() {
     console.log('[StripeCheckoutV2] Init');
 
@@ -129,6 +152,7 @@
       } catch (err) {
         console.error('[StripeCheckoutV2] Fetch error:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckoutV2', err);
+        trackCheckoutFailure(err);
         // Show fallback buttons so user can still proceed via Memberstack
         if (btn1) btn1.style.display = 'none';
         if (btn2) btn2.style.display = 'none';
