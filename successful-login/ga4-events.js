@@ -29,8 +29,15 @@
   var ref = document.referrer || '';
   var cameFrom2fa = /\/membership\/connexion-2fa\b/.test(ref);
 
-  window.dataLayer.push({
-    event: '2fa_login_confirmed',
-    came_from_2fa: cameFrom2fa,
-  });
+  try {
+    window.dataLayer.push({
+      event: '2fa_login_confirmed',
+      came_from_2fa: cameFrom2fa,
+    });
+  } catch (err) {
+    try {
+      if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('SuccessfulLoginEvents', err);
+      else window.dispatchEvent(new ErrorEvent('error', { message: String(err && err.message), error: err }));
+    } catch (ignored) {}
+  }
 })();

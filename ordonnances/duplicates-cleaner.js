@@ -15,13 +15,20 @@
       ev.preventDefault();
 
       window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        'event': 'CustomPrescriptionClick',
-        'eventCategory': 'Button Click',
-        'eventAction': 'Click',
-        'eventLabel': 'Custom Prescription Click',
-        'eventValue': ''
-      });
+      try {
+        window.dataLayer.push({
+          'event': 'CustomPrescriptionClick',
+          'eventCategory': 'Button Click',
+          'eventAction': 'Click',
+          'eventLabel': 'Custom Prescription Click',
+          'eventValue': ''
+        });
+      } catch (err) {
+        try {
+          if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('DuplicatesCleaner', err);
+          else window.dispatchEvent(new ErrorEvent('error', { message: String(err && err.message), error: err }));
+        } catch (ignored) {}
+      }
     });
   }
 

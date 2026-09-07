@@ -94,20 +94,46 @@
     }
 
     // Memberstack data (prefer shared utility, fallback to inline parsing)
-    var ms = window.OrdoMemberstack;
-    if (!ms) {
+    function readMemberstack() {
+        var ms = window.OrdoMemberstack;
+        if (ms && ms.stripeCustomerId) return ms;
         try {
             var raw = localStorage.getItem('_ms-mem');
             var parsed = raw ? JSON.parse(raw) : {};
-            ms = { stripeCustomerId: parsed.stripeCustomerId, memberId: parsed.id, email: (parsed.auth && parsed.auth.email) || null };
+            return {
+                stripeCustomerId: parsed.stripeCustomerId,
+                memberId: parsed.id,
+                email: (parsed.auth && parsed.auth.email) || null
+            };
         } catch (e) {
-            ms = {};
+            return ms || {};
         }
     }
+
+    // On arrive ici quelques secondes après la création du compte : le SDK
+    // Memberstack peut n'avoir pas encore écrit `stripeCustomerId` dans
+    // `_ms-mem`. Sans attente, le script abandonnait et l'inscription ne
+    // démarrait jamais. Même fenêtre que shared/tracking-churn-offers.js.
+    const MS_WAIT_TIMEOUT_MS = 2000;
+    const MS_POLL_INTERVAL_MS = 50;
+    async function waitForStripeCustomer() {
+        const deadline = Date.now() + MS_WAIT_TIMEOUT_MS;
+        let ms = readMemberstack();
+        while (!ms.stripeCustomerId && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, MS_POLL_INTERVAL_MS));
+            ms = readMemberstack();
+        }
+        return ms;
+    }
+
+    const ms = await waitForStripeCustomer();
     const stripeCustomerId = ms.stripeCustomerId;
 
     if (!stripeCustomerId) {
-        console.error(PREFIX, 'No Stripe customer ID found');
+        // Après l'attente, l'absence est un vrai échec et non une course :
+        // `no_customer_id` redevient un chiffre exploitable.
+        console.error(PREFIX, 'No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms');
+        if (window.OrdoErrorReporter) OrdoErrorReporter.report('AutoCheckout', 'No Stripe customer ID');
         trackCheckoutFailure('no_customer_id');
         return;
     }

@@ -83,19 +83,43 @@
     return offers;
   }
 
+  // Cette fonction est appelée depuis les écouteurs `submit` des formulaires de
+  // résiliation et de rétention. Rien ici ne doit pouvoir empêcher un membre de
+  // résilier : la construction du payload est donc DANS le try, pas seulement
+  // le push, et une erreur part vers le canal d'erreurs du site plutôt que de
+  // remonter dans le handler.
   function push(eventName, extra) {
-    var info = memberInfo();
-    var payload = {
-      event: eventName,
-      member_id: info.member_id,
-      plan: info.plan,
-      page_location: window.location.href,
-    };
-    if (extra) {
-      for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) payload[k] = extra[k];
+    try {
+      var info = memberInfo();
+      var payload = {
+        event: eventName,
+        member_id: info.member_id,
+        plan: info.plan,
+        page_location: window.location.href,
+      };
+      if (extra) {
+        for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) payload[k] = extra[k];
+      }
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
+      console.log(PREFIX, eventName, payload);
+    } catch (err) {
+      reportSideEffect(err);
     }
-    window.dataLayer.push(payload);
-    console.log(PREFIX, eventName, payload);
+  }
+
+  // Un accessoire qui échoue ne doit pas rester muet, sinon la panne efface son
+  // propre témoin. Canal d'erreurs du site s'il est chargé, sinon un ErrorEvent
+  // que le handler global capte.
+  function reportSideEffect(err) {
+    try {
+      if (window.OrdoErrorReporter) {
+        window.OrdoErrorReporter.report('TrackingChurnOffers', err);
+        return;
+      }
+      var e = err instanceof Error ? err : new Error(String(err));
+      window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+    } catch (ignored) {}
   }
 
   // ---------- Wait for OrdoMemberstack -----------------------------------

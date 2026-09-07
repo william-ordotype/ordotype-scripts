@@ -34,12 +34,19 @@
 
   if (memberId) {
     (function () {
-      function _gtag() { window.dataLayer.push(arguments); }
+      function _gtag() { try { window.dataLayer.push(arguments); } catch (e) {} }
       _gtag('set', { user_id: memberId });
     })();
   }
 
   var payload = { event: 'nos_offres_view' };
   if (memberId) payload.member_id = memberId;
-  window.dataLayer.push(payload);
+  try {
+    window.dataLayer.push(payload);
+  } catch (err) {
+    try {
+      if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('PricingEvents', err);
+      else window.dispatchEvent(new ErrorEvent('error', { message: String(err && err.message), error: err }));
+    } catch (ignored) {}
+  }
 })();

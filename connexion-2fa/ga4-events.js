@@ -46,6 +46,30 @@
   window.__ordotype2faEventsInstalled = true;
   window.dataLayer = window.dataLayer || [];
 
+  // Le parcours 2FA a déjà été cassé une fois par de la télémétrie. Aucun push
+  // de ce fichier ne doit pouvoir remonter dans les gestionnaires de réponse
+  // d'/otp/verify : ils passent tous par ici, et une erreur part vers le canal
+  // d'erreurs du site plutôt que d'interrompre la connexion.
+  function reportSideEffect(err) {
+    try {
+      if (window.OrdoErrorReporter) {
+        window.OrdoErrorReporter.report('2faEvents', err);
+        return;
+      }
+      var e = err instanceof Error ? err : new Error(String(err));
+      window.dispatchEvent(new ErrorEvent('error', { message: e.message, error: e }));
+    } catch (ignored) {}
+  }
+
+  function track(payload) {
+    try {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
+    } catch (err) {
+      reportSideEffect(err);
+    }
+  }
+
   // On /membership/connexion-2fa, _ms-mem isn't populated yet (auth not
   // complete), but ms_member_id IS set in localStorage just before the 2FA
   // challenge renders. Use it to attribute events to the member.
@@ -55,7 +79,7 @@
   // Update user_id for this session (gtag pattern, works before/after gtag.js).
   if (memberIdOnPage) {
     (function() {
-      function _gtag() { window.dataLayer.push(arguments); }
+      function _gtag() { track(arguments); }
       _gtag('set', { user_id: memberIdOnPage });
     })();
   }
@@ -66,7 +90,7 @@
   // tag firings on this page get attribution even though _ms-mem is empty.
   var viewPayload = { event: '2fa_view' };
   if (memberIdOnPage) viewPayload.member_id = memberIdOnPage;
-  window.dataLayer.push(viewPayload);
+  track(viewPayload);
 
   // --- Timers ---------------------------------------------------------------
   var pageLoadedAt = Date.now();
@@ -118,7 +142,7 @@
   // would each emit their own correct attempt index.
   function onVerifySuccess(attemptNumber) {
     successFired = true;
-    window.dataLayer.push({
+    track({
       event: '2fa_otp_success',
       attempt_number: attemptNumber,
       time_on_page_sec: sec(),
@@ -131,7 +155,7 @@
     if (body && body.code === 'OTP_EXPIRED') reason = 'expired';
     else if (body && body.code === 'OTP_INVALID') reason = 'invalid';
     else reason = ttlReason();
-    window.dataLayer.push({
+    track({
       event: '2fa_otp_failure',
       error_reason: reason,
       attempt_number: attemptNumber,
@@ -140,7 +164,7 @@
   }
 
   function onVerifyFailureNoBody(attemptNumber) {
-    window.dataLayer.push({
+    track({
       event: '2fa_otp_failure',
       error_reason: ttlReason(),
       attempt_number: attemptNumber,
@@ -284,7 +308,7 @@
     // abandonment of the 2FA challenge.
     if (attemptCount === 0 && sec() < 3) return;
     abandonFired = true;
-    window.dataLayer.push({
+    track({
       event: '2fa_abandoned',
       time_on_page_sec: sec(),
       attempt_number: attemptCount,

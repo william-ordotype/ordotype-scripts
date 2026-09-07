@@ -70,7 +70,20 @@
   // window.gtag being defined (it may not be if GA4 Config hasn't loaded yet).
   function updateGtagConsent(consents) {
     window.dataLayer = window.dataLayer || [];
-    function localGtag() { window.dataLayer.push(arguments); }
+    // Le consentement est le seul push de ce dépôt qui ait une portée légale :
+    // s'il échoue en silence, l'arbitrage de l'utilisateur n'est pas appliqué.
+    // On le protège pour ne pas interrompre la suite de la fonction, et on le
+    // signale au canal d'erreurs plutôt que de l'avaler.
+    function localGtag() {
+      try {
+        window.dataLayer.push(arguments);
+      } catch (err) {
+        try {
+          if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('CookieConsent', err);
+          else window.dispatchEvent(new ErrorEvent('error', { message: String(err && err.message), error: err }));
+        } catch (ignored) {}
+      }
+    }
     localGtag('consent', 'update', {
       'ad_storage': consents.marketing ? 'granted' : 'denied',
       'ad_user_data': consents.marketing ? 'granted' : 'denied',
