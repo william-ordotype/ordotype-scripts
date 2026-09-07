@@ -5,13 +5,16 @@
  * L'état vit côté serveur : le module le lit au chargement, l'écrit au
  * changement, et revient en arrière si l'écriture est refusée.
  *
- * ⚠️ Ce que la confirmation dit, et ce qu'elle ne dit pas. Le serveur répond
- * avant que la fiche soit écrite (la réponse est posée en tête de la chaîne
- * pour ne pas faire attendre le navigateur). Un 200 signifie donc « la demande
- * est partie », pas « la fiche est écrite ». Le message affiché reste volon-
- * tairement sobre pour cette raison, et ce qui couvre l'écart est une alerte
- * côté serveur sur l'échec d'écriture. Ne pas transformer ce message en
- * promesse d'enregistrement sans faire d'abord répondre le serveur après coup.
+ * 🔴 Ce que la confirmation a le droit de dire. Le choix vit dans deux copies :
+ * celle que cette page relit, et celle que lit le programme d'envoi. Le serveur
+ * rend `stored` et `projected` pour dire laquelle a reçu quoi, et il n'est PAS
+ * permis de les ignorer : confirmer « vous ne recevrez plus vos factures »
+ * quand seule la première a été écrite, c'est accuser réception d'un retrait de
+ * consentement que rien n'honore, et aucune relecture ne viendra le contredire
+ * puisque la page lit justement celle des deux qui a été mise à jour.
+ *
+ * Le serveur rejoue une projection restée en souffrance au chargement suivant :
+ * le message dégradé annonce donc un rattrapage réel, pas une espérance.
  *
  * Le balisage est produit ici, pas dans Webflow : la page ne porte qu'un point
  * d'ancrage vide, comme le bloc de double authentification. Faire évoluer
@@ -62,6 +65,41 @@
       return 'Cette option n’est pas disponible sur votre compte pour le moment.';
     }
     return 'Votre choix n’a pas pu être enregistré. Merci de réessayer.';
+  }
+
+  /**
+   * Le message d'accusé, accordé à ce qui a réellement eu lieu.
+   *
+   * `projected` porte la copie que lit le programme d'envoi. Tant qu'elle n'a
+   * pas reçu le choix, l'envoi suit encore l'ancien : on ne peut donc ni
+   * promettre les factures, ni promettre leur arrêt. Le serveur rejoue cette
+   * projection au chargement suivant, d'où « peut demander quelques minutes ».
+   *
+   * `stored` porte la copie que cette page relit. Elle seule en échec ne change
+   * rien pour le membre — son choix est bien appliqué — mais la page pourra
+   * afficher l'ancienne position au prochain passage, et le lui taire ferait
+   * passer un affichage périmé pour un choix perdu.
+   *
+   * 🔴 On ne dégrade que sur un `false` EXPLICITE, jamais sur un champ absent.
+   * Ce fichier part par jsDelivr et le serveur par Netlify : les deux ne sont
+   * jamais à la même version au même instant. Lire une absence comme un échec
+   * ferait afficher un avertissement à tout le monde pendant l'intervalle, pour
+   * des enregistrements pourtant parfaits.
+   */
+  function confirmation(wanted, payload) {
+    if (payload.projected === false) {
+      return wanted
+        ? 'C’est enregistré. L’envoi automatique peut demander quelques minutes avant de devenir effectif.'
+        : 'C’est enregistré. L’arrêt peut demander quelques minutes : si une facture vous parvient encore, écrivez-nous.';
+    }
+    if (payload.stored === false) {
+      return wanted
+        ? 'C’est noté, vos factures vous seront envoyées par e-mail. L’affichage de cette page peut mettre un moment à suivre.'
+        : 'C’est noté, vous ne recevrez plus vos factures par e-mail. L’affichage de cette page peut mettre un moment à suivre.';
+    }
+    return wanted
+      ? 'C’est noté, vos factures vous seront envoyées par e-mail.'
+      : 'C’est noté, vous ne recevrez plus vos factures par e-mail.';
   }
 
   function memberToken() {
@@ -259,9 +297,7 @@
         var e = new Error('invoice-emails: unexpected body');
         throw e;
       }
-      setStatus(wanted
-        ? 'C’est noté, vos factures vous seront envoyées par e-mail.'
-        : 'C’est noté, vous ne recevrez plus vos factures par e-mail.');
+      setStatus(confirmation(wanted, payload));
     }).catch(function(err) {
       // L'affichage doit refléter ce qui a été accepté : on remet
       // l'interrupteur dans son état précédent plutôt que de laisser croire que
