@@ -54,6 +54,11 @@
       'ordotype.webflow.io': 100, // prod staging domain: everyone, so a build can
                                   // be verified there without the localStorage override
       'www.ordotype.fr': 10
+    },
+    'invoice-emails.js': {
+      'sandbox-ordotype.webflow.io': 100,
+      'ordotype.webflow.io': 100,
+      'www.ordotype.fr': 0 // ouvrir après une vérification sur le domaine de recette
     }
   };
   const HOST = window.location.hostname;
@@ -135,6 +140,7 @@
     'status-selectors.js',
     'delete-account.js',
     'billing-portal.js',
+    'invoice-emails.js', // Opt-in « recevoir mes factures par e-mail ». Gated by GATES.
     'phone-input.js'
   ];
 
