@@ -204,6 +204,34 @@
     document.head.appendChild(s);
   }
 
+  /**
+   * Un événement dataLayer, avec la cohorte de déploiement de CE fichier.
+   *
+   * 🔴 Jamais de `dataLayer.push` nu : le tableau peut ne pas exister quand GTM
+   * n'a pas encore chargé, et une exception ici casserait l'interrupteur pour
+   * une histoire de mesure.
+   *
+   * 🔴 La cohorte lue est `invoice-emails.js`, pas `siren-finder.js` : deux
+   * fonctionnalités gatées séparément, deux paliers, et les confondre a déjà
+   * fait lire un déploiement pour l'autre.
+   */
+  function track(eventName, params) {
+    if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
+    var payload = { event: eventName };
+    var rollout = window.OrdoRollout && window.OrdoRollout['invoice-emails.js'];
+    if (rollout) {
+      payload.rollout_percent = rollout.percent;
+      payload.rollout_bucket = rollout.bucket;
+      payload.rollout_reason = rollout.reason;
+    }
+    if (params) {
+      for (var k in params) {
+        if (Object.prototype.hasOwnProperty.call(params, k)) payload[k] = params[k];
+      }
+    }
+    try { window.dataLayer.push(payload); } catch (e) { /* no-op */ }
+  }
+
   function render(enabled) {
     // Une seconde exécution (embed dupliqué, bundle périmé servi à côté du
     // bundle épinglé) produirait deux interrupteurs portant le même id : les
@@ -302,12 +330,16 @@
         throw e;
       }
       setStatus(confirmation(wanted, payload));
+      // 🔴 Tracé APRÈS confirmation du serveur, pas au clic : un clic suivi
+      // d'un échec d'écriture compterait comme une adhésion qui n'existe pas.
+      track('invoice_emails_toggled', { state: wanted ? 'on' : 'off', outcome: 'saved' });
     }).catch(function(err) {
       // L'affichage doit refléter ce qui a été accepté : on remet
       // l'interrupteur dans son état précédent plutôt que de laisser croire que
       // le choix est pris en compte.
       if (input) input.checked = !wanted;
       setStatus(messageFor(err), true);
+      track('invoice_emails_toggled', { state: wanted ? 'on' : 'off', outcome: 'failed' });
       console.error(PREFIX + ' Save error:', err && err.message);
       reportIfActionable(err);
     // Le rétablissement passe par les DEUX branches : posé dans un `.then`
@@ -320,6 +352,10 @@
     anchor = document.getElementById(ANCHOR_ID);
     if (!anchor) {
       console.log(PREFIX + ' Anchor not found');
+      // 🔴 Le masquage se DIT. Sans cet événement, « personne ne coche » et
+      // « personne ne voit » sont indiscernables dans GA4, et on cherche une
+      // adhésion faible là où il n'y a qu'un widget invisible.
+      track('invoice_emails_hidden', { reason: 'no_anchor' });
       return;
     }
     // Rien n'est visible tant que l'état n'est pas connu : un interrupteur dont
@@ -331,19 +367,25 @@
     // pour une réponse déjà lisible dans l'instantané du membre.
     if (!member.stripeCustomerId) {
       console.log(PREFIX + ' No Stripe customer, hidden');
+      track('invoice_emails_hidden', { reason: 'no_stripe_customer' });
       return;
     }
 
     request('GET').then(function(state) {
       if (!state || !state.eligible) {
         console.log(PREFIX + ' Not eligible, hidden');
+        track('invoice_emails_hidden', { reason: 'not_eligible' });
         return;
       }
       render(state.enabled);
+      // Le dénominateur de l'entonnoir : les membres qui ont réellement
+      // l'interrupteur sous les yeux, et dans quelle position il se présente.
+      track('invoice_emails_shown', { state: state.enabled ? 'on' : 'off' });
       console.log(PREFIX + ' Initialized (enabled=' + Boolean(state.enabled) + ')');
     }).catch(function(err) {
       // Lecture impossible : rien ne s'affiche, y compris l'ancrage.
       console.error(PREFIX + ' Load error:', err && err.message);
+      track('invoice_emails_hidden', { reason: 'load_error' });
       reportIfActionable(err);
     });
   }
