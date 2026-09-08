@@ -223,7 +223,11 @@
 
     var label = document.createElement('label');
     label.setAttribute('for', INPUT_ID);
-    label.className = 'text-weight-semibold';
+    // Mêmes classes utilitaires que le titre « Mes factures et informations de
+    // facturation » juste au-dessus, plutôt qu'une taille en dur : les deux
+    // lignes se lisent comme deux entrées de même niveau, et elles suivront le
+    // système typographique si celui-ci change.
+    label.className = 'text-size-regular text-weight-semibold';
     label.style.cursor = 'pointer';
     label.textContent = 'Recevoir mes factures par e-mail';
 
