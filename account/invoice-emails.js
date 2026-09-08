@@ -214,6 +214,10 @@
    * 🔴 La cohorte lue est `invoice-emails.js`, pas `siren-finder.js` : deux
    * fonctionnalités gatées séparément, deux paliers, et les confondre a déjà
    * fait lire un déploiement pour l'autre.
+   *
+   * 🔴 Les paramètres sont PRÉFIXÉS. `reason` existe déjà comme dimension GA4,
+   * avec un autre sens : y verser ces valeurs mélangerait deux mesures dans une
+   * dimension partagée par tous les événements, sans que rien ne le signale.
    */
   function track(eventName, params) {
     if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
@@ -332,14 +336,14 @@
       setStatus(confirmation(wanted, payload));
       // 🔴 Tracé APRÈS confirmation du serveur, pas au clic : un clic suivi
       // d'un échec d'écriture compterait comme une adhésion qui n'existe pas.
-      track('invoice_emails_toggled', { state: wanted ? 'on' : 'off', outcome: 'saved' });
+      track('invoice_emails_toggled', { invoice_toggle_state: wanted ? 'on' : 'off', invoice_toggle_outcome: 'saved' });
     }).catch(function(err) {
       // L'affichage doit refléter ce qui a été accepté : on remet
       // l'interrupteur dans son état précédent plutôt que de laisser croire que
       // le choix est pris en compte.
       if (input) input.checked = !wanted;
       setStatus(messageFor(err), true);
-      track('invoice_emails_toggled', { state: wanted ? 'on' : 'off', outcome: 'failed' });
+      track('invoice_emails_toggled', { invoice_toggle_state: wanted ? 'on' : 'off', invoice_toggle_outcome: 'failed' });
       console.error(PREFIX + ' Save error:', err && err.message);
       reportIfActionable(err);
     // Le rétablissement passe par les DEUX branches : posé dans un `.then`
@@ -355,7 +359,7 @@
       // 🔴 Le masquage se DIT. Sans cet événement, « personne ne coche » et
       // « personne ne voit » sont indiscernables dans GA4, et on cherche une
       // adhésion faible là où il n'y a qu'un widget invisible.
-      track('invoice_emails_hidden', { reason: 'no_anchor' });
+      track('invoice_emails_hidden', { invoice_hidden_reason: 'no_anchor' });
       return;
     }
     // Rien n'est visible tant que l'état n'est pas connu : un interrupteur dont
@@ -367,25 +371,25 @@
     // pour une réponse déjà lisible dans l'instantané du membre.
     if (!member.stripeCustomerId) {
       console.log(PREFIX + ' No Stripe customer, hidden');
-      track('invoice_emails_hidden', { reason: 'no_stripe_customer' });
+      track('invoice_emails_hidden', { invoice_hidden_reason: 'no_stripe_customer' });
       return;
     }
 
     request('GET').then(function(state) {
       if (!state || !state.eligible) {
         console.log(PREFIX + ' Not eligible, hidden');
-        track('invoice_emails_hidden', { reason: 'not_eligible' });
+        track('invoice_emails_hidden', { invoice_hidden_reason: 'not_eligible' });
         return;
       }
       render(state.enabled);
       // Le dénominateur de l'entonnoir : les membres qui ont réellement
       // l'interrupteur sous les yeux, et dans quelle position il se présente.
-      track('invoice_emails_shown', { state: state.enabled ? 'on' : 'off' });
+      track('invoice_emails_shown', { invoice_toggle_state: state.enabled ? 'on' : 'off' });
       console.log(PREFIX + ' Initialized (enabled=' + Boolean(state.enabled) + ')');
     }).catch(function(err) {
       // Lecture impossible : rien ne s'affiche, y compris l'ancrage.
       console.error(PREFIX + ' Load error:', err && err.message);
-      track('invoice_emails_hidden', { reason: 'load_error' });
+      track('invoice_emails_hidden', { invoice_hidden_reason: 'load_error' });
       reportIfActionable(err);
     });
   }
