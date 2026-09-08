@@ -145,6 +145,34 @@
     });
   }
 
+  /**
+   * Une requête qui n'a produit AUCUNE réponse HTTP arrive ici sans `status` :
+   * connexion perdue, requête refusée avant d'être émise, onglet quitté pendant
+   * l'aller-retour. Elle n'apprend donc rien sur le compte du membre, alors que
+   * chacun des codes attendus, lui, dit quelque chose et se respecte.
+   *
+   * La rejouer une fois coûte un aller-retour et évite de masquer l'interrupteur
+   * pour un incident déjà terminé. Ce n'est qu'ensuite, si la seconde tentative
+   * échoue elle aussi, que le bloc disparaît et que l'incident est remonté.
+   *
+   * 🔴 Réservé à la LECTURE. Une écriture rejouée renverrait un choix dont la
+   * première tentative a pu aboutir sans que la réponse revienne : sur un
+   * enregistrement qu'on ne sait pas confirmer, c'est au membre de décider s'il
+   * recommence, pas à ce script.
+   */
+  var RETRY_DELAY_MS = 400;
+
+  function readState() {
+    return request('GET').catch(function(err) {
+      if (err && err.status) throw err;
+      return new Promise(function(resolve) {
+        setTimeout(resolve, RETRY_DELAY_MS);
+      }).then(function() {
+        return request('GET');
+      });
+    });
+  }
+
   function setStatus(message, isError) {
     if (!status) return;
     status.textContent = message || '';
@@ -375,7 +403,7 @@
       return;
     }
 
-    request('GET').then(function(state) {
+    readState().then(function(state) {
       if (!state || !state.eligible) {
         console.log(PREFIX + ' Not eligible, hidden');
         track('invoice_emails_hidden', { invoice_hidden_reason: 'not_eligible' });
