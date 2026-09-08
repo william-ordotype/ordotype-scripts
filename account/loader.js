@@ -69,16 +69,16 @@
     // le pourcentage. La vérification se fait sur www avec l'override, qui
     // n'expose aucun autre membre.
     'invoice-emails.js': {
-      // 10 % depuis le 2026-09-07. La chaîne entière a tourné en réel avant
-      // d'ouvrir : consentement écrit des deux côtés, retrait honoré par le
-      // programme d'envoi, rattrapage d'une projection perdue, et l'écran
-      // d'administration qui lit la même et unique source.
+      // 100 % depuis le 2026-09-08, après une journée à 10 % sans incident.
+      // La chaîne complète a tourné en réel : inscription depuis la page,
+      // fiche créée avec sa date de passage, envoi effectif avec pièces
+      // jointes, marqueur posé sur chaque facture, retrait honoré.
       //
-      // 🔴 Un membre enrôlé le reste : le bucket est stable, donc passer à 30 %
-      // puis 100 % n'enlève l'interrupteur à personne. L'inverse — le retirer à
+      // 🔴 Un membre enrôlé le reste : le bucket est stable, donc monter le
+      // palier n'enlève l'interrupteur à personne. L'inverse — le retirer à
       // quelqu'un qui a déjà coché — laisserait un consentement actif que le
-      // client ne peut plus retirer depuis sa page.
-      'www.ordotype.fr': 10
+      // client ne pourrait plus retirer depuis sa page.
+      'www.ordotype.fr': 100
     }
   };
   const HOST = window.location.hostname;
