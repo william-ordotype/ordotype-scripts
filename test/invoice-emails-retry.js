@@ -58,10 +58,18 @@ function fetchStub(outcomes) {
     return { calls, fn };
 }
 
-function run(outcomes) {
+function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
     const src = fs.readFileSync(path.join(ROOT, FILE), 'utf8');
+    // La chaîne réelle : l'ancre vit dans un Embed Webflow, lui-même dans le
+    // panneau d'onglet. Le module masque les deux premiers ; c'est le troisième
+    // qu'il doit observer, sans quoi il s'enferme.
+    const panneau = element('div');
+    const embed = element('div');
+    embed.classList = { contains: (c) => c === 'w-embed', add() {}, remove() {} };
+    embed.parentElement = panneau;
     const anchor = element('div');
-    anchor.parentElement = element('div');
+    anchor.parentElement = embed;
+    const observe = { cible: null, debranche: false };
     const pushed = [];
     const reported = [];
     const network = [];
@@ -80,6 +88,17 @@ function run(outcomes) {
         },
         setTimeout,
         clearTimeout,
+        // Observateur d'intersection de fabrication maison : il retient sa cible
+        // et rend son premier verdict comme le vrai, tout de suite, quand
+        // l'élément est déjà visible.
+        IntersectionObserver: function(cb) {
+            this.observe = (cible) => {
+                observe.cible = cible;
+                if (panneauOuvert) setTimeout(() => cb([{ target: cible, isIntersecting: true }]), 0);
+                if (ouvrirApres) setTimeout(() => cb([{ target: cible, isIntersecting: true }]), 100);
+            };
+            this.disconnect = () => { observe.debranche = true; };
+        },
     };
 
     global.window = win;
@@ -88,6 +107,7 @@ function run(outcomes) {
         readyState: 'complete',
         head: { appendChild() {} },
         addEventListener() {},
+        removeEventListener() {},
         getElementById: (id) => (id === 'ordotype-invoice-emails' ? anchor : null),
         createElement: (tag) => element(tag),
     };
@@ -98,7 +118,7 @@ function run(outcomes) {
     return new Promise((resolve) => {
         setTimeout(() => {
             global.console = REAL;
-            resolve({ calls: stub.calls, pushed, reported, network, anchor });
+            resolve({ calls: stub.calls, pushed, reported, network, anchor, embed, panneau, observe });
         }, 900);
     });
 }
@@ -109,6 +129,54 @@ function hiddenReason(pushed) {
 }
 
 const CASES = [
+    {
+        nom: 'on observe le panneau, JAMAIS le bloc que l on masque soi-meme',
+        opts: { panneauOuvert: false },
+        outcomes: [{ status: 200, body: { eligible: true, enabled: true } }],
+        attendu: (r) => {
+            // 🔴 L'invariant : masquer ce qu'on observe, c'est un piege qui se
+            // referme. Le bloc ne redeviendrait jamais visible, la lecture ne
+            // partirait jamais, pour personne, et sans aucune erreur pour le dire.
+            if (r.anchor.style.display !== 'none') return 'l ancre n est pas masquee au chargement';
+            if (r.embed.style.display !== 'none') return 'l Embed n est pas masque au chargement';
+            if (r.observe.cible === r.anchor) return 'on observe l ancre, que l on masque';
+            if (r.observe.cible === r.embed) return 'on observe l Embed, que l on masque';
+            if (r.observe.cible !== r.panneau) return 'cible observee inattendue';
+            return '';
+        },
+    },
+    {
+        nom: 'membre non eligible : rien ne s affiche, et l observateur se debranche',
+        outcomes: [{ status: 200, body: { eligible: false } }],
+        attendu: (r) => {
+            if (r.anchor.children.length) return 'un interrupteur a ete rendu pour un membre non eligible';
+            if (r.anchor.style.display !== 'none') return 'le bloc est reste visible';
+            if (hiddenReason(r.pushed) !== 'not_eligible') return 'raison de masquage : ' + hiddenReason(r.pushed);
+            if (!r.observe.debranche) return 'l observateur n a pas ete debranche';
+            return '';
+        },
+    },
+    {
+        nom: 'panneau fermé : le serveur n est pas interrogé',
+        opts: { panneauOuvert: false },
+        outcomes: [{ status: 200, body: { eligible: true, enabled: true } }],
+        attendu: (r) => {
+            if (r.calls.length) return 'requête envoyée alors que le panneau est fermé';
+            if (r.pushed.length) return 'un événement a été poussé sans que rien ne soit visible';
+            return '';
+        },
+    },
+    {
+        nom: 'à l ouverture du panneau, la lecture part et l interrupteur s affiche',
+        opts: { panneauOuvert: false, ouvrirApres: true },
+        outcomes: [{ status: 200, body: { eligible: true, enabled: true } }],
+        attendu: (r) => {
+            if (r.calls.length !== 1) return 'attendu 1 appel après ouverture, vu ' + r.calls.length;
+            if (!r.pushed.some((p) => p && p.event === 'invoice_emails_shown')) return 'interrupteur non affiché';
+            if (!r.anchor.children.length) return 'rien n a été rendu dans l ancrage';
+            return '';
+        },
+    },
     {
         nom: 'une panne de transport est rejouée, et la seconde tentative affiche',
         outcomes: [{ transport: 'Load failed' }, { status: 200, body: { eligible: true, enabled: true } }],
@@ -161,7 +229,7 @@ const CASES = [
     for (const cas of CASES) {
         let why;
         try {
-            why = cas.attendu(await run(cas.outcomes));
+            why = cas.attendu(await run(cas.outcomes, cas.opts));
         } catch (e) {
             why = 'harnais : ' + e.message;
         }
