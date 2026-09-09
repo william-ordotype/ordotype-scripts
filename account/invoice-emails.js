@@ -391,6 +391,20 @@
   }
 
   /**
+   * L'élément à observer : le premier ancêtre que nous ne masquons PAS.
+   *
+   * 🔴 Observer notre propre bloc serait un piège qui se referme sur lui-même.
+   * On le masque au chargement, parce qu'un interrupteur dont on ignore la
+   * position ferait mentir la page, et un élément masqué ne redevient jamais
+   * visible tout seul : la lecture ne partirait donc jamais, pour personne, et
+   * sans la moindre erreur pour le signaler. Le conteneur, lui, suit l'onglet.
+   */
+  function observed() {
+    var w = wrapper();
+    return (w && w.parentElement) || anchor.parentElement || anchor;
+  }
+
+  /**
    * Attend que le bloc soit RÉELLEMENT visible, puis exécute une fois.
    *
    * L'interrupteur vit dans le panneau « Abonnements et Facturation », que la
@@ -400,32 +414,46 @@
    * clic. Une requête abandonnée en vol ne rend aucun état, et le bloc restait
    * vide. Après un clic sur l'onglet, le membre a montré qu'il restait.
    *
-   * `offsetParent` est nul tant qu'un ancêtre est en `display:none`, ce qui est
-   * l'état d'un panneau d'onglets fermé : aucun sélecteur de balisage à
-   * maintenir, et un lien profond qui ouvre déjà le bon panneau passe par le
-   * premier contrôle. L'écoute est en phase de capture, pour voir le clic même
-   * si quelqu'un arrête sa propagation, et le contrôle est différé d'un tour de
-   * boucle parce que le panneau s'ouvre PENDANT le clic, pas avant.
+   * 🔴 On observe le passage à l'état visible, on ne le DEVINE pas. Une
+   * première version écoutait les clics et relisait `offsetParent` : c'était
+   * parier sur la souris. Trois chemins y échappaient, et chacun laissait le
+   * membre sans interrupteur, en silence, pour le reste de la page :
+   *   - le clavier, les onglets Webflow se parcourant aussi aux flèches ;
+   *   - une transition posée sur les onglets dans le Designer, qui applique le
+   *     `display` après le contrôle, sans que rien ne réessaie ;
+   *   - le lien profond, `tab-hash.js` étant chargé AVANT ce fichier et
+   *     ouvrant l'onglet par un `click()` émis avant que l'écouteur existe.
+   * Un membre privé d'interrupteur ne peut pas retirer un consentement déjà
+   * donné : c'est ce qui interdit de deviner.
    *
-   * 🔴 Le bloc ne peut donc plus être masqué avant de connaître son état :
-   * masqué par nous, il ne redeviendrait jamais visible et la lecture ne
-   * partirait jamais. Il reste en place et VIDE, ce qui ne montre rien tant que
-   * le panneau qui le contient est fermé.
+   * L'observateur, lui, se déclenche sur le passage réel à l'état visible,
+   * quelle qu'en soit la cause, rend son premier verdict tout de suite pour un
+   * panneau déjà ouvert, et se débranche après. Repli sans observateur : on lit
+   * tout de suite, c'est-à-dire le comportement d'avant.
    */
   function whenVisible(run) {
     var done = false;
-
-    function tenter() {
-      if (done || !anchor || !anchor.offsetParent) return;
+    function fire() {
+      if (done) return;
       done = true;
-      document.removeEventListener('click', apresClic, true);
       run();
     }
 
-    function apresClic() { setTimeout(tenter, 0); }
+    if (typeof window.IntersectionObserver !== 'function') return fire();
 
-    tenter();
-    if (!done) document.addEventListener('click', apresClic, true);
+    var obs = new window.IntersectionObserver(function(entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          obs.disconnect();
+          fire();
+          return;
+        }
+      }
+    // Le panneau ouvert place son haut dans la fenêtre, donc l'observation part
+    // à l'ouverture, pas au défilement. La marge couvre le cas où le bloc
+    // arriverait juste sous la ligne de flottaison.
+    }, { rootMargin: '200px' });
+    obs.observe(observed());
   }
 
   function init() {
@@ -438,12 +466,17 @@
       track('invoice_emails_hidden', { invoice_hidden_reason: 'no_anchor' });
       return;
     }
+    // Rien n'est visible tant que l'état n'est pas connu : un interrupteur dont
+    // on ignore la position ferait mentir la page, et un Embed vide laisserait
+    // les marges posées dans le Designer occuper la place pour rien. On peut
+    // masquer sans se bloquer parce que l'observateur regarde le conteneur, pas
+    // ce bloc-ci.
+    hide();
+
     // Sans client Stripe, l'interrupteur n'a rien à piloter. Le savoir ici
     // évite un aller-retour qui coûte plusieurs appels sur un quota partagé,
-    // pour une réponse déjà lisible dans l'instantané du membre. C'est le seul
-    // cas où l'on masque tout de suite : il n'y a rien à attendre.
+    // pour une réponse déjà lisible dans l'instantané du membre.
     if (!member.stripeCustomerId) {
-      hide();
       console.log(PREFIX + ' No Stripe customer, hidden');
       track('invoice_emails_hidden', { invoice_hidden_reason: 'no_stripe_customer' });
       return;
@@ -452,7 +485,6 @@
     whenVisible(function() {
       readState().then(function(state) {
         if (!state || !state.eligible) {
-          hide();
           console.log(PREFIX + ' Not eligible, hidden');
           track('invoice_emails_hidden', { invoice_hidden_reason: 'not_eligible' });
           return;
@@ -465,8 +497,7 @@
         track('invoice_emails_shown', { invoice_toggle_state: state.enabled ? 'on' : 'off' });
         console.log(PREFIX + ' Initialized (enabled=' + Boolean(state.enabled) + ')');
       }).catch(function(err) {
-        // Lecture impossible : rien ne s'affiche, y compris l'ancrage.
-        hide();
+        // Lecture impossible : le bloc reste masqué, comme depuis le départ.
         console.error(PREFIX + ' Load error:', err && err.message);
         track('invoice_emails_hidden', { invoice_hidden_reason: 'load_error' });
         reportIfActionable(err);

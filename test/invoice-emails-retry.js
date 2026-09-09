@@ -28,9 +28,6 @@ function element(tag) {
         children: [],
         firstChild: null,
         parentElement: null,
-        // Nul tant qu'un ancêtre est en display:none, comme dans un navigateur :
-        // c'est ce que le module lit pour savoir si le panneau est ouvert.
-        offsetParent: null,
         classList: { contains: () => false, add() {}, remove() {} },
         setAttribute() {},
         addEventListener() {},
@@ -63,10 +60,16 @@ function fetchStub(outcomes) {
 
 function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
     const src = fs.readFileSync(path.join(ROOT, FILE), 'utf8');
+    // La chaîne réelle : l'ancre vit dans un Embed Webflow, lui-même dans le
+    // panneau d'onglet. Le module masque les deux premiers ; c'est le troisième
+    // qu'il doit observer, sans quoi il s'enferme.
+    const panneau = element('div');
+    const embed = element('div');
+    embed.classList = { contains: (c) => c === 'w-embed', add() {}, remove() {} };
+    embed.parentElement = panneau;
     const anchor = element('div');
-    anchor.parentElement = element('div');
-    if (panneauOuvert) anchor.offsetParent = {};
-    const ecouteurs = {};
+    anchor.parentElement = embed;
+    const observe = { cible: null, debranche: false };
     const pushed = [];
     const reported = [];
     const network = [];
@@ -85,6 +88,17 @@ function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
         },
         setTimeout,
         clearTimeout,
+        // Observateur d'intersection de fabrication maison : il retient sa cible
+        // et rend son premier verdict comme le vrai, tout de suite, quand
+        // l'élément est déjà visible.
+        IntersectionObserver: function(cb) {
+            this.observe = (cible) => {
+                observe.cible = cible;
+                if (panneauOuvert) setTimeout(() => cb([{ target: cible, isIntersecting: true }]), 0);
+                if (ouvrirApres) setTimeout(() => cb([{ target: cible, isIntersecting: true }]), 100);
+            };
+            this.disconnect = () => { observe.debranche = true; };
+        },
     };
 
     global.window = win;
@@ -92,28 +106,19 @@ function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
     global.document = {
         readyState: 'complete',
         head: { appendChild() {} },
-        addEventListener(type, fn) { ecouteurs[type] = fn; },
-        removeEventListener(type) { delete ecouteurs[type]; },
+        addEventListener() {},
+        removeEventListener() {},
         getElementById: (id) => (id === 'ordotype-invoice-emails' ? anchor : null),
         createElement: (tag) => element(tag),
     };
     global.console = { log() {}, warn() {}, error() {}, info() {} };
     eval(src);
-    // Le membre ouvre le panneau : l'ancre devient visible, puis le clic passe.
-    // Dans cet ordre, comme dans un navigateur, où le panneau s'ouvre pendant
-    // le clic et où le module ne regarde qu'au tour de boucle suivant.
-    if (ouvrirApres) {
-        setTimeout(() => {
-            anchor.offsetParent = {};
-            if (ecouteurs.click) ecouteurs.click({});
-        }, 100);
-    }
     // Laisse passer l'attente entre les deux tentatives. La console n'est rendue
     // qu'ici : le module journalise depuis ses propres suites, donc après eval.
     return new Promise((resolve) => {
         setTimeout(() => {
             global.console = REAL;
-            resolve({ calls: stub.calls, pushed, reported, network, anchor });
+            resolve({ calls: stub.calls, pushed, reported, network, anchor, embed, panneau, observe });
         }, 900);
     });
 }
@@ -124,6 +129,33 @@ function hiddenReason(pushed) {
 }
 
 const CASES = [
+    {
+        nom: 'on observe le panneau, JAMAIS le bloc que l on masque soi-meme',
+        opts: { panneauOuvert: false },
+        outcomes: [{ status: 200, body: { eligible: true, enabled: true } }],
+        attendu: (r) => {
+            // 🔴 L'invariant : masquer ce qu'on observe, c'est un piege qui se
+            // referme. Le bloc ne redeviendrait jamais visible, la lecture ne
+            // partirait jamais, pour personne, et sans aucune erreur pour le dire.
+            if (r.anchor.style.display !== 'none') return 'l ancre n est pas masquee au chargement';
+            if (r.embed.style.display !== 'none') return 'l Embed n est pas masque au chargement';
+            if (r.observe.cible === r.anchor) return 'on observe l ancre, que l on masque';
+            if (r.observe.cible === r.embed) return 'on observe l Embed, que l on masque';
+            if (r.observe.cible !== r.panneau) return 'cible observee inattendue';
+            return '';
+        },
+    },
+    {
+        nom: 'membre non eligible : rien ne s affiche, et l observateur se debranche',
+        outcomes: [{ status: 200, body: { eligible: false } }],
+        attendu: (r) => {
+            if (r.anchor.children.length) return 'un interrupteur a ete rendu pour un membre non eligible';
+            if (r.anchor.style.display !== 'none') return 'le bloc est reste visible';
+            if (hiddenReason(r.pushed) !== 'not_eligible') return 'raison de masquage : ' + hiddenReason(r.pushed);
+            if (!r.observe.debranche) return 'l observateur n a pas ete debranche';
+            return '';
+        },
+    },
     {
         nom: 'panneau fermé : le serveur n est pas interrogé',
         opts: { panneauOuvert: false },
