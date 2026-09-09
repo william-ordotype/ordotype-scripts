@@ -64,13 +64,20 @@ function run(outcomes) {
     anchor.parentElement = element('div');
     const pushed = [];
     const reported = [];
+    const network = [];
     const stub = fetchStub(outcomes);
 
     const win = {
         dataLayer: { push(p) { pushed.push(p); } },
         OrdoAccount: { member: { id: 'mem_test', stripeCustomerId: 'cus_test' } },
         $memberstackDom: { getMemberCookie: () => 'jeton-de-test' },
-        OrdoErrorReporter: { report(context) { reported.push(context); } },
+        // Les deux voies du fichier partagé : `report` pour un incident,
+        // `reportNetwork` pour une requête restée sans réponse, que le partagé
+        // écarte si la page était en train de partir.
+        OrdoErrorReporter: {
+            report(context) { reported.push(context); },
+            reportNetwork(context) { network.push(context); return true; },
+        },
         setTimeout,
         clearTimeout,
     };
@@ -91,7 +98,7 @@ function run(outcomes) {
     return new Promise((resolve) => {
         setTimeout(() => {
             global.console = REAL;
-            resolve({ calls: stub.calls, pushed, reported, anchor });
+            resolve({ calls: stub.calls, pushed, reported, network, anchor });
         }, 900);
     });
 }
@@ -110,7 +117,7 @@ const CASES = [
             if (r.calls.some((c) => c.method !== 'GET')) return 'la relance doit rester une lecture';
             if (!r.pushed.some((p) => p && p.event === 'invoice_emails_shown')) return 'interrupteur non affiché';
             if (!r.anchor.children.length) return 'rien n a été rendu dans l ancrage';
-            if (r.reported.length) return 'incident remonté alors que la lecture a fini par aboutir';
+            if (r.reported.length || r.network.length) return 'incident remonté alors que la lecture a fini par aboutir';
             return '';
         },
     },
@@ -120,7 +127,20 @@ const CASES = [
         attendu: (r) => {
             if (r.calls.length !== 2) return 'attendu 2 appels, vu ' + r.calls.length;
             if (hiddenReason(r.pushed) !== 'load_error') return 'raison de masquage : ' + hiddenReason(r.pushed);
-            if (r.reported.join() !== 'InvoiceEmails') return 'incident non remonté une fois et une seule';
+            // 🔴 Par la voie réseau, pas par report() : c'est elle qui écarte
+            // une requête morte avec sa page.
+            if (r.network.join() !== 'InvoiceEmails') return 'panne de transport non remontée par la voie réseau';
+            if (r.reported.length) return 'une panne sans statut ne doit pas passer par report()';
+            return '';
+        },
+    },
+    {
+        nom: 'un code inattendu passe par report(), pas par la voie réseau',
+        outcomes: [{ status: 500, body: { error: 'boom' } }],
+        attendu: (r) => {
+            if (r.calls.length !== 1) return 'un code de réponse ne se rejoue pas, vu ' + r.calls.length + ' appels';
+            if (r.reported.join() !== 'InvoiceEmails') return 'incident non remonté';
+            if (r.network.length) return 'une réponse avec statut n est pas une panne de transport';
             return '';
         },
     },

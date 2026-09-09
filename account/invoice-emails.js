@@ -54,7 +54,17 @@
 
   function reportIfActionable(err) {
     if (err && EXPECTED.indexOf(err.status) !== -1) return;
-    if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('InvoiceEmails', err);
+    var reporter = window.OrdoErrorReporter;
+    if (!reporter) return;
+    // Sans statut, la requête n'a produit aucune réponse : seul le fichier
+    // partagé sait si la page était en train de partir, auquel cas il n'y a
+    // pas d'incident. `report` reste le repli, pour une version servie
+    // antérieure à cette méthode.
+    if (err && !err.status && typeof reporter.reportNetwork === 'function') {
+      reporter.reportNetwork('InvoiceEmails', err);
+      return;
+    }
+    reporter.report('InvoiceEmails', err);
   }
 
   function messageFor(err) {

@@ -17,16 +17,40 @@
  *   // Le seul point d'entrée du dataLayer. Ne jette jamais, signale l'échec.
  *   OrdoErrorReporter.track({ event: 'stripe_signup_click', option: 'rempla' });
  *
- * Version: 1.1.0 (2026-09-07)
+ * Version: 1.2.0 (2026-09-09)
  *   1.0.0 — report() vers le webhook Discord.
  *   1.1.0 — reportSideEffect() et track() partagés, pour que la règle « une
  *           mesure ne doit jamais casser la page » vive à un seul endroit au
  *           lieu d'être recopiée dans chaque script.
+ *   1.2.0 — reportNetwork(), pour ne plus signaler une requête morte avec sa
+ *           page. Mesuré : ces échecs-là sont sans statut, le serveur les a
+ *           souvent servis normalement, et ce sont les seuls que `keepalive`
+ *           laisse encore remonter.
  */
 (function() {
     'use strict';
 
     var WEBHOOK_URL = 'https://pricing.ordotype.fr/.netlify/functions/notify-webhook';
+
+    /**
+     * La page est-elle en train de partir, ou déjà hors de vue ?
+     *
+     * `pagehide` couvre la fermeture et la navigation, `visibilitychange` le
+     * passage en arrière-plan, que les navigateurs mobiles traitent comme une
+     * fin de vie. `pageshow` réarme, sans quoi un simple changement d'onglet
+     * rendrait la page définitivement muette pour le reste de sa vie.
+     *
+     * Aucun de ces écouteurs n'est indispensable : s'ils ne peuvent pas être
+     * posés, le drapeau reste faux et tout est signalé, comme avant.
+     */
+    var pagePartie = false;
+    try {
+        window.addEventListener('pagehide', function() { pagePartie = true; });
+        window.addEventListener('pageshow', function() { pagePartie = false; });
+        document.addEventListener('visibilitychange', function() {
+            pagePartie = document.visibilityState === 'hidden';
+        });
+    } catch (e) { /* pas d'écouteur : on signale tout */ }
 
     window.OrdoErrorReporter = {
         report: function(context, error) {
@@ -87,6 +111,35 @@
                 }
             } catch (e) {
                 // Never throw from the error reporter itself
+            }
+        },
+
+        /**
+         * Une requête qui n'a produit AUCUNE réponse HTTP : pas de statut, rien
+         * à lire. Deux situations mènent là, et une seule mérite d'être
+         * signalée.
+         *
+         * Quand la page s'en va, le navigateur abandonne ce qui est en vol : la
+         * requête meurt avec elle, à l'étape où elle se trouvait. Ce n'est pas
+         * une panne. Et comme ce module poste avec `keepalive`, c'est justement
+         * le seul type d'échec qui sache encore se signaler : le remonter
+         * donnerait une image faite de navigations plutôt que d'incidents.
+         *
+         * 🔴 Réservé aux échecs SANS statut. Une vraie erreur survenue pendant
+         * un déchargement doit continuer de passer par report().
+         *
+         * ⚠️ La mesure n'est pas concernée : l'appelant pousse son événement
+         * dans tous les cas. On choisit ce qui alerte, pas ce qui est compté.
+         *
+         * Rend true si l'incident a été signalé, false s'il a été écarté.
+         */
+        reportNetwork: function(context, error) {
+            try {
+                if (pagePartie) return false;
+                window.OrdoErrorReporter.report(context, error);
+                return true;
+            } catch (e) {
+                return false;
             }
         },
 
