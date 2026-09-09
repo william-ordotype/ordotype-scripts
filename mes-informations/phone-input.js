@@ -7,8 +7,16 @@
   'use strict';
 
   var UTILS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/utils.js';
+  var UTILS_TIMEOUT_MS = 8000;
   var LIB_POLL_MS = 100;
   var LIB_POLL_MAX = 100;
+
+  function report(message) {
+    console.warn('[PhoneInput] ' + message);
+    if (window.OrdoErrorReporter && typeof window.OrdoErrorReporter.reportNetwork === 'function') {
+      window.OrdoErrorReporter.reportNetwork('PhoneInput', new Error(message));
+    }
+  }
 
   /**
    * Load the formatting helpers ourselves rather than handing intl-tel-input
@@ -18,7 +26,10 @@
    * Loading the file ourselves keeps that failure in our hands: the field stays
    * usable, it only loses auto-formatting.
    *
-   * Never rejects, so a blocked or offline CDN degrades instead of breaking.
+   * Always settles, and never later than UTILS_TIMEOUT_MS. A filtering proxy
+   * can hold the request open without ever answering or erroring, and the field
+   * is built after this resolves: waiting on `load`/`error` alone would leave a
+   * plain text box with no country selector at all.
    */
   function loadUtils() {
     return new Promise(function(resolve) {
@@ -27,15 +38,30 @@
         return;
       }
 
+      var settled = false;
+
+      function settle(message) {
+        if (settled) return;
+        settled = true;
+        if (message) report(message);
+        resolve();
+      }
+
+      var timer = setTimeout(function() {
+        settle('Formatting helpers timed out, continuing without them');
+      }, UTILS_TIMEOUT_MS);
+
       var script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
       script.src = UTILS_URL;
       script.async = true;
       script.onload = function() {
-        resolve();
+        clearTimeout(timer);
+        settle(null);
       };
       script.onerror = function() {
-        console.warn('[PhoneInput] Formatting helpers unavailable, continuing without them');
-        resolve();
+        clearTimeout(timer);
+        settle('Formatting helpers unavailable, continuing without them');
       };
       (document.body || document.head).appendChild(script);
     });
@@ -109,7 +135,7 @@
     }
 
     if (tries >= LIB_POLL_MAX) {
-      console.warn('[PhoneInput] intl-tel-input did not load, skipping phone formatting');
+      report('intl-tel-input did not load, skipping phone formatting');
       return;
     }
 

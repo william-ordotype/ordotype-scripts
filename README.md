@@ -523,7 +523,14 @@ meant the wait never running on the one page that needs it.
 ```bash
 node test/smoke-tracking.js            # un événement atteint-il vraiment dataLayer ?
 node test/no-naked-datalayer-push.js   # aucun push hors try/catch
+node test/belgique-tracking.js         # jsdom sur la page captée
+node test/error-reporter-network.js    # une requête morte avec sa page n'est pas signalée
+node test/invoice-emails-retry.js      # rejeu d'une lecture sans réponse
+node test/phone-input-utils.js         # le champ tél. survit à des aides absentes
 ```
+
+⚠️ Aucun workflow ne lance `test/` : `parse-floor.yml` ne vérifie que la
+capacité à être analysé. Ces fichiers ne tournent que si on les lance.
 
 `smoke-tracking.js` runs each emitter twice, with and without
 `window.OrdoErrorReporter`, and asserts an event actually lands. `node --check`
@@ -1917,6 +1924,13 @@ particular, `homepage/cgu-modal.js` and `pathology/scroll-anchor.js` are
 ONLY ever served through those pinned loaders: they deploy exclusively
 via a pin bump and are deliberately absent from the purge list below.
 
+`mes-informations/phone-input.js` is the awkward case: it is served `@main`
+by `mes-informations-cms/loader.js` (so it IS in the purge list), but the
+homepage reaches the same file through the pinned `homepage/loader.js`, which
+propagates its pin. Shipping a change to that file therefore takes BOTH a
+purge and a homepage pin bump, and the homepage is where most of its traffic
+is. Purging alone leaves the homepage on the old copy indefinitely.
+
 The site-wide Crisp loader is served from a separate repo
 (`william-ordotype/crisp`, embedded `@main` on every page): a change there is
 only live after its own purge, so its URL is part of this list.
@@ -1937,6 +1951,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/pau
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/tab-hash.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/session-stats-prefetch.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/phone-input.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/phone-input.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/delete-account.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js
