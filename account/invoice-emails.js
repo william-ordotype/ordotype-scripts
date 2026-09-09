@@ -390,6 +390,44 @@
     }).then(release, release);
   }
 
+  /**
+   * Attend que le bloc soit RÉELLEMENT visible, puis exécute une fois.
+   *
+   * L'interrupteur vit dans le panneau « Abonnements et Facturation », que la
+   * plupart des visiteurs de la page compte n'ouvrent jamais. Lire l'état au
+   * chargement faisait donc payer un aller-retour à tout le monde, et surtout
+   * le lançait à l'instant où le membre vient d'arriver et peut repartir d'un
+   * clic. Une requête abandonnée en vol ne rend aucun état, et le bloc restait
+   * vide. Après un clic sur l'onglet, le membre a montré qu'il restait.
+   *
+   * `offsetParent` est nul tant qu'un ancêtre est en `display:none`, ce qui est
+   * l'état d'un panneau d'onglets fermé : aucun sélecteur de balisage à
+   * maintenir, et un lien profond qui ouvre déjà le bon panneau passe par le
+   * premier contrôle. L'écoute est en phase de capture, pour voir le clic même
+   * si quelqu'un arrête sa propagation, et le contrôle est différé d'un tour de
+   * boucle parce que le panneau s'ouvre PENDANT le clic, pas avant.
+   *
+   * 🔴 Le bloc ne peut donc plus être masqué avant de connaître son état :
+   * masqué par nous, il ne redeviendrait jamais visible et la lecture ne
+   * partirait jamais. Il reste en place et VIDE, ce qui ne montre rien tant que
+   * le panneau qui le contient est fermé.
+   */
+  function whenVisible(run) {
+    var done = false;
+
+    function tenter() {
+      if (done || !anchor || !anchor.offsetParent) return;
+      done = true;
+      document.removeEventListener('click', apresClic, true);
+      run();
+    }
+
+    function apresClic() { setTimeout(tenter, 0); }
+
+    tenter();
+    if (!done) document.addEventListener('click', apresClic, true);
+  }
+
   function init() {
     anchor = document.getElementById(ANCHOR_ID);
     if (!anchor) {
@@ -400,35 +438,39 @@
       track('invoice_emails_hidden', { invoice_hidden_reason: 'no_anchor' });
       return;
     }
-    // Rien n'est visible tant que l'état n'est pas connu : un interrupteur dont
-    // on ignore la position ferait mentir la page.
-    hide();
-
     // Sans client Stripe, l'interrupteur n'a rien à piloter. Le savoir ici
     // évite un aller-retour qui coûte plusieurs appels sur un quota partagé,
-    // pour une réponse déjà lisible dans l'instantané du membre.
+    // pour une réponse déjà lisible dans l'instantané du membre. C'est le seul
+    // cas où l'on masque tout de suite : il n'y a rien à attendre.
     if (!member.stripeCustomerId) {
+      hide();
       console.log(PREFIX + ' No Stripe customer, hidden');
       track('invoice_emails_hidden', { invoice_hidden_reason: 'no_stripe_customer' });
       return;
     }
 
-    readState().then(function(state) {
-      if (!state || !state.eligible) {
-        console.log(PREFIX + ' Not eligible, hidden');
-        track('invoice_emails_hidden', { invoice_hidden_reason: 'not_eligible' });
-        return;
-      }
-      render(state.enabled);
-      // Le dénominateur de l'entonnoir : les membres qui ont réellement
-      // l'interrupteur sous les yeux, et dans quelle position il se présente.
-      track('invoice_emails_shown', { invoice_toggle_state: state.enabled ? 'on' : 'off' });
-      console.log(PREFIX + ' Initialized (enabled=' + Boolean(state.enabled) + ')');
-    }).catch(function(err) {
-      // Lecture impossible : rien ne s'affiche, y compris l'ancrage.
-      console.error(PREFIX + ' Load error:', err && err.message);
-      track('invoice_emails_hidden', { invoice_hidden_reason: 'load_error' });
-      reportIfActionable(err);
+    whenVisible(function() {
+      readState().then(function(state) {
+        if (!state || !state.eligible) {
+          hide();
+          console.log(PREFIX + ' Not eligible, hidden');
+          track('invoice_emails_hidden', { invoice_hidden_reason: 'not_eligible' });
+          return;
+        }
+        render(state.enabled);
+        // ⚠️ Le dénominateur de l'entonnoir a changé de sens le 09/09/2026 :
+        // avant, « le module a tourné au chargement de la page » ; désormais,
+        // « le membre a ouvert le panneau de facturation et a l'interrupteur
+        // sous les yeux ». Les deux périodes ne se comparent pas.
+        track('invoice_emails_shown', { invoice_toggle_state: state.enabled ? 'on' : 'off' });
+        console.log(PREFIX + ' Initialized (enabled=' + Boolean(state.enabled) + ')');
+      }).catch(function(err) {
+        // Lecture impossible : rien ne s'affiche, y compris l'ancrage.
+        hide();
+        console.error(PREFIX + ' Load error:', err && err.message);
+        track('invoice_emails_hidden', { invoice_hidden_reason: 'load_error' });
+        reportIfActionable(err);
+      });
     });
   }
 
