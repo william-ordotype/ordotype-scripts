@@ -30,10 +30,17 @@ function element(tag) {
         parentElement: null,
         classList: { contains: () => false, add() {}, remove() {} },
         setAttribute() {},
+        removeAttribute() {},
         addEventListener() {},
         appendChild(child) {
             this.children.push(child);
-            this.firstChild = this.children[0];
+            this.firstChild = this.children[0] || null;
+            return child;
+        },
+        removeChild(child) {
+            const i = this.children.indexOf(child);
+            if (i !== -1) this.children.splice(i, 1);
+            this.firstChild = this.children[0] || null;
             return child;
         },
     };
@@ -49,11 +56,15 @@ function fetchStub(outcomes) {
         // quand la connexion tombe, que le préflight est refusé ou que l'onglet
         // est quitté. Pas de statut, donc rien à lire pour l'appelant.
         if (outcome.transport) return Promise.reject(new TypeError(outcome.transport));
-        return Promise.resolve({
+        const reponse = {
             ok: outcome.status < 400,
             status: outcome.status,
             json: () => Promise.resolve(outcome.body || {}),
-        });
+        };
+        // `delai` simule un serveur lent, le seul cas où le temoin d attente
+        // doit apparaitre.
+        if (outcome.delai) return new Promise((r) => setTimeout(() => r(reponse), outcome.delai));
+        return Promise.resolve(reponse);
     }
     return { calls, fn };
 }
@@ -70,6 +81,7 @@ function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
     const anchor = element('div');
     anchor.parentElement = embed;
     const observe = { cible: null, debranche: false };
+    const crees = [];
     const pushed = [];
     const reported = [];
     const network = [];
@@ -109,7 +121,7 @@ function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
         addEventListener() {},
         removeEventListener() {},
         getElementById: (id) => (id === 'ordotype-invoice-emails' ? anchor : null),
-        createElement: (tag) => element(tag),
+        createElement: (tag) => { const e = element(tag); crees.push(e); return e; },
     };
     global.console = { log() {}, warn() {}, error() {}, info() {} };
     eval(src);
@@ -118,7 +130,7 @@ function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
     return new Promise((resolve) => {
         setTimeout(() => {
             global.console = REAL;
-            resolve({ calls: stub.calls, pushed, reported, network, anchor, embed, panneau, observe });
+            resolve({ calls: stub.calls, pushed, reported, network, anchor, embed, panneau, observe, crees });
         }, 900);
     });
 }
@@ -174,6 +186,41 @@ const CASES = [
             if (r.calls.length !== 1) return 'attendu 1 appel après ouverture, vu ' + r.calls.length;
             if (!r.pushed.some((p) => p && p.event === 'invoice_emails_shown')) return 'interrupteur non affiché';
             if (!r.anchor.children.length) return 'rien n a été rendu dans l ancrage';
+            return '';
+        },
+    },
+    {
+        nom: 'reponse rapide : aucun temoin d attente, donc aucun clignotement',
+        // 50 ms : plus rapide que le delai avant temoin, donc il ne doit jamais
+        // etre pose. Sans latence du tout, le test ne prouverait rien.
+        outcomes: [{ status: 200, body: { eligible: true, enabled: true }, delai: 50 }],
+        attendu: (r) => {
+            const temoin = r.crees.filter((e) => e.className === 'ordo-invmail-skel');
+            if (temoin.length) return 'un temoin est apparu alors que la reponse etait immediate';
+            if (!r.pushed.some((p) => p && p.event === 'invoice_emails_shown')) return 'interrupteur non affiche';
+            return '';
+        },
+    },
+    {
+        nom: 'reponse lente : le temoin apparait, puis cede la place a l interrupteur',
+        outcomes: [{ status: 200, body: { eligible: true, enabled: true }, delai: 400 }],
+        attendu: (r) => {
+            const temoin = r.crees.filter((e) => e.className === 'ordo-invmail-skel');
+            if (!temoin.length) return 'aucun temoin alors que la reponse a mis 400 ms';
+            const emplacement = r.crees.find((e) => e.className === 'ordo-invmail-slot');
+            if (!emplacement) return 'emplacement du controle introuvable';
+            if (emplacement.children.some((c) => c.className === 'ordo-invmail-skel')) return 'le temoin est reste en place';
+            if (!emplacement.children.some((c) => c.className === 'ordo-invmail-sw')) return 'l interrupteur n a pas pris la place';
+            if (r.anchor.style.display === 'none') return 'le bloc est reste masque';
+            return '';
+        },
+    },
+    {
+        nom: 'reponse lente qui echoue : le temoin ne reste pas a pulser',
+        outcomes: [{ transport: 'Load failed', delai: 300 }, { transport: 'Load failed' }],
+        attendu: (r) => {
+            if (r.anchor.style.display !== 'none') return 'le bloc est reste visible apres l echec';
+            if (hiddenReason(r.pushed) !== 'load_error') return 'raison de masquage : ' + hiddenReason(r.pushed);
             return '';
         },
     },

@@ -43,7 +43,14 @@
   var anchor = null;
   var input = null;
   var status = null;
+  var slot = null;
   var busy = false;
+
+  // Délai avant d'afficher le témoin d'attente. La lecture répond le plus
+  // souvent en moins que ça : dans ce cas le témoin n'apparaît jamais, et le
+  // membre voit son interrupteur arriver d'un coup, sans clignotement.
+  var SKELETON_DELAY_MS = 200;
+  var skeletonTimer = null;
 
   /**
    * Les codes attendus ne sont pas des incidents : session expirée, membre non
@@ -231,7 +238,15 @@
     '.ordo-invmail-sw input:checked~.ordo-invmail-knob{transform:translateX(18px)}',
     '.ordo-invmail-sw input:disabled{cursor:default}',
     '.ordo-invmail-sw input:disabled~.ordo-invmail-track{opacity:.5}',
-    '.ordo-invmail-sw input:focus-visible~.ordo-invmail-track{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}'
+    '.ordo-invmail-sw input:focus-visible~.ordo-invmail-track{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}',
+    // Le témoin d'attente occupe exactement la place du futur interrupteur, pour
+    // que la ligne ne bouge pas quand l'un remplace l'autre.
+    '.ordo-invmail-slot{flex:0 0 auto;display:inline-flex;width:44px;height:26px}',
+    '.ordo-invmail-skel{width:44px;height:26px;border-radius:999px;background:var(--base-300,#0c0e164d);animation:ordo-invmail-pulse 1.2s ease-in-out infinite}',
+    '@keyframes ordo-invmail-pulse{0%,100%{opacity:.4}50%{opacity:.85}}',
+    // Une animation qui pulse indéfiniment est exactement ce que ce réglage
+    // système demande de ne pas imposer.
+    '@media (prefers-reduced-motion:reduce){.ordo-invmail-skel{animation:none}}'
   ].join('');
 
   function injectStyle() {
@@ -274,14 +289,20 @@
     try { window.dataLayer.push(payload); } catch (e) { /* no-op */ }
   }
 
-  function render(enabled) {
-    // Une seconde exécution (embed dupliqué, bundle périmé servi à côté du
-    // bundle épinglé) produirait deux interrupteurs portant le même id : les
-    // libellés pointeraient tous sur le premier, le code lirait le second, et
-    // le membre écrirait l'inverse de ce qu'il voit.
+  /**
+   * Le libellé et l'emplacement du contrôle, sans le contrôle lui-même.
+   *
+   * Construit une seule fois. Rend false si l'ancrage porte déjà quelque chose
+   * que nous n'avons pas posé : une seconde exécution (embed dupliqué, bundle
+   * périmé servi à côté du bundle épinglé) produirait deux interrupteurs
+   * portant le même id, les libellés pointeraient tous sur le premier, le code
+   * lirait le second, et le membre écrirait l'inverse de ce qu'il voit.
+   */
+  function buildShell() {
+    if (slot) return true;
     if (anchor.firstChild) {
       console.log(PREFIX + ' Already rendered');
-      return;
+      return false;
     }
     injectStyle();
 
@@ -309,6 +330,86 @@
     text.appendChild(label);
     text.appendChild(help);
 
+    // L'emplacement du contrôle. Il reçoit d'abord le témoin d'attente, puis
+    // l'interrupteur lui-même : la ligne ne bouge pas entre les deux, les deux
+    // ayant la même taille.
+    slot = document.createElement('span');
+    slot.className = 'ordo-invmail-slot';
+
+    row.appendChild(text);
+    row.appendChild(slot);
+
+    status = document.createElement('div');
+    status.className = 'text-size-small';
+    status.style.display = 'none';
+    status.style.marginTop = '6px';
+
+    anchor.appendChild(row);
+    anchor.appendChild(status);
+    return true;
+  }
+
+  function viderSlot() {
+    while (slot.firstChild) slot.removeChild(slot.firstChild);
+  }
+
+  /**
+   * Le témoin d'attente, à la place exacte du futur interrupteur.
+   *
+   * 🔴 Surtout PAS un interrupteur en position par défaut. Un membre qui a
+   * coché verrait sa case décochée le temps de la lecture, c'est-à-dire un
+   * mensonge sur son propre consentement, et il pourrait cliquer pour
+   * « corriger » ce qui n'avait pas besoin de l'être. Le témoin ne ressemble
+   * donc à aucune position : c'est une pastille neutre.
+   *
+   * Il n'est posé qu'au bout d'un court délai. La réponse arrive le plus
+   * souvent en moins de temps que ça, et un témoin qui clignote une fraction de
+   * seconde avant de céder la place est plus désagréable que pas de témoin du
+   * tout. Il n'apparaît donc que quand l'attente est réelle.
+   */
+  function showSkeleton() {
+    if (!buildShell()) return;
+    viderSlot();
+    var skel = document.createElement('span');
+    skel.className = 'ordo-invmail-skel';
+    // Le témoin n'a rien à dire aux lecteurs d'écran : la même information leur
+    // est donnée par la zone d'état, en toutes lettres.
+    skel.setAttribute('aria-hidden', 'true');
+    slot.appendChild(skel);
+    if (status) {
+      status.textContent = 'Chargement de votre choix…';
+      status.setAttribute('role', 'status');
+      // Annoncé, jamais affiché : le témoin visuel suffit à l'œil, et une
+      // seconde ligne de texte ferait sauter la mise en page pour rien.
+      status.style.display = 'block';
+      status.style.position = 'absolute';
+      status.style.width = '1px';
+      status.style.height = '1px';
+      status.style.overflow = 'hidden';
+      status.style.clip = 'rect(0 0 0 0)';
+      status.style.whiteSpace = 'nowrap';
+    }
+    show();
+  }
+
+  /** Rend la zone d'état à son rôle normal : un message visible, ou rien. */
+  function resetStatus() {
+    if (!status) return;
+    status.removeAttribute('role');
+    status.style.position = '';
+    status.style.width = '';
+    status.style.height = '';
+    status.style.overflow = '';
+    status.style.clip = '';
+    status.style.whiteSpace = '';
+    setStatus('');
+  }
+
+  function render(enabled) {
+    if (!buildShell()) return;
+    viderSlot();
+    resetStatus();
+
     // L'interrupteur reste une vraie case à cocher, seulement rendue
     // invisible : le clavier, les lecteurs d'écran et l'évènement `change`
     // continuent de fonctionner sans qu'on ait à les réimplémenter.
@@ -330,17 +431,7 @@
     sw.appendChild(input);
     sw.appendChild(track);
     sw.appendChild(knob);
-
-    row.appendChild(text);
-    row.appendChild(sw);
-
-    status = document.createElement('div');
-    status.className = 'text-size-small';
-    status.style.display = 'none';
-    status.style.marginTop = '6px';
-
-    anchor.appendChild(row);
-    anchor.appendChild(status);
+    slot.appendChild(sw);
     show();
 
     input.addEventListener('change', onChange);
@@ -483,8 +574,18 @@
     }
 
     whenVisible(function() {
+      // Le témoin d'attente ne part qu'au bout du délai, et la lecture démarre
+      // tout de suite : une réponse rapide arrive donc avant lui et il n'est
+      // jamais posé.
+      skeletonTimer = setTimeout(showSkeleton, SKELETON_DELAY_MS);
       readState().then(function(state) {
+        clearTimeout(skeletonTimer);
         if (!state || !state.eligible) {
+          // 🔴 Remasquer, et pas seulement s'abstenir d'afficher : le témoin
+          // d'attente a pu être posé entre-temps, et le laisser en place
+          // ferait pulser indéfiniment une pastille devant un membre à qui
+          // l'on n'a rien à proposer.
+          hide();
           console.log(PREFIX + ' Not eligible, hidden');
           track('invoice_emails_hidden', { invoice_hidden_reason: 'not_eligible' });
           return;
@@ -497,7 +598,9 @@
         track('invoice_emails_shown', { invoice_toggle_state: state.enabled ? 'on' : 'off' });
         console.log(PREFIX + ' Initialized (enabled=' + Boolean(state.enabled) + ')');
       }).catch(function(err) {
-        // Lecture impossible : le bloc reste masqué, comme depuis le départ.
+        // Lecture impossible : on remasque, pour la même raison que ci-dessus.
+        clearTimeout(skeletonTimer);
+        hide();
         console.error(PREFIX + ' Load error:', err && err.message);
         track('invoice_emails_hidden', { invoice_hidden_reason: 'load_error' });
         reportIfActionable(err);
