@@ -12,9 +12,14 @@
 #
 # Chaque fichier est annoncé avant d'être lancé, pour que le journal désigne
 # directement le coupable, et le premier échec arrête le travail.
+#
+# Le déclencheur `push` est limité à main : sans cette limite, chaque poussée
+# sur une branche de travail lance le contrôle une seconde fois, en double de
+# celui de la pull request.
 name: tests
 on:
   push:
+    branches: [main]
   pull_request:
 jobs:
   node-tests:
