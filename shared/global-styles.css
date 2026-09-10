@@ -53,6 +53,14 @@ form#wf-form-mutateDocument {
     display: none;
 }
 
+/* "Personnaliser" button on prescription and recommendation pages: keep its
+   footprint while Alpine boots, so the right-aligned button row does not
+   shift when it appears. `display` mirrors the .button class. */
+#txt-editor-redirect[x-cloak] {
+    display: flex;
+    visibility: hidden;
+}
+
 /* Decode HTML flex container */
 .decode-html {
     display: flex;
