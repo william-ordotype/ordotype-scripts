@@ -33,7 +33,12 @@
   (function () {
     var PREFIX = '[SAUSource]';
     var KEY = 'sau_src';
-    var ALLOWED = { banner: 1, pricing: 1, email: 1, congres: 1 };
+    // Liste blanche des origines. Une valeur absente d'ici est SILENCIEUSEMENT
+    // ignorée : le champ caché n'est pas injecté, et la ligne finit dans le
+    // fourre-tout côté tableur. Ajouter la valeur ICI avant de la produire.
+    // `banner-nuit` distingue le bandeau montré aux internes de nuit de celui
+    // montré aux urgentistes, qui reste `banner`.
+    var ALLOWED = { banner: 1, 'banner-nuit': 1, pricing: 1, email: 1, congres: 1 };
 
     // Capture the source on landing; persist for the session
     // (survives refresh / in-page nav).

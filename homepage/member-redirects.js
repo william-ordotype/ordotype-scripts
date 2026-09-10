@@ -106,7 +106,29 @@
         // deterministically attributed — unlike the click and close tags, which
         // re-derive the id from the live Memberstack global at fire time.
         // One push per pageview where the banner is shown.
+        // Origine écrite dans le lien du bandeau, pour que le tableur des leads
+        // distingue les deux publics sans avoir à recroiser quoi que ce soit.
+        // La valeur doit exister dans la liste blanche de signup-sau/sau-signup-loader.js,
+        // sinon elle est ignorée en silence, ET dans la correspondance du scénario
+        // Make qui remplit la colonne Source, sinon la ligne tombe en « Direct / autre ».
+        const SAU_AUDIENCE_SRC = {
+            specialite: 'banner',
+            interne_mg_nuit: 'banner-nuit',
+        };
+
+        function sauSetCtaSource(src) {
+            const cta = document.getElementById('click-banner-to-hide-sau-signup');
+            if (!cta || !src) return;
+            const href = cta.getAttribute('href');
+            if (!href) return;
+            const next = /[?&]src=/.test(href)
+                ? href.replace(/([?&]src=)[^&#]*/, '$1' + src)
+                : href + (href.indexOf('?') === -1 ? '?' : '&') + 'src=' + src;
+            cta.setAttribute('href', next);
+        }
+
         function showSauSignupBanner(audience) {
+            sauSetCtaSource(SAU_AUDIENCE_SRC[audience]);
             $('#banner-to-hide-sau-signup').css({ display: 'flex' });
             try {
                 (window.dataLayer = window.dataLayer || []).push({
