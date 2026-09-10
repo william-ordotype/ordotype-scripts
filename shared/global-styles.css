@@ -68,6 +68,15 @@ form#wf-form-mutateDocument {
     align-self: stretch;
 }
 
+/* Favorites list rows: the checkbox and the title share a wrapping flex
+   container, and the title is a content-sized flex item. A long title used to
+   wrap as a whole onto the next flex line, under the checkbox; it now shrinks
+   and wraps its own text, so the checkbox stays on its left. */
+.doc_item_grid.ordonan_item .flex_horizontal-2 > .text-weight-semibold {
+    flex: 1 1 0%;
+    min-width: 0;
+}
+
 /* Decode HTML flex container */
 .decode-html {
     display: flex;
