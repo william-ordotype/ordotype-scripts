@@ -527,10 +527,13 @@ node test/belgique-tracking.js         # jsdom sur la page captée
 node test/error-reporter-network.js    # une requête morte avec sa page n'est pas signalée
 node test/invoice-emails-retry.js      # rejeu d'une lecture sans réponse
 node test/phone-input-utils.js         # le champ tél. survit à des aides absentes
+node test/loader-resilience.js         # un chargeur survit à une dépendance tierce absente
 ```
 
-⚠️ Aucun workflow ne lance `test/` : `parse-floor.yml` ne vérifie que la
-capacité à être analysé. Ces fichiers ne tournent que si on les lance.
+✅ Depuis le 2026-09-10, `tests.yml` lance **tout** `test/` à chaque push sur
+`main` et à chaque pull request, en plus de `parse-floor.yml` qui ne vérifie
+que la capacité à être analysé. Un test ajouté à `test/` tourne donc en CI et
+peut faire rougir la build : ça n'est plus décoratif.
 
 `smoke-tracking.js` runs each emitter twice, with and without
 `window.OrdoErrorReporter`, and asserts an event actually lands. `node --check`
@@ -1953,6 +1956,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/ses
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/phone-input.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/phone-input.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations-cms/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/delete-account.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js

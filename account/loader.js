@@ -192,6 +192,9 @@
     'phone-input.js'
   ];
 
+  // Une feuille de style qui ne répond jamais ne doit pas retenir la page.
+  const CSS_TIMEOUT_MS = 8000;
+
   const INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
   const INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
 
@@ -210,12 +213,37 @@
     });
   }
 
+  // 🔴 A stylesheet must never reject and must never hang. Without `onerror`,
+  // one that never arrives leaves this promise pending FOREVER. Here that costs
+  // only the completion log, because the scripts were queued with
+  // `async = false` and an ERRORING one is dropped from the queue - but a
+  // STALLED one parks it, so this loader is not immune either. Do not lean on
+  // its shape: the same omission is what makes the other loaders die silently.
+  // The deadline covers the case neither handler ever sees: a filtering proxy
+  // can hold the request open without answering and without erroring.
   function loadCSS(url) {
     return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        console.warn(`[OrdoAccount] Stylesheet timed out: ${url}`);
+        finish();
+      }, CSS_TIMEOUT_MS);
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = url;
-      link.onload = resolve;
+      link.onload = finish;
+      // Résolu, pas rejeté : une feuille de style est décorative. Mais tracé,
+      // sinon l'absence serait parfaitement muette.
+      link.onerror = () => {
+        console.warn(`[OrdoAccount] Stylesheet unavailable: ${url}`);
+        finish();
+      };
       document.head.appendChild(link);
     });
   }
@@ -236,11 +264,20 @@
     if (skippedHost.length) console.log('[OrdoAccount] Skipped on ' + HOST + ':', skippedHost.join(', '));
     if (skippedRollout.length) console.log('[OrdoAccount] Not in rollout:', skippedRollout.join(', '));
 
+    // 🔴 La bibliothèque tierce est en DERNIER, et ce n'est pas cosmétique.
+    // `async = false` fait exécuter dans l'ordre d'insertion : un script en
+    // échec est bien retiré de la file, mais un script dont la requête ne
+    // répond JAMAIS gare la file derrière lui. Placée en 3e position, elle
+    // empêchait alors l'exécution de tous les fichiers du compte, pourtant
+    // téléchargés. En dernier, elle ne retient plus personne.
+    //
+    // `phone-input.js` s'exécute donc avant elle, et c'est sans conséquence :
+    // il sonde `window.intlTelInput` et sait abandonner en le signalant.
     const orderedJS = [
       `${SHARED_BASE}/memberstack-utils.js`,
       `${SHARED_BASE}/error-reporter.js`,
-      INTL_TEL_INPUT_JS,
-      ...loaded.map(f => `${BASE}/${f}`)
+      ...loaded.map(f => `${BASE}/${f}`),
+      INTL_TEL_INPUT_JS
     ];
 
     try {
