@@ -1,0 +1,39 @@
+# Lance les tests de test/ sur chaque poussée et chaque pull request.
+#
+# Ces tests existaient déjà mais ne tournaient que si quelqu'un pensait à taper
+# la commande, ce qui en faisait un filet à trous. Ils couvrent des pannes qui
+# ne lèvent aucune erreur visible : un bandeau qui cesse de s'afficher, un
+# événement de mesure qui disparaît, un champ qui se vide sans rien signaler.
+# Sans exécution automatique, la régression n'apparaît que dans les chiffres,
+# des semaines plus tard.
+#
+# jsdom est installé à la volée : le dépôt n'a volontairement pas de
+# package.json, et `--no-save` ne laisse que node_modules, déjà ignoré par git.
+#
+# Chaque fichier est annoncé avant d'être lancé, pour que le journal désigne
+# directement le coupable, et le premier échec arrête le travail.
+#
+# Le déclencheur `push` est limité à main : sans cette limite, chaque poussée
+# sur une branche de travail lance le contrôle une seconde fois, en double de
+# celui de la pull request.
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-save jsdom
+      - name: Lancer les tests
+        run: |
+          for f in test/*.js; do
+            echo "::group::$f"
+            node "$f" || exit 1
+            echo "::endgroup::"
+          done
