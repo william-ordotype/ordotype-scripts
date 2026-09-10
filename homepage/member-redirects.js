@@ -28,6 +28,14 @@
         const count = parseInt(localStorage.getItem(SAU_BANNER_COUNT_KEY) || '0', 10);
         return (Date.now() - ts) < sauBannerSnoozeMs(count);
     }
+    // Night window, in the reader's own local time: 23:00 to 04:59.
+    // Wraps past midnight, hence the OR rather than a range test.
+    const SAU_NIGHT_FROM_HOUR = 23;
+    const SAU_NIGHT_TO_HOUR = 5;
+    function sauNightWindow(now) {
+        const hour = (now instanceof Date ? now : new Date()).getHours();
+        return hour >= SAU_NIGHT_FROM_HOUR || hour < SAU_NIGHT_TO_HOUR;
+    }
 
     // Close button click handler for banners
     document.addEventListener("click", function(event) {
@@ -91,6 +99,29 @@
         if (!member || !member.id) return;
 
         const $ = jQuery;
+
+        // Shared by every audience that can be offered the SAU signup, so the
+        // banner and its impression event can never drift apart.
+        // The impression carries member_id straight from this push, which makes it
+        // deterministically attributed — unlike the click and close tags, which
+        // re-derive the id from the live Memberstack global at fire time.
+        // One push per pageview where the banner is shown.
+        function showSauSignupBanner(audience) {
+            $('#banner-to-hide-sau-signup').css({ display: 'flex' });
+            try {
+                (window.dataLayer = window.dataLayer || []).push({
+                    event: 'sau_signup_banner_view',
+                    member_id: member.id,
+                    sau_banner_audience: audience
+                });
+            } catch (err) {
+                try {
+                    if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
+                        window.OrdoErrorReporter.reportSideEffect('MemberRedirects', err);
+                    }
+                } catch (ignored) {}
+            }
+        }
 
         // Paused subscription — show dedicated pause banner, skip all other banner logic
         const pauseEndDate = ms.metaData && ms.metaData['pause-end-date'];
@@ -306,25 +337,21 @@
             specialite === "Médecine d'urgence" &&
             !sauBannerSnoozed()
         ) {
-            $('#banner-to-hide-sau-signup').css({ display: 'flex' });
-            // Impression event so we can measure the view → click → close funnel
-            // in GA4. member.id is guaranteed here (early return above) and the GTM
-            // view tag reads member_id straight from this push, so the impression is
-            // deterministically attributed — unlike the click/close tags, which
-            // re-derive the id from the live Memberstack global at fire time.
-            // One push per pageview where the banner is shown.
-            try {
-                (window.dataLayer = window.dataLayer || []).push({
-                    event: 'sau_signup_banner_view',
-                    member_id: member.id
-                });
-            } catch (err) {
-                try {
-                    if (window.OrdoErrorReporter && window.OrdoErrorReporter.reportSideEffect) {
-                        window.OrdoErrorReporter.reportSideEffect('MemberRedirects', err);
-                    }
-                } catch (ignored) {}
-            }
+            showSauSignupBanner('specialite');
+        }
+        // Same prompt for first-year general-practice residents, but only during
+        // the night window: that is when they are on call, and an emergency
+        // department is where a large share of those shifts happen.
+        // `semestre` is parseInt of a self-declared field, so "Internat terminé"
+        // yields NaN and fails the test, while "6 (FST)" would yield 6.
+        else if (
+            isInterne &&
+            specialite === 'Médecine générale' &&
+            (semestre === 1 || semestre === 2) &&
+            sauNightWindow() &&
+            !sauBannerSnoozed()
+        ) {
+            showSauSignupBanner('interne_mg_nuit');
         }
         else if (noPhone) {
             $('#banner-to-hide-phone-missing').css({ display: 'flex' });
