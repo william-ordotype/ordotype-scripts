@@ -14,6 +14,9 @@
   var BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations-cms';
   var CRISP_URL = 'https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js';
 
+  // Une feuille de style qui ne répond jamais ne doit pas retenir la page.
+  var CSS_TIMEOUT_MS = 8000;
+
   // External dependencies for phone input.
   //
   // 🔴 `utils.js` n'est PAS ici. Ce chargeur était le seul à le précharger,
@@ -46,12 +49,26 @@
     });
   }
 
+  // 🔴 A stylesheet must never reject and must never hang. Without `onerror`,
+  // one that never arrives leaves this promise pending FOREVER, and everything
+  // awaiting it is never loaded - no error, no trace, a silently inert page.
+  // The deadline covers the other half: a filtering proxy can hold the request
+  // open without ever answering or erroring, which fires neither handler.
   function loadCSS(url) {
     return new Promise(function(resolve) {
+      var done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      }
+      var timer = setTimeout(finish, CSS_TIMEOUT_MS);
       var link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = url;
-      link.onload = resolve;
+      link.onload = finish;
+      link.onerror = finish;
       document.head.appendChild(link);
     });
   }
@@ -61,12 +78,26 @@
 
     try {
       // Load phone input dependencies
-      await Promise.all(phoneDeps.map(function(dep) {
-        return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);
-      }));
+      // Le champ téléphone pend à un CDN tiers dont les défaillances sont
+      // mesurées, pas hypothétiques. Son propre filet : un numéro non formaté
+      // ne doit pas emporter Crisp, la synchronisation Memberstack et le reste
+      // de la page. `phone-input.js` est chargé même quand ses dépendances ont
+      // manqué, parce que c'est LUI qui sait le dire : l'écarter ferait de
+      // l'échec le plus grave le plus silencieux.
+      try {
+        await Promise.all(phoneDeps.map(function(dep) {
+          return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);
+        }));
+      } catch (err) {
+        console.error('[OrdoMesInfosCMS] Phone dependencies unavailable:', err);
+      }
 
       // Load phone-input script from mes-informations (reuse existing)
-      await loadScript('https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/phone-input.js');
+      try {
+        await loadScript('https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/phone-input.js');
+      } catch (err) {
+        console.error('[OrdoMesInfosCMS] Load error:', err);
+      }
 
       // Load Crisp
       await loadScript(CRISP_URL);

@@ -192,6 +192,9 @@
     'phone-input.js'
   ];
 
+  // Une feuille de style qui ne répond jamais ne doit pas retenir la page.
+  const CSS_TIMEOUT_MS = 8000;
+
   const INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
   const INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
 
@@ -210,12 +213,29 @@
     });
   }
 
+  // 🔴 A stylesheet must never reject and must never hang. Without `onerror`,
+  // one that never arrives leaves this promise pending FOREVER. Here that only
+  // costs the completion log, because `async = false` means the scripts were
+  // already queued and run whatever this promise does - but that resilience is
+  // an accident of shape, so do not lean on it: the same omission is what
+  // makes the other loaders die silently.
+  // The deadline covers the other half: a filtering proxy can hold the request
+  // open without ever answering or erroring, which fires neither handler.
   function loadCSS(url) {
     return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(finish, CSS_TIMEOUT_MS);
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = url;
-      link.onload = resolve;
+      link.onload = finish;
+      link.onerror = finish;
       document.head.appendChild(link);
     });
   }

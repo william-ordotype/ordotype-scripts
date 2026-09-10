@@ -27,6 +27,9 @@
     'ga4-events.js'
   ];
 
+  // Une feuille de style qui ne répond jamais ne doit pas retenir la page.
+  var CSS_TIMEOUT_MS = 8000;
+
   // External dependencies for phone input
   var dependencies = [
     {
@@ -50,12 +53,26 @@
     });
   }
 
+  // 🔴 A stylesheet must never reject and must never hang. Without `onerror`,
+  // one that never arrives leaves this promise pending FOREVER, and everything
+  // awaiting it is never loaded - no error, no trace, a silently inert page.
+  // The deadline covers the other half: a filtering proxy can hold the request
+  // open without ever answering or erroring, which fires neither handler.
   function loadCSS(url) {
     return new Promise(function(resolve) {
+      var done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      }
+      var timer = setTimeout(finish, CSS_TIMEOUT_MS);
       var link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = url;
-      link.onload = resolve;
+      link.onload = finish;
+      link.onerror = finish;
       document.head.appendChild(link);
     });
   }
@@ -69,10 +86,18 @@
       await loadScript(SHARED_BASE + '/error-reporter.js');
       await loadScript(SHARED_BASE + '/crisp-loader.js');
 
-      // Load external dependencies (CSS + intl-tel-input)
-      await Promise.all(dependencies.map(function(dep) {
-        return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);
-      }));
+      // Le champ téléphone pend à un CDN tiers dont les défaillances sont
+      // mesurées, pas hypothétiques. Son propre filet : un numéro non formaté
+      // ne doit pas emporter la synchronisation Memberstack du profil ni le
+      // reste de la page. `phone-input.js` reste chargé plus bas même quand
+      // ses dépendances ont manqué, parce que c'est LUI qui sait le dire.
+      try {
+        await Promise.all(dependencies.map(function(dep) {
+          return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);
+        }));
+      } catch (err) {
+        console.error('[OrdoMesInfos] Phone dependencies unavailable:', err);
+      }
 
       // Load core scripts sequentially
       for (var i = 0; i < scripts.length; i++) {

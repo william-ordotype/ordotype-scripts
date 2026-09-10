@@ -33,6 +33,9 @@
     'cgu-modal.js'
   ];
 
+  // A stylesheet that never answers must not hold the page hostage.
+  const CSS_TIMEOUT_MS = 8000;
+
   // External dependencies for phone input
   const phoneDeps = [
     { type: 'css', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css' },
@@ -51,14 +54,52 @@
     });
   }
 
+  // 🔴 A stylesheet must never reject and must never hang. Without `onerror`,
+  // one that never arrives leaves this promise pending FOREVER, and everything
+  // awaiting it is never loaded - no error, no trace, a silently inert page.
+  // The deadline covers the other half: a filtering proxy can hold the request
+  // open without ever answering or erroring, which fires neither handler.
   function loadCSS(url) {
     return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(finish, CSS_TIMEOUT_MS);
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = url;
-      link.onload = resolve;
+      link.onload = finish;
+      link.onerror = finish;
       document.head.appendChild(link);
     });
+  }
+
+  /**
+   * The phone field hangs off a third-party CDN whose failures are measured,
+   * not hypothetical. Never rejects: an unformatted phone number must not take
+   * down the banners and redirects this page also carries.
+   *
+   * `phone-input.js` is loaded even when its dependencies did not arrive,
+   * because it is the one that knows how to say so. Skipping it would make the
+   * worst failure the quietest one.
+   */
+  async function loadPhoneInput() {
+    try {
+      await Promise.all(phoneDeps.map(dep =>
+        dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url)
+      ));
+    } catch (err) {
+      console.error('[OrdoHomepage] Phone dependencies unavailable:', err);
+    }
+    try {
+      await loadScript(`${MES_INFOS_BASE}/phone-input.js`);
+    } catch (err) {
+      console.error('[OrdoHomepage] Load error:', err);
+    }
   }
 
   // Load all scripts in order
@@ -70,11 +111,7 @@
       await loadScript(`${SHARED_BASE}/memberstack-utils.js`);
       await loadScript(`${SHARED_BASE}/error-reporter.js`);
 
-      // Load phone input dependencies + script
-      await Promise.all(phoneDeps.map(dep =>
-        dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url)
-      ));
-      await loadScript(`${MES_INFOS_BASE}/phone-input.js`);
+      await loadPhoneInput();
 
       for (const file of scripts) {
         await loadScript(`${BASE}/${file}`);
