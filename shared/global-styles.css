@@ -61,6 +61,13 @@ form#wf-form-mutateDocument {
     visibility: hidden;
 }
 
+/* Favorites drawer: the content iframe fills the drawer height. Below 768px
+   the .view_grid rule sets align-items:start on its flex container, which
+   left the iframe at the default 150px with the content clipped underneath. */
+.iframe-2 {
+    align-self: stretch;
+}
+
 /* Decode HTML flex container */
 .decode-html {
     display: flex;
