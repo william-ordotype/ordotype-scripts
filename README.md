@@ -1952,6 +1952,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/tab
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/session-stats-prefetch.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/phone-input.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/phone-input.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations-cms/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/delete-account.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js

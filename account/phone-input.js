@@ -111,6 +111,44 @@
     console.log('[PhoneInput] Initialized', inputs.length, 'input(s)');
   }
 
+  /**
+   * Run once the phone field is actually on screen.
+   *
+   * The helpers weigh eight times the library itself, and they are the last
+   * request of a chain the page starts several hops earlier, so they are also
+   * the request most likely to be dropped on a slow connection. Fetching them
+   * for a field the visitor never sees buys a feature nobody is looking at,
+   * and buys the failures that come with it.
+   *
+   * Fires on the first field to become visible and builds every field then,
+   * which is what happened before, only later. Without an observer, run at
+   * once: that is exactly the previous behaviour.
+   */
+  function whenVisible(elements, run) {
+    let done = false;
+    function fire() {
+      if (done) return;
+      done = true;
+      run();
+    }
+
+    if (typeof window.IntersectionObserver !== 'function') return fire();
+
+    const obs = new window.IntersectionObserver(entries => {
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          obs.disconnect();
+          fire();
+          return;
+        }
+      }
+    // A field sitting just under the fold should start loading before the
+    // visitor scrolls to it, not after.
+    }, { rootMargin: '200px' });
+
+    for (let i = 0; i < elements.length; i++) obs.observe(elements[i]);
+  }
+
   function start() {
     const inputs = document.querySelectorAll('input[ms-code-phone-number]');
 
@@ -119,9 +157,11 @@
       return;
     }
 
-    // Helpers first: intl-tel-input reads them while building the instance, so
-    // loading them afterwards would leave the placeholder unformatted.
-    loadUtils().then(() => init(inputs));
+    whenVisible(inputs, () => {
+      // Helpers first: intl-tel-input reads them while building the instance,
+      // so loading them afterwards would leave the placeholder unformatted.
+      loadUtils().then(() => init(inputs));
+    });
   }
 
   // Wait for intl-tel-input to be available, but give up rather than poll for

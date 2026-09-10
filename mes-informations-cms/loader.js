@@ -14,11 +14,15 @@
   var BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations-cms';
   var CRISP_URL = 'https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js';
 
-  // External dependencies for phone input
+  // External dependencies for phone input.
+  //
+  // 🔴 `utils.js` n'est PAS ici. Ce chargeur était le seul à le précharger,
+  // et il annulait le différé de `phone-input.js` : le fichier étant déjà là,
+  // `loadUtils()` court-circuitait, mais les 247 Ko avaient été payés. C'est
+  // au script du champ de décider quand les chercher, à un endroit et un seul.
   var phoneDeps = [
     { type: 'css', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css' },
-    { type: 'js', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js' },
-    { type: 'js', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/utils.js' }
+    { type: 'js', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js' }
   ];
 
   // Scripts to load (in order)

@@ -109,6 +109,45 @@
     console.log('[PhoneInput] Initialized', inputs.length, 'input(s)');
   }
 
+  /**
+   * Run once the phone field is actually on screen.
+   *
+   * The helpers weigh eight times the library itself, and they are the last
+   * request of a chain the page starts several hops earlier, so they are also
+   * the request most likely to be dropped on a slow connection. On the home
+   * page the field belongs to a prompt shown only to members who have not
+   * given a number yet: fetching them for every other visitor buys a feature
+   * nobody is looking at, and buys the failures that come with it.
+   *
+   * Fires on the first field to become visible and builds every field then,
+   * which is what happened before, only later. Without an observer, run at
+   * once: that is exactly the previous behaviour.
+   */
+  function whenVisible(elements, run) {
+    var done = false;
+    function fire() {
+      if (done) return;
+      done = true;
+      run();
+    }
+
+    if (typeof window.IntersectionObserver !== 'function') return fire();
+
+    var obs = new window.IntersectionObserver(function(entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          obs.disconnect();
+          fire();
+          return;
+        }
+      }
+    // A field sitting just under the fold on the profile page should start
+    // loading before the visitor scrolls to it, not after.
+    }, { rootMargin: '200px' });
+
+    for (var j = 0; j < elements.length; j++) obs.observe(elements[j]);
+  }
+
   function start() {
     var inputs = document.querySelectorAll('input[ms-code-phone-number]');
 
@@ -117,10 +156,12 @@
       return;
     }
 
-    // Helpers first: intl-tel-input reads them while building the instance, so
-    // loading them afterwards would leave the placeholder unformatted.
-    loadUtils().then(function() {
-      init(inputs);
+    whenVisible(inputs, function() {
+      // Helpers first: intl-tel-input reads them while building the instance,
+      // so loading them afterwards would leave the placeholder unformatted.
+      loadUtils().then(function() {
+        init(inputs);
+      });
     });
   }
 
