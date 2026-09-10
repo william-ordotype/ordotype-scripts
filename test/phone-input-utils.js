@@ -15,10 +15,24 @@
  *   - `utilsScript` n'est jamais passé à la bibliothèque ;
  *   - les aides sont chargées AVANT la construction de l'instance, sans quoi
  *     l'exemple affiché dans le champ reste non formaté ;
- *   - aides absentes, en échec ou EN SUSPENS : le champ est construit quand
- *     même. Un filtrage réseau peut tenir la requête ouverte sans jamais
- *     répondre ni échouer ; attendre `load`/`error` seuls laisserait une
- *     simple boîte de texte, donc pire qu'avant le correctif ;
+ *   - le champ est construit SANS attendre les aides. C'est du DOM, sans
+ *     réseau, et il porte le sélecteur de pays ET le normalisateur d'envoi :
+ *     le retenir laisserait une boîte de texte nue au moment précis où le
+ *     membre s'en sert, et un envoi pendant cette fenêtre partirait avec un
+ *     numéro brut. Un champ caché par CSS reste envoyable, donc il compte ;
+ *   - un champ JAMAIS montré ne charge PAS les aides. Elles pèsent huit fois
+ *     la bibliothèque et arrivent en bout de chaîne : les chercher pour une
+ *     interface que le visiteur ne verra pas, c'est acheter la panne sans
+ *     acheter la fonction. Sur l'accueil, le bandeau téléphone ne s'ouvre que
+ *     pour les membres sans numéro, et c'est un script chargé APRÈS celui-ci
+ *     qui l'ouvre ;
+ *   - les aides arrivées après coup reprennent la main : `getNumber` les relit
+ *     sur le global au moment de l'appel. Sans ça, différer casserait l'envoi ;
+ *   - aides absentes, en échec ou EN SUSPENS : le champ reste utilisable. Un
+ *     filtrage réseau peut tenir la requête ouverte sans jamais répondre ni
+ *     échouer, et le délai est le seul témoin de ce cas-là ;
+ *   - sans observateur, ou sur un navigateur dont l'entrée n'a pas
+ *     `isIntersecting`, tout se charge comme avant plutôt que jamais ;
  *   - sans les aides, la frappe ne lève pas et n'efface pas la saisie ;
  *   - la dégradation est signalée par le canal du dépôt, pas seulement dans
  *     une console que personne ne lit ;
@@ -76,6 +90,8 @@ function horloge() {
  *   utilsLoad : 'ok' | 'fail' | 'stall' | 'deja'  sort du chargement des aides
  *   library   : bool    window.intlTelInput est-il présent
  *   inputs    : 0       page sans champ téléphone
+ *   observer  : 'visible' (défaut) | 'cache' | 'absent'  ce que voit
+ *               l'IntersectionObserver, ou son absence pure et simple
  */
 function env(source, opts) {
     const trace = {
@@ -85,18 +101,33 @@ function env(source, opts) {
         scripts: [],
         avertissements: [],
         signalements: [],
+        observers: [],
+        observerOptions: null,
+        debranchements: 0,
     };
 
-    const input = {
-        value: '',
-        attrs: { 'ms-code-phone-number': 'fr,be' },
-        listeners: {},
-        getAttribute(n) { return this.attrs[n]; },
-        addEventListener(t, fn) { this.listeners[t] = fn; },
-        closest() { return null; },
-    };
+    /**
+     * Le formulaire est réel ici, sans quoi l'écouteur `submit` n'est jamais
+     * posé et la garantie qui compte le plus - un numéro normalisé à l'envoi -
+     * ne serait vérifiée par rien.
+     */
+    function faireInput() {
+        const form = { listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; } };
+        return {
+            value: '',
+            form,
+            attrs: { 'ms-code-phone-number': 'fr,be' },
+            listeners: {},
+            getAttribute(n) { return this.attrs[n]; },
+            addEventListener(t, fn) { this.listeners[t] = fn; },
+            closest() { return form; },
+        };
+    }
 
-    const inputs = opts.inputs === 0 ? [] : [input];
+    const combien = opts.inputs === 0 ? 0 : (opts.inputs || 1);
+    const inputs = [];
+    for (let n = 0; n < combien; n++) inputs.push(faireInput());
+    const input = inputs[0];
     inputs.forEach = Array.prototype.forEach.bind(inputs);
 
     const win = {
@@ -106,6 +137,72 @@ function env(source, opts) {
             reportNetwork(contexte, err) { trace.signalements.push(contexte + ': ' + err.message); },
         },
     };
+
+    /**
+     * Observateur factice. Il rend son verdict de façon ASYNCHRONE, comme le
+     * vrai : un observateur synchrone masquerait toute erreur d'ordre entre la
+     * mise en observation et le déclenchement.
+     */
+    function fauxObserver(cb, options) {
+        trace.observerOptions = options;
+        const self = {
+            cibles: [],
+            debranche: false,
+            /**
+             * 🔴 Le vrai observateur rend TOUJOURS un premier verdict, y compris
+             * « pas visible » pour un élément dans un bloc `display:none`. Ne
+             * livrer que les verdicts positifs rendrait le harnais aveugle au
+             * pire des défauts possibles ici : un code qui ne lit pas
+             * `isIntersecting` et se déclenche donc sur ce premier appel, ce
+             * qui annulerait tout le différé sans casser un seul cas.
+             */
+            observe(el) {
+                self.cibles.push(el);
+                const visible = opts.observer !== 'cache';
+                queueMicrotask(() => {
+                    if (self.debranche) return;
+                    self.livrer(visible);
+                });
+            },
+            disconnect() {
+                self.debranche = true;
+                trace.debranchements += 1;
+            },
+            /** Le champ apparaît (ouverture du bandeau, défilement). */
+            montrer() {
+                if (self.debranche) return;
+                self.livrer(true);
+            },
+            /**
+             * Un lot déjà mis en file AVANT le `disconnect()`, livré après lui.
+             * La spécification l'autorise (c'est la raison d'être de
+             * `takeRecords`), donc `disconnect()` seul ne garantit pas qu'on ne
+             * sera rappelé qu'une fois : sans garde côté appelant, le champ
+             * serait reconstruit et les aides rechargées.
+             */
+            montrerEnRetard() {
+                self.livrer(true);
+            },
+            /**
+             * `isIntersecting` est arrivé dans l'entrée APRÈS l'observateur
+             * lui-même : un navigateur peut exposer le constructeur - donc
+             * échapper au repli - et laisser la propriété indéfinie. Ce mode
+             * rejoue ce navigateur-là, où seul le ratio dit la vérité.
+             */
+            livrer(isIntersecting) {
+                const sansDrapeau = opts.observer === 'ratio-seul';
+                cb(self.cibles.map((el) => ({
+                    target: el,
+                    isIntersecting: sansDrapeau ? undefined : isIntersecting,
+                    intersectionRatio: isIntersecting ? 1 : 0,
+                })), self);
+            },
+        };
+        trace.observers.push(self);
+        return self;
+    }
+
+    if (opts.observer !== 'absent') win.IntersectionObserver = fauxObserver;
 
     if (opts.library !== false) {
         win.intlTelInput = (el, options) => {
@@ -163,13 +260,19 @@ function env(source, opts) {
         warn(...a) { trace.avertissements.push(a.join(' ')); },
     };
 
-    eval(fs.readFileSync(path.join(ROOT, source), 'utf8'));
+    // 🔴 Publié AVANT l'évaluation, et pas après. Si le fichier ne s'analyse
+    // pas, `eval` lève ici : sans cette poignée, le lanceur n'a rien à
+    // restaurer, la console factice reste en place pour tout le reste de la
+    // suite, et 36 cas échouent SANS AFFICHER UNE LIGNE — un code de sortie 1
+    // muet, qu'on prend pour n'importe quoi d'autre.
+    courant = { trace, input, win, horloge: h, restaure() { Object.assign(global, sauvegarde); } };
 
     // La console factice et l'horloge restent en place le temps du cas : le
     // chargement des aides se résout APRÈS le retour de cette fonction. Le
     // lanceur remet les vrais globaux ensuite, sans quoi un `setTimeout`
     // synthétique survivrait au fichier et contaminerait la suite.
-    courant = { trace, input, win, horloge: h, restaure() { Object.assign(global, sauvegarde); } };
+    eval(fs.readFileSync(path.join(ROOT, source), 'utf8'));
+
     return courant;
 }
 
@@ -189,13 +292,37 @@ const CAS = [
         return '';
     }],
 
-    ['les aides sont chargées AVANT la construction de l instance', async (src) => {
+    ['le champ est construit SANS attendre les aides', async (src) => {
+        const e = env(src, { utilsLoad: 'stall', observer: 'cache' });
+        await repos();
+        if (e.trace.initCount !== 1) {
+            return 'champ non construit : une boîte de texte nue au moment où le membre s en sert';
+        }
+        if (typeof e.input.listeners.keyup !== 'function') return 'écouteur de frappe non posé';
+        if (typeof e.input.form.listeners.submit !== 'function') {
+            return 'écouteur d envoi non posé : un envoi partirait avec un numéro non normalisé';
+        }
+        return '';
+    }],
+
+    ['ce sont bien les aides qui sont chargées, avec crossOrigin', async (src) => {
         const e = env(src, { utilsLoad: 'ok' });
         await repos();
         if (e.trace.scripts.length !== 1) return 'les aides n ont pas été chargées';
         if (!/utils\.js$/.test(e.trace.scripts[0].src)) return 'ce n est pas utils.js qui a été chargé';
-        if (e.trace.utilsAuMomentDuInit !== true) {
-            return 'instance construite avant les aides : l exemple affiché resterait non formaté';
+        return '';
+    }],
+
+    ['aides arrivées APRÈS la construction : l envoi est normalisé', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        if (e.trace.utilsAuMomentDuInit !== false) {
+            return 'ce cas ne prouve rien si les aides étaient déjà là à la construction';
+        }
+        e.input.value = '0612345678';
+        e.input.form.listeners.submit();
+        if (e.input.value !== '+33 6 12 34 56 78') {
+            return 'getNumber ne relit pas les aides au moment de l appel : le différé casserait l envoi';
         }
         return '';
     }],
@@ -205,6 +332,26 @@ const CAS = [
         await repos();
         if (e.trace.scripts[0].crossOrigin !== 'anonymous') {
             return 'crossOrigin absent : window.onerror ne verrait qu un « Script error. »';
+        }
+        return '';
+    }],
+
+    ['deux champs : les deux sont observés et les deux sont construits', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', inputs: 2 });
+        await repos();
+        if (e.trace.initCount !== 2) return 'un seul des deux champs a été construit';
+        if (e.trace.observers[0].cibles.length !== 2) {
+            return 'un seul champ observé : le second n ouvrirait jamais le chargement des aides';
+        }
+        if (e.trace.scripts.length !== 1) return 'les aides ont été chargées deux fois';
+        return '';
+    }],
+
+    ['navigateur sans isIntersecting : le ratio suffit', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', observer: 'ratio-seul' });
+        await repos();
+        if (e.trace.scripts.length !== 1) {
+            return 'aides jamais chargées : le champ resterait sans formatage, en silence';
         }
         return '';
     }],
@@ -239,12 +386,17 @@ const CAS = [
     ['requête en suspens : le champ est construit quand même', async (src) => {
         const e = env(src, { utilsLoad: 'stall' });
         await repos();
-        if (e.trace.initCount !== 0) return 'le champ ne devrait pas être construit avant la fin du délai';
-        e.horloge.avancer(8000);
+        if (e.trace.initCount !== 1) return 'le champ doit être construit sans attendre les aides';
+        // Encadré des DEUX côtés. Le délai ne retient plus la construction : il
+        // ne sert QUE de témoin, et c'est justement pour ça qu'il est fragile.
+        // Trop court, il signale un simple réseau lent comme une panne ; trop
+        // long, il ne signale plus rien d'utile. Ne vérifier que « ça finit par
+        // sortir » laisserait passer un délai ramené à zéro.
+        e.horloge.avancer(7999);
         await repos();
-        if (e.trace.initCount !== 1) {
-            return 'aucune sortie de secours : le champ reste une simple boîte de texte, pire qu avant';
-        }
+        if (e.trace.signalements.length !== 0) return 'stagnation signalée avant le délai annoncé';
+        e.horloge.avancer(1);
+        await repos();
         if (!e.trace.signalements.some((m) => /timed out/.test(m))) return 'le délai dépassé n est pas signalé';
         return '';
     }],
@@ -254,7 +406,7 @@ const CAS = [
         await repos();
         e.horloge.avancer(30000);
         await repos();
-        if (e.trace.initCount !== 1) return 'le champ n est jamais construit';
+        if (e.trace.signalements.length !== 1) return 'la stagnation est signalée plus d une fois';
         if (e.horloge.enAttente() !== 0) return 'une minuterie reste armée après la sortie de secours';
         return '';
     }],
@@ -282,6 +434,88 @@ const CAS = [
         if (!e.trace.signalements.some((m) => /did not load/.test(m))) {
             return 'l abandon n est pas signalé';
         }
+        return '';
+    }],
+
+    ['champ JAMAIS montré : aucune aide chargée, mais le champ EST prêt', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', observer: 'cache' });
+        await repos();
+        if (e.trace.scripts.length !== 0) {
+            return '247 Ko chargés pour un champ que le visiteur ne voit pas';
+        }
+        if (e.trace.signalements.length !== 0) {
+            return 'un champ jamais montré ne peut pas être dégradé : il n y a rien à signaler';
+        }
+        // Un champ caché par CSS reste dans le formulaire et part à l'envoi.
+        // Ne pas le construire enverrait sa valeur brute.
+        if (e.trace.initCount !== 1) return 'le champ n est pas construit alors qu il reste envoyable';
+        return '';
+    }],
+
+    ['c est bien le CHAMP qui est observé, pas un ancêtre', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', observer: 'cache' });
+        await repos();
+        if (e.trace.observers.length !== 1) return 'aucun observateur posé';
+        if (e.trace.observers[0].cibles[0] !== e.input) {
+            return 'observer autre chose que le champ ne dit pas si le champ est visible';
+        }
+        return '';
+    }],
+
+    ['champ montré ensuite : les aides partent à ce moment-là', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', observer: 'cache' });
+        await repos();
+        e.trace.observers[0].montrer();
+        await repos();
+        if (e.trace.scripts.length !== 1) return 'les aides n ont pas été chargées à l ouverture';
+        e.input.value = '0612345678';
+        e.input.listeners.keyup();
+        if (e.input.value !== '+33 6 12 34 56 78') {
+            return 'le formatage ne reprend pas une fois les aides arrivées';
+        }
+        return '';
+    }],
+
+    ['l observateur est débranché dès le premier verdict positif', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        if (e.trace.debranchements !== 1) return 'observateur laissé branché pour la vie de la page';
+        return '';
+    }],
+
+    ['lot livré APRÈS le débranchement : ni second appel, ni seconde alerte', async (src) => {
+        // 🔴 Sur le chemin nominal cette garde est INVISIBLE : `loadUtils`
+        // court-circuite dès que les aides sont là, donc un second passage ne
+        // recharge rien de toute façon. C'est en ÉCHEC qu'elle porte, puisque
+        // rien ne court-circuite plus : sans elle, un lot en retard relance la
+        // requête et poste une seconde alerte pour un seul incident.
+        const e = env(src, { utilsLoad: 'fail' });
+        await repos();
+        // La spécification autorise la livraison d un lot déjà en file au
+        // moment du `disconnect()` : c'est la raison d être de `takeRecords`.
+        e.trace.observers[0].montrerEnRetard();
+        await repos();
+        if (e.trace.scripts.length !== 1) return 'requête relancée par un lot en retard';
+        if (e.trace.signalements.length !== 1) {
+            return 'une seconde alerte est partie pour un seul incident';
+        }
+        return '';
+    }],
+
+    ['la marge de déclenchement est conservée', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', observer: 'cache' });
+        await repos();
+        if (!e.trace.observerOptions || e.trace.observerOptions.rootMargin !== '200px') {
+            return 'sans marge, un champ sous la ligne de flottaison charge ses aides trop tard';
+        }
+        return '';
+    }],
+
+    ['sans IntersectionObserver : comportement d avant', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', observer: 'absent' });
+        await repos();
+        if (e.trace.scripts.length !== 1) return 'le repli ne charge pas les aides';
+        if (e.trace.initCount !== 1) return 'le repli ne construit pas le champ';
         return '';
     }],
 

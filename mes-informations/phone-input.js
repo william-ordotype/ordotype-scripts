@@ -27,9 +27,10 @@
    * usable, it only loses auto-formatting.
    *
    * Always settles, and never later than UTILS_TIMEOUT_MS. A filtering proxy
-   * can hold the request open without ever answering or erroring, and the field
-   * is built after this resolves: waiting on `load`/`error` alone would leave a
-   * plain text box with no country selector at all.
+   * can hold the request open without ever answering or erroring, so `load` and
+   * `error` alone would leave that case silent forever. Nothing waits on the
+   * result any more - the field is built before this runs - so the deadline is
+   * now purely a witness: it is how a stalled network reaches us at all.
    */
   function loadUtils() {
     return new Promise(function(resolve) {
@@ -109,6 +110,39 @@
     console.log('[PhoneInput] Initialized', inputs.length, 'input(s)');
   }
 
+  /**
+   * Run once one of the fields is actually on screen.
+   *
+   * `isIntersecting` was added to the entry after IntersectionObserver itself
+   * shipped, so a browser can expose the constructor - which skips the
+   * fallback below - and still leave the property undefined. Reading the ratio
+   * as well keeps those browsers on the working path instead of never firing.
+   */
+  function whenVisible(elements, run) {
+    var done = false;
+    function fire() {
+      if (done) return;
+      done = true;
+      run();
+    }
+
+    if (typeof window.IntersectionObserver !== 'function') return fire();
+
+    var obs = new window.IntersectionObserver(function(entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting || entries[i].intersectionRatio > 0) {
+          obs.disconnect();
+          fire();
+          return;
+        }
+      }
+    // A field sitting just under the fold on the profile page should start
+    // loading before the visitor scrolls to it, not after.
+    }, { rootMargin: '200px' });
+
+    for (var j = 0; j < elements.length; j++) obs.observe(elements[j]);
+  }
+
   function start() {
     var inputs = document.querySelectorAll('input[ms-code-phone-number]');
 
@@ -117,11 +151,27 @@
       return;
     }
 
-    // Helpers first: intl-tel-input reads them while building the instance, so
-    // loading them afterwards would leave the placeholder unformatted.
-    loadUtils().then(function() {
-      init(inputs);
-    });
+    // The field itself is built straight away: that is DOM work, no network,
+    // and it carries the country selector plus the listener that normalises
+    // the value on submit. Holding it back until the field appears would show
+    // a bare text box at the exact moment the member uses it, and a submit
+    // inside that window would post an unformatted number.
+    init(inputs);
+
+    // 🔴 Only the formatting helpers wait, and they are the whole problem:
+    // eight times the weight of the library, last in a chain the page starts
+    // several hops earlier, so the request most likely to be dropped. On the
+    // home page the field belongs to a prompt shown only to members who have
+    // not given a number yet, and the prompt is revealed by a script that
+    // loads after this one. Fetching them for every other visitor buys a
+    // feature nobody is looking at, and buys the failures that come with it.
+    //
+    // Building before the helpers costs only the generated example
+    // placeholder, and `autoPlaceholder: 'polite'` leaves an input that
+    // already has a placeholder alone. All four pages that carry this field
+    // hardcode one, so nothing is lost. `getNumber` reads the helpers off the
+    // global at call time, so formatting starts working the moment they land.
+    whenVisible(inputs, loadUtils);
   }
 
   // Wait for intl-tel-input to be available, but give up rather than poll for
