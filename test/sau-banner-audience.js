@@ -42,6 +42,13 @@ function jouer({ statut, specialite, semestre, heure, snoozeMs }) {
         return { css(regles) { if (regles && regles.display === 'flex') affiches.push(selecteur); } };
     }
 
+    // Le lien du bandeau, tel que Webflow le sert : l'origine y est déjà écrite.
+    const cta = {
+        href: '/membership/sau-en-savoir-plus?src=banner',
+        getAttribute(n) { return n === 'href' ? this.href : null; },
+        setAttribute(n, v) { if (n === 'href') this.href = v; },
+    };
+
     const store = {};
     if (snoozeMs) {
         store.sauSignupBannerDismissedTs = String(fige - snoozeMs);
@@ -81,7 +88,10 @@ function jouer({ statut, specialite, semestre, heure, snoozeMs }) {
     const contexte = {
         window: win,
         jQuery: jq,
-        document: { getElementById: () => null, addEventListener: () => {} },
+        document: {
+            getElementById: (id) => (id === 'click-banner-to-hide-sau-signup' ? cta : null),
+            addEventListener: () => {},
+        },
         localStorage: win.localStorage,
         console: { log() {}, warn() {}, error() {} },
         Date: DateFigee,
@@ -93,30 +103,31 @@ function jouer({ statut, specialite, semestre, heure, snoozeMs }) {
     return {
         affiche: affiches.indexOf('#banner-to-hide-sau-signup') !== -1,
         public: vu.length ? vu[0].sau_banner_audience : null,
+        src: (cta.href.match(/[?&]src=([^&#]*)/) || [])[1] || null,
         redirections,
     };
 }
 
 const INTERNE_MG = { statut: 'Interne', specialite: 'Médecine générale' };
 const CAS = [
-    ['interne MG semestre 1, 2 h du matin', { ...INTERNE_MG, semestre: '1', heure: 2 }, true, 'interne_mg_nuit'],
-    ['interne MG semestre 2, 23 h 30', { ...INTERNE_MG, semestre: '2', heure: 23 }, true, 'interne_mg_nuit'],
-    ['interne MG semestre 2, 14 h', { ...INTERNE_MG, semestre: '2', heure: 14 }, false, null],
-    ['interne MG semestre 4, 2 h', { ...INTERNE_MG, semestre: '4', heure: 2 }, false, null],
-    ['interne MG internat terminé, 2 h', { ...INTERNE_MG, semestre: 'Internat terminé', heure: 2 }, false, null],
-    ['interne pédiatrie semestre 1, 2 h', { statut: 'Interne', specialite: 'Pédiatrie', semestre: '1', heure: 2 }, false, null],
-    ['médecin MG, 2 h', { statut: 'Medecin', specialite: 'Médecine générale', semestre: '', heure: 2 }, false, null],
-    ['urgentiste, 14 h', { statut: 'Medecin', specialite: "Médecine d'urgence", semestre: '', heure: 14 }, true, 'specialite'],
-    ['urgentiste, 2 h', { statut: 'Medecin', specialite: "Médecine d'urgence", semestre: '', heure: 2 }, true, 'specialite'],
-    ['interne MG semestre 1, 2 h, mis en veille', { ...INTERNE_MG, semestre: '1', heure: 2, snoozeMs: 60 * 1000 }, false, null],
-    ['borne 22 h, hors fenêtre', { ...INTERNE_MG, semestre: '1', heure: 22 }, false, null],
-    ['borne 23 h, dans la fenêtre', { ...INTERNE_MG, semestre: '1', heure: 23 }, true, 'interne_mg_nuit'],
-    ['borne 4 h, dans la fenêtre', { ...INTERNE_MG, semestre: '1', heure: 4 }, true, 'interne_mg_nuit'],
-    ['borne 5 h, hors fenêtre', { ...INTERNE_MG, semestre: '1', heure: 5 }, false, null],
+    ['interne MG semestre 1, 2 h du matin', { ...INTERNE_MG, semestre: '1', heure: 2 }, true, 'interne_mg_nuit', 'banner-nuit'],
+    ['interne MG semestre 2, 23 h 30', { ...INTERNE_MG, semestre: '2', heure: 23 }, true, 'interne_mg_nuit', 'banner-nuit'],
+    ['interne MG semestre 2, 14 h', { ...INTERNE_MG, semestre: '2', heure: 14 }, false, null, 'banner'],
+    ['interne MG semestre 4, 2 h', { ...INTERNE_MG, semestre: '4', heure: 2 }, false, null, 'banner'],
+    ['interne MG internat terminé, 2 h', { ...INTERNE_MG, semestre: 'Internat terminé', heure: 2 }, false, null, 'banner'],
+    ['interne pédiatrie semestre 1, 2 h', { statut: 'Interne', specialite: 'Pédiatrie', semestre: '1', heure: 2 }, false, null, 'banner'],
+    ['médecin MG, 2 h', { statut: 'Medecin', specialite: 'Médecine générale', semestre: '', heure: 2 }, false, null, 'banner'],
+    ['urgentiste, 14 h', { statut: 'Medecin', specialite: "Médecine d'urgence", semestre: '', heure: 14 }, true, 'specialite', 'banner'],
+    ['urgentiste, 2 h', { statut: 'Medecin', specialite: "Médecine d'urgence", semestre: '', heure: 2 }, true, 'specialite', 'banner'],
+    ['interne MG semestre 1, 2 h, mis en veille', { ...INTERNE_MG, semestre: '1', heure: 2, snoozeMs: 60 * 1000 }, false, null, 'banner'],
+    ['borne 22 h, hors fenêtre', { ...INTERNE_MG, semestre: '1', heure: 22 }, false, null, 'banner'],
+    ['borne 23 h, dans la fenêtre', { ...INTERNE_MG, semestre: '1', heure: 23 }, true, 'interne_mg_nuit', 'banner-nuit'],
+    ['borne 4 h, dans la fenêtre', { ...INTERNE_MG, semestre: '1', heure: 4 }, true, 'interne_mg_nuit', 'banner-nuit'],
+    ['borne 5 h, hors fenêtre', { ...INTERNE_MG, semestre: '1', heure: 5 }, false, null, 'banner'],
 ];
 
 let echecs = 0;
-for (const [nom, profil, attenduAffiche, attenduPublic] of CAS) {
+for (const [nom, profil, attenduAffiche, attenduPublic, attenduSrc] of CAS) {
     let r;
     try {
         r = jouer(profil);
@@ -130,8 +141,8 @@ for (const [nom, profil, attenduAffiche, attenduPublic] of CAS) {
         echecs += 1;
         continue;
     }
-    if (r.affiche !== attenduAffiche || r.public !== attenduPublic) {
-        console.log(`  ECHEC  ${nom} : affiché=${r.affiche} public=${r.public}, attendu ${attenduAffiche} / ${attenduPublic}`);
+    if (r.affiche !== attenduAffiche || r.public !== attenduPublic || r.src !== attenduSrc) {
+        console.log(`  ECHEC  ${nom} : affiché=${r.affiche} public=${r.public} src=${r.src}, attendu ${attenduAffiche} / ${attenduPublic} / ${attenduSrc}`);
         echecs += 1;
         continue;
     }
