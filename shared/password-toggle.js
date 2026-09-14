@@ -10,8 +10,16 @@
  *   </div>
  * </div>
  *
- * Usage in Webflow site footer:
- * <script defer crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<sha>/shared/password-toggle.js"></script>
+ * Loaded from the Webflow site footer, only on pages that contain a toggle:
+ * <script>
+ *   (function () {
+ *     if (!document.querySelector('[data-ordo-password-toggle]')) return;
+ *     var s = document.createElement('script');
+ *     s.src = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<sha>/shared/password-toggle.js';
+ *     s.crossOrigin = 'anonymous';
+ *     document.body.appendChild(s);
+ *   })();
+ * </script>
  */
 (function () {
   'use strict';
