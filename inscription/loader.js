@@ -10,7 +10,8 @@
  *     comment: "{{wf commentaire}}",
  *     typeDeCompte: "{{wf type-de-compte}}",
  *     partnershipCity: "{{wf partnership-city}}",
- *     dureeOffre: "{{wf duree-de-l-offre-en-mois}}"
+ *     dureeOffre: "{{wf duree-de-l-offre-en-mois}}",
+ *     modeDexercice: "{{wf mode-dexercice}}"
  * };
  * </script>
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription/loader.js"></script>
@@ -56,6 +57,12 @@
         }
         if (config.dureeOffre) {
             localStorage.setItem('signup-duree-offre', config.dureeOffre);
+        }
+        // Belongs to the offer on screen only: never carried over from another offer page.
+        if (config.modeDexercice) {
+            localStorage.setItem('signup-mode-dexercice', config.modeDexercice);
+        } else {
+            localStorage.removeItem('signup-mode-dexercice');
         }
 
         console.log(PREFIX, 'Config stored in localStorage');

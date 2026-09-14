@@ -12,6 +12,29 @@
   var PREFIX = '[MemberstackSync]';
   var MAX_ATTEMPTS = 50; // 50 * 200ms = 10s max wait
 
+  // These fields describe the member, not the offer: they only fill an empty value,
+  // and only for an account created recently. Anything else keeps what the member chose.
+  var FILL_ONLY_FIELDS = ['mode-dexercice'];
+  var FILL_ONLY_MAX_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+
+  function isFillOnly(msField) {
+    return FILL_ONLY_FIELDS.indexOf(msField) !== -1;
+  }
+
+  function canFill(member, msField) {
+    var current = member.customFields ? member.customFields[msField] : null;
+    if (current && String(current).trim() !== '') return false;
+    var createdAt = Date.parse(member.createdAt);
+    return !isNaN(createdAt) && Date.now() - createdAt < FILL_ONLY_MAX_ACCOUNT_AGE_MS;
+  }
+
+  // The form was pre-filled from the member before the update landed: show the new value
+  // so that saving the form does not send the old empty one back.
+  function fillFormField(msField, value) {
+    var input = document.querySelector('[data-ms-member="' + msField + '"]');
+    if (input && !input.value) input.value = value;
+  }
+
   var config = window.OrdoMesInfos && window.OrdoMesInfos.config;
   if (!config) return;
 
@@ -58,6 +81,10 @@
         try { value = localStorage.getItem(field.key); } catch (e) {}
 
         if (value && value.trim() !== '') {
+          if (isFillOnly(field.msField) && !canFill(member, field.msField)) {
+            try { localStorage.removeItem(field.key); } catch (e) {}
+            return;
+          }
           customFields[field.msField] = value;
           keysToRemove.push(field.key);
         }
@@ -102,6 +129,10 @@
               statusField.value = customFields.statut;
             }
           }
+
+          Object.keys(customFields).forEach(function(msField) {
+            if (isFillOnly(msField)) fillFormField(msField, customFields[msField]);
+          });
 
           console.log(PREFIX, 'Synced', Object.keys(customFields).length, 'field(s)');
         })
