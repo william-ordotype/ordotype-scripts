@@ -23,12 +23,23 @@
     'use strict';
 
     const PREFIX = '[OrdoInscription]';
-    const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+    const DEFAULT_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+
+    // Scripts are loaded from the same version as this loader: pinning its URL to a commit
+    // (…/ordotype-scripts@<sha>/inscription/loader.js) pins every script it loads.
+    function getBase() {
+        const src = document.currentScript && document.currentScript.src;
+        const match = src && src.match(/^(https:\/\/cdn\.jsdelivr\.net\/gh\/william-ordotype\/ordotype-scripts@[^\/]+)\/inscription\/loader\.js/);
+        return match ? match[1] : DEFAULT_BASE;
+    }
+
+    const BASE = getBase();
 
     // Scripts to load in order
     const scripts = [
         'inscription/background-handler.js',
-        'inscription/date-french.js'
+        'inscription/date-french.js',
+        'inscription/upgrade-fields.js'
     ];
 
     function loadScript(url) {

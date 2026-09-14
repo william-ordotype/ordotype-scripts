@@ -1269,9 +1269,10 @@ Signup pages with CMS-driven configuration and French date conversion.
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts, stores CMS config in localStorage |
+| `loader.js` | Loads all scripts from its own version (pin `…@<sha>/inscription/loader.js` to pin them all), stores CMS config in localStorage |
 | `background-handler.js` | Adds background class for non-logged users |
 | `date-french.js` | Converts English dates to French format |
+| `upgrade-fields.js` | Logged-in member clicking the plan button: adds the plan, writes the offer's fields, then redirects or reloads like Memberstack |
 
 ### Usage in Webflow
 
@@ -1297,12 +1298,14 @@ window.INSCRIPTION_CONFIG = {
 - The `signup-*` keys (comment, type de compte, partnership city, durée, mode d'exercice, statut, spécialité) follow the offer on screen: an offer without a value removes the key left by a previously viewed offer. A page without `INSCRIPTION_CONFIG` leaves them untouched (see `test/inscription-signup-keys.js`)
 - `statut` and `specialite` are inserted with Webflow's "+ Add Field": an Option field, and the `memberstack-custom-field-specialite` field of the referenced specialité, which is the value the mes-informations select uses
 - `mes-informations/memberstack-sync.js` only uses `signup-mode-dexercice`, `signup-statut` and `signup-specialite` to fill an empty field on an account created less than 24 h ago (see `test/mode-dexercice-signup-sync.js` and `test/signup-fill-only-fields.js`)
+- Existing members taking the offer (plan button, which only sends the plan id): `upgrade-fields.js` takes the click, calls `addPlan`, then writes the fields of the page's signup form (`[data-ms-member]`) plus `INSCRIPTION_CONFIG.dureeOffre`. Offer fields (`type-de-compte`, `partnership-city`, `comment`, `duree-de-loffre`) replace the member's value when the offer has one; other fields only fill an empty value. The `signup-*` keys are then cleared. Logged-out visitors keep Memberstack's behaviour (see `test/inscription-upgrade-fields.js`)
 - Adds `background-avif` class for non-logged users
 - Converts CMS dates from English to French format ("Valable jusqu'au DD mois YYYY")
 
 ### Console Prefixes
 
 - `[OrdoInscription]` - Loader
+- `[UpgradeFields]` - Offer fields written on plan upgrade
 - `[BackgroundHandler]` - Background class handler
 - `[DateFrench]` - Date conversion
 
