@@ -73,6 +73,7 @@ window.MES_INFOS_CONFIG = {
   rppsText: 'Pas de RPPS',       // string = checkbox text, null = disable RPPS
   forceStatut: null,              // 'Medecin' | 'Interne' | null
   syncFields: [],                 // [{ key: 'localStorage-key', msField: 'memberstack-field' }]
+  fillOnlyFields: [],             // same shape; only fills an empty field on an account < 24 h old
   setJustPaidTs: false,           // set justPaidTs in localStorage for 60s
   showStatutSelectors: false,     // show semestre/mode-exercice/specialite visibility logic
   showRequiredIfVisible: true,    // conditional required attr on visible inputs
@@ -96,12 +97,20 @@ window.MES_INFOS_CONFIG = {
     { key: 'signup-duree-offre', msField: 'duree-de-loffre' },
     { key: 'signup-mode-dexercice', msField: 'mode-dexercice' }
   ],
+  fillOnlyFields: [
+    { key: 'signup-statut', msField: 'statut' },
+    { key: 'signup-specialite', msField: 'specialite' }
+  ],
   showStatutSelectors: true,
   showRequiredIfVisible: true
 };
 ```
 
-`mode-dexercice` is a fill-only field (`FILL_ONLY_FIELDS` in `memberstack-sync.js`): it is written only when the member has no value yet and the account was created less than 24 h ago, and the form select is updated so saving the form keeps it. The other fields keep their existing behaviour. Deploy the script before adding this entry to a page: an older cached copy would write the field without these checks.
+Fill-only fields describe the member rather than the offer. They are written only when the member has no value yet and the account was created less than 24 h ago. The matching form field is then updated, once its option exists (the specialité options are added after page load), and a `change` event is dispatched so the statut visibility rules apply. A value already picked on screen is kept.
+
+- Entries of `fillOnlyFields` always follow this rule.
+- In `syncFields`, only `mode-dexercice` does (`FILL_ONLY_FIELDS` in `memberstack-sync.js`); the other entries keep their existing behaviour.
+- Declare new fill-only fields in `fillOnlyFields`, not in `syncFields`: a cached copy of an older script ignores `fillOnlyFields`, whereas it would write a `syncFields` entry without these checks.
 
 ### mes-informations-praticien
 ```js
