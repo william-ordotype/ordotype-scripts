@@ -11,7 +11,6 @@ module.exports = [
       "**/*.min.js",
       "**/node_modules/**",
       // Not served to the site (local tooling, mostly Python)
-      "qr_code_switch/**",
       "generation-pdf-ordos/**",
       "winback/**",
     ],
