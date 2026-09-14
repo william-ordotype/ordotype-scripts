@@ -31,6 +31,20 @@
     return !isNaN(createdAt) && Date.now() - createdAt < FILL_ONLY_MAX_ACCOUNT_AGE_MS;
   }
 
+  // Values stored by an older inscription loader can still be HTML-escaped (l&#39;Abbé):
+  // write the real text, never the escaped form.
+  function decodeEntities(value) {
+    if (typeof value !== 'string' || value.indexOf('&') === -1) return value;
+    var textarea = document.createElement('textarea');
+    var current = value;
+    for (var i = 0; i < 3; i++) {
+      textarea.innerHTML = current;
+      if (textarea.value === current) break;
+      current = textarea.value;
+    }
+    return current;
+  }
+
   function hasOption(select, value) {
     return Array.prototype.some.call(select.options, function(option) {
       return option.value === value;
@@ -110,7 +124,7 @@
       // Collect localStorage values from syncFields and fillOnlyFields config
       fields.forEach(function(field) {
         var value = null;
-        try { value = localStorage.getItem(field.key); } catch (e) {}
+        try { value = decodeEntities(localStorage.getItem(field.key)); } catch (e) {}
 
         if (value && value.trim() !== '') {
           if (field.fillOnly && !canFill(member, field.msField)) {
