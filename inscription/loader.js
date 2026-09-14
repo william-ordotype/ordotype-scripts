@@ -11,7 +11,9 @@
  *     typeDeCompte: "{{wf type-de-compte}}",
  *     partnershipCity: "{{wf partnership-city}}",
  *     dureeOffre: "{{wf duree-de-l-offre-en-mois}}",
- *     modeDexercice: "{{wf mode-dexercice}}"
+ *     modeDexercice: "{{wf mode-dexercice}}",
+ *     statut: "{{wf statut}}",
+ *     specialite: "{{wf specialite > memberstack-custom-field-specialite}}"
  * };
  * </script>
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription/loader.js"></script>
@@ -54,7 +56,9 @@
                 ['signup-type-de-compte', config.typeDeCompte],
                 ['signup-partnership-city', config.partnershipCity],
                 ['signup-duree-offre', config.dureeOffre],
-                ['signup-mode-dexercice', config.modeDexercice]
+                ['signup-mode-dexercice', config.modeDexercice],
+                ['signup-statut', config.statut],
+                ['signup-specialite', config.specialite]
             ].forEach(([key, value]) => {
                 if (value) {
                     localStorage.setItem(key, value);

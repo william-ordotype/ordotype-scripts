@@ -14,8 +14,11 @@
 
   // These fields describe the member, not the offer: they only fill an empty value,
   // and only for an account created recently. Anything else keeps what the member chose.
+  // Fields listed in config.fillOnlyFields always follow this rule; FILL_ONLY_FIELDS
+  // applies it to entries of config.syncFields.
   var FILL_ONLY_FIELDS = ['mode-dexercice'];
   var FILL_ONLY_MAX_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+  var FILL_FORM_TIMEOUT_MS = 10000;
 
   function isFillOnly(msField) {
     return FILL_ONLY_FIELDS.indexOf(msField) !== -1;
@@ -28,18 +31,46 @@
     return !isNaN(createdAt) && Date.now() - createdAt < FILL_ONLY_MAX_ACCOUNT_AGE_MS;
   }
 
-  // The form was pre-filled from the member before the update landed: show the new value
-  // so that saving the form does not send the old empty one back.
+  function hasOption(select, value) {
+    return Array.prototype.some.call(select.options, function(option) {
+      return option.value === value;
+    });
+  }
+
+  // The form was pre-filled from the member before the update landed, and some selects only
+  // receive their options later: wait for the option, then show the value so that saving the
+  // form does not send the old empty one back. A value the member already picked is kept.
   function fillFormField(msField, value) {
     var input = document.querySelector('[data-ms-member="' + msField + '"]');
-    if (input && !input.value) input.value = value;
+    if (!input) return;
+
+    function apply() {
+      if (input.value) return true;
+      if (input.tagName === 'SELECT' && !hasOption(input, value)) return false;
+      input.value = value;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+
+    if (apply()) return;
+    var observer = new MutationObserver(function() {
+      if (apply()) observer.disconnect();
+    });
+    observer.observe(input, { childList: true, subtree: true });
+    setTimeout(function() { observer.disconnect(); }, FILL_FORM_TIMEOUT_MS);
   }
 
   var config = window.OrdoMesInfos && window.OrdoMesInfos.config;
   if (!config) return;
 
+  var fields = config.syncFields.map(function(field) {
+    return { key: field.key, msField: field.msField, fillOnly: isFillOnly(field.msField) };
+  }).concat((config.fillOnlyFields || []).map(function(field) {
+    return { key: field.key, msField: field.msField, fillOnly: true };
+  }));
+
   // Skip if nothing to do
-  if (!config.syncFields.length && !config.forceStatut) {
+  if (!fields.length && !config.forceStatut) {
     console.log(PREFIX, 'No fields to sync and no statut to force, skipping');
     return;
   }
@@ -74,19 +105,21 @@
 
       var customFields = {};
       var keysToRemove = [];
+      var filledFields = [];
 
-      // Collect localStorage values from syncFields config
-      config.syncFields.forEach(function(field) {
+      // Collect localStorage values from syncFields and fillOnlyFields config
+      fields.forEach(function(field) {
         var value = null;
         try { value = localStorage.getItem(field.key); } catch (e) {}
 
         if (value && value.trim() !== '') {
-          if (isFillOnly(field.msField) && !canFill(member, field.msField)) {
+          if (field.fillOnly && !canFill(member, field.msField)) {
             try { localStorage.removeItem(field.key); } catch (e) {}
             return;
           }
           customFields[field.msField] = value;
           keysToRemove.push(field.key);
+          if (field.fillOnly) filledFields.push(field.msField);
         }
       });
 
@@ -104,7 +137,7 @@
       // Nothing to update
       if (Object.keys(customFields).length === 0) {
         // Still clean up userId if present but not needed
-        config.syncFields.forEach(function(field) {
+        fields.forEach(function(field) {
           try {
             var val = localStorage.getItem(field.key);
             if (val) localStorage.removeItem(field.key);
@@ -130,8 +163,8 @@
             }
           }
 
-          Object.keys(customFields).forEach(function(msField) {
-            if (isFillOnly(msField)) fillFormField(msField, customFields[msField]);
+          filledFields.forEach(function(msField) {
+            fillFormField(msField, customFields[msField]);
           });
 
           console.log(PREFIX, 'Synced', Object.keys(customFields).length, 'field(s)');

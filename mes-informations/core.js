@@ -35,6 +35,7 @@
     rppsText: pageConfig.rppsText !== undefined ? pageConfig.rppsText : 'Pas de RPPS',
     forceStatut: pageConfig.forceStatut || null,
     syncFields: pageConfig.syncFields || [],
+    fillOnlyFields: pageConfig.fillOnlyFields || [],
     setJustPaidTs: Boolean(pageConfig.setJustPaidTs),
     showStatutSelectors: Boolean(pageConfig.showStatutSelectors),
     showRequiredIfVisible: pageConfig.showRequiredIfVisible !== false,

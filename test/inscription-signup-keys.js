@@ -22,7 +22,7 @@ const ROOT = path.resolve(__dirname, '..');
 const LOADER = fs.readFileSync(path.join(ROOT, 'inscription/loader.js'), 'utf8');
 const SYNC = fs.readFileSync(path.join(ROOT, 'mes-informations/memberstack-sync.js'), 'utf8');
 
-const KEYS = ['signup-comment', 'signup-type-de-compte', 'signup-partnership-city', 'signup-duree-offre', 'signup-mode-dexercice'];
+const KEYS = ['signup-comment', 'signup-type-de-compte', 'signup-partnership-city', 'signup-duree-offre', 'signup-mode-dexercice', 'signup-statut', 'signup-specialite'];
 
 // Les syncFields de la page mes-informations par défaut (voir mes-informations/README.md).
 const SYNC_FIELDS = [
@@ -32,11 +32,15 @@ const SYNC_FIELDS = [
     { key: 'signup-duree-offre', msField: 'duree-de-loffre' },
     { key: 'signup-mode-dexercice', msField: 'mode-dexercice' },
 ];
+const FILL_ONLY_FIELDS = [
+    { key: 'signup-statut', msField: 'statut' },
+    { key: 'signup-specialite', msField: 'specialite' },
+];
 
 // Trois offres telles que Webflow rend leur INSCRIPTION_CONFIG : un champ vide arrive en "".
-const OFFRE_AVEC_DUREE = { comment: 'Maison de santé A', typeDeCompte: 'MSP', partnershipCity: 'Maison de santé A', dureeOffre: 'Compte 3 mois', modeDexercice: '' };
-const OFFRE_AVEC_COMMENTAIRE = { comment: 'Hôpital B', typeDeCompte: 'AP-HP', partnershipCity: '', dureeOffre: '', modeDexercice: '' };
-const OFFRE_FINALE = { comment: '', typeDeCompte: 'Association C', partnershipCity: 'Association C retraités', dureeOffre: '', modeDexercice: 'Retraité' };
+const OFFRE_AVEC_DUREE = { comment: 'Maison de santé A', typeDeCompte: 'MSP', partnershipCity: 'Maison de santé A', dureeOffre: 'Compte 3 mois', modeDexercice: '', statut: 'Interne', specialite: "Médecine d'urgence" };
+const OFFRE_AVEC_COMMENTAIRE = { comment: 'Hôpital B', typeDeCompte: 'AP-HP', partnershipCity: '', dureeOffre: '', modeDexercice: '', statut: '', specialite: '' };
+const OFFRE_FINALE = { comment: '', typeDeCompte: 'Association C', partnershipCity: 'Association C retraités', dureeOffre: '', modeDexercice: 'Retraité', statut: 'Medecin', specialite: 'Médecine générale' };
 
 function nouvellePage(url, stockage) {
     const erreurs = [];
@@ -74,7 +78,7 @@ async function parcourir(configs, stockage = {}) {
 async function synchroniser(stockage) {
     const { w } = nouvellePage('https://www.ordotype.fr/membership/mes-informations', stockage);
     const envoye = {};
-    w.OrdoMesInfos = { config: { forceStatut: null, syncFields: SYNC_FIELDS } };
+    w.OrdoMesInfos = { config: { forceStatut: null, syncFields: SYNC_FIELDS, fillOnlyFields: FILL_ONLY_FIELDS } };
     w.$memberstackDom = {
         getCurrentMember: async () => ({ data: { id: 'mem_test', createdAt: new Date().toISOString(), customFields: {} } }),
         updateMember: async (p) => { Object.assign(envoye, p.customFields); },
@@ -93,6 +97,15 @@ const CAS = [
             [s['signup-partnership-city'], 'Association C retraités', 'ville partenaire'],
             [s['signup-duree-offre'], undefined, 'durée'],
             [s['signup-mode-dexercice'], 'Retraité', 'mode d\'exercice'],
+            [s['signup-statut'], 'Medecin', 'statut'],
+            [s['signup-specialite'], 'Médecine générale', 'spécialité'],
+        ];
+    }],
+    ['une offre sans statut ni spécialité efface ceux d\'une offre vue avant', async () => {
+        const s = await parcourir([OFFRE_AVEC_DUREE, OFFRE_AVEC_COMMENTAIRE]);
+        return [
+            [s['signup-statut'], undefined, 'statut'],
+            [s['signup-specialite'], undefined, 'spécialité'],
         ];
     }],
     ['après ce parcours, Memberstack ne reçoit rien des offres précédentes', async () => {
@@ -102,6 +115,8 @@ const CAS = [
             ['duree-de-loffre' in envoye, false, 'durée envoyée'],
             [envoye['type-de-compte'], 'Association C', 'type de compte envoyé'],
             [envoye['mode-dexercice'], 'Retraité', 'mode d\'exercice envoyé'],
+            [envoye.statut, 'Medecin', 'statut envoyé'],
+            [envoye.specialite, 'Médecine générale', 'spécialité envoyée'],
         ];
     }],
     ['une offre qui a toutes ses valeurs les pose toutes', async () => {

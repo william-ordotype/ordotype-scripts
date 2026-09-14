@@ -1282,7 +1282,9 @@ window.INSCRIPTION_CONFIG = {
     typeDeCompte: "{{wf {&quot;path&quot;:&quot;type-de-compte&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
     partnershipCity: "{{wf {&quot;path&quot;:&quot;partnership-city&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
     dureeOffre: "{{wf {&quot;path&quot;:&quot;duree-de-l-offre-en-mois&quot;,&quot;type&quot;:&quot;Option&quot;\} }}",
-    modeDexercice: "{{wf {&quot;path&quot;:&quot;mode-dexercice&quot;,&quot;type&quot;:&quot;Option&quot;\} }}"
+    modeDexercice: "{{wf {&quot;path&quot;:&quot;mode-dexercice&quot;,&quot;type&quot;:&quot;Option&quot;\} }}",
+    statut: "{{wf statut}}",
+    specialite: "{{wf specialite > memberstack-custom-field-specialite}}"
 };
 </script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription/loader.js"></script>
@@ -1292,8 +1294,9 @@ window.INSCRIPTION_CONFIG = {
 ### Features
 
 - Stores CMS config in localStorage for signup flow
-- The `signup-*` keys (comment, type de compte, partnership city, durée, mode d'exercice) follow the offer on screen: an offer without a value removes the key left by a previously viewed offer. A page without `INSCRIPTION_CONFIG` leaves them untouched (see `test/inscription-signup-keys.js`)
-- `mes-informations/memberstack-sync.js` only uses `signup-mode-dexercice` to fill an empty field on an account created less than 24 h ago (see `test/mode-dexercice-signup-sync.js`)
+- The `signup-*` keys (comment, type de compte, partnership city, durée, mode d'exercice, statut, spécialité) follow the offer on screen: an offer without a value removes the key left by a previously viewed offer. A page without `INSCRIPTION_CONFIG` leaves them untouched (see `test/inscription-signup-keys.js`)
+- `statut` and `specialite` are inserted with Webflow's "+ Add Field": an Option field, and the `memberstack-custom-field-specialite` field of the referenced specialité, which is the value the mes-informations select uses
+- `mes-informations/memberstack-sync.js` only uses `signup-mode-dexercice`, `signup-statut` and `signup-specialite` to fill an empty field on an account created less than 24 h ago (see `test/mode-dexercice-signup-sync.js` and `test/signup-fill-only-fields.js`)
 - Adds `background-avif` class for non-logged users
 - Converts CMS dates from English to French format ("Valable jusqu'au DD mois YYYY")
 
