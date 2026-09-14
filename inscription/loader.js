@@ -42,6 +42,19 @@
         });
     }
 
+    // CMS text reaches INSCRIPTION_CONFIG HTML-escaped (l&#39;Abbé, d&#x27;exercice): store the real text.
+    function decodeEntities(value) {
+        if (typeof value !== 'string' || value.indexOf('&') === -1) return value;
+        const textarea = document.createElement('textarea');
+        let current = value;
+        for (let i = 0; i < 3; i++) {
+            textarea.innerHTML = current;
+            if (textarea.value === current) break;
+            current = textarea.value;
+        }
+        return current;
+    }
+
     function init() {
         const config = window.INSCRIPTION_CONFIG;
 
@@ -59,7 +72,8 @@
                 ['signup-mode-dexercice', config.modeDexercice],
                 ['signup-statut', config.statut],
                 ['signup-specialite', config.specialite]
-            ].forEach(([key, value]) => {
+            ].forEach(([key, raw]) => {
+                const value = decodeEntities(raw);
                 if (value) {
                     localStorage.setItem(key, value);
                 } else {
