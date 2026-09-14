@@ -76,6 +76,19 @@
             .concat([WINBACK_SCRIPT])
         : BASE_SCRIPTS;
 
+    // Set by /inscription/<offer> pages and copied to Memberstack by /membership/mes-informations,
+    // where this offer's checkout returns. This offer has none of these values: remove the ones
+    // left by an offer viewed earlier (see test/offre-speciale-signup-keys.js).
+    const OTHER_OFFER_KEYS = ['signup-duree-offre', 'signup-mode-dexercice', 'signup-statut', 'signup-specialite'];
+
+    function clearOtherOfferKeys() {
+        try {
+            OTHER_OFFER_KEYS.forEach((key) => localStorage.removeItem(key));
+        } catch (e) {
+            // storage unavailable: mes-informations cannot read these keys either
+        }
+    }
+
     function hasCachedStripeCustomer() {
         const ms = window.OrdoMemberstack;
         if (ms) return !!ms.stripeCustomerId;
@@ -226,6 +239,8 @@
             console.error(PREFIX, 'Load error:', err);
         }
     }
+
+    clearOtherOfferKeys();
 
     // Wait for DOMContentLoaded to ensure CMS script has run
     if (document.readyState === 'loading') {
