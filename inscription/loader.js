@@ -41,31 +41,29 @@
     }
 
     function init() {
-        const config = window.INSCRIPTION_CONFIG || {};
+        const config = window.INSCRIPTION_CONFIG;
 
         // Store in localStorage
         localStorage.setItem('locat', location.href);
 
-        if (config.comment) {
-            localStorage.setItem('signup-comment', config.comment);
+        // Each key belongs to the offer on screen only: an offer without a value clears it,
+        // so a value from a previously viewed offer page is never reused.
+        if (config) {
+            [
+                ['signup-comment', config.comment],
+                ['signup-type-de-compte', config.typeDeCompte],
+                ['signup-partnership-city', config.partnershipCity],
+                ['signup-duree-offre', config.dureeOffre],
+                ['signup-mode-dexercice', config.modeDexercice]
+            ].forEach(([key, value]) => {
+                if (value) {
+                    localStorage.setItem(key, value);
+                } else {
+                    localStorage.removeItem(key);
+                }
+            });
+            console.log(PREFIX, 'Config stored in localStorage');
         }
-        if (config.typeDeCompte) {
-            localStorage.setItem('signup-type-de-compte', config.typeDeCompte);
-        }
-        if (config.partnershipCity) {
-            localStorage.setItem('signup-partnership-city', config.partnershipCity);
-        }
-        if (config.dureeOffre) {
-            localStorage.setItem('signup-duree-offre', config.dureeOffre);
-        }
-        // Belongs to the offer on screen only: never carried over from another offer page.
-        if (config.modeDexercice) {
-            localStorage.setItem('signup-mode-dexercice', config.modeDexercice);
-        } else {
-            localStorage.removeItem('signup-mode-dexercice');
-        }
-
-        console.log(PREFIX, 'Config stored in localStorage');
 
         // Load scripts in order
         (async () => {
