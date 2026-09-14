@@ -17,7 +17,7 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 
 | File | Description |
 |------|-------------|
-| `loader.js` | Entry point — loads shared utils, Crisp, intl-tel-input, then all scripts |
+| `loader.js` | Entry point — loads shared utils, Crisp, intl-tel-input, then all scripts, from the same version as itself (pin `…/ordotype-scripts@<sha>/mes-informations/loader.js` to pin them all; any other URL falls back to `@main`) |
 | `core.js` | Reads `MES_INFOS_CONFIG`, exposes `window.OrdoMesInfos`, sets `locat` |
 | `styles.js` | Injects `.iti` CSS width fixes |
 | `rpps.js` | RPPS checkbox — text configurable via `rppsText`, null to disable |
