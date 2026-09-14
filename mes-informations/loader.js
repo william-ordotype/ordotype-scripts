@@ -8,12 +8,24 @@
  * window.MES_INFOS_CONFIG = { rppsText: 'Pas de RPPS', showStatutSelectors: true, ... };
  * </script>
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/loader.js"></script>
+ *
+ * Scripts are loaded from the same version as this loader: pinning its URL to a commit
+ * (…/ordotype-scripts@<sha>/mes-informations/loader.js) pins every script it loads.
  */
 (function() {
   'use strict';
 
-  var BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations';
-  var SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared';
+  var DEFAULT_ROOT = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+
+  function getRoot() {
+    var src = document.currentScript && document.currentScript.src;
+    var match = src && src.match(/^(https:\/\/cdn\.jsdelivr\.net\/gh\/william-ordotype\/ordotype-scripts@[^\/]+)\/mes-informations\/loader\.js/);
+    return match ? match[1] : DEFAULT_ROOT;
+  }
+
+  var ROOT = getRoot();
+  var BASE = ROOT + '/mes-informations';
+  var SHARED_BASE = ROOT + '/shared';
 
   // Core scripts loaded on every page
   var scripts = [
