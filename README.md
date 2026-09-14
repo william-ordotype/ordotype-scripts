@@ -1323,6 +1323,8 @@ Special offer signup pages with CMS-driven pricing, coupons, and countdown timer
 | `not-connected-handler.js` | Handles connected/not-connected view toggle |
 | `countdown.js` | Countdown timer with localStorage persistence |
 
+The loader also removes `signup-duree-offre`, `signup-mode-dexercice`, `signup-statut` and `signup-specialite`. These keys are set by `/inscription/<offer>` pages and copied to Memberstack by `/membership/mes-informations`, where the checkout of this offer returns: without the removal, a visitor who viewed an `/inscription` offer before taking this one would receive its values (see `test/offre-speciale-signup-keys.js`).
+
 ### Usage in Webflow
 
 **Header (critical CSS - keep inline to prevent FOUC):**
