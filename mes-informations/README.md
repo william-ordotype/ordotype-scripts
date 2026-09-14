@@ -93,12 +93,15 @@ window.MES_INFOS_CONFIG = {
     { key: 'signup-type-de-compte', msField: 'type-de-compte' },
     { key: 'userId', msField: 'airtablerecordid' },
     { key: 'signup-partnership-city', msField: 'partnership-city' },
-    { key: 'signup-duree-offre', msField: 'duree-de-loffre' }
+    { key: 'signup-duree-offre', msField: 'duree-de-loffre' },
+    { key: 'signup-mode-dexercice', msField: 'mode-dexercice' }
   ],
   showStatutSelectors: true,
   showRequiredIfVisible: true
 };
 ```
+
+`mode-dexercice` is a fill-only field (`FILL_ONLY_FIELDS` in `memberstack-sync.js`): it is written only when the member has no value yet and the account was created less than 24 h ago, and the form select is updated so saving the form keeps it. The other fields keep their existing behaviour. Deploy the script before adding this entry to a page: an older cached copy would write the field without these checks.
 
 ### mes-informations-praticien
 ```js

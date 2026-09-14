@@ -1281,7 +1281,8 @@ window.INSCRIPTION_CONFIG = {
     comment: "{{wf {&quot;path&quot;:&quot;commentaire&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
     typeDeCompte: "{{wf {&quot;path&quot;:&quot;type-de-compte&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
     partnershipCity: "{{wf {&quot;path&quot;:&quot;partnership-city&quot;,&quot;type&quot;:&quot;PlainText&quot;\} }}",
-    dureeOffre: "{{wf {&quot;path&quot;:&quot;duree-de-l-offre-en-mois&quot;,&quot;type&quot;:&quot;Option&quot;\} }}"
+    dureeOffre: "{{wf {&quot;path&quot;:&quot;duree-de-l-offre-en-mois&quot;,&quot;type&quot;:&quot;Option&quot;\} }}",
+    modeDexercice: "{{wf {&quot;path&quot;:&quot;mode-dexercice&quot;,&quot;type&quot;:&quot;Option&quot;\} }}"
 };
 </script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/inscription/loader.js"></script>
@@ -1291,6 +1292,7 @@ window.INSCRIPTION_CONFIG = {
 ### Features
 
 - Stores CMS config in localStorage for signup flow
+- `signup-mode-dexercice` follows the offer on screen: an offer without a mode d'exercice removes the key left by another offer. `mes-informations/memberstack-sync.js` only uses it to fill an empty field on an account created less than 24 h ago (see `test/mode-dexercice-signup-sync.js`)
 - Adds `background-avif` class for non-logged users
 - Converts CMS dates from English to French format ("Valable jusqu'au DD mois YYYY")
 
