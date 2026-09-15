@@ -24,10 +24,15 @@
     'Paramédical': ['', 'IDE']
   };
 
+  // Statuts qu'aucun statut imposé ne remplace.
+  var PROTECTED_STATUTS = ['Assistant'];
+
   function canReplaceStatut(current, forced) {
+    var value = String(current == null ? '' : current).trim();
+    if (PROTECTED_STATUTS.indexOf(value) !== -1) return false;
     var allowed = REPLACEABLE_STATUTS[forced];
     if (!allowed) return true;
-    return allowed.indexOf(String(current == null ? '' : current).trim()) !== -1;
+    return allowed.indexOf(value) !== -1;
   }
   var FILL_ONLY_MAX_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
   var FILL_FORM_TIMEOUT_MS = 10000;

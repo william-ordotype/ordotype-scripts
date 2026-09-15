@@ -6,7 +6,8 @@
  * il ne remplace pas n'importe quelle valeur :
  *   - « Interne » ne remplace qu'un statut vide ;
  *   - « Paramédical » ne remplace qu'un statut vide ou « IDE » ;
- *   - « Medecin » remplace tout statut différent, comme avant.
+ *   - « Medecin » remplace tout statut différent, comme avant ;
+ *   - « Assistant » n'est jamais remplacé, quel que soit le statut imposé.
  * Un statut qui n'est pas remplacé reste tel quel, et les autres champs de la
  * page sont recopiés normalement.
  *
@@ -101,6 +102,14 @@ const CAS = [
     }],
     ['Medecin imposé, déjà Medecin : aucun appel', async () => {
         const r = await jouer({ membre: membre('Medecin'), config: medecin });
+        return [[r.appels, 0, 'appels à Memberstack']];
+    }],
+    ['Medecin imposé, Assistant : conservé, aucun appel', async () => {
+        const r = await jouer({ membre: membre('Assistant'), config: medecin });
+        return [[r.appels, 0, 'appels à Memberstack'], ['statut' in r.envoye, false, 'statut non envoyé']];
+    }],
+    ['Interne imposé, Assistant : conservé', async () => {
+        const r = await jouer({ membre: membre('Assistant'), config: interne });
         return [[r.appels, 0, 'appels à Memberstack']];
     }],
     ['Paramédical imposé, IDE : passe Paramédical', async () => {
