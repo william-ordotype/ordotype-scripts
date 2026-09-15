@@ -11,6 +11,8 @@
 # package.json, et `--no-save` ne laisse que node_modules, déjà ignoré par git.
 # intl-tel-input l'est aussi, dans la version servie sur le site : les tests du
 # champ téléphone valident les numéros avec ses vraies métadonnées.
+# libphonenumber-js apporte des métadonnées récentes, contre lesquelles ces
+# tests vérifient les tables écrites à la main dans le script.
 #
 # Chaque fichier est annoncé avant d'être lancé, pour que le journal désigne
 # directement le coupable, et le premier échec arrête le travail.
@@ -31,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install --no-save jsdom intl-tel-input@17.0.8
+      - run: npm install --no-save jsdom intl-tel-input@17.0.8 libphonenumber-js@1.13.13
       - name: Lancer les tests
         run: |
           for f in test/*.js; do

@@ -262,7 +262,13 @@ function env(source, opts) {
         head: conteneur,
         addEventListener() {},
         createElement() {
-            return { style: {}, setAttribute() {}, appendChild() {}, addEventListener() {} };
+            return {
+                style: {},
+                attrs: {},
+                setAttribute(n, v) { this.attrs[n] = String(v); },
+                appendChild() {},
+                addEventListener() {},
+            };
         },
         querySelectorAll() { return inputs; },
     };
@@ -552,8 +558,11 @@ const CAS = [
         if (e.trace.avertissements.some((m) => /Validity hint/.test(m))) {
             return 'la pose du message a levé : ' + e.trace.avertissements.join(' | ');
         }
-        if (e.trace.inseres.length !== 1) return 'message non posé après le champ';
-        if (!/-validity$/.test(e.input.attrs['aria-describedby'] || '')) return 'champ non relié au message';
+        // La zone visible, puis la région annoncée, toujours rendue.
+        if (e.trace.inseres.length !== 2) return 'zone et région annoncée non posées après le champ';
+        if (e.trace.inseres[1].attrs['aria-live'] !== 'polite') return 'région annoncée absente';
+        // Le champ ne décrit la zone que lorsqu'elle est visible.
+        if ('aria-describedby' in e.input.attrs) return 'champ relié à une zone encore masquée';
         return '';
     }],
 

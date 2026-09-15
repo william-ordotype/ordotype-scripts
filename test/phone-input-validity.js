@@ -8,15 +8,24 @@
  *   - numéro valide ou champ vide : aucun message ;
  *   - numéro qui ne semble pas valide : un message sous le champ, à la sortie
  *     du champ et à l'envoi, retiré dès que la saisie redevient valide ou vide ;
+ *   - un rendu pendant qu'un bouton est enfoncé attend le relâchement : le
+ *     message pourrait déplacer le bouton et faire perdre le clic ;
+ *   - ouvrir la liste des pays ou quitter la fenêtre n'est pas quitter le champ ;
+ *   - chiffres d'un mobile d'outre-mer avec la France ou un autre territoire :
+ *     proposition du bon territoire, jamais de +33 ;
  *   - territoire d'outre-mer choisi et chiffres d'un mobile de métropole :
- *     une proposition de passer en +33, qui garde les chiffres ;
+ *     proposition de passer en +33. Le clic écrit le numéro au format E.164 ;
  *   - sans les aides de formatage, seul le nombre de chiffres est contrôlé,
  *     et seulement là où il est fixe. Dans le doute, rien n'est affiché ;
- *   - le message ne peut pas emporter le champ avec lui.
+ *   - la zone n'est décrite par le champ que visible, une région annoncée
+ *     reste toujours rendue, le focus n'est jamais déplacé ;
+ *   - une panne du message est signalée une fois et n'emporte pas le champ ;
+ *   - les deux copies servies gardent la même logique.
  *
  * La bibliothèque et ses aides sont les VRAIS fichiers de la version servie
- * (intl-tel-input 17.0.8, installé à la volée comme jsdom) : la validité d'un
- * numéro vient de leurs métadonnées, pas d'une table recopiée ici.
+ * (intl-tel-input 17.0.8). La table des mobiles d'outre-mer et la longueur du
+ * repli sont vérifiées contre des métadonnées récentes (libphonenumber-js).
+ * Tous deux sont installés à la volée, comme jsdom.
  *
  * Les cas sont rejoués sur les DEUX copies servies en production.
  *
@@ -25,6 +34,9 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
+const recent = require('libphonenumber-js/max');
+const { Metadata } = require('libphonenumber-js/core');
+const METADONNEES = require('libphonenumber-js/metadata.max.json');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -37,7 +49,9 @@ const LIB = fs.readFileSync(require.resolve('intl-tel-input/build/js/intlTelInpu
 const AIDES = fs.readFileSync(require.resolve('intl-tel-input/build/js/utils.js'), 'utf8');
 
 const MESSAGE = "Ce numéro ne semble pas valide. Vérifiez l'indicatif du pays et le nombre de chiffres.";
-const QUESTION = 'Vouliez-vous saisir un numéro de France métropolitaine (+33)\u00a0?';
+const question = (nom, indicatif) => 'Vouliez-vous saisir un numéro de ' + nom + ' (+' + indicatif + ')\u00a0?';
+const action = (indicatif) => 'Oui, passer en +' + indicatif;
+const METROPOLE = question('France métropolitaine', '33');
 
 // La liste de pays proposée sur les pages qui portent ce champ.
 const PAYS = 'fr,gp,mq,gf,re,yt,nc,pf,dz,be,lu,ma,ch,tn';
@@ -51,6 +65,7 @@ function balisage(opts) {
     <input ms-code-phone-number="${PAYS}" name="phone" placeholder="06 00 00 00 00" type="tel" id="signup-phone" data-ms-member="phone" required${decrit}>
   </div>
   <input type="text" id="autre" name="autre">
+  <button type="button" id="aide">Aide</button>
   <input type="submit" id="valider" value="Valider">
 </form>
 <p id="aide-existante">Numéro utilisé pour vous joindre.</p>
@@ -62,13 +77,13 @@ const repos = (ms) => new Promise((r) => setTimeout(r, ms || 0));
 /**
  * @param {string} source
  * @param {object} opts
- *   aides       : 'presentes' (défaut) | 'absentes' | 'tardives'
- *   describedBy : aria-describedby déjà posé sur le champ
+ *   aides        : 'presentes' (défaut) | 'absentes' | 'tardives'
+ *   describedBy  : aria-describedby déjà posé sur le champ
  *   casserBouton : createElement('button') lève. La bibliothèque ne crée
  *                  aucun bouton : seul le message tombe, pas le champ.
- *   envoiAvant  : un gestionnaire d'envoi posé sur le formulaire AVANT le
- *                 script, qui lit la valeur puis arrête l'événement. C'est
- *                 l'ordre réel sur les pages qui portent ce champ.
+ *   envoiAvant   : un gestionnaire d'envoi posé sur le formulaire AVANT le
+ *                  script, qui lit la valeur puis arrête l'événement. C'est
+ *                  l'ordre réel sur les pages qui portent ce champ.
  */
 async function page(source, opts) {
     opts = opts || {};
@@ -84,6 +99,12 @@ async function page(source, opts) {
     const w = dom.window;
     const doc = w.document;
     if (doc.readyState !== 'complete') await new Promise((r) => w.addEventListener('load', r));
+
+    // jsdom ne modélise pas le focus de la fenêtre : pendant un blur, son
+    // hasFocus() rend false. Un navigateur rend true tant que la fenêtre a
+    // le focus, ce que ce drapeau rejoue.
+    let fenetreActive = true;
+    doc.hasFocus = () => fenetreActive;
 
     w.OrdoErrorReporter = {
         reportNetwork(contexte, err) { trace.signalements.push(contexte + ': ' + err.message); return true; },
@@ -143,7 +164,9 @@ async function page(source, opts) {
         w, doc, input, trace,
         iti: w.intlTelInputGlobals.getInstance(input),
         autre: doc.getElementById('autre'),
+        aide: doc.getElementById('aide'),
         valider: doc.getElementById('valider'),
+        fenetre(active) { fenetreActive = active; },
     };
 }
 
@@ -158,14 +181,16 @@ function sortir(e) {
     e.autre.focus();
 }
 
-/** Ce que le visiteur voit : le texte des nœuds non masqués de la zone. */
+/** La zone visible : juste après l'enveloppe que la bibliothèque pose. */
 function zone(e) {
-    const ids = (e.input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
-    for (const id of ids) {
-        const el = e.doc.getElementById(id);
-        if (el && el.getAttribute('aria-live')) return el;
-    }
-    return null;
+    const enveloppe = e.input.parentNode;
+    return enveloppe && enveloppe.classList.contains('iti') ? enveloppe.nextElementSibling : null;
+}
+
+/** La région annoncée aux lecteurs d'écran. */
+function annonce(e) {
+    const enveloppe = e.input.parentNode;
+    return enveloppe && enveloppe.parentNode ? enveloppe.parentNode.querySelector('[aria-live]') : null;
 }
 
 function visible(el, jusqua) {
@@ -189,11 +214,17 @@ function texteVisible(el) {
 function lire(e) {
     const z = zone(e);
     const bouton = z && z.querySelector('button');
+    const a = annonce(e);
     return {
         zone: z,
         texte: z ? texteVisible(z) : '',
         bouton: bouton && visible(bouton, z) ? bouton : null,
+        annonce: a ? a.textContent : null,
     };
+}
+
+function decritPar(e) {
+    return (e.input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
 }
 
 function envoyer(e) {
@@ -202,7 +233,53 @@ function envoyer(e) {
     return e.trace.envois.length > avant ? e.trace.envois[e.trace.envois.length - 1] : null;
 }
 
+function souris(e, type, cible) {
+    cible.dispatchEvent(new e.w.MouseEvent(type, { bubbles: true, cancelable: true }));
+}
+
+function lireSource(src) {
+    return fs.readFileSync(path.join(ROOT, src), 'utf8');
+}
+
+/** La table des mobiles d'outre-mer et les propositions, lues dans le fichier servi. */
+function tables(code) {
+    const bloc = (code.match(/OVERSEAS_MOBILE_PREFIXES = \{([^}]*)\}/) || [])[1] || '';
+    const prefixes = Array.from(bloc.matchAll(/'(\d{3})': '([a-z]{2})'/g)).map((m) => [m[1], m[2]]);
+    const propositions = {};
+    for (const m of code.matchAll(/(\w{2}): \{ name: '([^']+)', dialCode: '(\d+)' \}/g)) {
+        propositions[m[1]] = { nom: m[2], indicatif: m[3] };
+    }
+    return { prefixes, propositions };
+}
+
+/** Rend '' si chaque entrée a un plan national propre de 9 chiffres après un 0. */
+function controlerLongueurs(json, isos) {
+    const m = new Metadata(json);
+    for (const iso of isos) {
+        m.selectNumberingPlan(iso.toUpperCase());
+        const longueurs = m.numberingPlan.possibleLengths();
+        if (longueurs.length !== 1 || longueurs[0] !== 9) return iso + ' : longueurs ' + longueurs.join('/');
+        if (m.numberingPlan.nationalPrefix() !== '0') return iso + ' : préfixe national ' + m.numberingPlan.nationalPrefix();
+    }
+    return '';
+}
+
+/** Blocs de logique du message, normalisés pour comparer les deux styles. */
+function blocsLogique(code) {
+    const debut = code.search(/\n {2}(var|const) HINT_INVALID/);
+    const fin = code.indexOf('\n  /**\n   * Load the formatting helpers');
+    const pose = code.indexOf('      // The message is an extra');
+    const finPose = code.indexOf("    console.log('[PhoneInput] Initialized'");
+    if (debut === -1 || fin === -1 || pose === -1 || finPose === -1) return null;
+    const normaliser = (t) => t
+        .replace(/\b(const|let)\b/g, 'var')
+        .replace(/\((\w*)\) => \{/g, 'function($1) {')
+        .replace(/\b(\w+) => \{/g, 'function($1) {');
+    return (normaliser(code.slice(debut, fin)) + '\n' + normaliser(code.slice(pose, finPose))).split('\n');
+}
+
 const CAS = [
+    // ---------------------------------------------------------------- base
     ['numéro valide : aucun message, ni à la sortie ni à l envoi', async (src) => {
         const e = await page(src);
         taper(e, '06 00 00 00 00');
@@ -221,7 +298,7 @@ const CAS = [
         if (lire(e).texte) return 'message affiché pendant la frappe, avant la sortie du champ';
         sortir(e);
         if (lire(e).texte !== MESSAGE) return 'message attendu à la sortie, vu : « ' + lire(e).texte + ' »';
-        if (lire(e).bouton) return 'proposition +33 affichée pour une simple saisie tronquée';
+        if (lire(e).bouton) return 'proposition affichée pour une simple saisie tronquée';
         const envoi = envoyer(e);
         if (!envoi) return 'l envoi n est pas parti : le message bloque le formulaire';
         if (envoi.empeche) return 'l événement submit a été empêché';
@@ -230,11 +307,12 @@ const CAS = [
         return '';
     }],
 
-    ['saisie tronquée sans passer par la sortie : le message apparaît à l envoi', async (src) => {
+    ['contrôle à l envoi : même message, sans rien changer à l envoi', async (src) => {
         const e = await page(src);
         taper(e, '06 00 00 00');
         const envoi = envoyer(e);
         if (!envoi || envoi.empeche) return 'l envoi a été bloqué';
+        if (envoi.valeur !== '06 00 00 00') return 'valeur modifiée : ' + envoi.valeur;
         if (lire(e).texte !== MESSAGE) return 'aucun message à l envoi d un numéro tronqué';
         return '';
     }],
@@ -249,24 +327,37 @@ const CAS = [
         return '';
     }],
 
-    ['mobile de métropole avec La Réunion : message et proposition, qui passe en +33', async (src) => {
+    // ------------------------------------------------ proposition du +33
+    ['mobile de métropole avec La Réunion : proposition +33, le clic écrit l E.164', async (src) => {
         const e = await page(src);
         e.iti.setCountry('re');
         taper(e, '06 00 00 00 00');
         sortir(e);
         const vu = lire(e);
         if (vu.texte.indexOf(MESSAGE) !== 0) return 'message absent : « ' + vu.texte + ' »';
-        if (vu.texte.indexOf(QUESTION) === -1) return 'proposition +33 absente : « ' + vu.texte + ' »';
-        if (!vu.bouton) return 'aucune action pour passer en +33';
+        if (vu.texte.indexOf(METROPOLE) === -1) return 'proposition +33 absente : « ' + vu.texte + ' »';
+        if (!vu.bouton || vu.bouton.textContent !== action('33')) return 'action pour passer en +33 absente';
         if (vu.bouton.type !== 'button') return 'l action est un bouton d envoi : un clic enverrait le formulaire';
 
         const envois = e.trace.envois.length;
         vu.bouton.click();
         if (e.trace.envois.length !== envois) return 'le clic sur la proposition a envoyé le formulaire';
         if (e.iti.getSelectedCountryData().iso2 !== 'fr') return 'le pays n est pas passé sur la France';
-        if (e.input.value !== '+33 6 00 00 00 00') return 'chiffres non conservés : ' + e.input.value;
+        if (e.input.value !== '+33600000000') return 'valeur attendue au format E.164, vue : ' + e.input.value;
         if (lire(e).texte) return 'message laissé après correction';
-        if (e.doc.activeElement !== e.input) return 'le focus n est pas rendu au champ';
+        if (e.doc.activeElement === e.input) return 'le focus a été déplacé vers le champ';
+        return '';
+    }],
+
+    ['valider juste après la proposition : la valeur lue à l envoi est l E.164', async (src) => {
+        const e = await page(src, { envoiAvant: true });
+        e.iti.setCountry('re');
+        taper(e, '06 00 00 00 00');
+        sortir(e);
+        if (!lire(e).bouton) return 'le cas ne prouve rien sans proposition';
+        lire(e).bouton.click();
+        e.valider.click();
+        if (e.trace.lectures[0] !== '+33600000000') return 'valeur lue à l envoi : ' + e.trace.lectures[0];
         return '';
     }],
 
@@ -276,9 +367,9 @@ const CAS = [
         taper(e, '+262 6 00 00 00 00');
         sortir(e);
         const vu = lire(e);
-        if (!vu.bouton || vu.texte.indexOf(QUESTION) === -1) return 'proposition absente : « ' + vu.texte + ' »';
+        if (!vu.bouton || vu.texte.indexOf(METROPOLE) === -1) return 'proposition absente : « ' + vu.texte + ' »';
         vu.bouton.click();
-        if (e.input.value !== '+33 6 00 00 00 00') return 'chiffres non conservés : ' + e.input.value;
+        if (e.input.value !== '+33600000000') return 'chiffres non conservés : ' + e.input.value;
         return '';
     }],
 
@@ -295,18 +386,18 @@ const CAS = [
         const vu = lire(e);
         if (!vu.bouton) return 'proposition absente : « ' + vu.texte + ' »';
         vu.bouton.click();
-        if (e.input.value !== '+33 6 00 00 00 00') return 'chiffres non conservés : ' + e.input.value;
+        if (e.input.value !== '+33600000000') return 'chiffres non conservés : ' + e.input.value;
         if (!e.iti.isValidNumber()) return 'numéro toujours invalide après correction';
         return '';
     }],
 
-    ['autres territoires : proposition aussi en Guadeloupe et en Nouvelle-Calédonie', async (src) => {
+    ['autres territoires : proposition +33 aussi en Guadeloupe et en Nouvelle-Calédonie', async (src) => {
         for (const pays of ['gp', 'nc']) {
             const e = await page(src);
             e.iti.setCountry(pays);
             taper(e, '06 00 00 00 00');
             sortir(e);
-            if (!lire(e).bouton) return 'pas de proposition pour ' + pays + ' : « ' + lire(e).texte + ' »';
+            if (lire(e).texte.indexOf(METROPOLE) === -1) return 'pas de proposition +33 pour ' + pays + ' : « ' + lire(e).texte + ' »';
         }
         return '';
     }],
@@ -339,6 +430,115 @@ const CAS = [
         return '';
     }],
 
+    // ------------------------------------------- mobiles d'outre-mer (table)
+    ['France choisie, mobile d outre-mer : le bon territoire est proposé, avec ou sans les aides', async (src) => {
+        const attendus = [
+            ['06 90 00 00 00', 'gp', 'Guadeloupe', '590', '+590690000000'],
+            ['06 92 00 00 00', 're', 'La Réunion', '262', '+262692000000'],
+            ['06 39 00 00 00', 'yt', 'Mayotte', '262', '+262639000000'],
+            ['06 94 00 00 00', 'gf', 'Guyane', '594', '+594694000000'],
+            ['06 96 00 00 00', 'mq', 'Martinique', '596', '+596696000000'],
+        ];
+        for (const aides of ['presentes', 'absentes']) {
+            for (const [saisie, iso, nom, indicatif, e164] of attendus) {
+                const e = await page(src, { aides });
+                taper(e, saisie);
+                sortir(e);
+                const vu = lire(e);
+                const attendu = MESSAGE + ' ' + question(nom, indicatif) + ' ' + action(indicatif);
+                if (vu.texte !== attendu) return saisie + ' (aides ' + aides + ') : vu « ' + vu.texte + ' »';
+                vu.bouton.click();
+                if (e.iti.getSelectedCountryData().iso2 !== iso) return saisie + ' : pays non basculé sur ' + iso;
+                if (e.input.value !== e164) return saisie + ' : valeur ' + e.input.value + ' au lieu de ' + e164;
+                if (lire(e).texte) return saisie + ' : message laissé après correction';
+            }
+        }
+        return '';
+    }],
+
+    ['territoire choisi, mobile d un AUTRE territoire : ce territoire est proposé, jamais +33', async (src) => {
+        const essais = [
+            ['gp', '06 92 00 00 00', 'La Réunion', '262'],
+            ['re', '06 90 00 00 00', 'Guadeloupe', '590'],
+            ['nc', '06 96 00 00 00', 'Martinique', '596'],
+        ];
+        for (const [pays, saisie, nom, indicatif] of essais) {
+            const e = await page(src);
+            e.iti.setCountry(pays);
+            taper(e, saisie);
+            sortir(e);
+            const vu = lire(e).texte;
+            if (vu.indexOf(question(nom, indicatif)) === -1) return pays + ' ' + saisie + ' : vu « ' + vu + ' »';
+            if (vu.indexOf('+33') !== -1) return pays + ' ' + saisie + ' : +33 proposé';
+        }
+        return '';
+    }],
+
+    ['même indicatif que le territoire du mobile : rien à proposer', async (src) => {
+        // Saint-Barthélemy partage le +590 de la Guadeloupe, Mayotte le +262 de
+        // La Réunion : le numéro enregistré est le même.
+        for (const [pays, saisie] of [['re', '06 39 00 00 00'], ['yt', '06 92 00 00 00']]) {
+            const e = await page(src);
+            e.iti.setCountry(pays);
+            taper(e, saisie);
+            sortir(e);
+            if (lire(e).texte) return pays + ' ' + saisie + ' : vu « ' + lire(e).texte + ' »';
+        }
+        const e = await page(src);
+        e.iti.setCountry('bl');
+        taper(e, '06 90 00 00 00');
+        sortir(e);
+        if (lire(e).bouton) return 'bl 06 90 : proposition faite pour un même indicatif';
+        return '';
+    }],
+
+    ['préfixe d outre-mer, même indicatif, numéro invalide : message seul, jamais +33', async (src) => {
+        // Les aides servies acceptent +33 691, alors que ce préfixe est la
+        // Guadeloupe : sans la table, ces chiffres recevraient une proposition +33.
+        const e = await page(src);
+        e.iti.setCountry('gp');
+        taper(e, '06 91 00 00 00');
+        sortir(e);
+        if (lire(e).texte !== MESSAGE) return 'message attendu seul, vu : « ' + lire(e).texte + ' »';
+        return '';
+    }],
+
+    ['témoins : les mobiles de métropole en 06 95, 06 98, 06 99 restent sans message', async (src) => {
+        for (const saisie of ['06 95 00 00 00', '06 98 00 00 00', '06 99 00 00 00']) {
+            const e = await page(src);
+            taper(e, saisie);
+            sortir(e);
+            if (lire(e).texte) return saisie + ' : vu « ' + lire(e).texte + ' »';
+        }
+        return '';
+    }],
+
+    ['table prouvée contre des métadonnées récentes', async (src) => {
+        const { prefixes, propositions } = tables(lireSource(src));
+        if (prefixes.length < 8) return 'table des préfixes introuvable ou incomplète dans le fichier';
+        for (const [prefixe, iso] of prefixes) {
+            const ISO = iso.toUpperCase();
+            const cible = propositions[iso];
+            if (!cible) return prefixe + ' : ' + iso + ' sans libellé de proposition';
+            if (cible.indicatif !== recent.getCountryCallingCode(ISO)) return iso + ' : indicatif ' + cible.indicatif + ' faux';
+            if (recent.parsePhoneNumber('+33' + prefixe + '000000').isValid()) return '+33 ' + prefixe + ' 000000 est valide';
+            let mobiles = 0;
+            for (let ab = 0; ab < 100; ab++) {
+                const national = prefixe + String(ab).padStart(2, '0') + '0000';
+                if (recent.parsePhoneNumber('+33' + national).isValid()) return '+33 ' + national + ' est valide';
+                const n = recent.parsePhoneNumber('+' + cible.indicatif + national);
+                if (n.isValid() && n.getType() === 'MOBILE' && n.country === ISO) mobiles += 1;
+            }
+            if (!mobiles) return prefixe + ' : aucun mobile valide de ' + ISO + ' dans ce préfixe';
+        }
+        for (const prefixe of ['695', '698', '699']) {
+            const n = recent.parsePhoneNumber('+33' + prefixe + '000000');
+            if (!n.isValid() || n.getType() !== 'MOBILE') return '+33 ' + prefixe + ' devrait rester un mobile valide';
+        }
+        return '';
+    }],
+
+    // ------------------------------------------------------------- retrait
     ['changer de pays retire le message quand le numéro devient valide', async (src) => {
         const e = await page(src);
         e.iti.setCountry('re');
@@ -384,6 +584,7 @@ const CAS = [
         return '';
     }],
 
+    // ------------------------------------------------------ sans les aides
     ['aides absentes : repli sur le nombre de chiffres, sans blocage', async (src) => {
         const e = await page(src, { aides: 'absentes' });
         if (e.w.intlTelInputUtils) return 'le cas ne prouve rien si les aides sont là';
@@ -432,32 +633,22 @@ const CAS = [
         return '';
     }],
 
-    ['repli sans les aides : seules des longueurs confirmées par les métadonnées', async (src) => {
-        // La règle maison ne doit rien inventer : chaque entrée de sa liste doit
-        // avoir, dans les métadonnées de la version servie, un numéro national
-        // de 9 chiffres exactement, précédé ou non du 0.
-        const code = fs.readFileSync(path.join(ROOT, src), 'utf8');
-        const liste = (code.match(/NINE_DIGIT_NATIONAL = \[([^\]]*)\]/) || [])[1];
+    ['repli : 9 chiffres lus dans le plan de CHAQUE entrée, et le contrôle voit un écart', async (src) => {
+        // Saint-Barthélemy et Saint-Martin partagent le +590 : un contrôle par
+        // indicatif lirait la Guadeloupe. Ici chaque plan est sélectionné par
+        // son propre code, et une copie altérée des métadonnées prouve qu'une
+        // autre longueur pour bl serait vue.
+        const liste = (lireSource(src).match(/NINE_DIGIT_NATIONAL = \[([^\]]*)\]/) || [])[1];
         if (!liste) return 'liste du repli introuvable dans le fichier';
-        const e = await page(src);
-        const U = e.w.intlTelInputUtils;
-        const pays = e.w.intlTelInputGlobals.getCountryData();
-        for (const iso of liste.match(/[a-z]{2}/g)) {
-            const donnees = pays.find((c) => c.iso2 === iso);
-            if (!donnees) return iso + ' absent du sélecteur';
-            for (let n = 4; n <= 13; n++) {
-                const attendu = n < 9 ? U.validationError.TOO_SHORT : n > 9 ? U.validationError.TOO_LONG : U.validationError.IS_POSSIBLE;
-                for (const premier of '123456789') {
-                    const national = premier + '0'.repeat(n - 1);
-                    if (U.getValidationError('+' + donnees.dialCode + national, iso) !== attendu) {
-                        return iso + ' : ' + n + ' chiffres nationaux ne donnent pas le verdict attendu';
-                    }
-                }
-            }
-            if (U.getValidationError('01' + '0'.repeat(8), iso) !== U.validationError.IS_POSSIBLE) {
-                return iso + ' : le 0 initial n est pas le préfixe national';
-            }
-        }
+        const isos = liste.match(/[a-z]{2}/g);
+        if (isos.indexOf('bl') === -1 || isos.indexOf('mf') === -1) return 'le cas vise bl et mf, absents de la liste';
+        const verdict = controlerLongueurs(METADONNEES, isos);
+        if (verdict) return verdict;
+
+        const altere = JSON.parse(JSON.stringify(METADONNEES));
+        altere.countries.BL[3] = [8];
+        if (!controlerLongueurs(altere, ['bl'])) return 'une longueur de 8 pour bl passerait inaperçue';
+        if (controlerLongueurs(altere, ['gp'])) return 'l altération de bl a touché la Guadeloupe : plans non distingués';
         return '';
     }],
 
@@ -485,18 +676,148 @@ const CAS = [
         return '';
     }],
 
-    ['accessibilité : zone annoncée poliment, reliée au champ, sous l enveloppe du drapeau', async (src) => {
+    // ------------------------------------------------ pointeur enfoncé
+    ['clic sur Valider : rien n est rendu entre l appui et le clic, qui part', async (src) => {
+        const e = await page(src);
+        taper(e, '06 00 00 00');
+        const auClic = [];
+        e.doc.addEventListener('click', () => auClic.push(lire(e).texte), true);
+
+        souris(e, 'mousedown', e.valider);
+        e.valider.focus(); // le navigateur déplace le focus à l'appui
+        if (lire(e).texte) return 'message rendu pendant l appui : il peut déplacer le bouton';
+        souris(e, 'mouseup', e.valider);
+        if (lire(e).texte) return 'message rendu avant le clic';
+        const envoi = envoyer(e);
+        if (!envoi || envoi.empeche) return 'le clic n a pas envoyé le formulaire';
+        if (auClic[0] !== '') return 'message déjà rendu au moment du clic';
+        await repos(5);
+        if (lire(e).texte !== MESSAGE) return 'message jamais affiché après le relâchement';
+        return '';
+    }],
+
+    ['appui par pointeur sur un autre bouton : le message suit le relâchement', async (src) => {
+        const e = await page(src);
+        taper(e, '06 00 00 00');
+        e.aide.dispatchEvent(new e.w.PointerEvent('pointerdown', { bubbles: true }));
+        e.aide.focus();
+        if (lire(e).texte) return 'message rendu pendant l appui';
+        e.aide.dispatchEvent(new e.w.PointerEvent('pointerup', { bubbles: true }));
+        if (lire(e).texte) return 'message rendu dans le relâchement même, avant le clic';
+        e.aide.click();
+        await repos(5);
+        if (lire(e).texte !== MESSAGE) return 'message jamais affiché après le relâchement';
+        return '';
+    }],
+
+    ['appui jamais relâché : le message arrive au délai maximal, pas avant', async (src) => {
+        const e = await page(src);
+        taper(e, '06 00 00 00');
+        souris(e, 'mousedown', e.aide);
+        e.aide.focus();
+        await repos(850);
+        if (lire(e).texte) return 'message rendu avant le délai maximal, pointeur toujours enfoncé';
+        await repos(300);
+        if (lire(e).texte !== MESSAGE) return 'message jamais rendu sans relâchement';
+        souris(e, 'mouseup', e.aide);
+        return '';
+    }],
+
+    ['relâché après retour dans le champ : pas de message pendant la saisie', async (src) => {
+        const e = await page(src);
+        taper(e, '06 00 00 00');
+        souris(e, 'mousedown', e.aide);
+        e.aide.focus();
+        e.input.focus();
+        souris(e, 'mouseup', e.input);
+        await repos(5);
+        if (lire(e).texte) return 'message rendu alors que le visiteur est revenu dans le champ';
+        sortir(e);
+        if (lire(e).texte !== MESSAGE) return 'la sortie suivante ne contrôle plus';
+        return '';
+    }],
+
+    // ------------------------------------------------- sorties parasites
+    ['ouvrir la liste des pays n est pas quitter le champ', async (src) => {
+        const e = await page(src);
+        taper(e, '06 00 00 00');
+        const drapeau = e.doc.querySelector('.iti__selected-flag');
+        if (!drapeau) return 'drapeau introuvable';
+        drapeau.focus();
+        if (e.doc.activeElement !== drapeau) return 'le cas ne prouve rien si le drapeau ne prend pas le focus';
+        await repos(5);
+        if (lire(e).texte) return 'message affiché en allant vers le sélecteur de pays';
+        return '';
+    }],
+
+    ['quitter la fenêtre n est pas quitter le champ', async (src) => {
+        const e = await page(src);
+        taper(e, '06 00 00 00');
+        // Le champ garde le focus du document quand la fenêtre le perd.
+        e.input.dispatchEvent(new e.w.FocusEvent('blur'));
+        if (e.doc.activeElement !== e.input) return 'le cas ne prouve rien si le champ a perdu le focus';
+        if (lire(e).texte) return 'message affiché alors que le champ garde le focus';
+        e.fenetre(false);
+        sortir(e);
+        await repos(5);
+        if (lire(e).texte) return 'message affiché alors que la fenêtre n a plus le focus';
+        e.fenetre(true);
+        e.input.focus();
+        sortir(e);
+        if (lire(e).texte !== MESSAGE) return 'une vraie sortie ne contrôle plus';
+        return '';
+    }],
+
+    // ------------------------------------------------------- accessibilité
+    ['accessibilité au montage : région annoncée rendue et vide, zone non décrite', async (src) => {
         const e = await page(src, { describedBy: 'aide-existante' });
         const z = zone(e);
-        if (!z) return 'aucune zone reliée au champ par aria-describedby';
-        if (z.getAttribute('aria-live') !== 'polite') return 'aria-live attendu à polite';
-        const ids = e.input.getAttribute('aria-describedby').split(/\s+/);
-        if (ids.indexOf('aide-existante') === -1) return 'aria-describedby existant écrasé';
+        const a = annonce(e);
+        if (!z || !a) return 'zone ou région annoncée absente';
+        if (a === z || z.contains(a)) return 'la région annoncée ne doit pas être la zone masquée quand vide';
+        if (a.getAttribute('aria-live') !== 'polite') return 'aria-live attendu à polite';
+        if (z.hasAttribute('aria-live')) return 'zone visible aussi annoncée : double lecture';
+        if (a.style.display === 'none' || a.hidden) return 'région annoncée non rendue : ses changements ne seraient pas lus';
+        if (a.style.position !== 'absolute' || !/rect\(0/.test(a.style.clip)) return 'région annoncée non masquée visuellement';
+        if (a.textContent) return 'région annoncée non vide au montage';
+        if (z.style.display !== 'none') return 'zone visible rendue au montage : écart dans un conteneur flex';
+        if (decritPar(e).join(' ') !== 'aide-existante') return 'aria-describedby modifié au montage : ' + decritPar(e).join(' ');
+        if (z.querySelector('button').textContent) return 'bouton étiqueté sans proposition';
         const enveloppe = e.input.parentNode;
-        if (!enveloppe.classList.contains('iti')) return 'le champ n est pas dans l enveloppe de la bibliothèque';
-        if (enveloppe.nextElementSibling !== z) return 'la zone n est pas juste après l enveloppe du champ';
         if (enveloppe.contains(z)) return 'zone dans l enveloppe : le conteneur du drapeau s étirerait dessus';
-        if (lire(e).texte) return 'zone non vide au chargement';
+        return '';
+    }],
+
+    ['accessibilité à l affichage : description et annonce suivent la zone', async (src) => {
+        const e = await page(src, { describedBy: 'aide-existante' });
+        const z = zone(e);
+        taper(e, '06 00 00 00');
+        sortir(e);
+        if (decritPar(e).join(' ') !== 'aide-existante ' + z.id) return 'zone visible non décrite : ' + decritPar(e).join(' ');
+        if (lire(e).annonce !== MESSAGE) return 'annonce attendue : ' + lire(e).annonce;
+        if (z.querySelector('button').textContent) return 'bouton étiqueté sans proposition';
+
+        e.iti.setCountry('re');
+        taper(e, '06 00 00 00 00');
+        sortir(e);
+        if (lire(e).annonce !== MESSAGE + ' ' + METROPOLE) return 'annonce de la proposition : ' + lire(e).annonce;
+        if (z.querySelector('button').textContent !== action('33')) return 'bouton sans étiquette avec proposition';
+
+        e.iti.setCountry('fr');
+        if (decritPar(e).join(' ') !== 'aide-existante') return 'zone masquée encore décrite : ' + decritPar(e).join(' ');
+        if (lire(e).annonce !== '') return 'annonce laissée après retrait';
+        if (z.querySelector('button').textContent) return 'étiquette laissée après retrait';
+        if (e.doc.activeElement === e.input) return 'le focus a été déplacé vers le champ';
+        return '';
+    }],
+
+    ['sans aria-describedby existant : l attribut disparaît avec la zone', async (src) => {
+        const e = await page(src);
+        taper(e, '06 00 00 00');
+        sortir(e);
+        if (decritPar(e).length !== 1) return 'zone visible non décrite';
+        taper(e, '');
+        if (e.input.hasAttribute('aria-describedby')) return 'attribut vide laissé sur le champ';
         return '';
     }],
 
@@ -516,6 +837,22 @@ const CAS = [
         return '';
     }],
 
+    // ------------------------------------------------------------ pannes
+    ['contrôle qui lève : signalé une seule fois, aucun message, envoi intact', async (src) => {
+        const e = await page(src);
+        e.iti.getSelectedCountryData = () => { throw new Error('lecture impossible'); };
+        taper(e, '06 00 00 00');
+        sortir(e);
+        e.input.focus();
+        sortir(e);
+        const envoi = envoyer(e);
+        if (!envoi || envoi.empeche) return 'envoi bloqué par une panne du contrôle';
+        const vus = e.trace.signalements.filter((m) => /^PhoneInput: lecture impossible/.test(m));
+        if (vus.length !== 1) return vus.length + ' signalement(s) pour trois contrôles en échec, 1 attendu';
+        if (lire(e).texte) return 'message affiché malgré la panne';
+        return '';
+    }],
+
     ['message impossible à poser : le champ formate, les aides partent, c est signalé', async (src) => {
         const e = await page(src, { casserBouton: true, aides: 'tardives' });
         if (!e.iti) return 'champ non construit';
@@ -526,6 +863,19 @@ const CAS = [
         if (!e.trace.signalements.some((m) => /^PhoneInput: /.test(m))) return 'panne du message non signalée';
         const envoi = envoyer(e);
         if (!envoi || envoi.empeche) return 'envoi bloqué';
+        return '';
+    }],
+
+    // ------------------------------------------------------------ copies
+    ['les deux copies servies ont la même logique de message', async () => {
+        const [a, b] = SOURCES.map((s) => blocsLogique(lireSource(s)));
+        if (!a || !b) return 'bloc de logique introuvable dans une copie';
+        const n = Math.max(a.length, b.length);
+        for (let i = 0; i < n; i++) {
+            if (a[i] !== b[i]) {
+                return 'dérive ligne ' + (i + 1) + ' :\n        ' + SOURCES[0] + ' : ' + a[i] + '\n        ' + SOURCES[1] + ' : ' + b[i];
+            }
+        }
         return '';
     }],
 ];
