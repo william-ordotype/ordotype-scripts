@@ -530,8 +530,20 @@ node test/phone-input-utils.js         # le champ tél. survit à des aides abse
 node test/phone-input-validity.js      # message de validité du tél., jamais bloquant
 ```
 
-⚠️ Aucun workflow ne lance `test/` : `parse-floor.yml` ne vérifie que la
-capacité à être analysé. Ces fichiers ne tournent que si on les lance.
+`.github/workflows/tests.yml` lance chaque fichier de `test/` sur chaque pull
+request et sur chaque poussée sur `main`.
+
+En local, installer d'abord les dépendances des tests dans le dépôt (il n'a pas
+de `package.json`) :
+
+```bash
+npm install --no-save --prefix . jsdom intl-tel-input@17.0.8 libphonenumber-js@1.13.13
+```
+
+`--prefix .` garde l'installation dans le dépôt. Sans ce drapeau et sans
+`package.json`, npm installe dans le premier dossier parent qui contient un
+`node_modules` (celui que rend `npm prefix`) et en retire les paquets qu'il ne
+connaît pas.
 
 `smoke-tracking.js` runs each emitter twice, with and without
 `window.OrdoErrorReporter`, and asserts an event actually lands. `node --check`
