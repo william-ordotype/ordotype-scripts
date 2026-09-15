@@ -24,7 +24,7 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | `memberstack-sync.js` | Syncs localStorage fields to Memberstack + optional forced statut |
 | `statut-selectors.js` | Shows/hides semestre, mode-exercice, specialite based on statut |
 | `required-if-visible.js` | Sets `required` on visible `[ms-code="required-if-visible"]` inputs |
-| `phone-input.js` | intl-tel-input initialization on `[ms-code-phone-number]` inputs |
+| `phone-input.js` | intl-tel-input initialization on `[ms-code-phone-number]` inputs, plus a non-blocking validity message under the field |
 | `checkout.js` | Stripe checkout form handler — sends `payment_method_types` to Netlify (praticien-sepa only) |
 | `partnership-city.js` | Partnership city from sessionStorage/cookie (internes-assos only) |
 

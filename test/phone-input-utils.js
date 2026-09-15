@@ -104,7 +104,26 @@ function env(source, opts) {
         observers: [],
         observerOptions: null,
         debranchements: 0,
+        inseres: [],
     };
+
+    /**
+     * Plusieurs écouteurs par type, tous appelés dans l'ordre de pose : le
+     * message de validité écoute aussi `submit`, et un emplacement unique
+     * masquerait l'écouteur qui normalise la valeur.
+     */
+    function ecoutable(cible) {
+        cible.listeners = {};
+        cible.addEventListener = function(t, fn) {
+            if (!this.listeners[t]) {
+                const liste = [];
+                this.listeners[t] = (ev) => liste.forEach((f) => f(ev));
+                this.listeners[t].liste = liste;
+            }
+            this.listeners[t].liste.push(fn);
+        };
+        return cible;
+    }
 
     /**
      * Le formulaire est réel ici, sans quoi l'écouteur `submit` n'est jamais
@@ -112,16 +131,18 @@ function env(source, opts) {
      * ne serait vérifiée par rien.
      */
     function faireInput() {
-        const form = { listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; } };
-        return {
+        const form = ecoutable({});
+        // Le message de validité se pose juste après l'enveloppe du champ.
+        const enveloppe = { nextSibling: null, parentNode: { insertBefore(el) { trace.inseres.push(el); } } };
+        return ecoutable({
             value: '',
             form,
+            parentNode: enveloppe,
             attrs: { 'ms-code-phone-number': 'fr,be' },
-            listeners: {},
             getAttribute(n) { return this.attrs[n]; },
-            addEventListener(t, fn) { this.listeners[t] = fn; },
+            setAttribute(n, v) { this.attrs[n] = String(v); },
             closest() { return form; },
-        };
+        });
     }
 
     const combien = opts.inputs === 0 ? 0 : (opts.inputs || 1);
@@ -214,6 +235,8 @@ function env(source, opts) {
                     if (format !== 1) throw new Error('format inattendu: ' + format);
                     return '+33 6 12 34 56 78';
                 },
+                getSelectedCountryData() { return { iso2: 'fr', dialCode: '33' }; },
+                isValidNumber() { return win.intlTelInputUtils ? true : null; },
             };
         };
     }
@@ -238,7 +261,15 @@ function env(source, opts) {
         body: conteneur,
         head: conteneur,
         addEventListener() {},
-        createElement() { return {}; },
+        createElement() {
+            return {
+                style: {},
+                attrs: {},
+                setAttribute(n, v) { this.attrs[n] = String(v); },
+                appendChild() {},
+                addEventListener() {},
+            };
+        },
         querySelectorAll() { return inputs; },
     };
 
@@ -516,6 +547,22 @@ const CAS = [
         await repos();
         if (e.trace.scripts.length !== 1) return 'le repli ne charge pas les aides';
         if (e.trace.initCount !== 1) return 'le repli ne construit pas le champ';
+        return '';
+    }],
+
+    ['le message de validité se pose sans passer par sa garde d erreur', async (src) => {
+        // La garde isole une panne du message. Si ce harnais y tombait, chaque
+        // cas ci-dessus serait vert pour une autre raison que celle qu'il décrit.
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        if (e.trace.avertissements.some((m) => /Validity hint/.test(m))) {
+            return 'la pose du message a levé : ' + e.trace.avertissements.join(' | ');
+        }
+        // La zone visible, puis la région annoncée, toujours rendue.
+        if (e.trace.inseres.length !== 2) return 'zone et région annoncée non posées après le champ';
+        if (e.trace.inseres[1].attrs['aria-live'] !== 'polite') return 'région annoncée absente';
+        // Le champ ne décrit la zone que lorsqu'elle est visible.
+        if ('aria-describedby' in e.input.attrs) return 'champ relié à une zone encore masquée';
         return '';
     }],
 
