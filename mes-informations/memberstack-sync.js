@@ -17,6 +17,18 @@
   // Fields listed in config.fillOnlyFields always follow this rule; FILL_ONLY_FIELDS
   // applies it to entries of config.syncFields.
   var FILL_ONLY_FIELDS = ['mode-dexercice'];
+
+  // Statuts qu'un statut imposé peut remplacer. Absent de la table : il remplace tout.
+  var REPLACEABLE_STATUTS = {
+    'Interne': ['', 'Résident'],
+    'Paramédical': ['', 'IDE']
+  };
+
+  function canReplaceStatut(current, forced) {
+    var allowed = REPLACEABLE_STATUTS[forced];
+    if (!allowed) return true;
+    return allowed.indexOf(String(current == null ? '' : current).trim()) !== -1;
+  }
   var FILL_ONLY_MAX_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
   var FILL_FORM_TIMEOUT_MS = 10000;
 
@@ -137,13 +149,13 @@
         }
       });
 
-      // Force statut if configured and different from current
+      // Force statut if configured, different from current, and allowed to replace it
       if (config.forceStatut) {
         var currentStatut = member && member.customFields
           ? member.customFields.statut
           : null;
 
-        if (currentStatut !== config.forceStatut) {
+        if (currentStatut !== config.forceStatut && canReplaceStatut(currentStatut, config.forceStatut)) {
           customFields.statut = config.forceStatut;
         }
       }
