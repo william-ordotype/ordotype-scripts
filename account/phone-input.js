@@ -11,11 +11,146 @@
   const LIB_POLL_MS = 100;
   const LIB_POLL_MAX = 100;
 
+  const HINT_INVALID = "Ce numéro ne semble pas valide. Vérifiez l'indicatif du pays et le nombre de chiffres.";
+  const HINT_METROPOLITAN = 'Vouliez-vous saisir un numéro de France métropolitaine (+33)\u00a0?';
+  const HINT_METROPOLITAN_ACTION = 'Oui, passer en +33';
+
+  // French overseas territories available in the country selector.
+  const OVERSEAS = ['gp', 'mq', 'gf', 're', 'yt', 'bl', 'mf', 'pm', 'wf', 'nc', 'pf'];
+
+  // Entries whose national number always has 9 digits after the leading 0.
+  // Without the formatting helpers, this length is the only check made.
+  const NINE_DIGIT_NATIONAL = ['fr', 'gp', 'mq', 'gf', 're', 'yt', 'bl', 'mf'];
+
   function report(message) {
     console.warn('[PhoneInput] ' + message);
     if (window.OrdoErrorReporter && typeof window.OrdoErrorReporter.reportNetwork === 'function') {
       window.OrdoErrorReporter.reportNetwork('PhoneInput', new Error(message));
     }
+  }
+
+  /**
+   * National digits of the entry, without the country code or leading 0.
+   * Null when the entry starts with a country code other than the selected
+   * one: the digits cannot be attributed.
+   */
+  function nationalDigits(value, dialCode) {
+    let digits = value.replace(/\D/g, '');
+    let international = null;
+    if (value.charAt(0) === '+') international = digits;
+    else if (value.indexOf('00') === 0) international = digits.slice(2);
+
+    if (international !== null) {
+      if (!dialCode || international.indexOf(dialCode) !== 0) return null;
+      digits = international.slice(dialCode.length);
+    }
+    return digits.charAt(0) === '0' ? digits.slice(1) : digits;
+  }
+
+  function metropolitanSuggestion(utils, country, value) {
+    if (OVERSEAS.indexOf(country.iso2) === -1) return null;
+    const national = nationalDigits(value, country.dialCode);
+    if (!national) return null;
+    const candidate = '+33' + national;
+    if (utils.isValidNumber(candidate, 'fr') !== true) return null;
+    return utils.getNumberType(candidate, 'fr') === utils.numberType.MOBILE ? candidate : null;
+  }
+
+  /**
+   * Null when there is nothing to say: empty field, valid number, or no
+   * certainty either way. Otherwise `{ suggestion }`, a number or null.
+   */
+  function assessNumber(iti, value) {
+    if (!value) return null;
+    const country = iti.getSelectedCountryData() || {};
+    const utils = window.intlTelInputUtils;
+    const valid = utils ? iti.isValidNumber() : null;
+
+    if (valid === true) return null;
+    if (valid === false) return { suggestion: metropolitanSuggestion(utils, country, value) };
+
+    if (NINE_DIGIT_NATIONAL.indexOf(country.iso2) === -1) return null;
+    const national = nationalDigits(value, country.dialCode);
+    return national !== null && national.length !== 9 ? { suggestion: null } : null;
+  }
+
+  /**
+   * Message under the field when the number does not look valid. Informative
+   * only: the form is always submitted as it is.
+   */
+  function attachValidityHint(input, iti, form, formatNumber, index) {
+    // intl-tel-input wraps the input; the message goes after that wrapper.
+    const anchor = input.parentNode;
+    const box = document.createElement('div');
+    box.id = (input.id || 'phone-' + index) + '-validity';
+    box.setAttribute('aria-live', 'polite');
+    box.style.cssText = 'display:none;margin-top:.25rem;font-size:.875rem;line-height:1.4;';
+
+    const message = document.createElement('div');
+    message.style.color = 'var(--error-700, #ba1b1b)';
+
+    const suggestion = document.createElement('div');
+    suggestion.style.cssText = 'display:none;margin-top:.125rem;color:var(--neutral-500, #47505c);';
+    const question = document.createElement('span');
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.textContent = HINT_METROPOLITAN_ACTION;
+    action.style.cssText = 'margin:0 0 0 .25rem;padding:0;border:0;background:none;font:inherit;' +
+      'color:var(--primary-1, #153cf5);text-decoration:underline;cursor:pointer;';
+
+    suggestion.appendChild(question);
+    suggestion.appendChild(action);
+    box.appendChild(message);
+    box.appendChild(suggestion);
+    anchor.parentNode.insertBefore(box, anchor.nextSibling);
+
+    const describedBy = input.getAttribute('aria-describedby');
+    input.setAttribute('aria-describedby', describedBy ? describedBy + ' ' + box.id : box.id);
+
+    let shown = '';
+    let suggested = null;
+
+    function render(result) {
+      const state = result ? (result.suggestion || 'invalid') : '';
+      if (state === shown) return;
+      shown = state;
+      suggested = result ? result.suggestion : null;
+      box.style.display = result ? '' : 'none';
+      message.textContent = result ? HINT_INVALID : '';
+      suggestion.style.display = suggested ? '' : 'none';
+      question.textContent = suggested ? HINT_METROPOLITAN : '';
+    }
+
+    function check() {
+      let result = null;
+      try {
+        result = assessNumber(iti, input.value.trim());
+      } catch (err) {
+        result = null;
+      }
+      render(result);
+    }
+
+    function recheck() {
+      if (shown) check();
+    }
+
+    action.addEventListener('click', () => {
+      if (!suggested) return;
+      // Cleared first: switching the country re-checks the field.
+      const number = suggested;
+      render(null);
+      iti.setCountry('fr');
+      iti.setNumber(number);
+      formatNumber();
+      input.focus();
+    });
+
+    input.addEventListener('blur', check);
+    input.addEventListener('input', recheck);
+    input.addEventListener('change', recheck);
+    input.addEventListener('countrychange', recheck);
+    if (form) form.addEventListener('submit', check);
   }
 
   /**
@@ -69,7 +204,7 @@
   }
 
   function init(inputs) {
-    inputs.forEach(input => {
+    inputs.forEach((input, index) => {
       const preferredCountries = input.getAttribute('ms-code-phone-number').split(',');
 
       const iti = window.intlTelInput(input, {
@@ -106,6 +241,17 @@
       const form = input.closest('form');
       if (form) {
         form.addEventListener('submit', formatNumber);
+      }
+
+      // The message is an extra: if it cannot be set up, the field above
+      // must keep working and the helpers below must still load.
+      try {
+        attachValidityHint(input, iti, form, formatNumber, index);
+      } catch (err) {
+        console.warn('[PhoneInput] Validity hint unavailable: ' + (err && err.message));
+        if (window.OrdoErrorReporter && typeof window.OrdoErrorReporter.reportSideEffect === 'function') {
+          window.OrdoErrorReporter.reportSideEffect('PhoneInput', err);
+        }
       }
     });
 

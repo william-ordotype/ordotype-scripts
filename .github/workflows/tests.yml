@@ -9,6 +9,8 @@
 #
 # jsdom est installé à la volée : le dépôt n'a volontairement pas de
 # package.json, et `--no-save` ne laisse que node_modules, déjà ignoré par git.
+# intl-tel-input l'est aussi, dans la version servie sur le site : les tests du
+# champ téléphone valident les numéros avec ses vraies métadonnées.
 #
 # Chaque fichier est annoncé avant d'être lancé, pour que le journal désigne
 # directement le coupable, et le premier échec arrête le travail.
@@ -29,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install --no-save jsdom
+      - run: npm install --no-save jsdom intl-tel-input@17.0.8
       - name: Lancer les tests
         run: |
           for f in test/*.js; do
