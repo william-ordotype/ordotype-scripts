@@ -71,7 +71,7 @@ t.parentNode.insertBefore(y,t);
 ```js
 window.MES_INFOS_CONFIG = {
   rppsText: 'Pas de RPPS',       // string = checkbox text, null = disable RPPS
-  forceStatut: null,              // 'Medecin' | 'Interne' | null
+  forceStatut: null,              // 'Medecin' | 'Interne' | 'Paramédical' | null
   syncFields: [],                 // [{ key: 'localStorage-key', msField: 'memberstack-field' }]
   fillOnlyFields: [],             // same shape; only fills an empty field on an account < 24 h old
   setJustPaidTs: false,           // set justPaidTs in localStorage for 60s
@@ -82,6 +82,16 @@ window.MES_INFOS_CONFIG = {
   enablePartnershipCity: false    // load partnership-city.js (sessionStorage/cookie sync)
 };
 ```
+
+`forceStatut` only replaces the statuts listed for it in `REPLACEABLE_STATUTS` (`memberstack-sync.js`):
+
+| Forced statut | Replaces | Keeps |
+|---|---|---|
+| `Interne` | empty, `Résident` | every other statut, `Medecin` included |
+| `Paramédical` | empty, `IDE` | every other statut, `Medecin` included |
+| `Medecin` (not in the table) | any other statut | — |
+
+A statut that is kept is not sent; the other fields of the page are still synced. Test: `node test/force-statut.js`.
 
 ## Per-page configs
 
