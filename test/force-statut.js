@@ -4,7 +4,7 @@
  *
  * Une page peut imposer un statut au membre connecté. Selon le statut imposé,
  * il ne remplace pas n'importe quelle valeur :
- *   - « Interne » ne remplace qu'un statut vide ou « Résident » ;
+ *   - « Interne » ne remplace qu'un statut vide ;
  *   - « Paramédical » ne remplace qu'un statut vide ou « IDE » ;
  *   - « Medecin » remplace tout statut différent, comme avant.
  * Un statut qui n'est pas remplacé reste tel quel, et les autres champs de la
@@ -63,9 +63,9 @@ const CAS = [
         const r = await jouer({ membre: membre(undefined), config: interne });
         return [[r.envoye.statut, 'Interne', 'statut envoyé']];
     }],
-    ['Interne imposé, Résident : passe Interne', async () => {
+    ['Interne imposé, Résident : conservé, aucun appel', async () => {
         const r = await jouer({ membre: membre('Résident'), config: interne });
-        return [[r.envoye.statut, 'Interne', 'statut envoyé']];
+        return [[r.appels, 0, 'appels à Memberstack'], ['statut' in r.envoye, false, 'statut non envoyé']];
     }],
     ['Interne imposé, Medecin : statut conservé, aucun appel', async () => {
         const r = await jouer({ membre: membre('Medecin'), config: interne });

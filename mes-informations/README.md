@@ -87,7 +87,7 @@ window.MES_INFOS_CONFIG = {
 
 | Forced statut | Replaces | Keeps |
 |---|---|---|
-| `Interne` | empty, `Résident` | every other statut, `Medecin` included |
+| `Interne` | empty | every other statut, `Medecin` and `Résident` included |
 | `Paramédical` | empty, `IDE` | every other statut, `Medecin` included |
 | `Medecin` (not in the table) | any other statut | — |
 
