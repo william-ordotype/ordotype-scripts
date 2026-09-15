@@ -20,7 +20,7 @@
 
   // Statuts qu'un statut imposé peut remplacer. Absent de la table : il remplace tout.
   var REPLACEABLE_STATUTS = {
-    'Interne': ['', 'Résident'],
+    'Interne': [''],
     'Paramédical': ['', 'IDE']
   };
 
