@@ -208,6 +208,20 @@ test('double clic : un seul appel ; sans identité Memberstack : aucun appel', a
   assert.strictEqual(calls.length, 0);
 });
 
+test('visiteur non identifié : un seul bouton, celui de la page, et le code reste gardé', async () => {
+  const { w } = page({ query: '?invitation=CODE42', member: null });
+  installFetch(w, () => reply(200, {}));
+  w.eval(GATE);
+  await tick();
+  assert.strictEqual(screen(w), null, "la page de l'offre reste affichée");
+  const btn = $(w, 'signup-rempla-stripe-customer');
+  assert.strictEqual(btn.classList.contains('hidden'), true, 'notre bouton reste masqué');
+  assert.notStrictEqual(btn.style.display, 'flex');
+  assert.notStrictEqual($(w, 'not-connected-animation').style.display, 'none', "le bouton d'inscription reste seul");
+  assert.notStrictEqual($(w, 'signup-rempla-from-decouverte').style.display, 'none', 'aucun bouton touché sans identité');
+  assert.strictEqual(w.localStorage.getItem('ordo-parrainage-invitation'), 'CODE42');
+});
+
 function chargeur({ slug, winback = false, stripeCustomer = true }) {
   const virtualConsole = new VirtualConsole();
   const dom = new JSDOM(GABARIT, { url: PAGE, runScripts: 'outside-only', virtualConsole });
