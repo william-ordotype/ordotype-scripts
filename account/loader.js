@@ -11,6 +11,8 @@
 (function() {
   'use strict';
 
+  var LOADER_NAME = 'OrdoAccount';
+
   // Auto-detect loader's own commit/ref so sub-scripts load from the same
   // pinned version (sidesteps stale jsDelivr @main caches).
   function detectVersion() {
@@ -192,64 +194,76 @@
     'phone-input.js'
   ];
 
-  // Une feuille de style qui ne répond jamais ne doit pas retenir la page.
-  const CSS_TIMEOUT_MS = 8000;
+  // --- Loader queue: identical in every loader (test/loader-resilience.js) ---
+  var INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
+  var INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  var PHONE_LIB_TIMEOUT_MS = 15000;
 
-  const INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
-  const INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  function logFailure(message) {
+    console.error('[' + LOADER_NAME + ']', message);
+  }
 
-  // script.async = false → browser fetches in parallel but executes in
-  // insertion order. Preserves the dependency chain (memberstack-utils →
-  // core → consumers) without serializing downloads.
-  function loadScript(url) {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
+  function reportFailure(message) {
+    var reporter = window.OrdoErrorReporter;
+    if (reporter && typeof reporter.reportNetwork === 'function') {
+      reporter.reportNetwork(LOADER_NAME, new Error(message));
+    }
+  }
+
+  function addScript(url, ordered) {
+    return new Promise(function(resolve, reject) {
+      var script = document.createElement('script');
       script.crossOrigin = 'anonymous';
       script.src = url;
-      script.async = false;
+      script.async = !ordered;
       script.onload = resolve;
-      script.onerror = () => reject(new Error(`Failed to load: ${url}`));
+      script.onerror = function() { reject(new Error('Failed to load: ' + url)); };
       document.head.appendChild(script);
     });
   }
 
-  // 🔴 A stylesheet must never reject and must never hang. Without `onerror`,
-  // one that never arrives leaves this promise pending FOREVER. Here that costs
-  // only the completion log, because the scripts were queued with
-  // `async = false` and an ERRORING one is dropped from the queue - but a
-  // STALLED one parks it, so this loader is not immune either. Do not lean on
-  // its shape: the same omission is what makes the other loaders die silently.
-  // The deadline covers the case neither handler ever sees: a filtering proxy
-  // can hold the request open without answering and without erroring.
-  function loadCSS(url) {
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve();
-      };
-      const timer = setTimeout(() => {
-        console.warn(`[OrdoAccount] Stylesheet timed out: ${url}`);
-        finish();
-      }, CSS_TIMEOUT_MS);
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = url;
-      link.onload = finish;
-      // Résolu, pas rejeté : une feuille de style est décorative. Mais tracé,
-      // sinon l'absence serait parfaitement muette.
-      link.onerror = () => {
-        console.warn(`[OrdoAccount] Stylesheet unavailable: ${url}`);
-        finish();
-      };
-      document.head.appendChild(link);
+  // Fetched in parallel, run in order; a script that fails is skipped. Never rejects.
+  function runInOrder(urls) {
+    var failures = [];
+    return Promise.all(urls.map(function(url) {
+      return addScript(url, true).catch(function(err) {
+        logFailure(err.message);
+        failures.push(err.message);
+      });
+    })).then(function() {
+      failures.forEach(reportFailure);
     });
   }
 
-  async function loadAll() {
-    console.log('[OrdoAccount] Loading...');
+  // phone-input.js runs once `after` has settled and the library has loaded.
+  function loadPhoneInput(phoneInputUrl, after) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = INTL_TEL_INPUT_CSS;
+    link.onerror = function() { console.warn('[' + LOADER_NAME + '] Failed to load: ' + INTL_TEL_INPUT_CSS); };
+    document.head.appendChild(link);
+
+    var lib = addScript(INTL_TEL_INPUT_JS, false);
+    var timer = setTimeout(function() {
+      logFailure('Timed out: ' + INTL_TEL_INPUT_JS);
+      after.then(function() { reportFailure('Timed out: ' + INTL_TEL_INPUT_JS); });
+    }, PHONE_LIB_TIMEOUT_MS);
+    lib.then(function() { clearTimeout(timer); }, function() { clearTimeout(timer); });
+
+    return after.then(function() { return lib; }).then(function() {
+      return addScript(phoneInputUrl, false).catch(function(err) {
+        logFailure(err.message);
+        reportFailure(err.message);
+      });
+    }, function(err) {
+      logFailure(err.message);
+      reportFailure(err.message);
+    });
+  }
+  // --- End of loader queue ---
+
+  function loadAll() {
+    console.log('[' + LOADER_NAME + '] Loading...');
 
     // One evaluation per file (decide() logs and publishes its decision).
     const loaded = [];
@@ -264,31 +278,16 @@
     if (skippedHost.length) console.log('[OrdoAccount] Skipped on ' + HOST + ':', skippedHost.join(', '));
     if (skippedRollout.length) console.log('[OrdoAccount] Not in rollout:', skippedRollout.join(', '));
 
-    // 🔴 La bibliothèque tierce est en DERNIER, et ce n'est pas cosmétique.
-    // `async = false` fait exécuter dans l'ordre d'insertion : un script en
-    // échec est bien retiré de la file, mais un script dont la requête ne
-    // répond JAMAIS gare la file derrière lui. Placée en 3e position, elle
-    // empêchait alors l'exécution de tous les fichiers du compte, pourtant
-    // téléchargés. En dernier, elle ne retient plus personne.
-    //
-    // `phone-input.js` s'exécute donc avant elle, et c'est sans conséquence :
-    // il sonde `window.intlTelInput` et sait abandonner en le signalant.
-    const orderedJS = [
-      `${SHARED_BASE}/memberstack-utils.js`,
-      `${SHARED_BASE}/error-reporter.js`,
-      ...loaded.map(f => `${BASE}/${f}`),
-      INTL_TEL_INPUT_JS
-    ];
+    var ordered = [SHARED_BASE + '/memberstack-utils.js', SHARED_BASE + '/error-reporter.js'];
+    var phoneInputUrl = null;
+    loaded.forEach(function(file) {
+      if (file === 'phone-input.js') phoneInputUrl = BASE + '/' + file;
+      else ordered.push(BASE + '/' + file);
+    });
 
-    try {
-      await Promise.all([
-        loadCSS(INTL_TEL_INPUT_CSS),
-        ...orderedJS.map(loadScript)
-      ]);
-      console.log('[OrdoAccount] All scripts loaded');
-    } catch (err) {
-      console.error('[OrdoAccount] Load error:', err);
-    }
+    var done = runInOrder(ordered);
+    if (phoneInputUrl) loadPhoneInput(phoneInputUrl, done);
+    done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
   }
 
   loadAll();

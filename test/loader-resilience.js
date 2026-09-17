@@ -1,380 +1,301 @@
 #!/usr/bin/env node
 /**
- * Vérifie qu'un chargeur survit à la défaillance d'une dépendance tierce
- * (les dépendances du champ téléphone, servies par cdnjs).
+ * Chargeurs : nos scripts s'exécutent dans l'ordre et un fichier en erreur est
+ * sauté ; la bibliothèque tierce du champ téléphone ne retient jamais la page.
  *
- * Ce qui doit tenir, pour chaque chargeur :
- *   - tout se charge quand tout va bien, et dans le bon ordre ;
- *   - la bibliothèque tierce en ÉCHEC n'empêche aucun autre script ;
- *   - la feuille de style en échec non plus ;
- *   - et surtout, ni l'une ni l'autre QUAND ELLES NE RÉPONDENT JAMAIS. C'est
- *     le cas décisif : `onerror` ne le voit pas, `try/catch` ne peut rien
- *     contre une promesse qui ne se dénoue pas, et il est totalement muet ;
- *   - `phone-input.js` est chargé MÊME quand ses dépendances ont manqué,
- *     parce que c'est lui qui sait le dire.
+ * Le navigateur est simulé : un script `async = false` s'exécute dans l'ordre
+ * d'insertion, un script en erreur est retiré de la file, un script muet la
+ * bloque. L'horloge est virtuelle, les délais de 15 s ne coûtent rien.
  *
  * Usage : node test/loader-resilience.js
  */
 const fs = require('fs');
 const path = require('path');
+const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
-const REEL = console;
+const lire = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+const REPO = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@';
+const CRISP_REPO = 'https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/';
+const CDNJS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/';
+const LIB = 'cdnjs:js/intlTelInput.min.js';
+const CSS = 'cdnjs:css/intlTelInput.min.css';
 
-/**
- * Horloge virtuelle : les délais sont respectés, donc assertables. Sans elle,
- * le cas « la feuille ne répond jamais » demanderait d'attendre 8 secondes
- * pour de vrai, et personne ne lancerait la suite.
- */
-function horloge() {
-    let maintenant = 0;
-    let suivant = 0;
-    const timers = new Map();
+const CHARGEURS = {
+    accueil: {
+        fichier: 'homepage/loader.js',
+        balise: `${REPO}abc1234/homepage/loader.js`,
+        ordre: ['shared/memberstack-utils.js', 'shared/error-reporter.js', 'homepage/core.js', 'homepage/countdown.js', 'homepage/member-redirects.js', 'homepage/cgu-modal.js'],
+        telephone: 'mes-informations/phone-input.js',
+    },
+    compte: {
+        fichier: 'account/loader.js',
+        balise: `${REPO}abc1234/account/loader.js`,
+        ordre: ['shared/memberstack-utils.js', 'shared/error-reporter.js', 'account/styles.js', 'account/core.js', 'account/subscriptions.js', 'account/session-stats-prefetch.js', 'account/pause-state.js', 'account/tab-hash.js', 'account/status-selectors.js', 'account/delete-account.js', 'account/billing-portal.js'],
+        telephone: 'account/phone-input.js',
+    },
+    'mes-informations': {
+        fichier: 'mes-informations/loader.js',
+        courant: `${REPO}abc1234/mes-informations/loader.js`,
+        config: { enableCheckout: true, enablePartnershipCity: true },
+        ordre: ['shared/memberstack-utils.js', 'shared/error-reporter.js', 'mes-informations/styles.js', 'mes-informations/core.js', 'mes-informations/rpps.js', 'mes-informations/memberstack-sync.js', 'mes-informations/statut-selectors.js', 'mes-informations/required-if-visible.js', 'mes-informations/ga4-events.js', 'mes-informations/checkout.js', 'mes-informations/partnership-city.js'],
+        telephone: 'mes-informations/phone-input.js',
+        crisp: 'shared/crisp-loader.js',
+    },
+    'mes-informations-cms': {
+        fichier: 'mes-informations-cms/loader.js',
+        ordre: ['shared/error-reporter.js', 'mes-informations-cms/statut-options.js', 'mes-informations-cms/statut-selectors.js', 'mes-informations-cms/rpps-handler.js', 'mes-informations-cms/memberstack-sync.js', 'mes-informations-cms/required-if-visible.js', 'mes-informations-cms/location-store.js'],
+        telephone: 'mes-informations/phone-input.js',
+        crisp: 'crisp:crisp-loader.js',
+    },
+};
 
-    return {
-        set(fn, delai) {
-            suivant += 1;
-            timers.set(suivant, { fn, a: maintenant + (delai || 0) });
-            return suivant;
-        },
-        clear(id) { timers.delete(id); },
-        avancer(ms) {
-            const fin = maintenant + ms;
-            for (;;) {
-                let choisi = null;
-                timers.forEach((v, k) => {
-                    if (v.a <= fin && (choisi === null || v.a < choisi[1].a)) choisi = [k, v];
-                });
-                if (choisi === null) break;
-                timers.delete(choisi[0]);
-                maintenant = choisi[1].a;
-                choisi[1].fn();
-            }
-            maintenant = fin;
-        },
-        enAttente() { return timers.size; },
-    };
+/** URL -> nom court : chemin dans le dépôt, `crisp:` ou `cdnjs:`. */
+function nom(url) {
+    if (url.startsWith(REPO)) return url.slice(REPO.length).replace(/^[^/]+\//, '');
+    if (url.startsWith(CRISP_REPO)) return 'crisp:' + url.slice(CRISP_REPO.length);
+    if (url.startsWith(CDNJS)) return 'cdnjs:' + url.slice(CDNJS.length);
+    return url;
 }
 
-/** Ce que chaque chargeur attend de son environnement, et ce qu'on exige. */
-const CHARGEURS = [
-    {
-        source: 'homepage/loader.js',
-        marqueur: '/homepage/loader.js',
-        // Les scripts qui doivent survivre à une panne du champ téléphone.
-        essentiels: ['homepage/core.js', 'homepage/member-redirects.js', 'homepage/cgu-modal.js'],
-        phone: 'mes-informations/phone-input.js',
-    },
-    {
-        source: 'mes-informations/loader.js',
-        marqueur: '/mes-informations/loader.js',
-        essentiels: ['mes-informations/memberstack-sync.js', 'mes-informations/required-if-visible.js'],
-        phone: 'mes-informations/phone-input.js',
-    },
-    {
-        source: 'mes-informations-cms/loader.js',
-        marqueur: '/mes-informations-cms/loader.js',
-        essentiels: ['mes-informations-cms/memberstack-sync.js', 'mes-informations-cms/location-store.js'],
-        phone: 'mes-informations/phone-input.js',
-    },
-    {
-        source: 'account/loader.js',
-        marqueur: '/account/loader.js',
-        essentiels: ['account/core.js', 'account/subscriptions.js'],
-        phone: 'account/phone-input.js',
-    },
-];
-
 /**
- * @param {object} opts
- *   panne  : 'aucune' | 'lib' | 'libMuette' | 'css' | 'cssMuette'
- *     - 'lib'       : intlTelInput.min.js répond par une erreur
- *     - 'libMuette' : la bibliothèque ne répond JAMAIS, ni load ni error
- *     - 'css'       : la feuille de style répond par une erreur
- *     - 'cssMuette' : la feuille ne répond JAMAIS, ni load ni error
- *     - 'crisp'     : crisp-loader.js (autre dépôt) répond par une erreur
+ * Rejoue un chargeur. `reseau[nom] = { issue: 'ok' | 'erreur' | 'muet', delai }`,
+ * 10 ms et 'ok' par défaut.
  */
-function env(chargeur, opts) {
-    const charges = [];
-    const sauvegarde = {
-        window: global.window, document: global.document, console: global.console,
-        localStorage: global.localStorage, setTimeout: global.setTimeout,
-        clearTimeout: global.clearTimeout,
-    };
+async function rejouer(cle, { reseau = {}, config } = {}) {
+    const def = CHARGEURS[cle];
+    const dom = new JSDOM('<!doctype html><head></head><body></body>', {
+        url: 'https://exemple.test/page',
+        runScripts: 'outside-only',
+        virtualConsole: new VirtualConsole(),
+    });
+    const w = dom.window;
 
-    const executes = [];
-    const estCSSTel = (u) => /intlTelInput\.min\.css$/.test(u);
-    const estLibTel = (u) => /intlTelInput\.min\.js$/.test(u);
+    let maintenant = 0;
+    let numero = 0;
+    const minuteries = new Map();
+    w.setTimeout = (fn, ms) => { numero += 1; minuteries.set(numero, { quand: maintenant + (ms || 0), fn, n: numero }); return numero; };
+    w.clearTimeout = (id) => { minuteries.delete(id); };
 
-    /** Quel sort le réseau réserve à cette URL : 'ok' | 'erreur' | 'muet'. */
-    function sort(el, url) {
-        if (el.href && estCSSTel(url)) {
-            if (opts.panne === 'css') return 'erreur';
-            if (opts.panne === 'cssMuette') return 'muet';
-        }
-        if (el.src && estLibTel(url)) {
-            if (opts.panne === 'lib') return 'erreur';
-            if (opts.panne === 'libMuette') return 'muet';
-        }
-        // Crisp vient d'un AUTRE dépôt, servi @main : même exposition qu'un
-        // tiers, et il était le seul `await` nu entre deux blocs protégés.
-        if (el.src && /crisp-loader\.js$/.test(url) && opts.panne === 'crisp') return 'erreur';
-        return 'ok';
+    if (def.balise) {
+        const balise = w.document.createElement('script');
+        balise.src = def.balise;
+        w.document.head.appendChild(balise);
     }
+    Object.defineProperty(w.document, 'currentScript', { configurable: true, get: () => (def.courant ? { src: def.courant } : null) });
+    w.MES_INFOS_CONFIG = config === undefined ? def.config : config;
 
-    function delivrer(el, url, verdict) {
-        if (verdict === 'muet') return;
-        if (verdict === 'erreur') { if (el.onerror) el.onerror(); return; }
-        executes.push(url);
+    const journal = [];
+    const rapports = [];
+    const file = [];
+
+    function executer(el, n) {
+        journal.push({ quoi: 'execute', n, t: maintenant });
+        if (n === 'shared/error-reporter.js') {
+            w.OrdoErrorReporter = { reportNetwork: (ctx, err) => rapports.push(`${ctx}: ${err.message}`) };
+        }
+        if (n === LIB) w.intlTelInput = function() {};
+        if (n === def.telephone) journal.push({ quoi: 'telephone', bibliotheque: !!w.intlTelInput });
         if (el.onload) el.onload();
     }
 
-    /**
-     * 🔴 `script.async = false` = exécution dans l'ORDRE D'INSERTION. Un script
-     * en échec est retiré de la file et les suivants passent ; un script qui ne
-     * répond JAMAIS gare la file derrière lui. Ne pas modéliser ça, c'est
-     * certifier une robustesse que le code n'a pas : les fichiers seraient
-     * comptés comme exécutés alors qu'ils sont seulement téléchargés.
-     */
-    const file = [];
     function vider() {
-        while (file.length) {
-            const t = file[0];
-            if (t.verdict === 'muet') return; // la file reste garée, comme dans un vrai navigateur
-            file.shift();
-            delivrer(t.el, t.url, t.verdict);
+        while (file.length && file[0].etat !== 'attente') {
+            const tete = file.shift();
+            if (tete.etat === 'erreur') {
+                if (tete.el.onerror) tete.el.onerror();
+            } else {
+                executer(tete.el, tete.n);
+            }
         }
     }
 
-    const tete = {
-        appendChild(el) {
-            const url = el.src || el.href;
-            charges.push(url);
-            const verdict = sort(el, url);
-            if (el.src && el.async === false) {
-                file.push({ el, url, verdict });
-                setImmediate(vider);
-                return;
-            }
-            setImmediate(() => delivrer(el, url, verdict));
-        },
+    w.document.head.appendChild = (el) => {
+        const n = nom(el.src || el.href);
+        const { issue = 'ok', delai = 10 } = reseau[n] || {};
+        journal.push({ quoi: 'ajout', n, async: el.async, t: maintenant });
+        if (el.tagName === 'LINK') {
+            if (issue !== 'muet') w.setTimeout(() => (issue === 'erreur' ? el.onerror && el.onerror() : el.onload && el.onload()), delai);
+        } else if (el.async === false) {
+            const entree = { el, n, etat: 'attente' };
+            file.push(entree);
+            if (issue !== 'muet') w.setTimeout(() => { entree.etat = issue === 'erreur' ? 'erreur' : 'pret'; vider(); }, delai);
+        } else if (issue !== 'muet') {
+            w.setTimeout(() => (issue === 'erreur' ? el.onerror && el.onerror() : executer(el, n)), delai);
+        }
+        return el;
     };
 
-    const doc = {
-        readyState: 'complete',
-        head: tete,
-        body: tete,
-        addEventListener() {},
-        createElement() { return {}; },
-        querySelectorAll() { return []; },
-        querySelector() { return null; },
-        getElementById() { return null; },
-        // Le chargeur lit sa propre balise pour propager son pin.
-        getElementsByTagName() {
-            return [{ src: 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@testpin' + chargeur.marqueur }];
-        },
-    };
+    w.eval(lire(def.fichier));
 
-    const win = {
-        location: { hostname: 'www.ordotype.fr', href: 'https://www.ordotype.fr/' },
-        dataLayer: [],
-        OrdoMemberstack: { memberId: 'mem_test' },
-        MES_INFOS_CONFIG: {},
-        addEventListener() {},
-    };
+    // Jusqu'au repos : plus aucune minuterie avant 10 minutes virtuelles.
+    for (;;) {
+        await new Promise((r) => setImmediate(r));
+        const prochaine = [...minuteries.values()].sort((a, b) => a.quand - b.quand || a.n - b.n)[0];
+        if (!prochaine || prochaine.quand > 600000) break;
+        minuteries.delete(prochaine.n);
+        maintenant = Math.max(maintenant, prochaine.quand);
+        prochaine.fn();
+    }
+    w.close();
 
-    const h = horloge();
-    global.window = win;
-    global.document = doc;
-    global.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
-    global.console = { log() {}, warn() {}, error() {}, info() {} };
-    global.setTimeout = (fn, d) => h.set(fn, d);
-    global.clearTimeout = (id) => h.clear(id);
-
-    const poignee = {
-        charges,
+    const executes = journal.filter((e) => e.quoi === 'execute').map((e) => e.n);
+    const indice = (n) => executes.indexOf(n);
+    return {
+        def,
+        journal,
+        rapports,
         executes,
-        horloge: h,
-        restaure() { Object.assign(global, sauvegarde); },
-        /**
-         * 🔴 A-t-il été EXÉCUTÉ, pas seulement demandé. La nuance décide de
-         * tout sur `account/loader.js`, qui insère tout d'un coup : les six
-         * cas y passeraient même sans la moindre gestion d'erreur, puisque
-         * toutes les URL atterrissent dans `charges` avant le premier verdict.
-         */
-        aExecute(suffixe) { return executes.some((u) => u.endsWith('/' + suffixe)); },
+        indice,
+        propres: executes.filter((n) => def.ordre.includes(n)),
+        telephone: journal.filter((e) => e.quoi === 'telephone'),
+        ajoute: (n) => journal.some((e) => e.quoi === 'ajout' && e.n === n),
+        instant: (n) => (journal.find((e) => e.quoi === 'execute' && e.n === n) || {}).t,
     };
-
-    // Publiée AVANT l'évaluation : si le fichier ne s'analyse pas, `eval` lève
-    // ici, et sans cette poignée la console factice resterait en place pour
-    // tout le reste de la suite, qui échouerait alors SANS AFFICHER UNE LIGNE.
-    courant = poignee;
-
-    eval(fs.readFileSync(path.join(ROOT, chargeur.source), 'utf8'));
-
-    return poignee;
 }
 
-let courant = null;
-
-// Laisse les promesses ET les setImmediate se dérouler. Les chargeurs
-// enchaînent jusqu'à une dizaine d'étapes, chacune sur un tour de boucle.
-const repos = async (tours = 60) => {
-    for (let i = 0; i < tours; i++) await new Promise((r) => setImmediate(r));
-};
+const egal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const CAS = [
-    ['tout va bien : les essentiels et le champ sont chargés', async (c) => {
-        const e = env(c, { panne: 'aucune' });
-        await repos();
-        for (const f of c.essentiels) if (!e.aExecute(f)) return f + ' non chargé alors que tout va bien';
-        if (!e.aExecute(c.phone)) return c.phone + ' non chargé alors que tout va bien';
-        return '';
-    }],
-
-    ['bibliothèque tierce EN ÉCHEC : les essentiels passent quand même', async (c) => {
-        const e = env(c, { panne: 'lib' });
-        await repos();
-        const perdus = c.essentiels.filter((f) => !e.aExecute(f));
-        if (perdus.length) {
-            return 'la page est amputée pour un défaut de formatage de numéro : ' + perdus.join(', ');
-        }
-        return '';
-    }],
-
-    ['bibliothèque tierce EN ÉCHEC : phone-input est chargé quand même', async (c) => {
-        const e = env(c, { panne: 'lib' });
-        await repos();
-        if (!e.aExecute(c.phone)) {
-            return 'écarté avec ses dépendances : c est pourtant LUI qui sait signaler leur absence';
-        }
-        return '';
-    }],
-
-    ['feuille de style EN ÉCHEC : les essentiels passent quand même', async (c) => {
-        const e = env(c, { panne: 'css' });
-        await repos();
-        const perdus = c.essentiels.filter((f) => !e.aExecute(f));
-        if (perdus.length) return 'page amputée par une feuille de style absente : ' + perdus.join(', ');
-        return '';
-    }],
-
-    ['feuille de style QUI NE RÉPOND JAMAIS : la sortie de secours est BORNÉE', async (c) => {
-        const e = env(c, { panne: 'cssMuette' });
-        await repos();
-        // 🔴 Le cas décisif, et le seul totalement muet : un filtrage réseau
-        // peut tenir la requête ouverte sans jamais répondre NI échouer, donc
-        // ni `onload` ni `onerror` ne partent. Sans délai, rien ne se débloque.
-        e.horloge.avancer(8000);
-        await repos();
-        const perdus = c.essentiels.filter((f) => !e.aExecute(f));
-        if (perdus.length) {
-            return 'promesse en suspens pour toujours, page inerte SANS AUCUNE TRACE : ' + perdus.join(', ');
-        }
-        if (e.horloge.enAttente() !== 0) return 'une minuterie reste armée après la sortie de secours';
-        return '';
-    }],
-
-    ['bibliothèque tierce QUI NE RÉPOND JAMAIS : les essentiels passent quand même', async (c) => {
-        // 🔴 Le cas le plus grave, et celui qu'un `onerror` ne voit PAS. Un
-        // `try/catch` n'y peut rien non plus : une promesse en suspens ne
-        // rejette jamais. C'est aussi celui qui gare la file d'exécution
-        // ordonnée d'`account/loader.js` derrière un script téléchargé mais
-        // jamais exécuté.
-        const e = env(c, { panne: 'libMuette' });
-        await repos();
-        const perdus = c.essentiels.filter((f) => !e.aExecute(f));
-        if (perdus.length) {
-            return 'page inerte derrière une requête tierce qui ne répond pas : ' + perdus.join(', ');
-        }
-        return '';
-    }],
-
-    ['bibliothèque tierce QUI NE RÉPOND JAMAIS : phone-input finit par arriver', async (c) => {
-        const e = env(c, { panne: 'libMuette' });
-        await repos();
-        e.horloge.avancer(15000);
-        await repos();
-        if (!e.aExecute(c.phone)) {
-            return 'aucun délai : le seul script capable de signaler la panne n arrive jamais';
-        }
-        return '';
-    }],
-
-    ['feuille de style EN ÉCHEC : phone-input arrive sans attendre le délai', async (c) => {
-        // Sans `onerror` sur la feuille, cette promesse ne se dénoue qu'au
-        // bout des 8 s : le seul script capable de signaler la panne arriverait
-        // avec 8 secondes de retard, ou jamais si le délai saute aussi.
-        const e = env(c, { panne: 'css' });
-        await repos();
-        if (!e.aExecute(c.phone)) return 'phone-input retenu par une feuille de style absente';
-        return '';
-    }],
-
-    ['feuille de style MUETTE : phone-input arrive après le délai, pas jamais', async (c) => {
-        const e = env(c, { panne: 'cssMuette' });
-        await repos();
-        e.horloge.avancer(8000);
-        await repos();
-        if (!e.aExecute(c.phone)) return 'aucune sortie de secours sur la feuille de style';
-        return '';
-    }],
-
-    ['Crisp EN ÉCHEC : les essentiels passent quand même', async (c) => {
-        const e = env(c, { panne: 'crisp' });
-        await repos();
-        const perdus = c.essentiels.filter((f) => !e.aExecute(f));
-        if (perdus.length) {
-            return 'page amputée par un chargeur d un AUTRE dépôt : ' + perdus.join(', ');
-        }
-        return '';
-    }],
-
-    ['feuille de style qui répond : aucune minuterie ne survit', async (c) => {
-        const e = env(c, { panne: 'aucune' });
-        await repos();
-        if (e.horloge.enAttente() !== 0) {
-            return 'minuterie non annulée : elle retiendrait la page en mémoire pour rien';
-        }
-        return '';
+    ['bloc de file identique dans les 4 chargeurs', async () => {
+        const bloc = (src) => {
+            const debut = src.indexOf('// --- Loader queue');
+            const fin = src.indexOf('// --- End of loader queue ---');
+            return debut !== -1 && fin > debut ? src.slice(debut, fin) : null;
+        };
+        const blocs = Object.values(CHARGEURS).map((d) => bloc(lire(d.fichier)));
+        return [
+            [blocs.every(Boolean), true, 'bloc présent partout'],
+            [blocs.every((b) => b === blocs[0]), true, 'bloc identique'],
+        ];
     }],
 ];
 
-// 🔴 Un rejet non géré tue le processus avec un code 1 et PAS UNE LIGNE : le
-// même silence que celui qu'on corrige. On le rend bruyant.
-process.on('unhandledRejection', (err) => {
-    REEL.error('FAIL  rejet non géré : ' + (err && err.message ? err.message : err));
-    process.exit(1);
-});
+for (const cle of Object.keys(CHARGEURS)) {
+    const p = `[${cle}]`;
+    CAS.push(
+        [`${p} tout va bien : nos scripts dans l'ordre, puis le champ téléphone, aucun rapport`, async () => {
+            const r = await rejouer(cle);
+            const dernier = r.def.ordre[r.def.ordre.length - 1];
+            return [
+                [egal(r.propres, r.def.ordre), true, `ordre ${r.propres.join(', ')}`],
+                [r.journal.filter((e) => e.quoi === 'ajout' && r.def.ordre.includes(e.n)).every((e) => e.async === false), true, 'nos scripts en async = false'],
+                [r.telephone.length, 1, 'phone-input exécuté une fois'],
+                [r.telephone.length === 1 && r.telephone[0].bibliotheque, true, 'bibliothèque déjà là'],
+                [r.indice(r.def.telephone) > r.indice(dernier), true, 'après le dernier de nos scripts'],
+                [r.rapports.length, 0, 'aucun rapport'],
+            ];
+        }],
+        [`${p} un de nos scripts en erreur : sauté, les suivants tournent, un rapport`, async () => {
+            const cible = CHARGEURS[cle].ordre[3];
+            const r = await rejouer(cle, { reseau: { [cible]: { issue: 'erreur' } } });
+            return [
+                [egal(r.propres, r.def.ordre.filter((n) => n !== cible)), true, `exécutés ${r.propres.join(', ')}`],
+                [r.rapports.length === 1 && r.rapports[0].includes(cible), true, `rapports ${r.rapports.join(' | ')}`],
+                [r.telephone.length, 1, 'phone-input exécuté'],
+            ];
+        }],
+        [`${p} premier script en erreur, avant le rapporteur : signalé une fois la file finie`, async () => {
+            const cible = CHARGEURS[cle].ordre[0] === 'shared/error-reporter.js' ? CHARGEURS[cle].ordre[1] : CHARGEURS[cle].ordre[0];
+            const r = await rejouer(cle, { reseau: { [cible]: { issue: 'erreur', delai: 1 }, 'shared/error-reporter.js': { delai: 50 } } });
+            return [[r.rapports.length === 1 && r.rapports[0].includes(cible), true, `rapports ${r.rapports.join(' | ')}`]];
+        }],
+        [`${p} bibliothèque en erreur : tout le reste tourne, pas de phone-input, un rapport`, async () => {
+            const r = await rejouer(cle, { reseau: { [LIB]: { issue: 'erreur', delai: 1 } } });
+            return [
+                [egal(r.propres, r.def.ordre), true, 'nos scripts tous exécutés'],
+                [r.ajoute(r.def.telephone), false, 'phone-input non demandé'],
+                [r.rapports.length === 1 && r.rapports[0].includes('intlTelInput'), true, `rapports ${r.rapports.join(' | ')}`],
+            ];
+        }],
+        [`${p} bibliothèque muette : tout le reste tourne, un rapport de délai, pas de phone-input`, async () => {
+            const r = await rejouer(cle, { reseau: { [LIB]: { issue: 'muet' } } });
+            return [
+                [egal(r.propres, r.def.ordre), true, 'nos scripts tous exécutés'],
+                [r.instant(r.def.ordre[r.def.ordre.length - 1]) < 1000, true, 'sans attendre la bibliothèque'],
+                [r.ajoute(r.def.telephone), false, 'phone-input non demandé'],
+                [r.rapports.length === 1 && r.rapports[0].includes('Timed out'), true, `rapports ${r.rapports.join(' | ')}`],
+            ];
+        }],
+        [`${p} bibliothèque en retard (20 s) : rapport de délai, puis phone-input quand elle arrive`, async () => {
+            const r = await rejouer(cle, { reseau: { [LIB]: { delai: 20000 } } });
+            return [
+                [r.telephone.length === 1 && r.telephone[0].bibliotheque, true, 'phone-input après la bibliothèque'],
+                [r.instant(r.def.telephone) >= 20000, true, 'au plus tôt à son arrivée'],
+                [r.rapports.length === 1 && r.rapports[0].includes('Timed out'), true, `rapports ${r.rapports.join(' | ')}`],
+            ];
+        }],
+        [`${p} nos scripts lents (20 s), bibliothèque rapide : phone-input attend la file, pas de faux rapport`, async () => {
+            const dernier = CHARGEURS[cle].ordre[CHARGEURS[cle].ordre.length - 1];
+            const r = await rejouer(cle, { reseau: { [dernier]: { delai: 20000 } } });
+            return [
+                [r.indice(r.def.telephone) > r.indice(dernier), true, 'phone-input après le dernier script'],
+                [r.rapports.length, 0, 'aucun rapport'],
+            ];
+        }],
+        [`${p} feuille de style muette ou en erreur : phone-input ne l'attend pas, aucun rapport`, async () => {
+            const muette = await rejouer(cle, { reseau: { [CSS]: { issue: 'muet' } } });
+            const erreur = await rejouer(cle, { reseau: { [CSS]: { issue: 'erreur' } } });
+            return [
+                [muette.telephone.length === 1 && muette.instant(muette.def.telephone) < 1000, true, 'muette : phone-input tout de suite'],
+                [erreur.telephone.length, 1, 'erreur : phone-input exécuté'],
+                [muette.rapports.length + erreur.rapports.length, 0, 'aucun rapport'],
+            ];
+        }],
+        [`${p} phone-input.js en erreur : un rapport`, async () => {
+            const r = await rejouer(cle, { reseau: { [CHARGEURS[cle].telephone]: { issue: 'erreur' } } });
+            return [[r.rapports.length === 1 && r.rapports[0].includes('phone-input.js'), true, `rapports ${r.rapports.join(' | ')}`]];
+        }],
+    );
+    if (CHARGEURS[cle].crisp) {
+        CAS.push([`${p} Crisp muet ou en erreur : ne retient rien`, async () => {
+            const muet = await rejouer(cle, { reseau: { [CHARGEURS[cle].crisp]: { issue: 'muet' } } });
+            const erreur = await rejouer(cle, { reseau: { [CHARGEURS[cle].crisp]: { issue: 'erreur' } } });
+            return [
+                [muet.ajoute(CHARGEURS[cle].crisp), true, 'Crisp demandé'],
+                [egal(muet.propres, muet.def.ordre) && muet.telephone.length === 1, true, 'muet : tout tourne'],
+                [egal(erreur.propres, erreur.def.ordre) && erreur.telephone.length === 1, true, 'erreur : tout tourne'],
+            ];
+        }]);
+    }
+}
+
+CAS.push(['[mes-informations] sans config : ni checkout ni ville partenaire', async () => {
+    const r = await rejouer('mes-informations', { config: {} });
+    return [
+        [r.ajoute('mes-informations/checkout.js') || r.ajoute('mes-informations/partnership-city.js'), false, 'non demandés'],
+        [egal(r.propres, CHARGEURS['mes-informations'].ordre.slice(0, -2)), true, 'le reste dans l\'ordre'],
+    ];
+}]);
+
+const rejets = [];
+process.on('unhandledRejection', (e) => rejets.push(e && e.message));
 
 (async () => {
     let echecs = 0;
-    let joues = 0;
-
-    for (const c of CHARGEURS) {
-        for (const [nom, fn] of CAS) {
-            joues += 1;
-            let probleme;
-            try {
-                probleme = await fn(c);
-            } catch (err) {
-                probleme = 'exception : ' + err.message;
-            } finally {
-                if (courant) courant.restaure();
-                Object.assign(global, { console: REEL });
-            }
-            if (probleme) {
-                echecs += 1;
-                REEL.error('FAIL  ' + c.source + ' — ' + nom + '\n      ' + probleme);
-            } else {
-                REEL.log('ok    ' + c.source + ' — ' + nom);
-            }
+    let verifs = 0;
+    for (const [nomCas, cas] of CAS) {
+        let resultats;
+        try {
+            resultats = await cas();
+        } catch (e) {
+            echecs += 1;
+            console.log(`  ECHEC  ${nomCas} : exception ${e.message}`);
+            continue;
+        }
+        verifs += resultats.length;
+        const ko = resultats.filter(([obtenu, attendu]) => obtenu !== attendu);
+        if (ko.length) {
+            echecs += 1;
+            console.log(`  ECHEC  ${nomCas} : ${ko.map(([o, a, quoi]) => `${quoi} (obtenu ${o}, attendu ${a})`).join(' ; ')}`);
+        } else {
+            console.log(`  ok     ${nomCas}`);
         }
     }
-
-    if (echecs) {
-        REEL.error('\n' + echecs + ' cas en échec sur ' + joues);
-        process.exit(1);
+    if (rejets.length) {
+        echecs += 1;
+        console.log(`  ECHEC  rejets non gérés : ${rejets.length} (${rejets[0]})`);
     }
-    REEL.log('\n' + joues + ' cas (' + CAS.length + ' × ' + CHARGEURS.length + '), tous verts');
+    console.log(echecs ? `\n${echecs} cas en échec sur ${CAS.length}.` : `\n${CAS.length} cas, ${verifs} vérifications OK.`);
+    process.exit(echecs ? 1 : 0);
 })();

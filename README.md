@@ -1929,6 +1929,14 @@ Crisp chat integration with Memberstack data and custom button handler.
 
 ---
 
+## Loaders: order and failures
+
+`homepage/loader.js`, `account/loader.js`, `mes-informations/loader.js` and `mes-informations-cms/loader.js` share one queue block, kept identical (checked by `test/loader-resilience.js`).
+
+- Repository scripts are inserted at once with `async = false`: fetched in parallel, run in insertion order. A script that fails to load is skipped and reported once the queue has run, so `error-reporter.js` is there to send it. A script that never answers still holds the ones after it.
+- Crisp loads on its own and never holds the queue.
+- intl-tel-input (cdnjs) loads on its own. `phone-input.js` is added once the queue has run and the library has loaded. A library that fails, or is still missing after 15 s, is reported; if it arrives late, the field is still built. The stylesheet holds nothing.
+
 ## Cache Busting
 
 jsDelivr caches files. To force an update after pushing changes:
