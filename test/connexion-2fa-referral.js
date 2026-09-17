@@ -14,7 +14,7 @@ const SCRIPT = fs.readFileSync(path.join(ROOT, 'connexion-2fa/referral.js'), 'ut
 const ENDPOINT = 'https://hook.example.test/referral';
 const session = () => JSON.stringify({ data: { memberId: 'mem_parrain', email: 'pa****in@example.test' } });
 
-function page({ action = ENDPOINT, sessionValue = session(), loginEmail = 'parrain@example.test', invitationHidden = false, preview = null, comboRule = true } = {}) {
+function page({ action = ENDPOINT, sessionValue = session(), loginEmail = 'parrain@example.test', invitationHidden = false, preview = null, comboRule = true, gated = false } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -24,9 +24,10 @@ function page({ action = ENDPOINT, sessionValue = session(), loginEmail = 'parra
       .hidden { background-color: transparent; padding: 0; display: none; }
       .sign_window { display: flex; background-color: rgb(255, 255, 255); padding: 16px; }
       ${comboRule ? '.sign_window.hidden { display: none; }' : ''}
+      .sign_window.is-gated { display: none; }
     </style></head><body>
       <form id="code-form"><input name="code" value="123456"><input type="submit" value="Valider"></form>
-      <div id="referral-invitation" class="sign_window${invitationHidden ? ' hidden' : ''}"${previewAttr}>
+      <div id="referral-invitation" class="sign_window${invitationHidden ? ' hidden' : ''}${gated ? ' is-gated' : ''}"${gated ? ' style="display:flex"' : ''}${previewAttr}>
         <div class="w-form">
           <form id="wf-form-form-invite" name="form-invite" method="post" action="${action}">
             <input type="email" name="parrainage" id="parrainage" required>
@@ -242,6 +243,27 @@ test('#go-back-link ramène au formulaire vide, les autres liens ne sont pas tou
   const input = w.document.querySelector('#referral-invitation input[type="email"]');
   assert.strictEqual(input.value, '');
   assert.strictEqual(w.document.activeElement, input);
+});
+
+test('bloc révélé par Memberstack (display:flex en ligne sur un style masqué) : retour au formulaire après une invitation, double clic compris', async () => {
+  const { w } = page({ gated: true });
+  installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+  w.eval(SCRIPT);
+  assert.strictEqual(display(w, 'referral-invitation'), 'flex');
+  submitInvite(w, 'confrere@example.test');
+  await tick();
+  assertHidden(w, 'referral-invitation');
+  assertShown(w, 'referral-confirmation');
+  w.document.querySelector('#go-back-link').dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.strictEqual(display(w, 'referral-invitation'), 'flex', 'le style posé par Memberstack est rétabli');
+  assertHidden(w, 'referral-confirmation');
+  w.document.querySelector('#go-back-link').dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+  submitInvite(w, 'autre@example.test');
+  await tick();
+  assertHidden(w, 'referral-invitation');
+  assertShown(w, 'referral-confirmation');
+  w.document.querySelector('#go-back-link').dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.strictEqual(display(w, 'referral-invitation'), 'flex', 'rétabli aussi au second aller-retour');
 });
 
 test('aperçu : le formulaire masqué ne s\'affiche que pour les adresses listées dans data-referral-preview', async () => {

@@ -23,8 +23,9 @@
     if (!el) return;
     if (visible) {
       el.classList.remove(HIDDEN_CLASS);
-      el.style.display = "";
+      el.style.display = el.getAttribute("data-referral-display") || "";
     } else {
+      if (el.style.display !== "none") el.setAttribute("data-referral-display", el.style.display);
       el.classList.add(HIDDEN_CLASS);
       el.style.display = "none";
     }
