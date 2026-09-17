@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Formulaire d'invitation de la page 2FA : envoi, confirmation, erreur et retour au formulaire.
+ * Formulaire d'invitation de la page 2FA : envoi, confirmation, erreur, retour au formulaire et aperçu restreint.
  *
  * Usage : node test/connexion-2fa-referral.js
  */
@@ -12,19 +12,21 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'connexion-2fa/referral.js'), 'utf8');
 const ENDPOINT = 'https://hook.example.test/referral';
-const SESSION = JSON.stringify({ data: { memberId: 'mem_parrain', email: 'parrain@example.test' } });
+const session = (email = 'parrain@example.test') => JSON.stringify({ data: { memberId: 'mem_parrain', email } });
 
-function page({ action = ENDPOINT, session = SESSION } = {}) {
+function page({ action = ENDPOINT, sessionValue = session(), invitationHidden = false, preview = null, comboRule = true } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
+  const previewAttr = preview === null ? '' : ` data-referral-preview="${preview}"`;
   const dom = new JSDOM(
     `<!doctype html><html><head><style>
-      .sign_window { display: flex; }
-      .is-hidden { display: none; }
+      .hidden { background-color: transparent; padding: 0; display: none; }
+      .sign_window { display: flex; background-color: rgb(255, 255, 255); padding: 16px; }
+      ${comboRule ? '.sign_window.hidden { display: none; }' : ''}
     </style></head><body>
       <form id="code-form"><input name="code" value="123456"><input type="submit" value="Valider"></form>
-      <div id="referral-invitation" class="sign_window">
+      <div id="referral-invitation" class="sign_window${invitationHidden ? ' hidden' : ''}"${previewAttr}>
         <div class="w-form">
           <form id="wf-form-form-invite" name="form-invite" method="post" action="${action}">
             <input type="email" name="parrainage" id="parrainage" required>
@@ -34,7 +36,7 @@ function page({ action = ENDPOINT, session = SESSION } = {}) {
           <div class="w-form-fail" style="display:none">Erreur</div>
         </div>
       </div>
-      <div id="referral-confirmation" class="sign_window is-hidden">
+      <div id="referral-confirmation" class="sign_window hidden">
         <div>Nous avons envoyé une invitation à <span data-referral-email>email@confrere.fr</span></div>
         <a href="#" class="autre-lien">autre lien</a>
         <div><a id="go-back-link" class="text-style-link" href="#"><span>Inviter un autre confrère</span></a></div>
@@ -43,12 +45,23 @@ function page({ action = ENDPOINT, session = SESSION } = {}) {
     { url: 'https://www.ordotype.fr/membership/connexion-2fa', runScripts: 'outside-only', virtualConsole }
   );
   const w = dom.window;
-  if (session) w.sessionStorage.setItem('_ms-2fa-session', session);
+  if (sessionValue) w.sessionStorage.setItem('_ms-2fa-session', sessionValue);
   return { dom, w, erreurs };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 20));
-const display = (w, id) => w.getComputedStyle(w.document.getElementById(id)).display;
+const el = (w, id) => w.document.getElementById(id);
+const display = (w, id) => w.getComputedStyle(el(w, id)).display;
+
+function assertShown(w, id) {
+  assert.strictEqual(display(w, id), 'flex', `${id} devrait être affiché`);
+  assert.strictEqual(el(w, id).classList.contains('hidden'), false, `${id} garde la classe hidden`);
+  assert.strictEqual(w.getComputedStyle(el(w, id)).backgroundColor, 'rgb(255, 255, 255)', `${id} a perdu son fond`);
+}
+
+function assertHidden(w, id) {
+  assert.strictEqual(display(w, id), 'none', `${id} devrait être masqué`);
+}
 
 function installFetch(w, respond) {
   const calls = [];
@@ -60,7 +73,7 @@ function installFetch(w, respond) {
 }
 
 function submitInvite(w, email) {
-  const form = w.document.getElementById('wf-form-form-invite');
+  const form = el(w, 'wf-form-form-invite');
   form.querySelector('input[type="email"]').value = email;
   form.requestSubmit();
   return form;
@@ -87,14 +100,24 @@ test("envoi réussi : adresse transmise, confirmation affichée avec l'adresse",
     referrer_member_id: 'mem_parrain',
     referrer_email: 'parrain@example.test',
   });
-  assert.strictEqual(display(w, 'referral-invitation'), 'none');
-  assert.strictEqual(display(w, 'referral-confirmation'), 'flex');
+  assertHidden(w, 'referral-invitation');
+  assertShown(w, 'referral-confirmation');
   assert.strictEqual(w.document.querySelector('[data-referral-email]').textContent, 'confrere@example.test');
   assert.strictEqual(form.querySelector('input[type="email"]').value, '');
   assert.strictEqual(bouton.value, 'Inviter');
   assert.strictEqual(bouton.disabled, false);
   assert.strictEqual(w.document.querySelector('.w-form-fail').style.display, 'none');
   assert.deepStrictEqual(erreurs, []);
+});
+
+test('masquage fiable même si la classe hidden seule ne masque pas le bloc', async () => {
+  const { w } = page({ comboRule: false });
+  installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+  w.eval(SCRIPT);
+  submitInvite(w, 'confrere@example.test');
+  await tick();
+  assertHidden(w, 'referral-invitation');
+  assertShown(w, 'referral-confirmation');
 });
 
 test("le gestionnaire natif du formulaire ne voit pas l'invitation, les autres formulaires restent intacts", async () => {
@@ -107,7 +130,7 @@ test("le gestionnaire natif du formulaire ne voit pas l'invitation, les autres f
     e.preventDefault();
   });
   submitInvite(w, 'confrere@example.test');
-  w.document.getElementById('code-form').requestSubmit();
+  el(w, 'code-form').requestSubmit();
   await tick();
   assert.deepStrictEqual(vus, [{ id: 'code-form', prevented: false }]);
 });
@@ -119,8 +142,8 @@ test("réponse HTTP en erreur : message d'erreur, pas de confirmation", async ()
   const form = submitInvite(w, 'confrere@example.test');
   await tick();
   assert.strictEqual(w.document.querySelector('.w-form-fail').style.display, 'block');
-  assert.strictEqual(display(w, 'referral-invitation'), 'flex');
-  assert.strictEqual(display(w, 'referral-confirmation'), 'none');
+  assertShown(w, 'referral-invitation');
+  assertHidden(w, 'referral-confirmation');
   assert.strictEqual(form.querySelector('input[type="email"]').value, 'confrere@example.test');
   assert.strictEqual(form.querySelector('[type="submit"]').disabled, false);
 });
@@ -138,10 +161,10 @@ test("panne réseau : message d'erreur, et un nouvel essai réussi l'efface", as
   await tick();
   assert.strictEqual(calls.length, 2);
   assert.strictEqual(w.document.querySelector('.w-form-fail').style.display, 'none');
-  assert.strictEqual(display(w, 'referral-confirmation'), 'flex');
+  assertShown(w, 'referral-confirmation');
 });
 
-test('délai dépassé : la requête est annulée et le message d\'erreur apparaît', async () => {
+test("délai dépassé : la requête est annulée et le message d'erreur apparaît", async () => {
   const { w } = page();
   installFetch(w, (options) => new Promise((resolve, reject) => {
     options.signal.addEventListener('abort', () => reject(new Error('aborted')));
@@ -152,11 +175,11 @@ test('délai dépassé : la requête est annulée et le message d\'erreur appara
   submitInvite(w, 'confrere@example.test');
   await tick();
   assert.strictEqual(w.document.querySelector('.w-form-fail').style.display, 'block');
-  assert.strictEqual(display(w, 'referral-confirmation'), 'none');
+  assertHidden(w, 'referral-confirmation');
 });
 
 test("sans session 2FA ni adresse d'envoi valide : rien n'est envoyé", async () => {
-  for (const options of [{ session: null }, { action: '' }, { action: 'http://hook.example.test/referral' }]) {
+  for (const options of [{ sessionValue: null }, { action: '' }, { action: 'http://hook.example.test/referral' }]) {
     const { w } = page(options);
     const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
     w.eval(SCRIPT);
@@ -164,7 +187,7 @@ test("sans session 2FA ni adresse d'envoi valide : rien n'est envoyé", async ()
     await tick();
     assert.strictEqual(calls.length, 0, JSON.stringify(options));
     assert.strictEqual(w.document.querySelector('.w-form-fail').style.display, 'block', JSON.stringify(options));
-    assert.strictEqual(display(w, 'referral-confirmation'), 'none');
+    assertHidden(w, 'referral-confirmation');
   }
 });
 
@@ -174,29 +197,29 @@ test('double envoi pendant la requête : un seul appel', async () => {
   const calls = installFetch(w, () => new Promise((resolve) => { terminer = resolve; }));
   w.eval(SCRIPT);
   submitInvite(w, 'confrere@example.test');
-  const form = w.document.getElementById('wf-form-form-invite');
+  const form = el(w, 'wf-form-form-invite');
   form.querySelector('[type="submit"]').disabled = false;
   form.requestSubmit();
   await tick();
   assert.strictEqual(calls.length, 1);
   terminer({ ok: true, status: 200 });
   await tick();
-  assert.strictEqual(display(w, 'referral-confirmation'), 'flex');
+  assertShown(w, 'referral-confirmation');
 });
 
 test('formulaire remplacé par un clone après le chargement du script : toujours pris en charge', async () => {
   const { w } = page();
   const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
   w.eval(SCRIPT);
-  const ancien = w.document.getElementById('wf-form-form-invite');
+  const ancien = el(w, 'wf-form-form-invite');
   ancien.parentNode.replaceChild(ancien.cloneNode(true), ancien);
   submitInvite(w, 'confrere@example.test');
   await tick();
   assert.strictEqual(calls.length, 1);
-  assert.strictEqual(display(w, 'referral-confirmation'), 'flex');
+  assertShown(w, 'referral-confirmation');
 });
 
-test("#go-back-link ramène au formulaire vide, les autres liens ne sont pas touchés", async () => {
+test('#go-back-link ramène au formulaire vide, les autres liens ne sont pas touchés', async () => {
   const { w } = page();
   installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
   w.eval(SCRIPT);
@@ -207,17 +230,41 @@ test("#go-back-link ramène au formulaire vide, les autres liens ne sont pas tou
   const clicAutre = new w.MouseEvent('click', { bubbles: true, cancelable: true });
   autre.dispatchEvent(clicAutre);
   assert.strictEqual(clicAutre.defaultPrevented, false);
-  assert.strictEqual(display(w, 'referral-confirmation'), 'flex');
+  assertShown(w, 'referral-confirmation');
 
-  const retour = w.document.querySelector('#go-back-link span');
   const clic = new w.MouseEvent('click', { bubbles: true, cancelable: true });
-  retour.dispatchEvent(clic);
+  w.document.querySelector('#go-back-link span').dispatchEvent(clic);
   assert.strictEqual(clic.defaultPrevented, true);
-  assert.strictEqual(display(w, 'referral-confirmation'), 'none');
-  assert.strictEqual(display(w, 'referral-invitation'), 'flex');
+  assertHidden(w, 'referral-confirmation');
+  assertShown(w, 'referral-invitation');
   const input = w.document.querySelector('#referral-invitation input[type="email"]');
   assert.strictEqual(input.value, '');
   assert.strictEqual(w.document.activeElement, input);
+});
+
+test('aperçu : le formulaire masqué ne s\'affiche que pour les adresses listées dans data-referral-preview', async () => {
+  const essais = [
+    { preview: 'william@ordotype.fr', email: 'William@Ordotype.fr', visible: true },
+    { preview: ' autre@example.test , william@ordotype.fr ', email: 'william@ordotype.fr', visible: true },
+    { preview: '@ordotype.fr', email: 'louis@ordotype.fr', visible: true },
+    { preview: '@ordotype.fr', email: 'x@notordotype.fr', visible: false },
+    { preview: '@ordotype.fr', email: 'x@ordotype.fr.example.test', visible: false },
+    { preview: 'william@ordotype.fr', email: 'parrain@example.test', visible: false },
+    { preview: '', email: 'william@ordotype.fr', visible: false },
+    { preview: null, email: 'william@ordotype.fr', visible: false },
+  ];
+  for (const e of essais) {
+    const { w } = page({ invitationHidden: true, preview: e.preview, sessionValue: session(e.email) });
+    w.eval(SCRIPT);
+    await tick();
+    const label = JSON.stringify(e);
+    if (e.visible) assertShown(w, 'referral-invitation');
+    else assert.strictEqual(display(w, 'referral-invitation'), 'none', label);
+  }
+  const { w } = page({ invitationHidden: true, preview: 'william@ordotype.fr', sessionValue: null });
+  w.eval(SCRIPT);
+  await tick();
+  assertHidden(w, 'referral-invitation');
 });
 
 (async () => {

@@ -1,9 +1,9 @@
 // Invitation d'un confrère depuis la page 2FA : envoie l'adresse saisie puis affiche la confirmation.
 (function () {
   var SESSION_KEY = "_ms-2fa-session";
+  var HIDDEN_CLASS = "hidden";
   var TIMEOUT_MS = 10000;
   var pending = false;
-  var shownDisplay = "";
 
   function getReferrer() {
     try {
@@ -17,7 +17,31 @@
   }
 
   function setVisible(el, visible) {
-    if (el) el.style.display = visible ? shownDisplay || "block" : "none";
+    if (!el) return;
+    if (visible) {
+      el.classList.remove(HIDDEN_CLASS);
+      el.style.display = "";
+    } else {
+      el.classList.add(HIDDEN_CLASS);
+      el.style.display = "none";
+    }
+  }
+
+  function previewAllowed(invitation, referrer) {
+    var list = invitation.getAttribute("data-referral-preview");
+    if (!list || !referrer) return false;
+    var email = String(referrer.email).trim().toLowerCase();
+    return list.split(",").some(function (entry) {
+      var rule = entry.trim().toLowerCase();
+      if (!rule) return false;
+      if (rule.charAt(0) === "@") return email.length > rule.length && email.slice(-rule.length) === rule;
+      return email === rule;
+    });
+  }
+
+  function applyPreview() {
+    var invitation = document.getElementById("referral-invitation");
+    if (invitation && previewAllowed(invitation, getReferrer())) setVisible(invitation, true);
   }
 
   function showFail(form, visible) {
@@ -57,17 +81,12 @@
   }
 
   function showConfirmation(invitee) {
-    var invitation = document.getElementById("referral-invitation");
     var confirmation = document.getElementById("referral-confirmation");
-    if (invitation) {
-      var display = window.getComputedStyle(invitation).display;
-      if (display && display !== "none") shownDisplay = display;
-    }
     if (confirmation) {
       var slots = confirmation.querySelectorAll("[data-referral-email]");
       for (var i = 0; i < slots.length; i++) slots[i].textContent = invitee;
     }
-    setVisible(invitation, false);
+    setVisible(document.getElementById("referral-invitation"), false);
     setVisible(confirmation, true);
   }
 
@@ -116,4 +135,7 @@
     var input = document.querySelector('#referral-invitation input[type="email"]');
     if (input) input.focus();
   });
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", applyPreview);
+  else applyPreview();
 })();
