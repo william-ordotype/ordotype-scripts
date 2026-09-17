@@ -51,6 +51,66 @@
     }
   ];
 
+  // Members linked to a country page are redirected to /mes-informations/{slug}.
+  var COUNTRY_PAGE_BY_PLAN = {
+    'pln_praticien-belgique-gratuit--eif0fox': 'assistant-belgique',
+    'pln_module-m-decine-g-n-rale-mves--ayrm059e': 'mves-luxembourg'
+  };
+  var COUNTRY_PAGE_BY_STATUT = {
+    'Assistant': 'assistant-belgique',
+    'MEVS': 'mves-luxembourg',
+    'Médecin assistant': 'medecin-assistant-suisse'
+  };
+  var INTERNE_PLAN_IDS = [
+    'pln_compte-interne-sy4j0oft',
+    'pln_compte-interne-img-nl410oxc',
+    'pln_interne-m-decine-g-n-rale-adh-rent--4a4t0o95',
+    'pln_compte-interne-derni-re-ann-e-9f4o0oyy'
+  ];
+  var INTERNE_PAGE_BY_COUNTRY = {
+    'Belgium': 'assistant-belgique',
+    'Belgique': 'assistant-belgique',
+    'Luxembourg': 'mves-luxembourg',
+    'Switzerland': 'medecin-assistant-suisse',
+    'Suisse': 'medecin-assistant-suisse'
+  };
+  var LIVE_PLAN_STATUSES = ['ACTIVE', 'TRIALING', 'REQUIRES_PAYMENT'];
+  var MEMBER_TIMEOUT_MS = 3000;
+
+  function countryPageFor(member) {
+    if (!member) return null;
+    var fields = member.customFields || {};
+    var plans = (member.planConnections || []).filter(function(plan) {
+      return plan && LIVE_PLAN_STATUSES.indexOf(plan.status) !== -1;
+    });
+    for (var i = 0; i < plans.length; i++) {
+      if (COUNTRY_PAGE_BY_PLAN[plans[i].planId]) return COUNTRY_PAGE_BY_PLAN[plans[i].planId];
+    }
+    var statut = String(fields.statut || '').trim();
+    if (COUNTRY_PAGE_BY_STATUT[statut]) return COUNTRY_PAGE_BY_STATUT[statut];
+    var isInterne = plans.some(function(plan) { return INTERNE_PLAN_IDS.indexOf(plan.planId) !== -1; });
+    return (isInterne && INTERNE_PAGE_BY_COUNTRY[String(fields.country || '').trim()]) || null;
+  }
+
+  // Pages that are never redirected.
+  function redirectTarget(member, config) {
+    if (config.enableCheckout || config.setJustPaidTs || config.enablePartnershipCity) return null;
+    var slug = countryPageFor(member);
+    return slug ? '/mes-informations/' + slug + window.location.search + window.location.hash : null;
+  }
+
+  // Without an answer from the SDK, the page loads as usual.
+  function currentMember() {
+    var sdk = window.$memberstackDom;
+    if (!sdk || typeof sdk.getCurrentMember !== 'function') return Promise.resolve(null);
+    return Promise.race([
+      Promise.resolve()
+        .then(function() { return sdk.getCurrentMember(); })
+        .then(function(result) { return result && result.data ? result.data : null; }, function() { return null; }),
+      new Promise(function(resolve) { setTimeout(function() { resolve(null); }, MEMBER_TIMEOUT_MS); })
+    ]);
+  }
+
   function loadScript(url) {
     return new Promise(function(resolve, reject) {
       var script = document.createElement('script');
@@ -73,6 +133,18 @@
   }
 
   async function loadAll() {
+    var target = null;
+    try {
+      target = redirectTarget(await currentMember(), window.MES_INFOS_CONFIG || {});
+    } catch (err) {
+      target = null;
+    }
+    if (target) {
+      console.log('[OrdoMesInfos] Country page:', target);
+      window.location.replace(target);
+      return;
+    }
+
     console.log('[OrdoMesInfos] Loading...');
 
     try {
