@@ -36,6 +36,11 @@
     var BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
 
     var CSS = [
+        // Le gabarit garde une marge et un rembourrage autour du contenu, sur un corps
+        // de page blanc : un fond posé sur le seul écran s'arrête avant le pied de page
+        // et laisse une bande claire. Le fond va donc sur le conteneur de la page, dont
+        // la barre de navigation (fixée, translucide) et le pied de page gardent le leur.
+        '.ordo-parrainage-ground{background-color:var(--neutral-100,#f7f7fb);}',
         '.ordo-expired{display:flex;align-items:center;justify-content:center;',
         'min-height:60vh;padding:80px 24px;background:var(--neutral-100,#f7f7fb);}',
         '.ordo-expired-card{width:100%;max-width:560px;padding:48px 40px;text-align:center;',
@@ -167,9 +172,11 @@
         if (main) {
             while (main.firstChild) main.removeChild(main.firstChild);
             main.appendChild(screen);
+            connected.classList.add('ordo-parrainage-ground');
         } else {
             if (connected) connected.style.display = 'none';
             document.body.insertBefore(screen, document.body.firstChild);
+            document.body.classList.add('ordo-parrainage-ground');
         }
         if (notConnected) notConnected.style.display = 'none';
         window.scrollTo(0, 0);
