@@ -12,9 +12,9 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'connexion-2fa/referral.js'), 'utf8');
 const ENDPOINT = 'https://hook.example.test/referral';
-const session = (email = 'parrain@example.test') => JSON.stringify({ data: { memberId: 'mem_parrain', email } });
+const session = () => JSON.stringify({ data: { memberId: 'mem_parrain', email: 'pa****in@example.test' } });
 
-function page({ action = ENDPOINT, sessionValue = session(), invitationHidden = false, preview = null, comboRule = true } = {}) {
+function page({ action = ENDPOINT, sessionValue = session(), loginEmail = 'parrain@example.test', invitationHidden = false, preview = null, comboRule = true } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -46,6 +46,7 @@ function page({ action = ENDPOINT, sessionValue = session(), invitationHidden = 
   );
   const w = dom.window;
   if (sessionValue) w.sessionStorage.setItem('_ms-2fa-session', sessionValue);
+  if (loginEmail !== null) w.sessionStorage.setItem('ms_email', loginEmail);
   return { dom, w, erreurs };
 }
 
@@ -100,6 +101,7 @@ test("envoi réussi : adresse transmise, confirmation affichée avec l'adresse",
     referrer_member_id: 'mem_parrain',
     referrer_email: 'parrain@example.test',
   });
+  assert.ok(!calls[0].options.body.includes('*'), "l'e-mail masqué de la session ne part jamais");
   assertHidden(w, 'referral-invitation');
   assertShown(w, 'referral-confirmation');
   assert.strictEqual(w.document.querySelector('[data-referral-email]').textContent, 'confrere@example.test');
@@ -178,8 +180,8 @@ test("délai dépassé : la requête est annulée et le message d'erreur appara�
   assertHidden(w, 'referral-confirmation');
 });
 
-test("sans session 2FA ni adresse d'envoi valide : rien n'est envoyé", async () => {
-  for (const options of [{ sessionValue: null }, { action: '' }, { action: 'http://hook.example.test/referral' }]) {
+test("sans session 2FA, sans e-mail de connexion lisible (absent, masqué) ou sans adresse d'envoi valide : rien n'est envoyé", async () => {
+  for (const options of [{ sessionValue: null }, { loginEmail: null }, { loginEmail: 'pa****in@example.test' }, { loginEmail: 'unknown' }, { action: '' }, { action: 'http://hook.example.test/referral' }]) {
     const { w } = page(options);
     const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
     w.eval(SCRIPT);
@@ -254,14 +256,20 @@ test('aperçu : le formulaire masqué ne s\'affiche que pour les adresses listé
     { preview: null, email: 'william@ordotype.fr', visible: false },
   ];
   for (const e of essais) {
-    const { w } = page({ invitationHidden: true, preview: e.preview, sessionValue: session(e.email) });
+    const { w } = page({ invitationHidden: true, preview: e.preview, loginEmail: e.email });
     w.eval(SCRIPT);
     await tick();
     const label = JSON.stringify(e);
     if (e.visible) assertShown(w, 'referral-invitation');
     else assert.strictEqual(display(w, 'referral-invitation'), 'none', label);
   }
-  const { w } = page({ invitationHidden: true, preview: 'william@ordotype.fr', sessionValue: null });
+  for (const options of [{ sessionValue: null, loginEmail: 'william@ordotype.fr' }, { loginEmail: 'wi****am@ordotype.fr' }]) {
+    const { w } = page({ invitationHidden: true, preview: 'william@ordotype.fr, wi****am@ordotype.fr', ...options });
+    w.eval(SCRIPT);
+    await tick();
+    assertHidden(w, 'referral-invitation');
+  }
+  const { w } = page({ invitationHidden: true, preview: 'william@ordotype.fr', loginEmail: null });
   w.eval(SCRIPT);
   await tick();
   assertHidden(w, 'referral-invitation');

@@ -1,6 +1,8 @@
 // Invitation d'un confrère depuis la page 2FA : envoie l'adresse saisie puis affiche la confirmation.
 (function () {
   var SESSION_KEY = "_ms-2fa-session";
+  var EMAIL_KEY = "ms_email";
+  var EMAIL_PATTERN = /^[^\s@*]+@[^\s@*]+\.[^\s@*]+$/;
   var HIDDEN_CLASS = "hidden";
   var TIMEOUT_MS = 10000;
   var pending = false;
@@ -8,9 +10,10 @@
   function getReferrer() {
     try {
       var session = JSON.parse(sessionStorage.getItem(SESSION_KEY));
-      var data = session && session.data;
-      if (data && data.memberId && data.email) {
-        return { memberId: data.memberId, email: data.email };
+      var memberId = session && session.data && session.data.memberId;
+      var email = String(sessionStorage.getItem(EMAIL_KEY) || "").trim();
+      if (memberId && EMAIL_PATTERN.test(email)) {
+        return { memberId: memberId, email: email };
       }
     } catch (e) {}
     return null;
