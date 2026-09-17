@@ -35,9 +35,9 @@ function page({ action = ENDPOINT, session = SESSION } = {}) {
         </div>
       </div>
       <div id="referral-confirmation" class="sign_window is-hidden">
-        <div>Nous avons envoyé une invitation à<br><span data-referral-email>email@confrere.fr</span></div>
-        <a href="mailto:contact@example.test">contact</a>
-        <a href="#">Inviter un autre confrère</a>
+        <div>Nous avons envoyé une invitation à <span data-referral-email>email@confrere.fr</span></div>
+        <a href="#" class="autre-lien">autre lien</a>
+        <div><a id="go-back-link" class="text-style-link" href="#"><span>Inviter un autre confrère</span></a></div>
       </div>
     </body></html>`,
     { url: 'https://www.ordotype.fr/membership/connexion-2fa', runScripts: 'outside-only', virtualConsole }
@@ -196,20 +196,20 @@ test('formulaire remplacé par un clone après le chargement du script : toujour
   assert.strictEqual(display(w, 'referral-confirmation'), 'flex');
 });
 
-test("« Inviter un autre confrère » ramène au formulaire vide, les autres liens ne sont pas touchés", async () => {
+test("#go-back-link ramène au formulaire vide, les autres liens ne sont pas touchés", async () => {
   const { w } = page();
   installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
   w.eval(SCRIPT);
   submitInvite(w, 'confrere@example.test');
   await tick();
 
-  const mailto = w.document.querySelector('#referral-confirmation a[href^="mailto:"]');
-  const clicMailto = new w.MouseEvent('click', { bubbles: true, cancelable: true });
-  mailto.addEventListener('click', (e) => e.preventDefault());
-  mailto.dispatchEvent(clicMailto);
+  const autre = w.document.querySelector('#referral-confirmation .autre-lien');
+  const clicAutre = new w.MouseEvent('click', { bubbles: true, cancelable: true });
+  autre.dispatchEvent(clicAutre);
+  assert.strictEqual(clicAutre.defaultPrevented, false);
   assert.strictEqual(display(w, 'referral-confirmation'), 'flex');
 
-  const retour = w.document.querySelector('#referral-confirmation a[href="#"]');
+  const retour = w.document.querySelector('#go-back-link span');
   const clic = new w.MouseEvent('click', { bubbles: true, cancelable: true });
   retour.dispatchEvent(clic);
   assert.strictEqual(clic.defaultPrevented, true);

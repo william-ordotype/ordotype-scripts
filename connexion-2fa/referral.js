@@ -108,7 +108,7 @@
   }, true);
 
   document.addEventListener("click", function (event) {
-    var link = event.target && event.target.closest && event.target.closest('#referral-confirmation a[href="#"]');
+    var link = event.target && event.target.closest && event.target.closest("#go-back-link");
     if (!link) return;
     event.preventDefault();
     setVisible(document.getElementById("referral-confirmation"), false);
