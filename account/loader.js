@@ -11,6 +11,8 @@
 (function() {
   'use strict';
 
+  var LOADER_NAME = 'OrdoAccount';
+
   // Auto-detect loader's own commit/ref so sub-scripts load from the same
   // pinned version (sidesteps stale jsDelivr @main caches).
   function detectVersion() {
@@ -192,36 +194,76 @@
     'phone-input.js'
   ];
 
-  const INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
-  const INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  // --- Loader queue: identical in every loader (test/loader-resilience.js) ---
+  var INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
+  var INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  var PHONE_LIB_TIMEOUT_MS = 15000;
 
-  // script.async = false → browser fetches in parallel but executes in
-  // insertion order. Preserves the dependency chain (memberstack-utils →
-  // core → consumers) without serializing downloads.
-  function loadScript(url) {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
+  function logFailure(message) {
+    console.error('[' + LOADER_NAME + ']', message);
+  }
+
+  function reportFailure(message) {
+    var reporter = window.OrdoErrorReporter;
+    if (reporter && typeof reporter.reportNetwork === 'function') {
+      reporter.reportNetwork(LOADER_NAME, new Error(message));
+    }
+  }
+
+  function addScript(url, ordered) {
+    return new Promise(function(resolve, reject) {
+      var script = document.createElement('script');
       script.crossOrigin = 'anonymous';
       script.src = url;
-      script.async = false;
+      script.async = !ordered;
       script.onload = resolve;
-      script.onerror = () => reject(new Error(`Failed to load: ${url}`));
+      script.onerror = function() { reject(new Error('Failed to load: ' + url)); };
       document.head.appendChild(script);
     });
   }
 
-  function loadCSS(url) {
-    return new Promise((resolve) => {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = url;
-      link.onload = resolve;
-      document.head.appendChild(link);
+  // Fetched in parallel, run in order; a script that fails is skipped. Never rejects.
+  function runInOrder(urls) {
+    var failures = [];
+    return Promise.all(urls.map(function(url) {
+      return addScript(url, true).catch(function(err) {
+        logFailure(err.message);
+        failures.push(err.message);
+      });
+    })).then(function() {
+      failures.forEach(reportFailure);
     });
   }
 
-  async function loadAll() {
-    console.log('[OrdoAccount] Loading...');
+  // phone-input.js runs once `after` has settled and the library has loaded.
+  function loadPhoneInput(phoneInputUrl, after) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = INTL_TEL_INPUT_CSS;
+    link.onerror = function() { console.warn('[' + LOADER_NAME + '] Failed to load: ' + INTL_TEL_INPUT_CSS); };
+    document.head.appendChild(link);
+
+    var lib = addScript(INTL_TEL_INPUT_JS, false);
+    var timer = setTimeout(function() {
+      logFailure('Timed out: ' + INTL_TEL_INPUT_JS);
+      after.then(function() { reportFailure('Timed out: ' + INTL_TEL_INPUT_JS); });
+    }, PHONE_LIB_TIMEOUT_MS);
+    lib.then(function() { clearTimeout(timer); }, function() { clearTimeout(timer); });
+
+    return after.then(function() { return lib; }).then(function() {
+      return addScript(phoneInputUrl, false).catch(function(err) {
+        logFailure(err.message);
+        reportFailure(err.message);
+      });
+    }, function(err) {
+      logFailure(err.message);
+      reportFailure(err.message);
+    });
+  }
+  // --- End of loader queue ---
+
+  function loadAll() {
+    console.log('[' + LOADER_NAME + '] Loading...');
 
     // One evaluation per file (decide() logs and publishes its decision).
     const loaded = [];
@@ -236,22 +278,16 @@
     if (skippedHost.length) console.log('[OrdoAccount] Skipped on ' + HOST + ':', skippedHost.join(', '));
     if (skippedRollout.length) console.log('[OrdoAccount] Not in rollout:', skippedRollout.join(', '));
 
-    const orderedJS = [
-      `${SHARED_BASE}/memberstack-utils.js`,
-      `${SHARED_BASE}/error-reporter.js`,
-      INTL_TEL_INPUT_JS,
-      ...loaded.map(f => `${BASE}/${f}`)
-    ];
+    var ordered = [SHARED_BASE + '/memberstack-utils.js', SHARED_BASE + '/error-reporter.js'];
+    var phoneInputUrl = null;
+    loaded.forEach(function(file) {
+      if (file === 'phone-input.js') phoneInputUrl = BASE + '/' + file;
+      else ordered.push(BASE + '/' + file);
+    });
 
-    try {
-      await Promise.all([
-        loadCSS(INTL_TEL_INPUT_CSS),
-        ...orderedJS.map(loadScript)
-      ]);
-      console.log('[OrdoAccount] All scripts loaded');
-    } catch (err) {
-      console.error('[OrdoAccount] Load error:', err);
-    }
+    var done = runInOrder(ordered);
+    if (phoneInputUrl) loadPhoneInput(phoneInputUrl, done);
+    done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
   }
 
   loadAll();

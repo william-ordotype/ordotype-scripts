@@ -528,10 +528,13 @@ node test/belgique-tracking.js         # jsdom sur la page captée
 node test/error-reporter-network.js    # une requête morte avec sa page n'est pas signalée
 node test/invoice-emails-retry.js      # rejeu d'une lecture sans réponse
 node test/phone-input-utils.js         # le champ tél. survit à des aides absentes
+node test/loader-resilience.js         # un chargeur survit à une dépendance tierce absente
 ```
 
-⚠️ Aucun workflow ne lance `test/` : `parse-floor.yml` ne vérifie que la
-capacité à être analysé. Ces fichiers ne tournent que si on les lance.
+✅ `tests.yml` lance **tout** `test/` à chaque push sur
+`main` et à chaque pull request, en plus de `parse-floor.yml` qui ne vérifie
+que la capacité à être analysé. Un test ajouté à `test/` tourne donc en CI et
+peut faire rougir la build : ça n'est plus décoratif.
 
 `smoke-tracking.js` runs each emitter twice, with and without
 `window.OrdoErrorReporter`, and asserts an event actually lands. `node --check`
@@ -1926,6 +1929,14 @@ Crisp chat integration with Memberstack data and custom button handler.
 
 ---
 
+## Loaders: order and failures
+
+`homepage/loader.js`, `account/loader.js`, `mes-informations/loader.js` and `mes-informations-cms/loader.js` share one queue block, kept identical (checked by `test/loader-resilience.js`).
+
+- Repository scripts are inserted at once with `async = false`: fetched in parallel, run in insertion order. A script that fails to load is skipped and reported once the queue has run, so `error-reporter.js` is there to send it. A script that never answers still holds the ones after it.
+- Crisp loads on its own and never holds the queue.
+- intl-tel-input (cdnjs) loads on its own. `phone-input.js` is added once the queue has run and the library has loaded. A library that fails, or is still missing after 15 s, is reported; if it arrives late, the field is still built. The stylesheet holds nothing.
+
 ## Cache Busting
 
 jsDelivr caches files. To force an update after pushing changes:
@@ -1983,6 +1994,7 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/ses
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/phone-input.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/phone-input.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations-cms/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/delete-account.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/countdown.js

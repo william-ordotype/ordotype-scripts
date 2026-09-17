@@ -15,6 +15,8 @@
 (function() {
   'use strict';
 
+  var LOADER_NAME = 'OrdoMesInfos';
+
   var DEFAULT_ROOT = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
 
   function getRoot() {
@@ -27,7 +29,7 @@
   var BASE = ROOT + '/mes-informations';
   var SHARED_BASE = ROOT + '/shared';
 
-  // Core scripts loaded on every page
+  // Core scripts, in order
   var scripts = [
     'styles.js',
     'core.js',
@@ -35,77 +37,90 @@
     'memberstack-sync.js',
     'statut-selectors.js',
     'required-if-visible.js',
-    'phone-input.js',
     'ga4-events.js'
   ];
 
-  // External dependencies for phone input
-  var dependencies = [
-    {
-      type: 'css',
-      url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css'
-    },
-    {
-      type: 'js',
-      url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js'
-    }
-  ];
+  // --- Loader queue: identical in every loader (test/loader-resilience.js) ---
+  var INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
+  var INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  var PHONE_LIB_TIMEOUT_MS = 15000;
 
-  function loadScript(url) {
+  function logFailure(message) {
+    console.error('[' + LOADER_NAME + ']', message);
+  }
+
+  function reportFailure(message) {
+    var reporter = window.OrdoErrorReporter;
+    if (reporter && typeof reporter.reportNetwork === 'function') {
+      reporter.reportNetwork(LOADER_NAME, new Error(message));
+    }
+  }
+
+  function addScript(url, ordered) {
     return new Promise(function(resolve, reject) {
       var script = document.createElement('script');
       script.crossOrigin = 'anonymous';
       script.src = url;
+      script.async = !ordered;
       script.onload = resolve;
       script.onerror = function() { reject(new Error('Failed to load: ' + url)); };
       document.head.appendChild(script);
     });
   }
 
-  function loadCSS(url) {
-    return new Promise(function(resolve) {
-      var link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = url;
-      link.onload = resolve;
-      document.head.appendChild(link);
+  // Fetched in parallel, run in order; a script that fails is skipped. Never rejects.
+  function runInOrder(urls) {
+    var failures = [];
+    return Promise.all(urls.map(function(url) {
+      return addScript(url, true).catch(function(err) {
+        logFailure(err.message);
+        failures.push(err.message);
+      });
+    })).then(function() {
+      failures.forEach(reportFailure);
     });
   }
 
-  async function loadAll() {
-    console.log('[OrdoMesInfos] Loading...');
+  // phone-input.js runs once `after` has settled and the library has loaded.
+  function loadPhoneInput(phoneInputUrl, after) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = INTL_TEL_INPUT_CSS;
+    link.onerror = function() { console.warn('[' + LOADER_NAME + '] Failed to load: ' + INTL_TEL_INPUT_CSS); };
+    document.head.appendChild(link);
 
-    try {
-      // Load shared utilities first
-      await loadScript(SHARED_BASE + '/memberstack-utils.js');
-      await loadScript(SHARED_BASE + '/error-reporter.js');
-      await loadScript(SHARED_BASE + '/crisp-loader.js');
+    var lib = addScript(INTL_TEL_INPUT_JS, false);
+    var timer = setTimeout(function() {
+      logFailure('Timed out: ' + INTL_TEL_INPUT_JS);
+      after.then(function() { reportFailure('Timed out: ' + INTL_TEL_INPUT_JS); });
+    }, PHONE_LIB_TIMEOUT_MS);
+    lib.then(function() { clearTimeout(timer); }, function() { clearTimeout(timer); });
 
-      // Load external dependencies (CSS + intl-tel-input)
-      await Promise.all(dependencies.map(function(dep) {
-        return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);
-      }));
+    return after.then(function() { return lib; }).then(function() {
+      return addScript(phoneInputUrl, false).catch(function(err) {
+        logFailure(err.message);
+        reportFailure(err.message);
+      });
+    }, function(err) {
+      logFailure(err.message);
+      reportFailure(err.message);
+    });
+  }
+  // --- End of loader queue ---
 
-      // Load core scripts sequentially
-      for (var i = 0; i < scripts.length; i++) {
-        await loadScript(BASE + '/' + scripts[i]);
-      }
+  function loadAll() {
+    console.log('[' + LOADER_NAME + '] Loading...');
+    var config = window.MES_INFOS_CONFIG || {};
 
-      // Conditionally load page-specific scripts
-      var config = window.MES_INFOS_CONFIG || {};
+    var ordered = [SHARED_BASE + '/memberstack-utils.js', SHARED_BASE + '/error-reporter.js']
+      .concat(scripts.map(function(file) { return BASE + '/' + file; }));
+    if (config.enableCheckout) ordered.push(BASE + '/checkout.js');
+    if (config.enablePartnershipCity) ordered.push(BASE + '/partnership-city.js');
 
-      if (config.enableCheckout) {
-        await loadScript(BASE + '/checkout.js');
-      }
-
-      if (config.enablePartnershipCity) {
-        await loadScript(BASE + '/partnership-city.js');
-      }
-
-      console.log('[OrdoMesInfos] All scripts loaded');
-    } catch (err) {
-      console.error('[OrdoMesInfos] Load error:', err);
-    }
+    addScript(SHARED_BASE + '/crisp-loader.js', false).catch(function(err) { logFailure(err.message); });
+    var done = runInOrder(ordered);
+    loadPhoneInput(BASE + '/phone-input.js', done);
+    done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
   }
 
   loadAll();

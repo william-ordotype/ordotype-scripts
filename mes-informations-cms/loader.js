@@ -11,21 +11,12 @@
 (function() {
   'use strict';
 
-  var BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations-cms';
+  var LOADER_NAME = 'OrdoMesInfosCMS';
+  var ROOT = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+  var BASE = ROOT + '/mes-informations-cms';
   var CRISP_URL = 'https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js';
 
-  // External dependencies for phone input.
-  //
-  // 🔴 `utils.js` n'est PAS ici. Ce chargeur était le seul à le précharger,
-  // et il annulait le différé de `phone-input.js` : le fichier étant déjà là,
-  // `loadUtils()` court-circuitait, mais les 247 Ko avaient été payés. C'est
-  // au script du champ de décider quand les chercher, à un endroit et un seul.
-  var phoneDeps = [
-    { type: 'css', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css' },
-    { type: 'js', url: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js' }
-  ];
-
-  // Scripts to load (in order)
+  // Scripts to run, in order (phone-input.js fetches utils.js itself)
   var scripts = [
     'statut-options.js',
     'statut-selectors.js',
@@ -35,51 +26,83 @@
     'location-store.js'
   ];
 
-  function loadScript(url) {
+  // --- Loader queue: identical in every loader (test/loader-resilience.js) ---
+  var INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
+  var INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  var PHONE_LIB_TIMEOUT_MS = 15000;
+
+  function logFailure(message) {
+    console.error('[' + LOADER_NAME + ']', message);
+  }
+
+  function reportFailure(message) {
+    var reporter = window.OrdoErrorReporter;
+    if (reporter && typeof reporter.reportNetwork === 'function') {
+      reporter.reportNetwork(LOADER_NAME, new Error(message));
+    }
+  }
+
+  function addScript(url, ordered) {
     return new Promise(function(resolve, reject) {
       var script = document.createElement('script');
       script.crossOrigin = 'anonymous';
       script.src = url;
+      script.async = !ordered;
       script.onload = resolve;
       script.onerror = function() { reject(new Error('Failed to load: ' + url)); };
       document.head.appendChild(script);
     });
   }
 
-  function loadCSS(url) {
-    return new Promise(function(resolve) {
-      var link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = url;
-      link.onload = resolve;
-      document.head.appendChild(link);
+  // Fetched in parallel, run in order; a script that fails is skipped. Never rejects.
+  function runInOrder(urls) {
+    var failures = [];
+    return Promise.all(urls.map(function(url) {
+      return addScript(url, true).catch(function(err) {
+        logFailure(err.message);
+        failures.push(err.message);
+      });
+    })).then(function() {
+      failures.forEach(reportFailure);
     });
   }
 
-  async function loadAll() {
-    console.log('[OrdoMesInfosCMS] Loading...');
+  // phone-input.js runs once `after` has settled and the library has loaded.
+  function loadPhoneInput(phoneInputUrl, after) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = INTL_TEL_INPUT_CSS;
+    link.onerror = function() { console.warn('[' + LOADER_NAME + '] Failed to load: ' + INTL_TEL_INPUT_CSS); };
+    document.head.appendChild(link);
 
-    try {
-      // Load phone input dependencies
-      await Promise.all(phoneDeps.map(function(dep) {
-        return dep.type === 'css' ? loadCSS(dep.url) : loadScript(dep.url);
-      }));
+    var lib = addScript(INTL_TEL_INPUT_JS, false);
+    var timer = setTimeout(function() {
+      logFailure('Timed out: ' + INTL_TEL_INPUT_JS);
+      after.then(function() { reportFailure('Timed out: ' + INTL_TEL_INPUT_JS); });
+    }, PHONE_LIB_TIMEOUT_MS);
+    lib.then(function() { clearTimeout(timer); }, function() { clearTimeout(timer); });
 
-      // Load phone-input script from mes-informations (reuse existing)
-      await loadScript('https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/phone-input.js');
+    return after.then(function() { return lib; }).then(function() {
+      return addScript(phoneInputUrl, false).catch(function(err) {
+        logFailure(err.message);
+        reportFailure(err.message);
+      });
+    }, function(err) {
+      logFailure(err.message);
+      reportFailure(err.message);
+    });
+  }
+  // --- End of loader queue ---
 
-      // Load Crisp
-      await loadScript(CRISP_URL);
+  function loadAll() {
+    console.log('[' + LOADER_NAME + '] Loading...');
+    var ordered = [ROOT + '/shared/error-reporter.js']
+      .concat(scripts.map(function(file) { return BASE + '/' + file; }));
 
-      // Load core scripts sequentially
-      for (var i = 0; i < scripts.length; i++) {
-        await loadScript(BASE + '/' + scripts[i]);
-      }
-
-      console.log('[OrdoMesInfosCMS] All scripts loaded');
-    } catch (err) {
-      console.error('[OrdoMesInfosCMS] Load error:', err);
-    }
+    addScript(CRISP_URL, false).catch(function(err) { logFailure(err.message); });
+    var done = runInOrder(ordered);
+    loadPhoneInput(ROOT + '/mes-informations/phone-input.js', done);
+    done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
   }
 
   loadAll();
