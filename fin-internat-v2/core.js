@@ -1,19 +1,42 @@
 /**
  * Ordotype Fin Internat V2 - Core
- * Stores URL for tracking and sets grace period to prevent redirect loops
+ * Stores URL for tracking, marks the page as seen, sets the grace period on action.
  */
 (function() {
     'use strict';
 
     const PREFIX = '[FinInternatV2Core]';
+    // Reduce offer, and both upgrade buttons (Memberstack native and Stripe customer).
+    const ACTION_IDS = ['signup-rempla-from-decouverte', 'signup-rempla-stripe-customer'];
+    const ACTION_ATTRIBUTES = ['data-ms-plan:add', 'data-ms-price:add'];
+
+    function isAction(el) {
+        for (; el && el.nodeType === 1; el = el.parentElement) {
+            if (ACTION_IDS.indexOf(el.id) !== -1) return true;
+            if (ACTION_ATTRIBUTES.some(function(name) { return el.hasAttribute(name); })) return true;
+        }
+        return false;
+    }
+
+    function store(key, value) {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+            console.warn(PREFIX, 'localStorage not available:', e.message);
+        }
+    }
 
     // Store current URL for tracking
-    localStorage.setItem('locat', location.href);
+    store('locat', location.href);
 
-    // Set grace period to prevent payment redirect loops
-    // This prevents member-redirects.js from redirecting back during checkout flow
-    localStorage.setItem('justPaidTs', Date.now());
-    setTimeout(() => localStorage.removeItem('justPaidTs'), 86400000); // 24h — aligned with GRACE_PERIOD in member-redirects.js
+    // Page seen: member-redirects.js sends here at most once every 24 h.
+    store('finInternatSeenTs', Date.now());
 
-    console.log(PREFIX, 'Core initialized, grace period set');
+    // Grace period only once the member acts, so the plan change has time to sync
+    // before member-redirects.js and fin-internat-paywall.js read it.
+    document.addEventListener('click', function(event) {
+        if (isAction(event.target)) store('justPaidTs', Date.now());
+    }, true);
+
+    console.log(PREFIX, 'Core initialized');
 })();

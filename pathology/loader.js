@@ -78,6 +78,7 @@
   // paywall state BEFORE iframe-handler's init reads it). Runs after
   // pause-paywall so the SAU variant wins if both ever apply.
   const SAU_PAYWALL = `${BASE}/sau-paywall.js`;
+  const FIN_INTERNAT_PAYWALL = `${BASE}/fin-internat-paywall.js`;
   const TIER2_VANILLA = [
     `${BASE}/tabs-manager.js`,
     `${BASE}/tooltips.js`,
@@ -222,6 +223,7 @@
       await loadScript(MEMBERSTACK_UTILS);
       await loadScript(PAUSE_PAYWALL);
       await loadScript(SAU_PAYWALL);
+      await loadScript(FIN_INTERNAT_PAYWALL);
     } catch (err) {
       console.error('[OrdoPathology] Paywall pre-load failed:', err);
       if (window.OrdoErrorReporter) {

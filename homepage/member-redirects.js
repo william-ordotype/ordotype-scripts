@@ -233,6 +233,13 @@
             ACCOUNT_PLAN_IDS.indexOf(plan.planId) !== -1 &&
             plan.status === 'REQUIRES_PAYMENT'
         );
+
+        // End of internship: redirect to the offer page at most once every 24 h.
+        const endOfInternship = typeof ms.getEndOfInternship === 'function'
+            ? ms.getEndOfInternship()
+            : { ended: false, hasPaidModule: false };
+        const finInternatSeenTs = parseInt(localStorage.getItem('finInternatSeenTs') || '0', 10);
+        const finInternatSeenRecently = !!finInternatSeenTs && (Date.now() - finInternatSeenTs) < GRACE_PERIOD;
         const isNotRemplacant = ms.customFields['mode-dexercice'] !== 'Remplacant';
         const isRemplacant = ms.customFields['mode-dexercice'] === 'Remplacant';
 
@@ -308,22 +315,15 @@
                 $('#banner-to-hide-' + (isInternatTerminated ? 'essai-expire-rempla' : 'canceled')).css({ display: 'flex' });
             }
         } else if (
-            ms.customFields["semestre"] === 'Internat terminé' && hasAllowedPlanId &&
+            endOfInternship.ended &&
             date_since_signup !== null && date_since_signup > SIGNUP_DAYS &&
-            !planConnections.some(plan =>
-                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-                plan.status !== 'CANCELED'
-            )
+            !endOfInternship.hasPaidModule && !finInternatSeenRecently
         ) {
             window.location.replace("/membership/fin-internat");
             return;
         } else if (
-            ms.customFields["semestre"] === 'Internat terminé' && hasAllowedPlanId &&
-            date_since_signup !== null && date_since_signup < SIGNUP_DAYS &&
-            !planConnections.some(plan =>
-                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-                plan.status !== 'CANCELED'
-            )
+            endOfInternship.ended &&
+            date_since_signup !== null && date_since_signup < SIGNUP_DAYS
         ) {
             $('#banner-to-hide-signup-internat-termine').css({ display: 'flex' });
         } else if (
