@@ -233,6 +233,8 @@
             ACCOUNT_PLAN_IDS.indexOf(plan.planId) !== -1 &&
             plan.status === 'REQUIRES_PAYMENT'
         );
+
+        var endOfInternship = ms.getEndOfInternship();
         const isNotRemplacant = ms.customFields['mode-dexercice'] !== 'Remplacant';
         const isRemplacant = ms.customFields['mode-dexercice'] === 'Remplacant';
 
@@ -307,24 +309,11 @@
             } else if (planConnections.length > 1) {
                 $('#banner-to-hide-' + (isInternatTerminated ? 'essai-expire-rempla' : 'canceled')).css({ display: 'flex' });
             }
-        } else if (
-            ms.customFields["semestre"] === 'Internat terminé' && hasAllowedPlanId &&
-            date_since_signup !== null && date_since_signup > SIGNUP_DAYS &&
-            !planConnections.some(plan =>
-                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-                plan.status !== 'CANCELED'
-            )
-        ) {
+        } else if (endOfInternship.redirect) {
+            ms.markFinInternatSeen();
             window.location.replace("/membership/fin-internat");
             return;
-        } else if (
-            ms.customFields["semestre"] === 'Internat terminé' && hasAllowedPlanId &&
-            date_since_signup !== null && date_since_signup < SIGNUP_DAYS &&
-            !planConnections.some(plan =>
-                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-                plan.status !== 'CANCELED'
-            )
-        ) {
+        } else if (endOfInternship.banner) {
             $('#banner-to-hide-signup-internat-termine').css({ display: 'flex' });
         } else if (
             planConnections.some(isSubscriptionActiveOrTrialing) &&

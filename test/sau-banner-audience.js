@@ -77,6 +77,8 @@ function jouer({ statut, specialite, semestre, heure, snoozeMs }) {
         isFrenchTerritory() { return true; },
         hasPlan() { return false; },
         getRequiredSemester() { return 6; },
+        getEndOfInternship() { return { ended: false, hasPaidModule: false, lockContent: false, redirect: false, banner: false }; },
+        markFinInternatSeen() {},
     };
 
     const win = {

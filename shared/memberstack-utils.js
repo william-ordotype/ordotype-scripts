@@ -63,6 +63,67 @@
         'pln_sau-interne-811d0aht' // SAU partnership interne (free) — same intern lifecycle as above
     ];
 
+    // --- End of internship ---
+    // Semestre « Internat terminé » + one of these plans = end of internship.
+    var END_OF_INTERNSHIP_PLAN_IDS = ALLOWED_INTERN_PLAN_IDS.concat([
+        'pln_praticien-belgique-gratuit--eif0fox', // Assistant (Belgique)
+        'pln_module-m-decine-g-n-rale-mves--ayrm059e', // MVES (Luxembourg)
+        'pln_compte-interne-aimgl-qb4h0oj3',
+        'pln_compte-externe-fr--bkp50om6'
+    ]);
+
+    // Plans that keep access after the internship.
+    var KEEPS_ACCESS_PLAN_IDS = [
+        'pln_compte-praticien-offre-speciale-500-premiers--893z0o60',
+        'pln_praticien-belgique-2p70qka',
+        'pln_compte-ide-1gq10bkx',
+        'pln_ordotype-plus-rhumatologie-jzz0k85',
+        'pln_modules-m-decine-g-n-rale-soins-palliatifs-et-rhumatologie-rq7q0trl',
+        'pln_modules-mg-rhumato-et-soins-palliatifs-rc4b0dyw',
+        'pln_m-decin-exer-ant-en-mauritanie-j5430ol3',
+        'pln_module-m-decine-g-n-rale-lu--5yfe0f08',
+        'pln_module-m-decine-g-n-rale-1-an-cm4c0b2p',
+        'pln_modume-m-decine-g-n-rale-9ze80shk',
+        'pln_compte-praticien-ov4d0oln',
+        'pln_compte-m-decin-hu490oka',
+        'pln_ordotype-plus-module-soins-palliatifs-qph60vfs',
+        'pln_praticien-marocain-in470oks',
+        'pln_compte-tablissement-vl2600lp',
+        'pln_padhue-mo12g06h7',
+        'pln_padhue-alumni-kz1950z3y',
+        'pln_sau-praticien-ln1x0ovn',
+        'pln_compte-ouvert-u94k0of5',
+        'pln_eipa-b22kq009o',
+        'pln_compte-test-xd1tx0kmr',
+        'pln_rhumatologues-3-mois-offerts-1yju0rb0',
+        'pln_compte-relecteur-vk17t0jyq',
+        'pln_compte-externe-534n0omq',
+        'pln_compte-m-decin-tranger-n24p0or0',
+        'pln_ramsay-u64v0onh',
+        'pln_centre-m-dical-europe-fq4m0on9',
+        'pln_compte-1-an-nt4l0o48',
+        'pln_abonnement-1-an-2-mois-gratuits-g04f0oue',
+        'pln_compte-samg-ra4q0oif',
+        'pln_cl2rb9es700100uhyg3v12k4i',
+        'pln_essai-gratuit-5e4s0o0r',
+        'pln_sepa-temporary-lj4w0oky'
+    ];
+
+    // Paid modules: no redirection to the end-of-internship page.
+    var PAID_MODULE_PLAN_IDS = [
+        'pln_module-rhumatologie-kei40zul',
+        'pln_soins-palliatifs-paid-plan-6tc60az6',
+        'pln_udr-paid-plan-dt380ts4'
+    ];
+
+    var END_OF_INTERNSHIP_SIGNUP_DAYS = 15;
+    var FIN_INTERNAT_SEEN_KEY = 'finInternatSeenTs';
+    var FIN_INTERNAT_SEEN_PERIOD_MS = 24 * 60 * 60 * 1000;
+    var FIN_INTERNAT_ACTION_KEY = 'finInternatActionTs';
+    var FIN_INTERNAT_ACTION_PERIOD_MS = 60 * 60 * 1000;
+    // Memberstack plan buttons, on top of the ids each page passes.
+    var FIN_INTERNAT_ACTION_ATTRIBUTES = ['data-ms-plan:add', 'data-ms-price:add'];
+
     // Durée du cursus en semestres, par spécialité.
     //
     // ⚠️ Cette table n'a aujourd'hui AUCUN consommateur vivant : ses deux usages,
@@ -181,6 +242,71 @@
     function isActive(planId) {
         var plan = getPlan(planId);
         return plan ? (plan.status === 'ACTIVE' || plan.status === 'TRIALING') : false;
+    }
+
+    function hasLivePlanIn(planIds) {
+        return planConnections.some(function(plan) {
+            return plan && plan.status !== 'CANCELED' && planIds.indexOf(plan.planId) !== -1;
+        });
+    }
+
+    function isRecent(key, periodMs) {
+        var ts = parseInt(safeGetItem(key) || '0', 10);
+        var now = Date.now();
+        return !!ts && ts <= now && (now - ts) < periodMs;
+    }
+
+    function markNow(key) {
+        try {
+            localStorage.setItem(key, String(Date.now()));
+        } catch (e) {
+            console.warn(PREFIX, 'localStorage not available:', e.message);
+        }
+    }
+
+    /**
+     * End of internship, whatever the declared statut.
+     * - lockContent: pathology paywall (no offer chosen in the last hour).
+     * - redirect: offer page, at most once every 24 h, not with a paid module.
+     * - banner: account created less than 15 days ago.
+     */
+    function getEndOfInternship() {
+        var ended = customFields.semestre === 'Internat terminé' &&
+            hasLivePlanIn(END_OF_INTERNSHIP_PLAN_IDS) &&
+            !hasLivePlanIn(KEEPS_ACCESS_PLAN_IDS);
+        var hasPaidModule = hasLivePlanIn(PAID_MODULE_PLAN_IDS);
+        var days = daysSince(safeDateFromValue(member.createdAt));
+        var lockContent = ended && days !== null && days > END_OF_INTERNSHIP_SIGNUP_DAYS &&
+            !isRecent(FIN_INTERNAT_ACTION_KEY, FIN_INTERNAT_ACTION_PERIOD_MS);
+        return {
+            ended: ended,
+            hasPaidModule: hasPaidModule,
+            lockContent: lockContent,
+            redirect: lockContent && !hasPaidModule && !isRecent(FIN_INTERNAT_SEEN_KEY, FIN_INTERNAT_SEEN_PERIOD_MS),
+            banner: ended && days !== null && days < END_OF_INTERNSHIP_SIGNUP_DAYS
+        };
+    }
+
+    // Set before sending the member to the offer page, and by the page itself.
+    function markFinInternatSeen() {
+        markNow(FIN_INTERNAT_SEEN_KEY);
+    }
+
+    function isFinInternatAction(el, buttonIds) {
+        for (; el && el.nodeType === 1; el = el.parentElement) {
+            if (el.id && buttonIds.indexOf(el.id) !== -1) return true;
+            for (var i = 0; i < FIN_INTERNAT_ACTION_ATTRIBUTES.length; i++) {
+                if (el.hasAttribute(FIN_INTERNAT_ACTION_ATTRIBUTES[i])) return true;
+            }
+        }
+        return false;
+    }
+
+    // Lets the plan change sync before the paywall and the redirect read it.
+    function watchFinInternatActions(root, buttonIds) {
+        root.addEventListener('click', function(event) {
+            if (isFinInternatAction(event.target, buttonIds)) markNow(FIN_INTERNAT_ACTION_KEY);
+        }, true);
     }
 
     // --- Hydratation tardive ------------------------------------------------
@@ -306,10 +432,16 @@
         daysUntil: daysUntil,
         isFrenchTerritory: isFrenchTerritory,
         getRequiredSemester: getRequiredSemester,
+        getEndOfInternship: getEndOfInternship,
+        markFinInternatSeen: markFinInternatSeen,
+        watchFinInternatActions: watchFinInternatActions,
 
         // Shared constants
         FRENCH_TERRITORIES: FRENCH_TERRITORIES,
         ALLOWED_INTERN_PLAN_IDS: ALLOWED_INTERN_PLAN_IDS,
+        END_OF_INTERNSHIP_PLAN_IDS: END_OF_INTERNSHIP_PLAN_IDS,
+        KEEPS_ACCESS_PLAN_IDS: KEEPS_ACCESS_PLAN_IDS,
+        PAID_MODULE_PLAN_IDS: PAID_MODULE_PLAN_IDS,
         SPECIALIZATION_DURATIONS: SPECIALIZATION_DURATIONS,
         MILLISECONDS_IN_DAY: MILLISECONDS_IN_DAY
     };

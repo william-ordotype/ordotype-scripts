@@ -109,6 +109,9 @@
         plan.status !== 'CANCELED' && plan.status === 'REQUIRES_PAYMENT'
     );
 
+    // End of internship: fin-internat-paywall.js locks the content.
+    var endOfInternship = ms.getEndOfInternship();
+
     // Combined redirection if required member information is missing
     if (
         (hasAllowedPlanId && (!ms.customFields["prnom"] || !ms.customFields["semestre"])) ||
@@ -137,29 +140,12 @@
         if ($) $('#banner-to-hide-fin-internat').css({ 'display': 'flex' });
     }
     */
-    else if (
-        ms.customFields["semestre"] === 'Internat terminé' &&
-        hasAllowedPlanId &&
-        isInterne &&
-        date_since_signup !== null && date_since_signup > 15 &&
-        !planConnections.some(plan =>
-            plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-            plan.status !== 'CANCELED'
-        )
-    ) {
+    else if (endOfInternship.redirect) {
+        ms.markFinInternatSeen();
         window.location.replace("/membership/fin-internat");
         return;
     }
-    else if (
-        ms.customFields["semestre"] === 'Internat terminé' &&
-        hasAllowedPlanId &&
-        isInterne &&
-        date_since_signup !== null && date_since_signup < 15 &&
-        !planConnections.some(plan =>
-            plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-            plan.status !== 'CANCELED'
-        )
-    ) {
+    else if (endOfInternship.banner) {
         if ($) $('#banner-to-hide-signup-internat-termine').css({ 'display': 'flex' });
     }
     else if (
