@@ -14,7 +14,7 @@ const SCRIPT = fs.readFileSync(path.join(ROOT, 'connexion-2fa/referral.js'), 'ut
 const ENDPOINT = 'https://hook.example.test/referral';
 const session = () => JSON.stringify({ data: { memberId: 'mem_parrain', email: 'pa****in@example.test' } });
 
-function page({ action = ENDPOINT, sessionValue = session(), loginEmail = 'parrain@example.test', invitationHidden = false, preview = null, comboRule = true, gated = false } = {}) {
+function page({ action = ENDPOINT, endpointAttr = null, sessionValue = session(), loginEmail = 'parrain@example.test', invitationHidden = false, preview = null, comboRule = true, gated = false } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -29,7 +29,7 @@ function page({ action = ENDPOINT, sessionValue = session(), loginEmail = 'parra
       <form id="code-form"><input name="code" value="123456"><input type="submit" value="Valider"></form>
       <div id="referral-invitation" class="sign_window${invitationHidden ? ' hidden' : ''}${gated ? ' is-gated' : ''}"${gated ? ' style="display:flex"' : ''}${previewAttr}>
         <div class="w-form">
-          <form id="wf-form-form-invite" name="form-invite" method="post" action="${action}">
+          <form id="wf-form-form-invite" name="form-invite" method="get"${action ? ` action="${action}"` : ''}${endpointAttr === null ? '' : ` data-referral-endpoint="${endpointAttr}"`}>
             <input type="email" name="parrainage" id="parrainage" required>
             <input type="submit" data-wait="Envoi en cours" value="Inviter">
           </form>
@@ -181,8 +181,20 @@ test("délai dépassé : la requête est annulée et le message d'erreur appara�
   assertHidden(w, 'referral-confirmation');
 });
 
+test("adresse d'envoi lue dans data-referral-endpoint, formulaire Webflow sans action", async () => {
+  const { w } = page({ action: '', endpointAttr: 'https://hook.example.test/attribut' });
+  const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+  w.eval(SCRIPT);
+  submitInvite(w, 'confrere@example.test');
+  await tick();
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].url, 'https://hook.example.test/attribut');
+  assert.strictEqual(calls[0].options.method, 'POST');
+  assertShown(w, 'referral-confirmation');
+});
+
 test("sans session 2FA, sans e-mail de connexion lisible (absent, masqué) ou sans adresse d'envoi valide : rien n'est envoyé", async () => {
-  for (const options of [{ sessionValue: null }, { loginEmail: null }, { loginEmail: 'pa****in@example.test' }, { loginEmail: 'unknown' }, { action: '' }, { action: 'http://hook.example.test/referral' }]) {
+  for (const options of [{ sessionValue: null }, { loginEmail: null }, { loginEmail: 'pa****in@example.test' }, { loginEmail: 'unknown' }, { action: '' }, { action: 'http://hook.example.test/referral' }, { action: '', endpointAttr: 'http://hook.example.test/attribut' }]) {
     const { w } = page(options);
     const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
     w.eval(SCRIPT);

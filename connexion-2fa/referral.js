@@ -103,7 +103,7 @@
 
     var input = form.querySelector('input[type="email"]');
     var invitee = input ? input.value.trim() : "";
-    var endpoint = form.getAttribute("action") || "";
+    var endpoint = form.getAttribute("data-referral-endpoint") || form.getAttribute("action") || "";
     var referrer = getReferrer();
     showFail(form, false);
 
