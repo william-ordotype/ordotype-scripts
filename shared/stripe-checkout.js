@@ -130,7 +130,19 @@ async function initStripeCheckout() {
 
     // Configuration with defaults
     const priceId = config.priceId || 'price_1REohrKEPftl7d7iemVKnl9Y';
-    const couponId = config.couponId || 'IJqN4FxB';
+    const FALLBACK_COUPON_ID = 'IJqN4FxB';
+    const couponId = config.couponId || FALLBACK_COUPON_ID;
+
+    // Le repli garde l'offre debout quand le champ coupon de la page est vide : un
+    // visiteur à qui la page promet une remise ne doit pas tomber sur le plein
+    // tarif. Il ne doit pas pour autant rester discret, car il accorde la remise la
+    // plus large du catalogue sur une page dont il ignore la promesse : une offre
+    // servie par son repli est une panne qui n'a pas encore coûté de client.
+    if (!config.couponId) {
+        reportSideEffect(new Error(
+            `Coupon absent de la configuration, repli ${FALLBACK_COUPON_ID} servi sur ${window.location.pathname}`
+        ));
+    }
     const successUrl = resolveUrl(config.successUrl) || `${window.location.origin}/membership/mes-informations-praticien`;
     const cancelUrl = resolveUrl(config.cancelUrl) || window.location.href;
     const paymentMethods = config.paymentMethods || ['sepa_debit'];
