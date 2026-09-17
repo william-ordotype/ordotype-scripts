@@ -262,14 +262,21 @@
             return;
         }
 
-        var msBtn = document.getElementById(BTN_MS_ID);
-        if (msBtn) msBtn.style.display = 'none';
-
         var stripeBtn = document.getElementById(BTN_STRIPE_ID);
         if (!stripeBtn) {
             report('ParrainageButtonMissing', new Error('#' + BTN_STRIPE_ID + ' not found'));
             return;
         }
+
+        // Visiteur non identifié : la page montre déjà son bouton d'inscription, et le
+        // nôtre n'aurait rien à envoyer. Le révéler ajouterait un second « En profiter »
+        // qui ne fait rien. On ne touche donc à aucun bouton, celui de Memberstack
+        // compris : le code gardé servira au retour, après l'inscription.
+        if (!identity()) return;
+
+        var msBtn = document.getElementById(BTN_MS_ID);
+        if (msBtn) msBtn.style.display = 'none';
+
         stripeBtn.classList.remove('hidden');
         stripeBtn.style.display = 'flex';
         bindCheckout(stripeBtn, code);
