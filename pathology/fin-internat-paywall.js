@@ -20,9 +20,19 @@
     // Not sau-paywall.js's data-ordo-injected: its unapply() removes those wrappers.
     var INJECTED_ATTRIBUTE = 'data-ordo-fin-internat';
     var CARD_SELECTOR = '[data-ordo-card="fin-internat"]';
+    var MAX_REATTACH = 20;
+    var REPORTED_KEY = 'ordFinInternatPaywallReported';
 
+    var wrapperNode = null;
+    var reattachCount = 0;
+
+    // Once per session: these states repeat on every page view.
     function report(message) {
         console.error(PREFIX, message);
+        try {
+            if (sessionStorage.getItem(REPORTED_KEY)) return;
+            sessionStorage.setItem(REPORTED_KEY, '1');
+        } catch (e) { /* report anyway */ }
         if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('FinInternatPaywall', message);
     }
 
@@ -54,11 +64,7 @@
         );
     }
 
-    // Memberstack removes the paywall wrapper for members with premium access,
-    // possibly after this script ran: inject one with the id/classes
-    // iframe-handler.js and the stylesheet key on.
-    function ensureWrapper(host) {
-        if (host.querySelector('.rc_hidden_warning_wrapper')) return;
+    function createWrapper() {
         var wrapper = document.createElement('div');
         wrapper.id = 'RC_hidden_warning';
         wrapper.className = 'rc_hidden_warning_wrapper';
@@ -66,20 +72,46 @@
         var inner = document.createElement('div');
         inner.className = 'rc_premium_hidden_warning';
         wrapper.appendChild(inner);
-        host.appendChild(wrapper);
+        return wrapper;
+    }
+
+    // Memberstack removes the paywall wrapper for members with premium access,
+    // possibly after this script ran. The same node is put back: iframe-handler.js
+    // keeps the one it found at init. Without its data-ms-content attribute,
+    // Memberstack leaves it alone.
+    function ensureWrapper(host) {
+        var current = host.querySelector('.rc_hidden_warning_wrapper');
+        if (current) {
+            if (!wrapperNode) wrapperNode = current;
+            current.removeAttribute('data-ms-content');
+            return;
+        }
+        if (reattachCount >= MAX_REATTACH) return;
+        reattachCount++;
+        if (reattachCount === MAX_REATTACH) report('Paywall wrapper removed ' + MAX_REATTACH + ' times');
+        if (!wrapperNode) wrapperNode = createWrapper();
+        host.appendChild(wrapperNode);
     }
 
     function render(host) {
-        if (document.body.classList.contains(SAU_BODY_CLASS)) return;
         ensureWrapper(host);
+        var sauActive = document.body.classList.contains(SAU_BODY_CLASS);
         document.querySelectorAll(INNER_SELECTOR).forEach(function(el) {
-            if (!el.querySelector(CARD_SELECTOR)) el.innerHTML = cardHtml();
+            if (el.querySelector(CARD_SELECTOR)) return;
+            // sau-paywall.js's card wins while its restriction applies.
+            if (sauActive && el.children.length) return;
+            el.innerHTML = cardHtml();
         });
     }
 
-    // Free pathologies carry no gated content.
+    // Free pathologies carry no gated content. On module pages the only
+    // premium-pages node is the upsell button inside the paywall card.
     function pageHasGatedContent() {
-        return !!document.querySelector('[data-ms-content="premium-pages"]');
+        var nodes = document.querySelectorAll('[data-ms-content="premium-pages"]');
+        for (var i = 0; i < nodes.length; i++) {
+            if (!nodes[i].closest('.rc_hidden_warning_wrapper')) return true;
+        }
+        return false;
     }
 
     function init() {
@@ -94,14 +126,13 @@
         if (!ms.getEndOfInternship().lockContent) return;
         if (!pageHasGatedContent()) return;
 
-        injectStyle();
-        document.body.classList.add(BODY_CLASS);
-
         var host = document.querySelector(HOST_SELECTOR);
         if (!host) {
             report('No ' + HOST_SELECTOR + ' host');
             return;
         }
+        injectStyle();
+        document.body.classList.add(BODY_CLASS);
         render(host);
         // Memberstack removing the wrapper, or sau-paywall.js lifting its restriction.
         var observer = new MutationObserver(function() { render(host); });

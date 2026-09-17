@@ -1829,9 +1829,9 @@ The loader sets up `window.STRIPE_CHECKOUT_CONFIG`:
 
 localStorage keys:
 - `finInternatSeenTs`: set by the redirects just before leaving for the page, and by `core.js` on the page.
-- `finInternatActionTs`: set by `core.js` on a click on an offer button. The paywall does not read `justPaidTs`.
+- `finInternatActionTs`: set by `core.js` on a click on an offer button (`btnNoStripeId` / `btnStripeId` of `STRIPE_CHECKOUT_CONFIG`, or a Memberstack plan button). The paywall does not read `justPaidTs`.
 
-The paywall leaves the card to `sau-paywall.js` while its restriction applies, and puts its own card back if Memberstack or `sau-paywall.js` removes it. Test: `node test/fin-internat.js`.
+The paywall only applies when `premium-pages` content sits outside the paywall card (module pages are gated by their own group). It leaves the card to `sau-paywall.js` while its restriction applies, and puts the same wrapper node back if Memberstack or `sau-paywall.js` removes it (`iframe-handler.js` keeps the node it found at init). Test: `node test/fin-internat.js`.
 
 **Deploying a change:** the homepage, pathology and fin-internat loaders each propagate their own pin. Move the four pins (`homepage/loader.js`, `pathology/loader.js`, `fin-internat/loader.js`, `fin-internat-v2/loader.js`) to the same commit and republish once: otherwise the pages and the redirects disagree on the keys above.
 

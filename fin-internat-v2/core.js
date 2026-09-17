@@ -15,16 +15,23 @@
         console.warn(PREFIX, 'localStorage not available:', e.message);
     }
 
+    function report(message) {
+        console.error(PREFIX, message);
+        if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('FinInternatV2Core', message);
+    }
+
     if (!ms || typeof ms.watchFinInternatActions !== 'function') {
-        console.error(PREFIX, 'OrdoMemberstack end-of-internship helpers missing');
-        if (window.OrdoErrorReporter) {
-            window.OrdoErrorReporter.report('FinInternatCore', 'OrdoMemberstack end-of-internship helpers missing');
-        }
+        report('OrdoMemberstack end-of-internship helpers missing');
         return;
     }
 
     ms.markFinInternatSeen();
-    ms.watchFinInternatActions(document);
+
+    // Offer buttons, as configured by loader.js for stripe-checkout.js.
+    var config = window.STRIPE_CHECKOUT_CONFIG || {};
+    var buttonIds = [config.btnNoStripeId, config.btnStripeId].filter(Boolean);
+    if (buttonIds.length !== 2) report('Offer button ids missing from STRIPE_CHECKOUT_CONFIG');
+    ms.watchFinInternatActions(document, buttonIds);
 
     console.log(PREFIX, 'Core initialized');
 })();

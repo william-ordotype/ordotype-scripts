@@ -44,7 +44,7 @@
   //
   // Tier 1: paint-critical, no jQuery dependency. Parallel + awaited so
   //         a failure here triggers fallbackReveal().
-  // Pause-paywall: memberstack-utils + pause-paywall loaded sequentially
+  // Pause-paywall: memberstack-utils + the paywalls executed in order
   //         BEFORE Tier 2 so pause-paywall mutates the DOM (replaces paywall
   //         innerHTML + strips .w-condition-invisible) before iframe-handler's
   //         init reads the paywall state and clones it into col-right.
@@ -102,8 +102,9 @@
     `${BASE}/countdown.js`
   ];
 
-  // Load a single script with retry
-  function loadScript(url, retries, delay) {
+  // Load a single script with retry. `ordered` (async = false): fetched in
+  // parallel with its siblings, executed in insertion order.
+  function loadScript(url, retries, delay, ordered) {
     retries = retries || 3;
     delay = delay || 1000;
 
@@ -114,6 +115,7 @@
         attempts++;
         var script = document.createElement('script');
         script.crossOrigin = 'anonymous';
+        if (ordered) script.async = false;
         script.src = url + (attempts > 1 ? '?retry=' + attempts : '');
         script.onload = resolve;
         script.onerror = function() {
@@ -216,22 +218,21 @@
       return;
     }
 
-    // Pre-T2: load memberstack-utils + pause-paywall sequentially BEFORE
+    // Pre-T2: run memberstack-utils + the paywalls in order BEFORE
     // Tier 2 so iframe-handler.js sees the paywall state pause-paywall
     // sets up (replaces innerHTML, strips .w-condition-invisible).
-    // Each script in its own try/catch, in this order: a CDN miss on one
-    // neither skips the others nor prevents the rest of the page from working.
+    // Fetched in parallel, executed in this order, each with its own catch:
+    // a CDN miss on one neither skips the others nor prevents the rest of the
+    // page from working.
     var preTier2 = [MEMBERSTACK_UTILS, PAUSE_PAYWALL, SAU_PAYWALL, FIN_INTERNAT_PAYWALL];
-    for (var i = 0; i < preTier2.length; i++) {
-      try {
-        await loadScript(preTier2[i]);
-      } catch (err) {
+    await Promise.all(preTier2.map(function(url) {
+      return loadScript(url, 3, 1000, true).catch(function(err) {
         console.error('[OrdoPathology] Paywall pre-load failed:', err);
         if (window.OrdoErrorReporter) {
           window.OrdoErrorReporter.report('PathologyLoader', 'Paywall pre-load failed: ' + (err && err.message));
         }
-      }
-    }
+      });
+    }));
 
     // Tier 2: parallel, fire-and-forget. Doesn't block Tier 3 scheduling.
     Promise.all(TIER2_VANILLA.map(function(url) { return loadOrLog(url, 'Tier 2'); }))

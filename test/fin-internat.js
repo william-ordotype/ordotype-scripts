@@ -89,7 +89,14 @@ function redirection(page, m, stockage = {}) {
 const PAGE_PATHOLOGIE = (paywallPresent = true) => `<!doctype html><head></head><body>
   <div class="rappels-cliniques-content">
     <div data-ms-content="premium-pages" class="rc-html">Contenu premium</div>
-    ${paywallPresent ? '<div id="RC_hidden_warning" class="rc_hidden_warning_wrapper"><div class="rc_premium_hidden_warning">Accès limité</div></div>' : ''}
+    ${paywallPresent ? '<div id="RC_hidden_warning" data-ms-content="!premium-pages" class="rc_hidden_warning_wrapper"><div class="rc_premium_hidden_warning">Accès limité</div></div>' : ''}
+  </div></body>`;
+
+// Fiche d'un module payant : contenu gardé par le module, seul le bouton de la carte porte premium-pages.
+const PAGE_MODULE = (paywallPresent = true) => `<!doctype html><head></head><body>
+  <div class="rappels-cliniques-content">
+    <div data-ms-content="rhumatologie" class="rc-html">Contenu du module</div>
+    ${paywallPresent ? '<div id="RC_hidden_warning" data-ms-content="!rhumatologie" class="rc_hidden_warning_wrapper"><div class="rc_premium_hidden_warning">Module <a data-ms-content="premium-pages" href="#">Ajouter</a></div></div>' : ''}
   </div></body>`;
 
 const charge = (w) => (w.document.readyState === 'loading'
@@ -135,6 +142,7 @@ function page(nom) {
         url: `https://www.ordotype.fr/membership/${nom}`,
     });
     utils(w, membre());
+    w.STRIPE_CHECKOUT_CONFIG = { btnNoStripeId: 'signup-rempla-from-decouverte', btnStripeId: 'signup-rempla-stripe-customer' };
     w.eval(CORES[nom]);
     const clic = (id) => {
         w.localStorage.removeItem('finInternatActionTs');
@@ -150,27 +158,41 @@ function page(nom) {
 }
 
 /** Rejoue un chargeur sans réseau : chaque script est noté, `echoue` renvoie une erreur de chargement. */
-async function chargeur(source, { src, echoue = () => false, attente = 50, avant = () => {} } = {}) {
+async function chargeur(source, { src, echoue = () => false, delai = () => 0, jusqua = null, attente = 50 } = {}) {
     const w = fenetre({ url: 'https://www.ordotype.fr/pathologies/test' });
     const urls = [];
+    const journal = [];
     Object.defineProperty(w.document, 'currentScript', { configurable: true, get: () => (src ? { src } : null) });
     const scriptTag = w.document.createElement('script');
     if (src) { scriptTag.src = src; w.document.head.appendChild(scriptTag); }
     w.document.head.appendChild = (el) => {
-        urls.push(el.src || el.href);
-        setTimeout(() => (echoue(el.src || '') ? el.onerror && el.onerror() : el.onload && el.onload()), 0);
+        const u = (el.src || el.href || '').split('?')[0];
+        urls.push(u);
+        journal.push({ quoi: 'ajout', u, async: el.async });
+        setTimeout(() => {
+            if (echoue(u)) { if (el.onerror) el.onerror(); return; }
+            journal.push({ quoi: 'charge', u });
+            if (el.onload) el.onload();
+        }, delai(u));
         return el;
     };
-    avant(w);
     w.eval(source);
-    await new Promise((r) => setTimeout(r, attente));
+    const limite = Date.now() + 10000;
+    if (jusqua) {
+        while (!jusqua(urls) && Date.now() < limite) await new Promise((r) => setTimeout(r, 20));
+    } else {
+        await new Promise((r) => setTimeout(r, attente));
+    }
     w.close();
-    return urls.filter((u) => u && u.startsWith(REPO));
+    const res = urls.filter((u) => u && u.startsWith(REPO));
+    res.journal = journal;
+    return res;
 }
 
 const vuIlYa = (h) => ({ finInternatSeenTs: String(Date.now() - h * 60 * 60 * 1000) });
 const vientDePayer = { justPaidTs: String(Date.now() - 5 * 60 * 1000) };
 const offreChoisieIlYa = (min) => ({ finInternatActionTs: String(Date.now() - min * 60 * 1000) });
+const offreChoisieDansUnAn = { finInternatActionTs: String(Date.now() + 365 * JOUR) };
 
 const CAS = [
     // Règle commune
@@ -208,6 +230,10 @@ const CAS = [
         [`[${p}] pas de redirection : page pas notée vue`, () => [[redirection(p, membre(), vuIlYa(2)).vueNotee, false, 'finInternatSeenTs inchangé']]],
         [`[${p}] offre choisie il y a 30 min : pas de redirection`, () => [[redirection(p, membre(), offreChoisieIlYa(30)).fin, false, 'pas de redirection']]],
         [`[${p}] offre choisie il y a 2 h : redirigé`, () => [[redirection(p, membre(), offreChoisieIlYa(120)).fin, true, 'redirection']]],
+        [`[${p}] horodatages dans le futur ignorés : redirigé`, () => [
+            [redirection(p, membre(), offreChoisieDansUnAn).fin, true, 'offre choisie dans un an'],
+            [redirection(p, membre(), { finInternatSeenTs: String(Date.now() + 365 * JOUR) }).fin, true, 'page vue dans un an'],
+        ]],
         [`[${p}] page vue il y a 2 h : pas de redirection`, () => [[redirection(p, membre(), vuIlYa(2)).fin, false, 'pas de redirection']]],
         [`[${p}] page vue il y a 25 h : redirigé`, () => [[redirection(p, membre(), vuIlYa(25)).fin, true, 'redirection']]],
         [`[${p}] module payant : pas de redirection`, () => [[redirection(p, membre({ plans: [[ASSO], [MODULES[0]]] })).fin, false, 'pas de redirection']]],
@@ -233,12 +259,37 @@ const CAS = [
                 [p.clicPoseJustPaid(), false, 'le clic ne pose pas justPaidTs'],
             ];
         }],
-        [`[${nom}] sans memberstack-utils : erreur signalée, pas d'exception`, () => {
+        [`[${nom}] sans memberstack-utils : erreur signalée sous le nom de la page, pas d'exception`, () => {
             const w = fenetre({ url: `https://www.ordotype.fr/membership/${nom}` });
             const rapports = [];
-            w.OrdoErrorReporter = { report: (ctx, msg) => rapports.push(`${ctx}: ${msg}`) };
+            w.OrdoErrorReporter = { report: (ctx, msg) => rapports.push(ctx) };
             w.eval(CORES[nom]);
-            return [[rapports.length, 1, 'une erreur signalée'], [!!w.localStorage.getItem('locat'), true, 'locat posé']];
+            const attendu = nom === 'fin-internat' ? 'FinInternatCore' : 'FinInternatV2Core';
+            return [[rapports.join(','), attendu, 'une erreur signalée'], [!!w.localStorage.getItem('locat'), true, 'locat posé']];
+        }],
+        [`[${nom}] boutons lus dans STRIPE_CHECKOUT_CONFIG`, () => {
+            const w = fenetre({
+                html: '<!doctype html><head></head><body><a id="bouton-a" href="#">A</a><a id="signup-rempla-stripe-customer" href="#">B</a></body>',
+                url: `https://www.ordotype.fr/membership/${nom}`,
+            });
+            const rapports = [];
+            w.OrdoErrorReporter = { report: (ctx, msg) => rapports.push(msg) };
+            utils(w, membre());
+            w.STRIPE_CHECKOUT_CONFIG = { btnNoStripeId: 'bouton-a', btnStripeId: 'bouton-b' };
+            w.eval(CORES[nom]);
+            const clic = (id) => { w.localStorage.removeItem('finInternatActionTs'); w.document.getElementById(id).click(); return !!w.localStorage.getItem('finInternatActionTs'); };
+            const sans = fenetre({ url: `https://www.ordotype.fr/membership/${nom}` });
+            const rapportsSans = [];
+            sans.OrdoErrorReporter = { report: (ctx, msg) => rapportsSans.push(msg) };
+            utils(sans, membre());
+            sans.eval(CORES[nom]);
+            return [
+                [clic('bouton-a'), true, 'id de la config'],
+                [clic('signup-rempla-stripe-customer'), false, 'id absent de la config'],
+                [rapports.length, 0, 'config complète : aucun rapport'],
+                [rapportsSans.length, 1, 'config absente : signalée'],
+                [!!sans.localStorage.getItem('finInternatSeenTs'), true, 'config absente : page quand même notée vue'],
+            ];
         }],
         [`[${nom}] chargeur épinglé : ses scripts suivent l'épingle`, async () => {
             const epingle = await chargeur(LOADERS[nom], { src: `${REPO}@abc1234/${nom}/loader.js` });
@@ -261,12 +312,52 @@ const CAS = [
         const r = await paywall(membre(), { html: PAGE_PATHOLOGIE(false) });
         return [[r.applique, true, 'classe posée'], [r.injecte, true, 'wrapper injecté'], [/offre interne/.test(r.carte || ''), true, 'carte']];
     }],
-    ['[paywall] wrapper retiré APRÈS coup par Memberstack : carte remise', async () => {
+    ['[paywall] wrapper retiré APRÈS coup par Memberstack : le même bloc est remis', async () => {
         const r = await paywall(membre());
-        r.w.document.querySelector('.rc_hidden_warning_wrapper').remove();
+        const bloc = r.w.document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper');
+        bloc.remove();
         await tick();
         const apres = etat(r.w);
-        return [[apres.applique, true, 'classe posée'], [apres.wrappers, 1, 'un wrapper'], [/offre interne/.test(apres.carte || ''), true, 'carte']];
+        return [
+            [apres.applique, true, 'classe posée'],
+            [apres.wrappers, 1, 'un wrapper'],
+            [r.w.document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper') === bloc, true, 'même nœud (iframe-handler le garde)'],
+            [bloc.hasAttribute('data-ms-content'), false, 'attribut Memberstack retiré'],
+            [/offre interne/.test(apres.carte || ''), true, 'carte'],
+        ];
+    }],
+    ['[paywall] Memberstack retire le bloc en boucle : arrêt et un seul rapport', async () => {
+        const rapports = [];
+        const r = await paywall(membre(), { rapports });
+        const hote = r.w.document.querySelector('.rappels-cliniques-content');
+        let retraits = 0;
+        new r.w.MutationObserver(() => {
+            const b = hote.querySelector('.rc_hidden_warning_wrapper');
+            if (b) { retraits += 1; b.remove(); }
+        }).observe(hote, { childList: true });
+        hote.querySelector('.rc_hidden_warning_wrapper').remove();
+        for (let i = 0; i < 60; i += 1) await tick();
+        return [[retraits <= 20, true, `remises bornées (${retraits})`], [rapports.length, 1, 'un rapport']];
+    }],
+    ['[paywall] fiche de module payant : rien, quel que soit le moment', async () => {
+        const avecCarte = await paywall(membre(), { html: PAGE_MODULE(true) });
+        const sansCarte = await paywall(membre({ plans: [[ASSO], [MODULES[0]]] }), { html: PAGE_MODULE(false) });
+        return [[avecCarte.applique, false, 'carte du module présente'], [sansCarte.applique, false, 'carte retirée (module payé)']];
+    }],
+    ['[paywall] restriction SAU puis bloc retiré par Memberstack : bloc remis, carte SAU gardée', async () => {
+        const r = await paywall(membre(), { sau: true, stockage: { ord_ip_restricted: '1' } });
+        r.w.document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper').remove();
+        await tick();
+        const apres = etat(r.w);
+        return [[apres.wrappers, 1, 'un wrapper'], [/Besoin d/.test(apres.carte || ''), true, 'carte SAU']];
+    }],
+    ['[paywall] pas de zone de contenu : contenu laissé visible, un seul rapport par session', async () => {
+        const rapports = [];
+        const html = '<!doctype html><head></head><body><div data-ms-content="premium-pages">Contenu</div></body>';
+        const r = await paywall(membre(), { html, rapports });
+        r.w.eval(PAYWALL);
+        await tick();
+        return [[r.applique, false, 'classe non posée'], [rapports.length, 1, 'un rapport sur deux passages']];
     }],
     ['[paywall] carte écrasée après coup : remise', async () => {
         const r = await paywall(membre());
@@ -308,6 +399,7 @@ const CAS = [
     ['[paywall] justPaidTs posé par une autre page : appliquée quand même', async () => [[(await paywall(membre(), { stockage: vientDePayer })).applique, true, 'classe posée']]],
     ['[paywall] offre choisie il y a 30 min : rien', async () => [[(await paywall(membre(), { stockage: offreChoisieIlYa(30) })).applique, false, 'rien']]],
     ['[paywall] offre choisie il y a 2 h : appliquée', async () => [[(await paywall(membre(), { stockage: offreChoisieIlYa(120) })).applique, true, 'classe posée']]],
+    ['[paywall] offre choisie « dans un an » : appliquée', async () => [[(await paywall(membre(), { stockage: offreChoisieDansUnAn })).applique, true, 'classe posée']]],
     ['[paywall] autre accès : rien', async () => [[(await paywall(membre({ plans: [[ASSO], [EXCLUS[1]]] }))).applique, false, 'rien']]],
     ['[paywall] semestre en cours : rien', async () => [[(await paywall(membre({ semestre: '4' }))).applique, false, 'rien']]],
     ['[paywall] inscrit depuis 5 jours : rien', async () => [[(await paywall(membre({ jours: 5 }))).applique, false, 'rien']]],
@@ -320,22 +412,24 @@ const CAS = [
         return [[w.document.body.classList.contains('ord-fin-internat'), false, 'rien']];
     }],
     // Chargeur des pathologies
-    ['[chargeur pathologies] une paywall en échec n\'empêche pas les suivantes', async () => {
-        const pause = await chargeur(PATHOLOGY_LOADER, {
-            src: `${REPO}@abc1234/pathology/loader.js`, attente: 2600,
-            echoue: (u) => u.includes('/pause-paywall.js'),
+    ['[chargeur pathologies] paywalls téléchargées en parallèle, exécutées dans l\'ordre, Tier 2 après toutes', async () => {
+        const base = `${REPO}@abc1234`;
+        const avant = [`${base}/shared/memberstack-utils.js`, `${base}/pathology/pause-paywall.js`, `${base}/pathology/sau-paywall.js`, `${base}/pathology/fin-internat-paywall.js`];
+        const tier2 = (urls) => urls.some((u) => u.endsWith('/pathology/tabs-manager.js'));
+        // pause-paywall échoue vite, fin-internat arrive tard.
+        const r = await chargeur(PATHOLOGY_LOADER, {
+            src: `${base}/pathology/loader.js`, jusqua: tier2,
+            echoue: (u) => u.endsWith('/pause-paywall.js'),
+            delai: (u) => (u.endsWith('/fin-internat-paywall.js') ? 2500 : 0),
         });
-        const utilsKo = await chargeur(PATHOLOGY_LOADER, {
-            src: `${REPO}@abc1234/pathology/loader.js`, attente: 2600,
-            echoue: (u) => u.includes('/memberstack-utils.js'),
-        });
-        const fin = `${REPO}@abc1234/pathology/fin-internat-paywall.js`;
-        const sau = `${REPO}@abc1234/pathology/sau-paywall.js`;
+        const idx = (quoi, u) => r.journal.findIndex((e) => e.quoi === quoi && e.u === u);
+        const ajoutsAvant = avant.map((u) => r.journal.find((e) => e.quoi === 'ajout' && e.u === u));
+        const tier2Ajout = r.journal.findIndex((e) => e.quoi === 'ajout' && e.u.endsWith('/pathology/tabs-manager.js'));
         return [
-            [pause.includes(fin), true, 'pause-paywall en échec : fin-internat chargée'],
-            [pause.includes(sau), true, 'pause-paywall en échec : SAU chargée'],
-            [utilsKo.includes(sau), true, 'memberstack-utils en échec : SAU chargée'],
-            [pause.indexOf(sau) < pause.indexOf(fin), true, 'SAU avant fin-internat'],
+            [ajoutsAvant.every(Boolean), true, 'les 4 scripts demandés'],
+            [ajoutsAvant.every((e) => e && e.async === false), true, 'exécution dans l\'ordre (async = false)'],
+            [idx('ajout', avant[3]) < idx('charge', avant[0]), true, 'fin-internat demandée sans attendre memberstack-utils'],
+            [idx('charge', avant[3]) !== -1 && tier2Ajout > idx('charge', avant[3]), true, 'Tier 2 après fin-internat malgré l\'échec de pause-paywall'],
         ];
     }],
 ];

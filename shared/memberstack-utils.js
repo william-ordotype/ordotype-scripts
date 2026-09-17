@@ -121,8 +121,7 @@
     var FIN_INTERNAT_SEEN_PERIOD_MS = 24 * 60 * 60 * 1000;
     var FIN_INTERNAT_ACTION_KEY = 'finInternatActionTs';
     var FIN_INTERNAT_ACTION_PERIOD_MS = 60 * 60 * 1000;
-    // Offer buttons of the fin-internat pages.
-    var FIN_INTERNAT_ACTION_IDS = ['signup-rempla-from-decouverte', 'signup-rempla-stripe-customer'];
+    // Memberstack plan buttons, on top of the ids each page passes.
     var FIN_INTERNAT_ACTION_ATTRIBUTES = ['data-ms-plan:add', 'data-ms-price:add'];
 
     // Durée du cursus en semestres, par spécialité.
@@ -253,7 +252,8 @@
 
     function isRecent(key, periodMs) {
         var ts = parseInt(safeGetItem(key) || '0', 10);
-        return !!ts && (Date.now() - ts) < periodMs;
+        var now = Date.now();
+        return !!ts && ts <= now && (now - ts) < periodMs;
     }
 
     function markNow(key) {
@@ -292,9 +292,9 @@
         markNow(FIN_INTERNAT_SEEN_KEY);
     }
 
-    function isFinInternatAction(el) {
+    function isFinInternatAction(el, buttonIds) {
         for (; el && el.nodeType === 1; el = el.parentElement) {
-            if (FIN_INTERNAT_ACTION_IDS.indexOf(el.id) !== -1) return true;
+            if (el.id && buttonIds.indexOf(el.id) !== -1) return true;
             for (var i = 0; i < FIN_INTERNAT_ACTION_ATTRIBUTES.length; i++) {
                 if (el.hasAttribute(FIN_INTERNAT_ACTION_ATTRIBUTES[i])) return true;
             }
@@ -303,9 +303,9 @@
     }
 
     // Lets the plan change sync before the paywall and the redirect read it.
-    function watchFinInternatActions(root) {
+    function watchFinInternatActions(root, buttonIds) {
         root.addEventListener('click', function(event) {
-            if (isFinInternatAction(event.target)) markNow(FIN_INTERNAT_ACTION_KEY);
+            if (isFinInternatAction(event.target, buttonIds)) markNow(FIN_INTERNAT_ACTION_KEY);
         }, true);
     }
 
