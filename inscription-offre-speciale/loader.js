@@ -55,6 +55,12 @@
     const WINBACK_SCRIPT = 'inscription-offre-speciale/winback-gate.js';
     const COUNTDOWN_SCRIPT = 'inscription-offre-speciale/countdown.js';
 
+    // Offre parrainage : même principe, la remise passe par le code d'invitation
+    // vérifié côté serveur, jamais par un coupon de la page.
+    const PARRAINAGE_SLUG = '3-mois-50-parrainage';
+    const IS_PARRAINAGE = !IS_WINBACK && ((window.COUNTDOWN_CONFIG || {}).slug === PARRAINAGE_SLUG);
+    const PARRAINAGE_SCRIPT = 'inscription-offre-speciale/parrainage-gate.js';
+
     // Scripts to load in order
     const BASE_SCRIPTS = [
         'shared/memberstack-utils.js',
@@ -70,10 +76,11 @@
     // pas par inadvertance un script dont l'absence ne se voit pas (opacity-reveal
     // laisserait le compteur invisible, not-connected-handler laisserait mort le
     // bouton que Memberstack affiche aux visiteurs déconnectés).
-    const scripts = IS_WINBACK
+    const GATE_SCRIPT = IS_WINBACK ? WINBACK_SCRIPT : IS_PARRAINAGE ? PARRAINAGE_SCRIPT : null;
+    const scripts = GATE_SCRIPT
         ? BASE_SCRIPTS
             .filter((file) => file !== COUNTDOWN_SCRIPT && file !== CHECKOUT_SCRIPT)
-            .concat([WINBACK_SCRIPT])
+            .concat([GATE_SCRIPT])
         : BASE_SCRIPTS;
 
     // Set by /inscription/<offer> pages and copied to Memberstack by /membership/mes-informations,
@@ -188,9 +195,9 @@
     async function init() {
         const cmsConfig = window.CMS_CHECKOUT_CONFIG || {};
         const hasStripeCustomer = hasCachedStripeCustomer();
-        // En mode winback c'est le gate qui pilote les deux boutons : pas de hold,
-        // dont la libération finirait par cliquer le bouton Memberstack natif.
-        const release = (hasStripeCustomer && !IS_WINBACK) ? holdMemberstackCheckout() : function() {};
+        // Avec un gate (winback, parrainage), c'est lui qui pilote les deux boutons :
+        // pas de hold, dont la libération finirait par cliquer le bouton Memberstack natif.
+        const release = (hasStripeCustomer && !GATE_SCRIPT) ? holdMemberstackCheckout() : function() {};
 
         try {
             // Helper to replace ${window.location.origin} placeholder with actual origin
