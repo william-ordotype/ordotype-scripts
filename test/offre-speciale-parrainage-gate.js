@@ -83,6 +83,29 @@ test("sans code d'invitation : écran réservé aux invités, aucun bouton de pa
   }
 });
 
+test('écran affiché : le fond va sur le conteneur de la page, pas seulement sur l’écran', async () => {
+  const { w } = page();
+  installFetch(w, () => reply(200, {}));
+  w.eval(GATE);
+  await tick();
+  const style = w.document.getElementById('ordo-parrainage-css');
+  assert.ok(/\.ordo-parrainage-ground\{background-color:/.test(style.textContent));
+  assert.ok($(w, 'page-wrapper-connected').classList.contains('ordo-parrainage-ground'));
+
+  const sansWrapper = page();
+  sansWrapper.w.document.querySelector('.main-wrapper').remove();
+  installFetch(sansWrapper.w, () => reply(200, {}));
+  sansWrapper.w.eval(GATE);
+  await tick();
+  assert.ok(sansWrapper.w.document.body.classList.contains('ordo-parrainage-ground'), 'repli sans .main-wrapper');
+
+  const avecCode = page({ query: '?invitation=CODE42' });
+  installFetch(avecCode.w, () => reply(200, {}));
+  avecCode.w.eval(GATE);
+  await tick();
+  assert.strictEqual($(avecCode.w, 'page-wrapper-connected').classList.contains('ordo-parrainage-ground'), false, 'aucun fond quand la page reste celle de l’offre');
+});
+
 test("code dans l'URL : gardé pour l'inscription, bouton Memberstack natif masqué, bouton de l'offre visible", async () => {
   const { w } = page({ query: '?invitation=CODE42' });
   installFetch(w, () => reply(200, {}));
