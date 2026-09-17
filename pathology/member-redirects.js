@@ -109,6 +109,19 @@
         plan.status !== 'CANCELED' && plan.status === 'REQUIRES_PAYMENT'
     );
 
+    // Plans that keep access after the internship.
+    // Keep in sync with homepage/member-redirects.js.
+    const PLANS_BEYOND_INTERNSHIP = ACCOUNT_PLAN_IDS
+        .filter(id => allowedPlanIds.indexOf(id) === -1)
+        .concat([
+            'pln_compte-tablissement-vl2600lp', // Compte établissement
+            'pln_padhue-mo12g06h7', // PADHUE (Étudiant)
+            'pln_padhue-alumni-kz1950z3y', // PADHUE (Alumni)
+        ]);
+    const hasAccessBeyondInternship = planConnections.some(plan =>
+        PLANS_BEYOND_INTERNSHIP.indexOf(plan.planId) !== -1 && plan.status !== 'CANCELED'
+    );
+
     // Combined redirection if required member information is missing
     if (
         (hasAllowedPlanId && (!ms.customFields["prnom"] || !ms.customFields["semestre"])) ||
@@ -140,12 +153,8 @@
     else if (
         ms.customFields["semestre"] === 'Internat terminé' &&
         hasAllowedPlanId &&
-        isInterne &&
         date_since_signup !== null && date_since_signup > 15 &&
-        !planConnections.some(plan =>
-            plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-            plan.status !== 'CANCELED'
-        )
+        !hasAccessBeyondInternship
     ) {
         window.location.replace("/membership/fin-internat");
         return;
@@ -153,12 +162,8 @@
     else if (
         ms.customFields["semestre"] === 'Internat terminé' &&
         hasAllowedPlanId &&
-        isInterne &&
         date_since_signup !== null && date_since_signup < 15 &&
-        !planConnections.some(plan =>
-            plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-            plan.status !== 'CANCELED'
-        )
+        !hasAccessBeyondInternship
     ) {
         if ($) $('#banner-to-hide-signup-internat-termine').css({ 'display': 'flex' });
     }

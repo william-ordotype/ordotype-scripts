@@ -233,6 +233,19 @@
             ACCOUNT_PLAN_IDS.indexOf(plan.planId) !== -1 &&
             plan.status === 'REQUIRES_PAYMENT'
         );
+
+        // Plans that keep access after the internship.
+        // Keep in sync with pathology/member-redirects.js.
+        const PLANS_BEYOND_INTERNSHIP = ACCOUNT_PLAN_IDS
+            .filter(id => allowedPlanIds.indexOf(id) === -1)
+            .concat([
+                'pln_compte-tablissement-vl2600lp', // Compte établissement
+                'pln_padhue-mo12g06h7', // PADHUE (Étudiant)
+                'pln_padhue-alumni-kz1950z3y', // PADHUE (Alumni)
+            ]);
+        const hasAccessBeyondInternship = planConnections.some(plan =>
+            PLANS_BEYOND_INTERNSHIP.indexOf(plan.planId) !== -1 && plan.status !== 'CANCELED'
+        );
         const isNotRemplacant = ms.customFields['mode-dexercice'] !== 'Remplacant';
         const isRemplacant = ms.customFields['mode-dexercice'] === 'Remplacant';
 
@@ -310,20 +323,14 @@
         } else if (
             ms.customFields["semestre"] === 'Internat terminé' && hasAllowedPlanId &&
             date_since_signup !== null && date_since_signup > SIGNUP_DAYS &&
-            !planConnections.some(plan =>
-                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-                plan.status !== 'CANCELED'
-            )
+            !hasAccessBeyondInternship
         ) {
             window.location.replace("/membership/fin-internat");
             return;
         } else if (
             ms.customFields["semestre"] === 'Internat terminé' && hasAllowedPlanId &&
             date_since_signup !== null && date_since_signup < SIGNUP_DAYS &&
-            !planConnections.some(plan =>
-                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-                plan.status !== 'CANCELED'
-            )
+            !hasAccessBeyondInternship
         ) {
             $('#banner-to-hide-signup-internat-termine').css({ display: 'flex' });
         } else if (
