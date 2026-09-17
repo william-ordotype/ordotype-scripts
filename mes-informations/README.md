@@ -13,6 +13,19 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | `mes-informations-internes-assos` | Partnership city from sessionStorage/cookie, no RPPS |
 | `mes-informations-module` | Statut selectors, sync 3 fields |
 
+## Country pages (Belgium, Luxembourg, Switzerland)
+
+Before loading anything, `loader.js` redirects these members to their CMS page `/mes-informations/{slug}` (query string and hash kept).
+
+| Member (active, trialing or requires-payment plan) | Page |
+|------|------|
+| plan `pln_praticien-belgique-gratuit--eif0fox`, or statut `Assistant` | `assistant-belgique` |
+| plan `pln_module-m-decine-g-n-rale-mves--ayrm059e`, or statut `MEVS` | `mves-luxembourg` |
+| statut `Médecin assistant` | `medecin-assistant-suisse` |
+| intern plan (`compte-interne`, `compte-interne-img`, intern associations, `compte-interne-derni-re-ann-e`) and country Belgium / Luxembourg / Switzerland | the page of that country |
+
+Never redirected: pages with `enableCheckout`, `setJustPaidTs` or `enablePartnershipCity`, logged-out visitors, and when the Memberstack SDK is missing, fails or does not answer within 3 s. Test: `node test/mes-informations-country-page.js`.
+
 ## Files
 
 | File | Description |
