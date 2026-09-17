@@ -65,18 +65,12 @@
 
     // --- End of internship ---
     // Semestre « Internat terminé » + one of these plans = end of internship.
-    var END_OF_INTERNSHIP_PLAN_IDS = [
-        'pln_interne-m-decine-g-n-rale-adh-rent--4a4t0o95',
-        'pln_compte-interne-derni-re-ann-e-9f4o0oyy',
-        'pln_compte-interne-sy4j0oft',
-        'pln_sau-interne-811d0aht',
-        'pln_compte-interne-img-nl410oxc',
-        'pln_brique-google-internes-paris-i31as0w8p',
+    var END_OF_INTERNSHIP_PLAN_IDS = ALLOWED_INTERN_PLAN_IDS.concat([
         'pln_praticien-belgique-gratuit--eif0fox', // Assistant (Belgique)
         'pln_module-m-decine-g-n-rale-mves--ayrm059e', // MVES (Luxembourg)
         'pln_compte-interne-aimgl-qb4h0oj3',
         'pln_compte-externe-fr--bkp50om6'
-    ];
+    ]);
 
     // Plans that keep access after the internship.
     var KEEPS_ACCESS_PLAN_IDS = [
@@ -121,6 +115,15 @@
         'pln_soins-palliatifs-paid-plan-6tc60az6',
         'pln_udr-paid-plan-dt380ts4'
     ];
+
+    var END_OF_INTERNSHIP_SIGNUP_DAYS = 15;
+    var FIN_INTERNAT_SEEN_KEY = 'finInternatSeenTs';
+    var FIN_INTERNAT_SEEN_PERIOD_MS = 24 * 60 * 60 * 1000;
+    var FIN_INTERNAT_ACTION_KEY = 'finInternatActionTs';
+    var FIN_INTERNAT_ACTION_PERIOD_MS = 60 * 60 * 1000;
+    // Offer buttons of the fin-internat pages.
+    var FIN_INTERNAT_ACTION_IDS = ['signup-rempla-from-decouverte', 'signup-rempla-stripe-customer'];
+    var FIN_INTERNAT_ACTION_ATTRIBUTES = ['data-ms-plan:add', 'data-ms-price:add'];
 
     // Durée du cursus en semestres, par spécialité.
     //
@@ -248,12 +251,62 @@
         });
     }
 
-    // Whatever the declared statut.
+    function isRecent(key, periodMs) {
+        var ts = parseInt(safeGetItem(key) || '0', 10);
+        return !!ts && (Date.now() - ts) < periodMs;
+    }
+
+    function markNow(key) {
+        try {
+            localStorage.setItem(key, String(Date.now()));
+        } catch (e) {
+            console.warn(PREFIX, 'localStorage not available:', e.message);
+        }
+    }
+
+    /**
+     * End of internship, whatever the declared statut.
+     * - lockContent: pathology paywall (no offer chosen in the last hour).
+     * - redirect: offer page, at most once every 24 h, not with a paid module.
+     * - banner: account created less than 15 days ago.
+     */
     function getEndOfInternship() {
         var ended = customFields.semestre === 'Internat terminé' &&
             hasLivePlanIn(END_OF_INTERNSHIP_PLAN_IDS) &&
             !hasLivePlanIn(KEEPS_ACCESS_PLAN_IDS);
-        return { ended: ended, hasPaidModule: hasLivePlanIn(PAID_MODULE_PLAN_IDS) };
+        var hasPaidModule = hasLivePlanIn(PAID_MODULE_PLAN_IDS);
+        var days = daysSince(safeDateFromValue(member.createdAt));
+        var lockContent = ended && days !== null && days > END_OF_INTERNSHIP_SIGNUP_DAYS &&
+            !isRecent(FIN_INTERNAT_ACTION_KEY, FIN_INTERNAT_ACTION_PERIOD_MS);
+        return {
+            ended: ended,
+            hasPaidModule: hasPaidModule,
+            lockContent: lockContent,
+            redirect: lockContent && !hasPaidModule && !isRecent(FIN_INTERNAT_SEEN_KEY, FIN_INTERNAT_SEEN_PERIOD_MS),
+            banner: ended && days !== null && days < END_OF_INTERNSHIP_SIGNUP_DAYS
+        };
+    }
+
+    // Set before sending the member to the offer page, and by the page itself.
+    function markFinInternatSeen() {
+        markNow(FIN_INTERNAT_SEEN_KEY);
+    }
+
+    function isFinInternatAction(el) {
+        for (; el && el.nodeType === 1; el = el.parentElement) {
+            if (FIN_INTERNAT_ACTION_IDS.indexOf(el.id) !== -1) return true;
+            for (var i = 0; i < FIN_INTERNAT_ACTION_ATTRIBUTES.length; i++) {
+                if (el.hasAttribute(FIN_INTERNAT_ACTION_ATTRIBUTES[i])) return true;
+            }
+        }
+        return false;
+    }
+
+    // Lets the plan change sync before the paywall and the redirect read it.
+    function watchFinInternatActions(root) {
+        root.addEventListener('click', function(event) {
+            if (isFinInternatAction(event.target)) markNow(FIN_INTERNAT_ACTION_KEY);
+        }, true);
     }
 
     // --- Hydratation tardive ------------------------------------------------
@@ -380,6 +433,8 @@
         isFrenchTerritory: isFrenchTerritory,
         getRequiredSemester: getRequiredSemester,
         getEndOfInternship: getEndOfInternship,
+        markFinInternatSeen: markFinInternatSeen,
+        watchFinInternatActions: watchFinInternatActions,
 
         // Shared constants
         FRENCH_TERRITORIES: FRENCH_TERRITORIES,

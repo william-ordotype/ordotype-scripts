@@ -17,8 +17,17 @@
 
     const PREFIX = '[OrdoFinInternatV2]';
 
-    // Base URL
-    const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+    // Scripts load from the same version as this loader: pinning its URL to a commit
+    // (…/ordotype-scripts@<sha>/fin-internat-v2/loader.js) pins every script it loads.
+    var DEFAULT_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main';
+
+    function getBase() {
+        var src = document.currentScript && document.currentScript.src;
+        var match = src && src.match(/^(https:\/\/cdn\.jsdelivr\.net\/gh\/william-ordotype\/ordotype-scripts@[^\/]+)\/fin-internat-v2\/loader\.js/);
+        return match ? match[1] : DEFAULT_BASE;
+    }
+
+    var BASE = getBase();
 
     // Scripts to load (in order)
     const scripts = [

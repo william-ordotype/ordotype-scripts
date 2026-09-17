@@ -2,8 +2,9 @@
  * Ordotype Pathology - End of internship paywall
  *
  * Shows the paywall on gated content for members whose internship has ended
- * (OrdoMemberstack.getEndOfInternship), with a link to the offer page.
- * Same mechanism as sau-paywall.js. Loaded pre-Tier-2 by loader.js.
+ * (OrdoMemberstack.getEndOfInternship().lockContent), with a link to the offer page.
+ * Same mechanism as sau-paywall.js, whose card wins while its restriction applies.
+ * Loaded pre-Tier-2 by loader.js.
  *
  * Depends on: memberstack-utils.js (window.OrdoMemberstack)
  */
@@ -12,17 +13,17 @@
 
     var PREFIX = '[FinInternatPaywall]';
     var BODY_CLASS = 'ord-fin-internat';
+    var SAU_BODY_CLASS = 'ord-ip-restricted';
     var STYLE_ID = 'ord-fin-internat-paywall-style';
-    var GRACE_PERIOD = 24 * 60 * 60 * 1000;
-    var SIGNUP_DAYS = 15;
+    var HOST_SELECTOR = '.rappels-cliniques-content';
+    var INNER_SELECTOR = '.rc_hidden_warning_wrapper .rc_premium_hidden_warning';
+    // Not sau-paywall.js's data-ordo-injected: its unapply() removes those wrappers.
+    var INJECTED_ATTRIBUTE = 'data-ordo-fin-internat';
+    var CARD_SELECTOR = '[data-ordo-card="fin-internat"]';
 
-    function justPaid() {
-        try {
-            var ts = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
-            return !!ts && (Date.now() - ts) < GRACE_PERIOD;
-        } catch (e) {
-            return false;
-        }
+    function report(message) {
+        console.error(PREFIX, message);
+        if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('FinInternatPaywall', message);
     }
 
     function injectStyle() {
@@ -39,7 +40,7 @@
 
     function cardHtml() {
         return (
-            '<div class="paywall_card" style="max-width:42rem">' +
+            '<div class="paywall_card" data-ordo-card="fin-internat" style="max-width:42rem">' +
               '<div class="w-layout-grid grid-1col-1rem left-align">' +
                 '<h2 class="heading-h2-docs text-weight-medium">Votre offre interne est arrivée à sa fin</h2>' +
                 '<div class="text-size-regular text-color-base-600">' +
@@ -53,28 +54,26 @@
         );
     }
 
-    // Memberstack removes the paywall wrapper for members with premium access:
-    // inject one with the id/classes iframe-handler.js and the stylesheet key on.
-    function ensureWrapper() {
-        if (document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper')) return;
-        var host = document.querySelector('.rappels-cliniques-content');
-        if (!host) {
-            console.warn(PREFIX, 'No .rappels-cliniques-content host');
-            return;
-        }
+    // Memberstack removes the paywall wrapper for members with premium access,
+    // possibly after this script ran: inject one with the id/classes
+    // iframe-handler.js and the stylesheet key on.
+    function ensureWrapper(host) {
+        if (host.querySelector('.rc_hidden_warning_wrapper')) return;
         var wrapper = document.createElement('div');
         wrapper.id = 'RC_hidden_warning';
         wrapper.className = 'rc_hidden_warning_wrapper';
-        wrapper.setAttribute('data-ordo-injected', '1');
+        wrapper.setAttribute(INJECTED_ATTRIBUTE, '1');
         var inner = document.createElement('div');
         inner.className = 'rc_premium_hidden_warning';
         wrapper.appendChild(inner);
         host.appendChild(wrapper);
     }
 
-    function swapCard() {
-        document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning').forEach(function(el) {
-            el.innerHTML = cardHtml();
+    function render(host) {
+        if (document.body.classList.contains(SAU_BODY_CLASS)) return;
+        ensureWrapper(host);
+        document.querySelectorAll(INNER_SELECTOR).forEach(function(el) {
+            if (!el.querySelector(CARD_SELECTOR)) el.innerHTML = cardHtml();
         });
     }
 
@@ -85,20 +84,29 @@
 
     function init() {
         var ms = window.OrdoMemberstack;
-        if (!ms || typeof ms.getEndOfInternship !== 'function') return;
-        if (typeof ms.refresh === 'function') ms.refresh();
+        if (!ms) return; // loader.js reports memberstack-utils.js failures
+        if (typeof ms.getEndOfInternship !== 'function') {
+            report('OrdoMemberstack.getEndOfInternship missing');
+            return;
+        }
+        ms.refresh();
         if (!ms.member || !ms.member.id) return;
-        if (justPaid()) return;
-
-        var daysSinceSignup = ms.daysSince(ms.safeDateFromValue(ms.member.createdAt));
-        if (daysSinceSignup === null || daysSinceSignup <= SIGNUP_DAYS) return;
-        if (!ms.getEndOfInternship().ended) return;
+        if (!ms.getEndOfInternship().lockContent) return;
         if (!pageHasGatedContent()) return;
 
         injectStyle();
         document.body.classList.add(BODY_CLASS);
-        ensureWrapper();
-        swapCard();
+
+        var host = document.querySelector(HOST_SELECTOR);
+        if (!host) {
+            report('No ' + HOST_SELECTOR + ' host');
+            return;
+        }
+        render(host);
+        // Memberstack removing the wrapper, or sau-paywall.js lifting its restriction.
+        var observer = new MutationObserver(function() { render(host); });
+        observer.observe(host, { childList: true, subtree: true });
+        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         console.log(PREFIX, 'Applied');
     }
 

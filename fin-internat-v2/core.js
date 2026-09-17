@@ -1,42 +1,30 @@
 /**
  * Ordotype Fin Internat V2 - Core
- * Stores URL for tracking, marks the page as seen, sets the grace period on action.
+ * Stores URL for tracking, marks the offer page as seen and watches the offer buttons.
  */
 (function() {
     'use strict';
 
-    const PREFIX = '[FinInternatV2Core]';
-    // Reduce offer, and both upgrade buttons (Memberstack native and Stripe customer).
-    const ACTION_IDS = ['signup-rempla-from-decouverte', 'signup-rempla-stripe-customer'];
-    const ACTION_ATTRIBUTES = ['data-ms-plan:add', 'data-ms-price:add'];
-
-    function isAction(el) {
-        for (; el && el.nodeType === 1; el = el.parentElement) {
-            if (ACTION_IDS.indexOf(el.id) !== -1) return true;
-            if (ACTION_ATTRIBUTES.some(function(name) { return el.hasAttribute(name); })) return true;
-        }
-        return false;
-    }
-
-    function store(key, value) {
-        try {
-            localStorage.setItem(key, value);
-        } catch (e) {
-            console.warn(PREFIX, 'localStorage not available:', e.message);
-        }
-    }
+    var PREFIX = '[FinInternatV2Core]';
+    var ms = window.OrdoMemberstack;
 
     // Store current URL for tracking
-    store('locat', location.href);
+    try {
+        localStorage.setItem('locat', location.href);
+    } catch (e) {
+        console.warn(PREFIX, 'localStorage not available:', e.message);
+    }
 
-    // Page seen: member-redirects.js sends here at most once every 24 h.
-    store('finInternatSeenTs', Date.now());
+    if (!ms || typeof ms.watchFinInternatActions !== 'function') {
+        console.error(PREFIX, 'OrdoMemberstack end-of-internship helpers missing');
+        if (window.OrdoErrorReporter) {
+            window.OrdoErrorReporter.report('FinInternatCore', 'OrdoMemberstack end-of-internship helpers missing');
+        }
+        return;
+    }
 
-    // Grace period only once the member acts, so the plan change has time to sync
-    // before member-redirects.js and fin-internat-paywall.js read it.
-    document.addEventListener('click', function(event) {
-        if (isAction(event.target)) store('justPaidTs', Date.now());
-    }, true);
+    ms.markFinInternatSeen();
+    ms.watchFinInternatActions(document);
 
     console.log(PREFIX, 'Core initialized');
 })();

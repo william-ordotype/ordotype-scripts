@@ -109,13 +109,8 @@
         plan.status !== 'CANCELED' && plan.status === 'REQUIRES_PAYMENT'
     );
 
-    // End of internship: redirect to the offer page at most once every 24 h,
-    // fin-internat-paywall.js covers the content in between.
-    const endOfInternship = typeof ms.getEndOfInternship === 'function'
-        ? ms.getEndOfInternship()
-        : { ended: false, hasPaidModule: false };
-    const finInternatSeenTs = parseInt(localStorage.getItem('finInternatSeenTs') || '0', 10);
-    const finInternatSeenRecently = !!finInternatSeenTs && (Date.now() - finInternatSeenTs) < GRACE_PERIOD;
+    // End of internship: fin-internat-paywall.js locks the content.
+    var endOfInternship = ms.getEndOfInternship();
 
     // Combined redirection if required member information is missing
     if (
@@ -145,18 +140,12 @@
         if ($) $('#banner-to-hide-fin-internat').css({ 'display': 'flex' });
     }
     */
-    else if (
-        endOfInternship.ended &&
-        date_since_signup !== null && date_since_signup > 15 &&
-        !endOfInternship.hasPaidModule && !finInternatSeenRecently
-    ) {
+    else if (endOfInternship.redirect) {
+        ms.markFinInternatSeen();
         window.location.replace("/membership/fin-internat");
         return;
     }
-    else if (
-        endOfInternship.ended &&
-        date_since_signup !== null && date_since_signup < 15
-    ) {
+    else if (endOfInternship.banner) {
         if ($) $('#banner-to-hide-signup-internat-termine').css({ 'display': 'flex' });
     }
     else if (

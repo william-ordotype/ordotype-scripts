@@ -246,6 +246,7 @@ note in Cache Busting): deploying a change here means bumping the pin.
 | `core.js` | Stores URL, handles page unload behavior |
 | `countdown.js` | Countdown timers based on member's date-de-switch |
 | `member-redirects.js` | Member state checks, banner display, and redirections |
+| `fin-internat-paywall.js` | Paywall card for members whose internship has ended (see [End of internship](#end-of-internship)) |
 | `clipboard.js` | Copy prescription with ClipboardJS |
 | `date-french.js` | Translates English dates to French |
 | `sources-list.js` | "Sources et recommandations" with show more |
@@ -1774,11 +1775,11 @@ Subscription upgrade page for interns finishing their internship. Offers a disco
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads core.js + shared/stripe-checkout.js, sets config (SEPA only) |
+| `loader.js` | Loads core.js + shared/stripe-checkout.js from its own version, sets config (SEPA only) |
 | `ab-test.js` | A/B test redirect (10% to /membership/fin-internat-v2) |
 | `geo-redirect.js` | Geographic redirection |
 | `styles.js` | Custom CSS for heading font weight |
-| `core.js` | Stores URL, sets grace period to prevent redirect loops |
+| `core.js` | Stores URL, marks the page as seen, marks a click on an offer button |
 
 ### Usage in Webflow
 
@@ -1816,6 +1817,24 @@ The loader sets up `window.STRIPE_CHECKOUT_CONFIG`:
 - `[FinInternatCore]` - Core
 - `[StripeCheckout]` - Checkout (from shared script)
 
+### End of internship
+
+`OrdoMemberstack.getEndOfInternship()` (`shared/memberstack-utils.js`) is the single rule, whatever the declared statut: semestre `Internat terminé`, a live plan in `END_OF_INTERNSHIP_PLAN_IDS` and no live plan in `KEEPS_ACCESS_PLAN_IDS`.
+
+| Flag | Condition | Used by |
+|------|-----------|---------|
+| `lockContent` | account older than 15 days, no offer button clicked on the page in the last hour | `pathology/fin-internat-paywall.js` |
+| `redirect` | `lockContent`, no plan in `PAID_MODULE_PLAN_IDS`, page not seen in the last 24 h | `homepage/member-redirects.js`, `pathology/member-redirects.js` |
+| `banner` | account younger than 15 days | same |
+
+localStorage keys:
+- `finInternatSeenTs`: set by the redirects just before leaving for the page, and by `core.js` on the page.
+- `finInternatActionTs`: set by `core.js` on a click on an offer button. The paywall does not read `justPaidTs`.
+
+The paywall leaves the card to `sau-paywall.js` while its restriction applies, and puts its own card back if Memberstack or `sau-paywall.js` removes it. Test: `node test/fin-internat.js`.
+
+**Deploying a change:** the homepage, pathology and fin-internat loaders each propagate their own pin. Move the four pins (`homepage/loader.js`, `pathology/loader.js`, `fin-internat/loader.js`, `fin-internat-v2/loader.js`) to the same commit and republish once: otherwise the pages and the redirects disagree on the keys above.
+
 ---
 
 ## Fin Internat V2 Page (`/membership/fin-internat-v2`)
@@ -1829,10 +1848,10 @@ This is the B variant of the A/B test. Main differences from V1:
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads core.js + shared/stripe-checkout.js, sets config (Card + SEPA) |
+| `loader.js` | Loads core.js + shared/stripe-checkout.js from its own version, sets config (Card + SEPA) |
 | `geo-redirect.js` | Geographic redirection (different ID than V1) |
 | `styles.js` | Custom CSS for heading font weight |
-| `core.js` | Stores URL, sets grace period to prevent redirect loops |
+| `core.js` | Same as V1 |
 
 ### Usage in Webflow
 

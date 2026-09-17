@@ -78,7 +78,9 @@
   // paywall state BEFORE iframe-handler's init reads it). Runs after
   // pause-paywall so the SAU variant wins if both ever apply.
   const SAU_PAYWALL = `${BASE}/sau-paywall.js`;
-  const FIN_INTERNAT_PAYWALL = `${BASE}/fin-internat-paywall.js`;
+  // End-of-internship paywall: same contract, leaves the card to the SAU
+  // variant while that one applies.
+  var FIN_INTERNAT_PAYWALL = BASE + '/fin-internat-paywall.js';
   const TIER2_VANILLA = [
     `${BASE}/tabs-manager.js`,
     `${BASE}/tooltips.js`,
@@ -217,17 +219,17 @@
     // Pre-T2: load memberstack-utils + pause-paywall sequentially BEFORE
     // Tier 2 so iframe-handler.js sees the paywall state pause-paywall
     // sets up (replaces innerHTML, strips .w-condition-invisible).
-    // Wrapped in try/catch so a CDN miss here doesn't prevent the rest
-    // of the page from working.
-    try {
-      await loadScript(MEMBERSTACK_UTILS);
-      await loadScript(PAUSE_PAYWALL);
-      await loadScript(SAU_PAYWALL);
-      await loadScript(FIN_INTERNAT_PAYWALL);
-    } catch (err) {
-      console.error('[OrdoPathology] Paywall pre-load failed:', err);
-      if (window.OrdoErrorReporter) {
-        window.OrdoErrorReporter.report('PathologyLoader', 'Paywall pre-load failed: ' + (err && err.message));
+    // Each script in its own try/catch, in this order: a CDN miss on one
+    // neither skips the others nor prevents the rest of the page from working.
+    var preTier2 = [MEMBERSTACK_UTILS, PAUSE_PAYWALL, SAU_PAYWALL, FIN_INTERNAT_PAYWALL];
+    for (var i = 0; i < preTier2.length; i++) {
+      try {
+        await loadScript(preTier2[i]);
+      } catch (err) {
+        console.error('[OrdoPathology] Paywall pre-load failed:', err);
+        if (window.OrdoErrorReporter) {
+          window.OrdoErrorReporter.report('PathologyLoader', 'Paywall pre-load failed: ' + (err && err.message));
+        }
       }
     }
 
