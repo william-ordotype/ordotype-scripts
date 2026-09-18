@@ -182,7 +182,7 @@ for (const cle of Object.keys(CHARGEURS)) {
                 [egal(r.propres, r.def.ordre), true, `ordre ${r.propres.join(', ')}`],
                 [r.journal.filter((e) => e.quoi === 'ajout' && r.def.ordre.includes(e.n)).every((e) => e.async === false), true, 'nos scripts en async = false'],
                 [r.telephone.length, 1, 'phone-input exécuté une fois'],
-                [r.ajoute(CDNJS + 'js/intlTelInput.min.js'), false, 'le chargeur ne demande pas la bibliothèque'],
+                [r.ajoute('cdnjs:js/intlTelInput.min.js') || r.ajoute('cdnjs:css/intlTelInput.min.css'), false, 'le chargeur ne demande ni la bibliothèque ni sa feuille'],
                 [r.indice(r.def.telephone) > r.indice(dernier), true, 'après le dernier de nos scripts'],
                 [r.rapports.length, 0, 'aucun rapport'],
             ];

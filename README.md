@@ -1936,7 +1936,8 @@ Crisp chat integration with Memberstack data and custom button handler.
 
 - Repository scripts are inserted at once with `async = false`: fetched in parallel, run in insertion order. A script that fails to load is skipped and reported once the queue has run, so `error-reporter.js` is there to send it. A script that never answers still holds the ones after it.
 - Crisp loads on its own and never holds the queue.
-- `phone-input.js` is added once the queue has run. It owns intl-tel-input: the library, its stylesheet and its formatting helpers are fetched only once a phone field is on screen, so a page whose field stays hidden asks cdnjs for nothing. A library that fails, or is still missing after 15 s, is reported and the field stays a plain input (`test/phone-input-utils.js`).
+- `phone-input.js` is the last entry of the ordered queue, so it is fetched in parallel with the others and runs last. It owns intl-tel-input: the library, its stylesheet and its formatting helpers are fetched only once a phone field is on screen, so a page whose field stays hidden asks cdnjs for nothing. The stylesheet is requested first and the field waits for it (2 s ceiling) because the library measures the flag to compute the field padding. A library that fails, or is still missing after 15 s, is reported and the field stays a plain input; if it lands later the field is still built (`test/phone-input-utils.js`).
+- 🔴 Deploying that split: `loader.js` and `phone-input.js` must change together. A visitor holding a fresh `loader.js` (no library) and a 7-day-old cached `phone-input.js` (waits for a library nobody loads) would get no phone field at all. Pinned pages are safe, since `phone-input.js` inherits the loader's pin; `@main` pages are not, so pin them in the same deploy, or purge both URLs before the loaders go out.
 
 ## Cache Busting
 

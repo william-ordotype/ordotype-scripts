@@ -90,8 +90,9 @@ function horloge() {
  * @param {string} source  chemin du fichier à évaluer
  * @param {object} opts
  *   utilsLoad : 'ok' | 'fail' | 'stall' | 'deja'  sort du chargement des aides
- *   libLoad   : 'ok' | 'fail' | 'stall' | 'muette'  sort du chargement de la
- *               bibliothèque ('muette' = le fichier répond sans rien définir)
+ *   libLoad   : 'ok' | 'fail' | 'stall' | 'late' | 'muette'  sort du
+ *               chargement de la bibliothèque ('muette' = le fichier répond
+ *               sans rien définir, 'late' = il arrive après le délai)
  *   cssLoad   : 'ok' | 'fail' | 'stall'  sort de la feuille de style
  *   library   : false = elle n'arrive jamais ; 'deja' = déjà sur la page
  *   inputs    : 0       page sans champ téléphone
@@ -106,6 +107,7 @@ function env(source, opts) {
         scripts: [],
         biblio: [],
         feuille: [],
+        ordre: [],
         avertissements: [],
         signalements: [],
         observers: [],
@@ -235,6 +237,16 @@ function env(source, opts) {
     if (opts.library === 'deja') win.intlTelInput = faireBibliotheque();
 
     /**
+     * Un gestionnaire manquant est une ABSENCE à nommer, pas une exception :
+     * sans ça, le cas qui vérifie qu'un `onerror` est posé échouerait sur
+     * « el.onerror is not a function » et la raison serait perdue.
+     */
+    function appeler(el, quoi) {
+        if (typeof el[quoi] === 'function') el[quoi]();
+        else trace.avertissements.push('gestionnaire ' + quoi + ' absent sur ' + (el.src || el.href));
+    }
+
+    /**
      * `scripts` ne garde que les AIDES (`utils.js`), comme avant : la
      * bibliothèque et sa feuille de style ont leurs propres traces, sinon
      * chaque cas devrait compter des requêtes qui ne l'intéressent pas.
@@ -245,36 +257,48 @@ function env(source, opts) {
 
             if (/intlTelInput\.min\.css$/.test(url)) {
                 trace.feuille.push({ href: el.href, rel: el.rel });
+                trace.ordre.push('feuille');
                 if (opts.cssLoad === 'stall') return;
                 queueMicrotask(() => {
-                    if (opts.cssLoad === 'fail') el.onerror();
-                    else if (el.onload) el.onload();
+                    if (opts.cssLoad === 'fail') appeler(el, 'onerror');
+                    else appeler(el, 'onload');
                 });
                 return;
             }
 
             if (/intlTelInput\.min\.js$/.test(url)) {
                 trace.biblio.push({ src: el.src, crossOrigin: el.crossOrigin });
+                trace.ordre.push('biblio');
                 if (libLoad === 'stall') return;
+                // 'late' : le fichier arrive APRÈS le délai, comme un réseau
+                // très lent. La balise est toujours dans la page.
+                if (libLoad === 'late') {
+                    global.setTimeout(() => {
+                        win.intlTelInput = faireBibliotheque();
+                        appeler(el, 'onload');
+                    }, 20000);
+                    return;
+                }
                 queueMicrotask(() => {
                     if (libLoad === 'fail') {
-                        el.onerror();
+                        appeler(el, 'onerror');
                         return;
                     }
                     if (libLoad !== 'muette') win.intlTelInput = faireBibliotheque();
-                    el.onload();
+                    appeler(el, 'onload');
                 });
                 return;
             }
 
             trace.scripts.push({ src: el.src, crossOrigin: el.crossOrigin });
+            trace.ordre.push('aides');
             if (opts.utilsLoad === 'stall') return; // ni load ni error, jamais
             queueMicrotask(() => {
                 if (opts.utilsLoad === 'fail') {
-                    el.onerror();
+                    appeler(el, 'onerror');
                 } else {
                     win.intlTelInputUtils = { numberFormat: { INTERNATIONAL: 1 } };
-                    el.onload();
+                    appeler(el, 'onload');
                 }
             });
         },
@@ -513,6 +537,7 @@ const CAS = [
         const e = env(src, { utilsLoad: 'ok', library: 'deja' });
         await repos();
         if (e.trace.biblio.length !== 0) return 'bibliothèque redemandée alors qu elle est déjà là';
+        if (e.trace.feuille.length !== 1) return 'sans la feuille, le champ est construit sans drapeaux';
         if (e.trace.initCount !== 1) return 'le court-circuit ne construit pas le champ';
         return '';
     }],
@@ -528,10 +553,42 @@ const CAS = [
         return '';
     }],
 
-    ['feuille de style en suspens : elle ne retient pas le champ', async (src) => {
+    ['feuille de style en suspens : l attente est bornée, le champ finit par être construit', async (src) => {
         const e = env(src, { utilsLoad: 'ok', cssLoad: 'stall' });
         await repos();
-        if (e.trace.initCount !== 1) return 'une feuille jamais servie gèle le champ';
+        if (e.trace.initCount !== 0) return 'construit avant que la feuille ait pu s appliquer';
+        e.horloge.avancer(2000);
+        await repos();
+        if (e.trace.initCount !== 1) return 'une feuille jamais servie gèle le champ pour toujours';
+        if (e.trace.signalements.length !== 0) return 'une feuille absente ne vaut pas un signalement';
+        return '';
+    }],
+
+    ['la feuille est demandée AVANT la bibliothèque, et le champ l attend', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        if (e.trace.feuille.length !== 1) return 'feuille non demandée';
+        if (e.trace.initCount !== 1) return 'champ non construit';
+        // La bibliothèque mesure le drapeau avec les règles appliquées pour
+        // calculer le retrait du champ : construire avant la feuille laisse le
+        // numéro sous le drapeau pour toute la vie de la page.
+        if (e.trace.ordre.indexOf('feuille') > e.trace.ordre.indexOf('biblio')) {
+            return 'la bibliothèque est partie avant la feuille';
+        }
+        return '';
+    }],
+
+    ['bibliothèque en retard : le champ est construit quand elle arrive', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', libLoad: 'late' });
+        await repos();
+        e.horloge.avancer(15000);
+        await repos();
+        if (!e.trace.signalements.some((m) => /timed out/.test(m))) return 'le retard n est pas signalé';
+        if (e.trace.initCount !== 0) return 'construit alors que la bibliothèque n est pas là';
+        e.horloge.avancer(10000);
+        await repos();
+        if (e.trace.initCount !== 1) return 'la bibliothèque arrivée en retard ne construit plus rien';
+        if (e.trace.scripts.length !== 1) return 'les aides ne suivent pas la construction tardive';
         return '';
     }],
 

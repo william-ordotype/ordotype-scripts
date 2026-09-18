@@ -78,17 +78,6 @@
     });
   }
 
-  // phone-input.js owns the third-party library: it fetches intl-tel-input,
-  // its stylesheet and its formatting helpers only once a phone field is on
-  // screen, so a page whose field stays hidden asks cdnjs for nothing.
-  function loadPhoneInput(phoneInputUrl, after) {
-    return after.then(function() {
-      return addScript(phoneInputUrl, false).catch(function(err) {
-        logFailure(err.message);
-        reportFailure(err.message);
-      });
-    });
-  }
   // --- End of loader queue ---
 
   function loadAll() {
@@ -101,8 +90,7 @@
     if (config.enablePartnershipCity) ordered.push(BASE + '/partnership-city.js');
 
     addScript(SHARED_BASE + '/crisp-loader.js', false).catch(function(err) { logFailure(err.message); });
-    var done = runInOrder(ordered);
-    loadPhoneInput(BASE + '/phone-input.js', done);
+    var done = runInOrder(ordered.concat([BASE + '/phone-input.js']));
     done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
   }
 

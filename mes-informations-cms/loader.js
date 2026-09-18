@@ -16,7 +16,7 @@
   var BASE = ROOT + '/mes-informations-cms';
   var CRISP_URL = 'https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js';
 
-  // Scripts to run, in order (phone-input.js fetches utils.js itself)
+  // Scripts to run, in order
   var scripts = [
     'statut-options.js',
     'statut-selectors.js',
@@ -64,17 +64,6 @@
     });
   }
 
-  // phone-input.js owns the third-party library: it fetches intl-tel-input,
-  // its stylesheet and its formatting helpers only once a phone field is on
-  // screen, so a page whose field stays hidden asks cdnjs for nothing.
-  function loadPhoneInput(phoneInputUrl, after) {
-    return after.then(function() {
-      return addScript(phoneInputUrl, false).catch(function(err) {
-        logFailure(err.message);
-        reportFailure(err.message);
-      });
-    });
-  }
   // --- End of loader queue ---
 
   function loadAll() {
@@ -83,8 +72,7 @@
       .concat(scripts.map(function(file) { return BASE + '/' + file; }));
 
     addScript(CRISP_URL, false).catch(function(err) { logFailure(err.message); });
-    var done = runInOrder(ordered);
-    loadPhoneInput(ROOT + '/mes-informations/phone-input.js', done);
+    var done = runInOrder(ordered.concat([ROOT + '/mes-informations/phone-input.js']));
     done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
   }
 
