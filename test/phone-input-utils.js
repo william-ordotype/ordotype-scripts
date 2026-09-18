@@ -121,7 +121,14 @@ function env(source, opts) {
      * ne serait vérifiée par rien.
      */
     function faireInput() {
-        const form = { listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; } };
+        const form = {
+            listeners: {},
+            capture: {},
+            addEventListener(t, fn, useCapture) {
+                if (useCapture) this.capture[t] = fn;
+                else this.listeners[t] = fn;
+            },
+        };
         return {
             value: '',
             form,
@@ -600,6 +607,34 @@ const CAS = [
             return 'sans crossOrigin, une erreur de la bibliothèque remonte nue';
         }
         if (e.trace.feuille.length !== 1) return 'feuille de style non demandée';
+        return '';
+    }],
+
+    ['formulaire envoyé avant la construction : signalé, l envoi n est pas bloqué', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', observer: 'cache' });
+        await repos();
+        if (typeof e.input.form.capture.submit !== 'function') {
+            return 'aucun témoin sur l envoi : un numéro brut partirait en silence';
+        }
+        e.input.form.capture.submit({});
+        await repos();
+        const vus = e.trace.signalements.filter((m) => /before the phone field was built/.test(m));
+        if (vus.length !== 1) return 'l envoi précoce n est pas signalé';
+        e.input.form.capture.submit({});
+        await repos();
+        if (e.trace.signalements.filter((m) => /before the phone field was built/.test(m)).length !== 1) {
+            return 'signalé à chaque envoi : le canal se noie';
+        }
+        return '';
+    }],
+
+    ['formulaire envoyé APRÈS la construction : aucun signalement', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        if (e.trace.initCount !== 1) return 'champ non construit';
+        e.input.form.capture.submit({});
+        await repos();
+        if (e.trace.signalements.length !== 0) return 'un envoi normal ne vaut pas un signalement';
         return '';
     }],
 

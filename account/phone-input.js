@@ -204,6 +204,25 @@
   }
 
   /**
+   * The field is only built once it is on screen. A form that is submitted
+   * before that would post the raw value, so say it out loud rather than let
+   * it pass unnoticed. The submit itself is never blocked: losing the member's
+   * input would be worse than an unformatted number.
+   */
+  function watchEarlySubmit(inputs) {
+    let warned = false;
+    inputs.forEach(input => {
+      const form = input.closest && input.closest('form');
+      if (!form) return;
+      form.addEventListener('submit', function() {
+        if (built || warned) return;
+        warned = true;
+        report('Form submitted before the phone field was built: value sent unformatted');
+      }, true);
+    });
+  }
+
+  /**
    * Fetch the library and build the field. Both the library and its stylesheet
    * wait for the field to be on screen, so a field that is never shown costs
    * no request at all.
@@ -252,6 +271,8 @@
     // already has a placeholder alone. All four pages that carry this field
     // hardcode one, so nothing is lost. `getNumber` reads the helpers off the
     // global at call time, so formatting starts working the moment they land.
+    watchEarlySubmit(inputs);
+
     whenVisible(inputs, function() {
       loadAndBuild(inputs);
     });
