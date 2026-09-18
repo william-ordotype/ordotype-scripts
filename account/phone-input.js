@@ -1,15 +1,17 @@
 /**
  * Ordotype Account - Phone Input
  * International phone number formatting using intl-tel-input.
- * Depends on: jQuery, intl-tel-input CSS & JS (loaded by loader.js)
+ * Loads the library, its stylesheet and its formatting helpers itself, once a
+ * phone field is on screen.
  */
 (function() {
   'use strict';
 
+  const LIB_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
+  const LIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  const LIB_TIMEOUT_MS = 15000;
   const UTILS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/utils.js';
   const UTILS_TIMEOUT_MS = 8000;
-  const LIB_POLL_MS = 100;
-  const LIB_POLL_MAX = 100;
 
   function report(message) {
     console.warn('[PhoneInput] ' + message);
@@ -63,6 +65,61 @@
       script.onerror = () => {
         clearTimeout(timer);
         settle('Formatting helpers unavailable, continuing without them');
+      };
+      (document.body || document.head).appendChild(script);
+    });
+  }
+
+  /**
+   * Fetch the library and its stylesheet, and say whether the field can be
+   * built. Both are third party, so both wait for the field to be on screen:
+   * a field the visitor never opens was costing a request it had no use for,
+   * plus the failures that come with it.
+   *
+   * Always settles, never later than LIB_TIMEOUT_MS: a filtering proxy can
+   * hold the request open without ever answering or erroring, and the deadline
+   * is how that case reaches us instead of leaving the field waiting forever.
+   */
+  function loadLibrary() {
+    return new Promise(resolve => {
+      if (window.intlTelInput) {
+        resolve(true);
+        return;
+      }
+
+      let settled = false;
+
+      function settle(ready, message) {
+        if (settled) return;
+        settled = true;
+        if (message) report(message);
+        resolve(ready);
+      }
+
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = LIB_CSS_URL;
+      // The country selector loses its flags and its spacing without this
+      // sheet, and nothing else on the page does. A plain input is a fair
+      // outcome, so the sheet never gates the field and never reports.
+      link.onerror = () => console.warn('[PhoneInput] Stylesheet unavailable, the field stays unstyled');
+      document.head.appendChild(link);
+
+      const timer = setTimeout(() => {
+        settle(false, 'intl-tel-input timed out, skipping phone formatting');
+      }, LIB_TIMEOUT_MS);
+
+      const script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
+      script.src = LIB_URL;
+      script.async = true;
+      script.onload = () => {
+        clearTimeout(timer);
+        settle(!!window.intlTelInput, window.intlTelInput ? null : 'intl-tel-input loaded without defining itself, skipping phone formatting');
+      };
+      script.onerror = () => {
+        clearTimeout(timer);
+        settle(false, 'intl-tel-input unavailable, skipping phone formatting');
       };
       (document.body || document.head).appendChild(script);
     });
@@ -153,49 +210,30 @@
       return;
     }
 
-    // The field itself is built straight away: that is DOM work, no network,
-    // and it carries the country selector plus the listener that normalises
-    // the value on submit. Holding it back until the field appears would show
-    // a bare text box at the exact moment the member uses it, and a submit
-    // inside that window would post an unformatted number.
-    init(inputs);
-
-    // 🔴 Only the formatting helpers wait, and they are the whole problem:
-    // eight times the weight of the library, last in a chain the page starts
-    // several hops earlier, so the request most likely to be dropped.
-    // Fetching them for a field the visitor never opens buys a feature nobody
-    // is looking at, and buys the failures that come with it.
+    // Nothing third party is fetched until one of the fields is on screen.
+    // A field that is never shown then costs no request at all.
     //
+    // Once the library lands the field is built immediately, without waiting
+    // for the helpers: that is DOM work, no network, and it carries the
+    // country selector plus the listener that normalises the value on submit.
     // Building before the helpers costs only the generated example
     // placeholder, and `autoPlaceholder: 'polite'` leaves an input that
     // already has a placeholder alone. All four pages that carry this field
     // hardcode one, so nothing is lost. `getNumber` reads the helpers off the
     // global at call time, so formatting starts working the moment they land.
-    whenVisible(inputs, loadUtils);
-  }
-
-  // Wait for intl-tel-input to be available, but give up rather than poll for
-  // the life of the page when the library itself never loads.
-  function waitForDependency(attempt) {
-    const tries = attempt || 0;
-
-    if (window.intlTelInput) {
-      start();
-      return;
-    }
-
-    if (tries >= LIB_POLL_MAX) {
-      report('intl-tel-input did not load, skipping phone formatting');
-      return;
-    }
-
-    setTimeout(() => waitForDependency(tries + 1), LIB_POLL_MS);
+    whenVisible(inputs, () => {
+      loadLibrary().then(ready => {
+        if (!ready) return;
+        init(inputs);
+        loadUtils();
+      });
+    });
   }
 
   // Init on DOM ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => waitForDependency(0));
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    waitForDependency(0);
+    start();
   }
 })();

@@ -20,12 +20,15 @@
  *     le retenir laisserait une boîte de texte nue au moment précis où le
  *     membre s'en sert, et un envoi pendant cette fenêtre partirait avec un
  *     numéro brut. Un champ caché par CSS reste envoyable, donc il compte ;
- *   - un champ JAMAIS montré ne charge PAS les aides. Elles pèsent huit fois
- *     la bibliothèque et arrivent en bout de chaîne : les chercher pour une
- *     interface que le visiteur ne verra pas, c'est acheter la panne sans
- *     acheter la fonction. Sur l'accueil, le bandeau téléphone ne s'ouvre que
- *     pour les membres sans numéro, et c'est un script chargé APRÈS celui-ci
- *     qui l'ouvre ;
+ *   - un champ JAMAIS montré ne charge RIEN de tiers : ni la bibliothèque, ni
+ *     sa feuille de style, ni les aides. Sur l'accueil, le bandeau téléphone
+ *     ne s'ouvre que pour les membres sans numéro, et c'est un script chargé
+ *     APRÈS celui-ci qui l'ouvre : tous les autres visiteurs payaient 48 Ko
+ *     et le risque de panne pour une interface qu'ils ne verront pas ;
+ *   - la feuille de style ne retient jamais le champ et ne vaut pas de
+ *     signalement : sans elle il reste un champ utilisable, sans drapeaux ;
+ *   - bibliothèque en échec, en suspens, ou servie sans se définir : borné,
+ *     signalé, et rien n'est construit plutôt qu'une page qui attend ;
  *   - les aides arrivées après coup reprennent la main : `getNumber` les relit
  *     sur le global au moment de l'appel. Sans ça, différer casserait l'envoi ;
  *   - aides absentes, en échec ou EN SUSPENS : le champ reste utilisable. Un
@@ -36,8 +39,7 @@
  *   - sans les aides, la frappe ne lève pas et n'efface pas la saisie ;
  *   - la dégradation est signalée par le canal du dépôt, pas seulement dans
  *     une console que personne ne lit ;
- *   - bibliothèque absente : l'attente s'arrête au lieu de sonder la page
- *     jusqu'à sa fermeture.
+ *   - bibliothèque déjà présente : elle n'est pas redemandée.
  *
  * Les cas sont rejoués sur les DEUX copies servies en production.
  *
@@ -88,7 +90,10 @@ function horloge() {
  * @param {string} source  chemin du fichier à évaluer
  * @param {object} opts
  *   utilsLoad : 'ok' | 'fail' | 'stall' | 'deja'  sort du chargement des aides
- *   library   : bool    window.intlTelInput est-il présent
+ *   libLoad   : 'ok' | 'fail' | 'stall' | 'muette'  sort du chargement de la
+ *               bibliothèque ('muette' = le fichier répond sans rien définir)
+ *   cssLoad   : 'ok' | 'fail' | 'stall'  sort de la feuille de style
+ *   library   : false = elle n'arrive jamais ; 'deja' = déjà sur la page
  *   inputs    : 0       page sans champ téléphone
  *   observer  : 'visible' (défaut) | 'cache' | 'absent'  ce que voit
  *               l'IntersectionObserver, ou son absence pure et simple
@@ -99,6 +104,8 @@ function env(source, opts) {
         utilsAuMomentDuInit: null,
         initCount: 0,
         scripts: [],
+        biblio: [],
+        feuille: [],
         avertissements: [],
         signalements: [],
         observers: [],
@@ -204,8 +211,8 @@ function env(source, opts) {
 
     if (opts.observer !== 'absent') win.IntersectionObserver = fauxObserver;
 
-    if (opts.library !== false) {
-        win.intlTelInput = (el, options) => {
+    function faireBibliotheque() {
+        return (el, options) => {
             trace.initCount += 1;
             trace.initOptions = options;
             trace.utilsAuMomentDuInit = Boolean(win.intlTelInputUtils);
@@ -218,16 +225,56 @@ function env(source, opts) {
         };
     }
 
+    /**
+     * Sort du chargement de la bibliothèque : 'ok' (défaut), 'fail', 'stall',
+     * ou 'muette' pour le fichier qui répond mais ne définit rien. `library`
+     * garde son ancien sens : `false` = elle n'arrive jamais, `'deja'` = elle
+     * est déjà là et ne doit donc pas être redemandée.
+     */
+    const libLoad = opts.library === false ? 'fail' : (opts.libLoad || 'ok');
+    if (opts.library === 'deja') win.intlTelInput = faireBibliotheque();
+
+    /**
+     * `scripts` ne garde que les AIDES (`utils.js`), comme avant : la
+     * bibliothèque et sa feuille de style ont leurs propres traces, sinon
+     * chaque cas devrait compter des requêtes qui ne l'intéressent pas.
+     */
     const conteneur = {
-        appendChild(script) {
-            trace.scripts.push({ src: script.src, crossOrigin: script.crossOrigin });
+        appendChild(el) {
+            const url = el.src || el.href || '';
+
+            if (/intlTelInput\.min\.css$/.test(url)) {
+                trace.feuille.push({ href: el.href, rel: el.rel });
+                if (opts.cssLoad === 'stall') return;
+                queueMicrotask(() => {
+                    if (opts.cssLoad === 'fail') el.onerror();
+                    else if (el.onload) el.onload();
+                });
+                return;
+            }
+
+            if (/intlTelInput\.min\.js$/.test(url)) {
+                trace.biblio.push({ src: el.src, crossOrigin: el.crossOrigin });
+                if (libLoad === 'stall') return;
+                queueMicrotask(() => {
+                    if (libLoad === 'fail') {
+                        el.onerror();
+                        return;
+                    }
+                    if (libLoad !== 'muette') win.intlTelInput = faireBibliotheque();
+                    el.onload();
+                });
+                return;
+            }
+
+            trace.scripts.push({ src: el.src, crossOrigin: el.crossOrigin });
             if (opts.utilsLoad === 'stall') return; // ni load ni error, jamais
             queueMicrotask(() => {
                 if (opts.utilsLoad === 'fail') {
-                    script.onerror();
+                    el.onerror();
                 } else {
                     win.intlTelInputUtils = { numberFormat: { INTERNATIONAL: 1 } };
-                    script.onload();
+                    el.onload();
                 }
             });
         },
@@ -238,7 +285,7 @@ function env(source, opts) {
         body: conteneur,
         head: conteneur,
         addEventListener() {},
-        createElement() { return {}; },
+        createElement(tag) { return { tagName: (tag || '').toUpperCase() }; },
         querySelectorAll() { return inputs; },
     };
 
@@ -293,7 +340,7 @@ const CAS = [
     }],
 
     ['le champ est construit SANS attendre les aides', async (src) => {
-        const e = env(src, { utilsLoad: 'stall', observer: 'cache' });
+        const e = env(src, { utilsLoad: 'stall' });
         await repos();
         if (e.trace.initCount !== 1) {
             return 'champ non construit : une boîte de texte nue au moment où le membre s en sert';
@@ -425,30 +472,96 @@ const CAS = [
         return '';
     }],
 
-    ['bibliothèque absente : l attente s arrête', async (src) => {
+    ['bibliothèque en échec : rien n est construit, l abandon est signalé', async (src) => {
         const e = env(src, { utilsLoad: 'ok', library: false });
         e.horloge.avancer(60000);
         await repos();
         if (e.trace.initCount !== 0) return 'construit sans bibliothèque';
-        if (e.horloge.enAttente() !== 0) return 'la boucle d attente n est pas bornée';
-        if (!e.trace.signalements.some((m) => /did not load/.test(m))) {
+        if (e.horloge.enAttente() !== 0) return 'une minuterie survit à l echec';
+        if (e.trace.scripts.length !== 0) return 'les aides ont été demandées sans bibliothèque';
+        if (!e.trace.signalements.some((m) => /intl-tel-input unavailable/.test(m))) {
             return 'l abandon n est pas signalé';
         }
         return '';
     }],
 
-    ['champ JAMAIS montré : aucune aide chargée, mais le champ EST prêt', async (src) => {
+    ['bibliothèque en suspens : le délai est borné et signalé', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', libLoad: 'stall' });
+        await repos();
+        if (e.trace.signalements.length !== 0) return 'signalé avant la fin du délai';
+        e.horloge.avancer(15000);
+        await repos();
+        if (!e.trace.signalements.some((m) => /timed out/.test(m))) {
+            return 'une requête tenue ouverte ne remonte jamais';
+        }
+        if (e.trace.initCount !== 0) return 'construit sans bibliothèque';
+        if (e.horloge.enAttente() !== 0) return 'la minuterie n est pas bornée';
+        return '';
+    }],
+
+    ['bibliothèque qui répond sans se définir : signalée, rien n est construit', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', libLoad: 'muette' });
+        await repos();
+        if (e.trace.initCount !== 0) return 'construit alors que la bibliothèque est absente du global';
+        if (!e.trace.signalements.some((m) => /without defining itself/.test(m))) {
+            return 'un fichier qui arrive vide passe inaperçu';
+        }
+        return '';
+    }],
+
+    ['bibliothèque déjà présente : aucune nouvelle requête', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', library: 'deja' });
+        await repos();
+        if (e.trace.biblio.length !== 0) return 'bibliothèque redemandée alors qu elle est déjà là';
+        if (e.trace.initCount !== 1) return 'le court-circuit ne construit pas le champ';
+        return '';
+    }],
+
+    ['feuille de style en échec : le champ est construit, rien n est signalé', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', cssLoad: 'fail' });
+        await repos();
+        if (e.trace.initCount !== 1) return 'la feuille de style a retenu le champ';
+        if (e.trace.signalements.length !== 0) return 'un champ sans drapeaux ne vaut pas un signalement';
+        if (!e.trace.avertissements.some((m) => /Stylesheet unavailable/.test(m))) {
+            return 'même la console ne le dit pas';
+        }
+        return '';
+    }],
+
+    ['feuille de style en suspens : elle ne retient pas le champ', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', cssLoad: 'stall' });
+        await repos();
+        if (e.trace.initCount !== 1) return 'une feuille jamais servie gèle le champ';
+        return '';
+    }],
+
+    ['la balise de la bibliothèque porte crossOrigin', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        if (e.trace.biblio.length !== 1) return 'bibliothèque non demandée';
+        if (e.trace.biblio[0].crossOrigin !== 'anonymous') {
+            return 'sans crossOrigin, une erreur de la bibliothèque remonte nue';
+        }
+        if (e.trace.feuille.length !== 1) return 'feuille de style non demandée';
+        return '';
+    }],
+
+    ['champ JAMAIS montré : aucune requête tierce du tout', async (src) => {
         const e = env(src, { utilsLoad: 'ok', observer: 'cache' });
         await repos();
+        if (e.trace.biblio.length !== 0 || e.trace.feuille.length !== 0) {
+            return '48 Ko demandés pour un champ que le visiteur ne voit pas';
+        }
         if (e.trace.scripts.length !== 0) {
             return '247 Ko chargés pour un champ que le visiteur ne voit pas';
         }
         if (e.trace.signalements.length !== 0) {
             return 'un champ jamais montré ne peut pas être dégradé : il n y a rien à signaler';
         }
-        // Un champ caché par CSS reste dans le formulaire et part à l'envoi.
-        // Ne pas le construire enverrait sa valeur brute.
-        if (e.trace.initCount !== 1) return 'le champ n est pas construit alors qu il reste envoyable';
+        // Le champ n'est pas construit non plus : sans les aides, le
+        // normalisateur d'envoi ne faisait rien de toute façon, et la
+        // construction exigeait la bibliothèque, donc la requête.
+        if (e.trace.initCount !== 0) return 'la bibliothèque a été demandée pour construire un champ caché';
         return '';
     }],
 

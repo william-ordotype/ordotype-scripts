@@ -1936,7 +1936,7 @@ Crisp chat integration with Memberstack data and custom button handler.
 
 - Repository scripts are inserted at once with `async = false`: fetched in parallel, run in insertion order. A script that fails to load is skipped and reported once the queue has run, so `error-reporter.js` is there to send it. A script that never answers still holds the ones after it.
 - Crisp loads on its own and never holds the queue.
-- intl-tel-input (cdnjs) loads on its own. `phone-input.js` is added once the queue has run and the library has loaded. A library that fails, or is still missing after 15 s, is reported; if it arrives late, the field is still built. The stylesheet holds nothing.
+- `phone-input.js` is added once the queue has run. It owns intl-tel-input: the library, its stylesheet and its formatting helpers are fetched only once a phone field is on screen, so a page whose field stays hidden asks cdnjs for nothing. A library that fails, or is still missing after 15 s, is reported and the field stays a plain input (`test/phone-input-utils.js`).
 
 ## Cache Busting
 
