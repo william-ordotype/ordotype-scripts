@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
- * Chargeurs : nos scripts s'exécutent dans l'ordre et un fichier en erreur est
- * sauté ; la bibliothèque tierce du champ téléphone ne retient jamais la page.
+ * Chargeurs : nos scripts s'exécutent dans l'ordre, un fichier en erreur est
+ * sauté, et `phone-input.js` est ajouté une fois la file finie.
+ *
+ * La bibliothèque tierce du champ téléphone ne passe plus par ici : c'est
+ * `phone-input.js` qui la demande, et seulement quand le champ est à l'écran
+ * (couvert par test/phone-input-utils.js).
  *
  * Le navigateur est simulé : un script `async = false` s'exécute dans l'ordre
  * d'insertion, un script en erreur est retiré de la file, un script muet la
@@ -18,8 +22,6 @@ const lire = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const REPO = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@';
 const CRISP_REPO = 'https://cdn.jsdelivr.net/gh/william-ordotype/crisp@main/';
 const CDNJS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/';
-const LIB = 'cdnjs:js/intlTelInput.min.js';
-const CSS = 'cdnjs:css/intlTelInput.min.css';
 
 const CHARGEURS = {
     accueil: {
@@ -94,8 +96,7 @@ async function rejouer(cle, { reseau = {}, config } = {}) {
         if (n === 'shared/error-reporter.js') {
             w.OrdoErrorReporter = { reportNetwork: (ctx, err) => rapports.push(`${ctx}: ${err.message}`) };
         }
-        if (n === LIB) w.intlTelInput = function() {};
-        if (n === def.telephone) journal.push({ quoi: 'telephone', bibliotheque: !!w.intlTelInput });
+        if (n === def.telephone) journal.push({ quoi: 'telephone' });
         if (el.onload) el.onload();
     }
 
@@ -181,7 +182,7 @@ for (const cle of Object.keys(CHARGEURS)) {
                 [egal(r.propres, r.def.ordre), true, `ordre ${r.propres.join(', ')}`],
                 [r.journal.filter((e) => e.quoi === 'ajout' && r.def.ordre.includes(e.n)).every((e) => e.async === false), true, 'nos scripts en async = false'],
                 [r.telephone.length, 1, 'phone-input exécuté une fois'],
-                [r.telephone.length === 1 && r.telephone[0].bibliotheque, true, 'bibliothèque déjà là'],
+                [r.ajoute('cdnjs:js/intlTelInput.min.js') || r.ajoute('cdnjs:css/intlTelInput.min.css'), false, 'le chargeur ne demande ni la bibliothèque ni sa feuille'],
                 [r.indice(r.def.telephone) > r.indice(dernier), true, 'après le dernier de nos scripts'],
                 [r.rapports.length, 0, 'aucun rapport'],
             ];
@@ -200,46 +201,12 @@ for (const cle of Object.keys(CHARGEURS)) {
             const r = await rejouer(cle, { reseau: { [cible]: { issue: 'erreur', delai: 1 }, 'shared/error-reporter.js': { delai: 50 } } });
             return [[r.rapports.length === 1 && r.rapports[0].includes(cible), true, `rapports ${r.rapports.join(' | ')}`]];
         }],
-        [`${p} bibliothèque en erreur : tout le reste tourne, pas de phone-input, un rapport`, async () => {
-            const r = await rejouer(cle, { reseau: { [LIB]: { issue: 'erreur', delai: 1 } } });
-            return [
-                [egal(r.propres, r.def.ordre), true, 'nos scripts tous exécutés'],
-                [r.ajoute(r.def.telephone), false, 'phone-input non demandé'],
-                [r.rapports.length === 1 && r.rapports[0].includes('intlTelInput'), true, `rapports ${r.rapports.join(' | ')}`],
-            ];
-        }],
-        [`${p} bibliothèque muette : tout le reste tourne, un rapport de délai, pas de phone-input`, async () => {
-            const r = await rejouer(cle, { reseau: { [LIB]: { issue: 'muet' } } });
-            return [
-                [egal(r.propres, r.def.ordre), true, 'nos scripts tous exécutés'],
-                [r.instant(r.def.ordre[r.def.ordre.length - 1]) < 1000, true, 'sans attendre la bibliothèque'],
-                [r.ajoute(r.def.telephone), false, 'phone-input non demandé'],
-                [r.rapports.length === 1 && r.rapports[0].includes('Timed out'), true, `rapports ${r.rapports.join(' | ')}`],
-            ];
-        }],
-        [`${p} bibliothèque en retard (20 s) : rapport de délai, puis phone-input quand elle arrive`, async () => {
-            const r = await rejouer(cle, { reseau: { [LIB]: { delai: 20000 } } });
-            return [
-                [r.telephone.length === 1 && r.telephone[0].bibliotheque, true, 'phone-input après la bibliothèque'],
-                [r.instant(r.def.telephone) >= 20000, true, 'au plus tôt à son arrivée'],
-                [r.rapports.length === 1 && r.rapports[0].includes('Timed out'), true, `rapports ${r.rapports.join(' | ')}`],
-            ];
-        }],
-        [`${p} nos scripts lents (20 s), bibliothèque rapide : phone-input attend la file, pas de faux rapport`, async () => {
+        [`${p} nos scripts lents (20 s) : phone-input attend la file, pas de faux rapport`, async () => {
             const dernier = CHARGEURS[cle].ordre[CHARGEURS[cle].ordre.length - 1];
             const r = await rejouer(cle, { reseau: { [dernier]: { delai: 20000 } } });
             return [
                 [r.indice(r.def.telephone) > r.indice(dernier), true, 'phone-input après le dernier script'],
                 [r.rapports.length, 0, 'aucun rapport'],
-            ];
-        }],
-        [`${p} feuille de style muette ou en erreur : phone-input ne l'attend pas, aucun rapport`, async () => {
-            const muette = await rejouer(cle, { reseau: { [CSS]: { issue: 'muet' } } });
-            const erreur = await rejouer(cle, { reseau: { [CSS]: { issue: 'erreur' } } });
-            return [
-                [muette.telephone.length === 1 && muette.instant(muette.def.telephone) < 1000, true, 'muette : phone-input tout de suite'],
-                [erreur.telephone.length, 1, 'erreur : phone-input exécuté'],
-                [muette.rapports.length + erreur.rapports.length, 0, 'aucun rapport'],
             ];
         }],
         [`${p} phone-input.js en erreur : un rapport`, async () => {

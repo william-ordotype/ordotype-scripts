@@ -1,15 +1,18 @@
 /**
  * Ordotype Account - Phone Input
  * International phone number formatting using intl-tel-input.
- * Depends on: jQuery, intl-tel-input CSS & JS (loaded by loader.js)
+ * Loads the library, its stylesheet and its formatting helpers itself, once a
+ * phone field is on screen.
  */
 (function() {
   'use strict';
 
+  const LIB_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
+  const LIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
+  const LIB_TIMEOUT_MS = 15000;
+  const CSS_TIMEOUT_MS = 2000;
   const UTILS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/utils.js';
   const UTILS_TIMEOUT_MS = 8000;
-  const LIB_POLL_MS = 100;
-  const LIB_POLL_MAX = 100;
 
   function report(message) {
     console.warn('[PhoneInput] ' + message);
@@ -19,52 +22,90 @@
   }
 
   /**
+   * Load one third-party file. Always settles, and never later than
+   * timeoutMs: a filtering proxy can hold a request open without ever
+   * answering or erroring, so `load` and `error` alone would leave that case
+   * silent forever. `onLate` runs when the file lands after the deadline.
+   */
+  function loadScript(url, timeoutMs, messages, onLate) {
+    return new Promise(resolve => {
+      let settled = false;
+
+      function settle(ready, message) {
+        if (settled) return false;
+        settled = true;
+        if (message) report(message);
+        resolve(ready);
+        return true;
+      }
+
+      const timer = setTimeout(function() {
+        settle(false, messages.timeout);
+      }, timeoutMs);
+
+      const script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
+      script.src = url;
+      script.async = true;
+      script.onload = function() {
+        clearTimeout(timer);
+        if (!settle(true, null) && onLate) onLate();
+      };
+      script.onerror = function() {
+        clearTimeout(timer);
+        settle(false, messages.error);
+      };
+      (document.body || document.head).appendChild(script);
+    });
+  }
+
+  /**
    * Load the formatting helpers ourselves rather than handing intl-tel-input
    * a `utilsScript` option. In 17.0.8 the library answers a failed helper load
    * by calling a method that does not exist on the instance, which raises an
    * uncaught TypeError from inside the library and cannot be caught from here.
    * Loading the file ourselves keeps that failure in our hands: the field stays
    * usable, it only loses auto-formatting.
-   *
-   * Always settles, and never later than UTILS_TIMEOUT_MS. A filtering proxy
-   * can hold the request open without ever answering or erroring, so `load` and
-   * `error` alone would leave that case silent forever. Nothing waits on the
-   * result any more - the field is built before this runs - so the deadline is
-   * now purely a witness: it is how a stalled network reaches us at all.
    */
   function loadUtils() {
-    return new Promise(resolve => {
-      if (window.intlTelInputUtils) {
-        resolve();
-        return;
-      }
+    if (window.intlTelInputUtils) return Promise.resolve(true);
+    return loadScript(UTILS_URL, UTILS_TIMEOUT_MS, {
+      timeout: 'Formatting helpers timed out, continuing without them',
+      error: 'Formatting helpers unavailable, continuing without them'
+    });
+  }
 
+  /**
+   * The stylesheet is requested first and the field waits for it, bounded.
+   * The library measures the flag against the applied rules to compute the
+   * field padding: building before the sheet lands leaves the number sitting
+   * under the flag for the life of the page. A sheet that never arrives only
+   * costs the flags, so it never blocks past CSS_TIMEOUT_MS and never reports.
+   */
+  function loadStylesheet() {
+    return new Promise(resolve => {
       let settled = false;
 
-      function settle(message) {
+      function settle() {
         if (settled) return;
         settled = true;
-        if (message) report(message);
         resolve();
       }
 
-      const timer = setTimeout(() => {
-        settle('Formatting helpers timed out, continuing without them');
-      }, UTILS_TIMEOUT_MS);
-
-      const script = document.createElement('script');
-      script.crossOrigin = 'anonymous';
-      script.src = UTILS_URL;
-      script.async = true;
-      script.onload = () => {
+      const timer = setTimeout(settle, CSS_TIMEOUT_MS);
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = LIB_CSS_URL;
+      link.onload = function() {
         clearTimeout(timer);
-        settle(null);
+        settle();
       };
-      script.onerror = () => {
+      link.onerror = function() {
         clearTimeout(timer);
-        settle('Formatting helpers unavailable, continuing without them');
+        console.warn('[PhoneInput] Stylesheet unavailable, the field stays unstyled');
+        settle();
       };
-      (document.body || document.head).appendChild(script);
+      document.head.appendChild(link);
     });
   }
 
@@ -145,6 +186,75 @@
     for (let i = 0; i < elements.length; i++) obs.observe(elements[i]);
   }
 
+  let built = false;
+
+  // Building throws nothing today, but it is now the last step of a promise
+  // chain: without this the repo channel would never hear about it.
+  function build(inputs) {
+    if (built) return;
+    built = true;
+    try {
+      init(inputs);
+    } catch (e) {
+      built = false;
+      report('Phone field could not be built: ' + e.message);
+      return;
+    }
+    loadUtils();
+  }
+
+  /**
+   * The field is only built once it is on screen. A form that is submitted
+   * before that would post the raw value, so say it out loud rather than let
+   * it pass unnoticed. The submit itself is never blocked: losing the member's
+   * input would be worse than an unformatted number.
+   */
+  function watchEarlySubmit(inputs) {
+    let warned = false;
+    inputs.forEach(input => {
+      const form = input.closest && input.closest('form');
+      if (!form) return;
+      form.addEventListener('submit', function() {
+        if (built || warned) return;
+        warned = true;
+        report('Form submitted before the phone field was built: value sent unformatted');
+      }, true);
+    });
+  }
+
+  /**
+   * Fetch the library and build the field. Both the library and its stylesheet
+   * wait for the field to be on screen, so a field that is never shown costs
+   * no request at all.
+   *
+   * A library that lands after the deadline still builds the field: the tag
+   * stays in the page and the member is still in front of it.
+   */
+  function loadAndBuild(inputs) {
+    const stylesheet = loadStylesheet();
+
+    function whenStyled() {
+      stylesheet.then(function() { build(inputs); });
+    }
+
+    if (window.intlTelInput) {
+      whenStyled();
+      return;
+    }
+
+    loadScript(LIB_URL, LIB_TIMEOUT_MS, {
+      timeout: 'intl-tel-input timed out, skipping phone formatting',
+      error: 'intl-tel-input unavailable, skipping phone formatting'
+    }, whenStyled).then(function(ready) {
+      if (!ready) return;
+      if (!window.intlTelInput) {
+        report('intl-tel-input loaded without defining itself, skipping phone formatting');
+        return;
+      }
+      whenStyled();
+    });
+  }
+
   function start() {
     const inputs = document.querySelectorAll('input[ms-code-phone-number]');
 
@@ -153,49 +263,25 @@
       return;
     }
 
-    // The field itself is built straight away: that is DOM work, no network,
-    // and it carries the country selector plus the listener that normalises
-    // the value on submit. Holding it back until the field appears would show
-    // a bare text box at the exact moment the member uses it, and a submit
-    // inside that window would post an unformatted number.
-    init(inputs);
-
-    // 🔴 Only the formatting helpers wait, and they are the whole problem:
-    // eight times the weight of the library, last in a chain the page starts
-    // several hops earlier, so the request most likely to be dropped.
-    // Fetching them for a field the visitor never opens buys a feature nobody
-    // is looking at, and buys the failures that come with it.
-    //
+    // Once the library lands the field is built without waiting for the
+    // helpers: that is DOM work, no network, and it carries the country
+    // selector plus the listener that normalises the value on submit.
     // Building before the helpers costs only the generated example
     // placeholder, and `autoPlaceholder: 'polite'` leaves an input that
     // already has a placeholder alone. All four pages that carry this field
     // hardcode one, so nothing is lost. `getNumber` reads the helpers off the
     // global at call time, so formatting starts working the moment they land.
-    whenVisible(inputs, loadUtils);
-  }
+    watchEarlySubmit(inputs);
 
-  // Wait for intl-tel-input to be available, but give up rather than poll for
-  // the life of the page when the library itself never loads.
-  function waitForDependency(attempt) {
-    const tries = attempt || 0;
-
-    if (window.intlTelInput) {
-      start();
-      return;
-    }
-
-    if (tries >= LIB_POLL_MAX) {
-      report('intl-tel-input did not load, skipping phone formatting');
-      return;
-    }
-
-    setTimeout(() => waitForDependency(tries + 1), LIB_POLL_MS);
+    whenVisible(inputs, function() {
+      loadAndBuild(inputs);
+    });
   }
 
   // Init on DOM ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => waitForDependency(0));
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    waitForDependency(0);
+    start();
   }
 })();

@@ -35,9 +35,6 @@
   ];
 
   // --- Loader queue: identical in every loader (test/loader-resilience.js) ---
-  var INTL_TEL_INPUT_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/css/intlTelInput.min.css';
-  var INTL_TEL_INPUT_JS = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js';
-  var PHONE_LIB_TIMEOUT_MS = 15000;
 
   function logFailure(message) {
     console.error('[' + LOADER_NAME + ']', message);
@@ -75,35 +72,9 @@
     });
   }
 
-  // phone-input.js runs once `after` has settled and the library has loaded.
-  function loadPhoneInput(phoneInputUrl, after) {
-    var link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = INTL_TEL_INPUT_CSS;
-    link.onerror = function() { console.warn('[' + LOADER_NAME + '] Failed to load: ' + INTL_TEL_INPUT_CSS); };
-    document.head.appendChild(link);
-
-    var lib = addScript(INTL_TEL_INPUT_JS, false);
-    var timer = setTimeout(function() {
-      logFailure('Timed out: ' + INTL_TEL_INPUT_JS);
-      after.then(function() { reportFailure('Timed out: ' + INTL_TEL_INPUT_JS); });
-    }, PHONE_LIB_TIMEOUT_MS);
-    lib.then(function() { clearTimeout(timer); }, function() { clearTimeout(timer); });
-
-    return after.then(function() { return lib; }).then(function() {
-      return addScript(phoneInputUrl, false).catch(function(err) {
-        logFailure(err.message);
-        reportFailure(err.message);
-      });
-    }, function(err) {
-      logFailure(err.message);
-      reportFailure(err.message);
-    });
-  }
   // --- End of loader queue ---
 
   console.log('[' + LOADER_NAME + '] Loading...');
-  var done = runInOrder(scripts);
-  loadPhoneInput(ROOT + '/mes-informations/phone-input.js', done);
+  var done = runInOrder(scripts.concat([ROOT + '/mes-informations/phone-input.js']));
   done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
 })();
