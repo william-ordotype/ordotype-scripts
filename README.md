@@ -529,6 +529,7 @@ node test/error-reporter-network.js    # une requête morte avec sa page n'est p
 node test/invoice-emails-retry.js      # rejeu d'une lecture sans réponse
 node test/phone-input-utils.js         # le champ tél. survit à des aides absentes
 node test/loader-resilience.js         # un chargeur survit à une dépendance tierce absente
+node test/geo-redirect-reveal.js       # la page de tarifs ne reste jamais invisible
 ```
 
 ✅ `tests.yml` lance **tout** `test/` à chaque push sur
