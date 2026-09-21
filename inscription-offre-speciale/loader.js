@@ -86,7 +86,10 @@
     // Set by /inscription/<offer> pages and copied to Memberstack by /membership/mes-informations,
     // where this offer's checkout returns. This offer has none of these values: remove the ones
     // left by an offer viewed earlier (see test/offre-speciale-signup-keys.js).
-    const OTHER_OFFER_KEYS = ['signup-duree-offre', 'signup-mode-dexercice', 'signup-statut', 'signup-specialite'];
+    // `signup-server-offer` is the relay a server-discount page leaves for the
+    // post-signup checkout; clearing it here runs before that page's own script
+    // writes it again, so only a relay from another offer is removed.
+    const OTHER_OFFER_KEYS = ['signup-duree-offre', 'signup-mode-dexercice', 'signup-statut', 'signup-specialite', 'signup-server-offer'];
 
     function clearOtherOfferKeys() {
         try {

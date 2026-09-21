@@ -281,6 +281,14 @@
             return;
         }
 
+        // Refus déjà rendu par le serveur pendant le paiement automatique qui suit
+        // l'inscription : on l'affiche sans redemander, et sans réarmer le relais
+        // d'un code refusé.
+        if (param('refus')) {
+            showScreen(invalidInvitationScreen());
+            return;
+        }
+
         handOffToSignup(code);
 
         var stripeBtn = document.getElementById(BTN_STRIPE_ID);
