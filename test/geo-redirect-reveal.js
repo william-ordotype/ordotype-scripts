@@ -22,14 +22,14 @@
  * qu'il puisse encore rediriger l'exception. Un fuseau illisible garde le
  * comportement prudent : page cachée jusqu'à la réponse.
  *
- * La liste des fuseaux est lue dans chaque fichier : les 4 copies doivent
+ * La liste des fuseaux est lue dans chaque fichier : toutes les copies doivent
  * porter la même, chaque nom doit être un fuseau que le moteur Intl reconnaît
  * sous ce nom exact, et les cas « fuseau français » sont rejoués sur chacun.
  *
  * Le fuseau est imposé par le test : sans cela, le résultat dépendrait de
  * l'heure de la machine qui le lance.
  *
- * Les cas sont rejoués sur les 4 copies du fichier.
+ * Les cas sont rejoués sur chaque copie du fichier.
  *
  * Usage : node test/geo-redirect-reveal.js
  */
@@ -42,6 +42,8 @@ const SOURCES = [
     'pricing-v2/geo-redirect.js',
     'fin-internat/geo-redirect.js',
     'fin-internat-v2/geo-redirect.js',
+    'signup-rempla/geo-redirect.js',
+    'signup-rempla-v2/geo-redirect.js',
 ];
 const DELAI = 5000;
 const FUSEAU_ETRANGER = 'Africa/Casablanca';
@@ -49,11 +51,11 @@ const ILLISIBLE = { illisible: true };
 const SANS_INTL = { sansIntl: true };
 const IntlReel = Intl;
 
-/** La liste FRENCH_TIME_ZONES telle qu'écrite dans le fichier. */
+/** La liste FRENCH_TIME_ZONES telle qu'écrite dans le fichier, null si absente. */
 function fuseauxDe(source) {
     const texte = fs.readFileSync(path.join(ROOT, source), 'utf8');
     const bloc = /FRENCH_TIME_ZONES = \[([^\]]*)\]/.exec(texte);
-    if (!bloc) throw new Error(`${source} : liste FRENCH_TIME_ZONES introuvable`);
+    if (!bloc) return null;
     return bloc[1].split(',').map((z) => z.trim().replace(/^'|'$/g, '')).filter(Boolean);
 }
 
@@ -269,19 +271,21 @@ const CAS_ILLISIBLE = [
 
 function scenarios(source) {
     return [[FUSEAU_ETRANGER, CAS]]
-        .concat(fuseauxDe(source).map((z) => [z, CAS_FRANCE]))
+        .concat((fuseauxDe(source) || []).map((z) => [z, CAS_FRANCE]))
         .concat([[ILLISIBLE, CAS_ILLISIBLE], [SANS_INTL, CAS_ILLISIBLE], ['', CAS_ILLISIBLE]]);
 }
 
 /** Même liste partout, métropole incluse, et des noms que Intl rend tels quels. */
 function controlerListes() {
     const soucis = [];
-    const reference = fuseauxDe(SOURCES[0]);
+    const reference = fuseauxDe(SOURCES[0]) || [];
     if (reference.indexOf('Europe/Paris') === -1) soucis.push(`${SOURCES[0]} : Europe/Paris absent`);
     if (reference.indexOf(FUSEAU_ETRANGER) !== -1) soucis.push(`${SOURCES[0]} : le fuseau étranger du test est dans la liste`);
     for (const src of SOURCES.slice(1)) {
         const liste = fuseauxDe(src);
-        if (liste.join('|') !== reference.join('|')) {
+        if (liste === null) {
+            soucis.push(`${src} : liste FRENCH_TIME_ZONES introuvable`);
+        } else if (liste.join('|') !== reference.join('|')) {
             soucis.push(`${src} : liste différente de ${SOURCES[0]}\n        ${liste.join(', ')}`);
         }
     }
@@ -310,7 +314,7 @@ if (soucisListes.length) {
     echecs += 1;
     console.log('FAIL  listes de fuseaux\n      ' + soucisListes.join('\n      '));
 } else {
-    console.log('ok    listes de fuseaux identiques dans les 4 fichiers, noms reconnus par Intl');
+    console.log(`ok    listes de fuseaux identiques dans les ${SOURCES.length} fichiers, noms reconnus par Intl`);
 }
 for (const src of SOURCES) {
     for (const [fuseau, liste] of scenarios(src)) for (const [nom, cas] of liste) {

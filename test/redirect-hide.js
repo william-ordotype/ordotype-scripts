@@ -146,6 +146,7 @@ const SCENARIOS = [];
 for (const [source, chemin, cible] of [
     ['pricing/ab-test.js', '/nos-offres', '/nos-offres-v2'],
     ['fin-internat/ab-test.js', '/membership/fin-internat', '/membership/fin-internat-v2'],
+    ['signup-rempla/ab-test.js', '/membership/signup-rempla-6months', '/membership/signup-rempla-6months-new-v2'],
 ]) {
     SCENARIOS.push([source, 'variante B enregistrée', { chemin, stockage: { AB_test_variant: 'B' } }, casRedirection(cible)]);
     SCENARIOS.push([source, 'nouveau visiteur tiré en B', { chemin, hasard: 0.95 }, casRedirection(cible)]);
