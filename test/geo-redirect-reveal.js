@@ -44,6 +44,7 @@ const SOURCES = [
     'fin-internat-v2/geo-redirect.js',
     'signup-rempla/geo-redirect.js',
     'signup-rempla-v2/geo-redirect.js',
+    'syndicats-dinternes/geo-redirect.js',
 ];
 const DELAI = 5000;
 const FUSEAU_ETRANGER = 'Africa/Casablanca';
