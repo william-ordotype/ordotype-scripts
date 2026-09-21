@@ -208,6 +208,23 @@ test('double clic : un seul appel ; sans identité Memberstack : aucun appel', a
   assert.strictEqual(calls.length, 0);
 });
 
+test('relais vers la page intermédiaire d’inscription : offre et code liés à l’adresse propre de la page', async () => {
+  const { w } = page({ query: '?invitation=CODE42&utm_source=sendinblue&_se=abc', member: null });
+  installFetch(w, () => reply(200, {}));
+  w.eval(GATE);
+  await tick();
+  const attendue = PAGE + '?invitation=CODE42';
+  assert.strictEqual(w.localStorage.getItem('signup-cancel-url'), attendue, 'retour Stripe avec le code, sans les paramètres de campagne');
+  assert.deepStrictEqual(JSON.parse(w.localStorage.getItem('signup-server-offer')),
+    { offer: 'parrainage-3m', promotionCode: 'CODE42', page: attendue });
+
+  const sansCode = page({ member: null });
+  installFetch(sansCode.w, () => reply(200, {}));
+  sansCode.w.eval(GATE);
+  await tick();
+  assert.strictEqual(sansCode.w.localStorage.getItem('signup-server-offer'), null, 'aucun relais sans invitation');
+});
+
 test('visiteur non identifié : un seul bouton, celui de la page, et le code reste gardé', async () => {
   const { w } = page({ query: '?invitation=CODE42', member: null });
   installFetch(w, () => reply(200, {}));

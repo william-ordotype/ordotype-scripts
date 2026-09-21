@@ -193,54 +193,44 @@
         : ['card', 'sepa_debit'];
     const option = resolveOption();
 
-    // Offre parrainage : la remise ne passe que par le code d'invitation, vérifié
-    // côté serveur, jamais par un coupon. Le confrère qui crée son compte depuis
-    // la page de l'offre arrive ici sans repasser par elle : on reprend le code
-    // qu'elle a gardé. Seulement quand l'inscription vient bien de cette page,
-    // sinon un code resté en mémoire s'appliquerait à une autre offre.
-    const PARRAINAGE_PAGE = '/inscription-offre-speciale/3-mois-50-parrainage';
-    const PARRAINAGE_STORAGE_KEY = 'ordo-parrainage-invitation';
-    const PARRAINAGE_CODE_PATTERN = /^[A-Za-z0-9_-]{3,64}$/;
-    function parrainageCode() {
-        if (String(cancelUrl || '').indexOf(PARRAINAGE_PAGE) === -1) return null;
+    // Offre dont la remise est accordée par le serveur (et non par un coupon) : la
+    // page de l'offre laisse dans `signup-server-offer` l'offre et le code à
+    // présenter, liés à sa propre adresse. Ils ne valent que pour une inscription
+    // partie de cette page : dès qu'une autre offre a écrit son `signup-cancel-url`,
+    // ils sont ignorés.
+    function readServerOffer() {
         try {
-            const code = localStorage.getItem(PARRAINAGE_STORAGE_KEY);
-            return code && PARRAINAGE_CODE_PATTERN.test(code) ? code : null;
+            const handoff = JSON.parse(localStorage.getItem('signup-server-offer') || 'null');
+            return handoff && handoff.offer && handoff.promotionCode && handoff.page === cancelUrl ? handoff : null;
         } catch (e) {
             return null;
         }
     }
-    const invitationCode = parrainageCode();
-    const parrainagePage = invitationCode
-        ? String(cancelUrl).split('?')[0] + '?invitation=' + encodeURIComponent(invitationCode)
-        : null;
-    if (!invitationCode && String(cancelUrl || '').indexOf(PARRAINAGE_PAGE) !== -1) {
-        reportSideEffect(new Error('Inscription depuis la page parrainage sans code d’invitation en mémoire'));
-    }
+    const serverOffer = readServerOffer();
 
-    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods, parrainage: !!invitationCode });
+    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods, serverOffer: serverOffer ? serverOffer.offer : null });
 
     const fnUrl = 'https://checkout.ordotype.fr/.netlify/functions/create-checkout-session';
 
     let sessionId, checkoutUrl;
     try {
         // Reuse in-flight fetch from the footer inline kicker if present, else fire one now.
-        // Le pré-vol de la page ignore le code d'invitation : en parrainage on ne le
-        // réutilise jamais, la session partirait au plein tarif.
+        // Le pré-vol de la page ne connaît pas l'offre serveur : on ne le réutilise
+        // jamais dans ce cas, la session partirait au plein tarif.
         let resp;
-        if (window.__checkoutSessionPromise && !invitationCode) {
+        if (window.__checkoutSessionPromise && !serverOffer) {
             console.log(PREFIX, 'Using pre-flight session');
             resp = await window.__checkoutSessionPromise;
         } else {
-            const payload = invitationCode
+            const payload = serverOffer
                 ? {
-                    offer: 'parrainage-3m',
-                    promotionCode: invitationCode,
+                    offer: serverOffer.offer,
+                    promotionCode: serverOffer.promotionCode,
                     memberId: userId || null,
                     stripeCustomerId,
                     priceId,
                     successUrl,
-                    cancelUrl: parrainagePage,
+                    cancelUrl,
                     payment_method_types: paymentMethods
                 }
                 : {
@@ -258,13 +248,12 @@
             });
         }
 
-        // Invitation refusée par le serveur (déjà utilisée, périmée, compte déjà
-        // abonné) : pas de repli au plein tarif. Retour à la page de l'offre, qui
-        // explique le refus.
-        if (invitationCode && resp.status === 403) {
+        // Offre serveur refusée (code déjà utilisé, périmé, compte non éligible) :
+        // pas de repli au plein tarif. Retour à la page de l'offre, qui explique.
+        if (serverOffer && resp.status === 403) {
             const refus = await resp.json().catch(() => ({}));
-            track({ event: 'parrainage_refused', option, reason: (refus && refus.reason) || 'unknown' });
-            window.location.href = parrainagePage;
+            track({ event: 'offer_refused', option, offer: serverOffer.offer, reason: (refus && refus.reason) || 'unknown' });
+            window.location.href = cancelUrl;
             return;
         }
 
