@@ -270,8 +270,11 @@
                 body: JSON.stringify(payload)
             }).then(function(resp) {
                 if (resp.status === 403) {
-                    return resp.json().catch(function() { return {}; }).then(function(data) {
-                        var reason = (data && data.reason) || 'unknown';
+                    return resp.json().catch(function() { return null; }).then(function(data) {
+                        // Seul un verdict du serveur est un refus. Un 403 de CDN ou de
+                        // pare-feu est une panne : on la signale et on garde le code.
+                        if (!data || data.eligible !== false) throw new Error('Session API error: 403 without verdict');
+                        var reason = data.reason || 'unknown';
                         track('parrainage_refused', { reason: reason });
                         forgetCodeUnlessAccountIssue(reason);
                         showScreen(refusalScreen(reason));

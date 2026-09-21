@@ -259,6 +259,25 @@ test('refus par raison : écran exact, lien adapté, code gardé seulement pour 
   }
 });
 
+test('403 sans verdict du serveur (CDN, pare-feu) : panne signalée, code gardé, pas d’écran de refus', async () => {
+  const reponses = {
+    'html': () => ({ ok: false, status: 403, json: () => Promise.reject(new Error('pas du JSON')) }),
+    'json sans verdict': () => reply(403, { message: 'Forbidden' }),
+  };
+  for (const [nom, repondre] of Object.entries(reponses)) {
+    const { w, rapports } = page({ query: '?invitation=CODE42' });
+    installFetch(w, repondre);
+    w.eval(GATE);
+    await tick();
+    click(w, 'signup-rempla-stripe-customer');
+    await tick();
+    assert.strictEqual(screen(w), null, nom);
+    assert.ok(rapports.includes('ParrainageCheckoutFailed'), nom);
+    assert.strictEqual(w.localStorage.getItem('ordo-parrainage-invitation'), 'CODE42', nom);
+    assert.ok(!events(w).includes('parrainage_refused'), nom);
+  }
+});
+
 test('refus transmis par la page intermédiaire : même écran par raison, sans appel au serveur', async () => {
   for (const [reason, titre] of [['already-subscribed', /déjà un abonnement/], ['already-paid', /découvrent Ordotype/], ['identity', /Connectez-vous/], ['used', /plus valable/]]) {
     const { w } = page({ query: '?invitation=CODE42&refus=' + reason });
