@@ -30,7 +30,8 @@
     pending: { text: 'Paiement en cours', tone: 'muted' },
     canceling: { text: 'Résiliation programmée', tone: 'muted' },
     pause_scheduled: { text: 'Pause programmée', tone: 'muted' },
-    paused: { text: 'En pause', tone: 'muted' }
+    paused: { text: 'En pause', tone: 'muted' },
+    ended: { text: 'Terminé', tone: 'muted' }
   };
 
   var STYLE_ID = 'ordo-subs-style';

@@ -37,6 +37,7 @@ const CARDS = [
   { label: null, status: 'active', price: { amount: 15000, current: 15000, currency: 'mad', interval: 'year', intervalCount: 1 },
     discount: null, offeredUntil: null, next: { date: '2027-01-10', amount: 15000 }, endsOn: null, resumesOn: null },
   { label: '<img src=x onerror=alert(1)>', status: 'free', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null },
+  { label: 'Essai terminé', status: 'ended', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null },
 ];
 
 function page({ visible = true, prefilled = false, portal = true, whitespace = false } = {}) {
@@ -127,6 +128,9 @@ async function main() {
     assert.strictEqual(cardText(t.w, 8), 'À vie Actif 25,50 € / mois au lieu de 30 € -15 % à vie Prochain prélèvement 25,50 € le 1er novembre 2026');
     assert.strictEqual(cardText(t.w, 9), 'En attente Paiement en cours 30 € / mois Votre paiement est en cours de validation.');
     assert.strictEqual(cardText(t.w, 10), 'Abonnement Actif 150 MAD / an Prochain prélèvement 150 MAD le 10 janvier 2027');
+
+    assert.strictEqual(cardText(t.w, 12), 'Essai terminé Terminé');
+    assert.ok(cards(t.w)[12].querySelector('.ordo-subs-tone-muted'));
 
     // Labels are text, never markup
     assert.strictEqual(cards(t.w)[11].querySelector('img'), null);
