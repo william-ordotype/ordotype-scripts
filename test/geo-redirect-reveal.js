@@ -250,6 +250,8 @@ const SCENARIOS = [
     ['Europe/Paris', CAS_FRANCE],
     ['Indian/Reunion', CAS_FRANCE],
     ['America/Cayenne', CAS_FRANCE],
+    ['Pacific/Noumea', CAS_FRANCE],
+    ['Pacific/Tahiti', CAS_FRANCE],
     [ILLISIBLE, CAS_ILLISIBLE],
     [SANS_INTL, CAS_ILLISIBLE],
     ['', CAS_ILLISIBLE],

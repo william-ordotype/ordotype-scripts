@@ -6,8 +6,12 @@
 (function(g, e, o, t, a, r, ge, tl, y, s) {
   var REVEAL_TIMEOUT_MS = 5000;
   var FRENCH_TIME_ZONES = [
-    'Europe/Paris', 'Indian/Reunion', 'America/Martinique', 'America/Guadeloupe',
-    'America/Cayenne', 'Indian/Mayotte'
+    'Europe/Paris',
+    'Indian/Reunion', 'Indian/Mayotte',
+    'America/Martinique', 'America/Guadeloupe', 'America/Cayenne',
+    'America/St_Barthelemy', 'America/Marigot', 'America/Miquelon',
+    'Pacific/Noumea', 'Pacific/Wallis',
+    'Pacific/Tahiti', 'Pacific/Marquesas', 'Pacific/Gambier'
   ];
 
   var timeZone = '';
