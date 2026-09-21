@@ -35,7 +35,7 @@
 
   var STYLE_ID = 'ordo-subs-style';
   var CSS = [
-    '.ordo-subs{display:flex;flex-direction:column;gap:20px;color:var(--base-900,#0c0e16)}',
+    '.ordo-subs{display:flex;flex-direction:column;gap:20px;margin-bottom:2.5rem;color:var(--base-900,#0c0e16)}',
     '.ordo-subs-intro{display:flex;flex-direction:column;gap:6px}',
     '.ordo-subs-title{margin:0;font-size:1.375rem;line-height:1.3;font-weight:700}',
     '.ordo-subs-sub{margin:0;font-size:.9375rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
@@ -245,7 +245,7 @@
 
   function intro() {
     var box = el('div', 'ordo-subs-intro');
-    box.appendChild(el('h2', 'ordo-subs-title', 'Mes abonnements'));
+    box.appendChild(el('h3', 'ordo-subs-title', 'Mes abonnements'));
     box.appendChild(el('p', 'ordo-subs-sub', 'Vos accès Ordotype, vos remises en cours et vos prochaines échéances.'));
     return box;
   }
@@ -398,7 +398,7 @@
       console.log(PREFIX + ' Anchor not found');
       return;
     }
-    if (anchor.firstChild) {
+    if (anchor.firstElementChild) {
       console.log(PREFIX + ' Already rendered');
       return;
     }

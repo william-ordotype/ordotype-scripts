@@ -39,13 +39,13 @@ const CARDS = [
   { label: '<img src=x onerror=alert(1)>', status: 'free', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null },
 ];
 
-function page({ visible = true, prefilled = false, portal = true } = {}) {
+function page({ visible = true, prefilled = false, portal = true, whitespace = false } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
   const dom = new JSDOM(
     `<!doctype html><html><head></head><body>
-      <div class="tab-pane"><div class="w-embed"><div id="ordotype-subscriptions">${prefilled ? '<p>x</p>' : ''}</div></div></div>
+      <div class="tab-pane"><div class="w-embed"><div id="ordotype-subscriptions">${prefilled ? '<p>x</p>' : ''}${whitespace ? '\n  ' : ''}</div></div></div>
     </body></html>`,
     { url: 'https://www.ordotype.fr/membership/compte', runScripts: 'outside-only', virtualConsole }
   );
@@ -188,6 +188,16 @@ async function main() {
     t.w.eval(SCRIPT);
     await wait(60);
     assert.strictEqual(calls.length, 0);
+  }
+
+  // Whitespace left in the embed is not a rendered block
+  {
+    const t = page({ whitespace: true });
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(cards(t.w).length, CARDS.length);
   }
 
   // One network failure is retried
