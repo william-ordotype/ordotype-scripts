@@ -43,6 +43,9 @@
     // Handle click
     invoicesBtn.addEventListener('click', handleClick);
 
+    // Lets other account scripts open the same portal
+    window.OrdoBillingPortal = { open: function() { invoicesBtn.click(); } };
+
     console.log('[BillingPortal] Initialized');
   }
 

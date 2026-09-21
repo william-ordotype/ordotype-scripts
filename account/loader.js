@@ -81,6 +81,10 @@
       // quelqu'un qui a déjà coché — laisserait un consentement actif que le
       // client ne pourrait plus retirer depuis sa page.
       'www.ordotype.fr': 100
+    },
+    // Live members only, like invoice-emails.js: verified on www with the override.
+    'subscriptions-overview.js': {
+      'www.ordotype.fr': 0
     }
   };
   const HOST = window.location.hostname;
@@ -190,6 +194,7 @@
     'status-selectors.js',
     'delete-account.js',
     'billing-portal.js',
+    'subscriptions-overview.js', // « Mes abonnements » list. Gated by GATES.
     'invoice-emails.js', // Opt-in « recevoir mes factures par e-mail ». Gated by GATES.
     'phone-input.js'
   ];
