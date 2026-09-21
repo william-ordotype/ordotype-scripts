@@ -206,6 +206,42 @@ test("sans session 2FA, sans e-mail de connexion lisible (absent, masqué) ou sa
   }
 });
 
+test('mesure et signalement : envoi réussi mesuré, chaque échec mesuré avec sa raison et signalé', async () => {
+  const lancer = async (options, repondre) => {
+    const { w } = page(options);
+    const signalements = [];
+    w.addEventListener('error', (e) => signalements.push(e.message));
+    installFetch(w, repondre);
+    const vraiSetTimeout = w.setTimeout.bind(w);
+    w.setTimeout = (fn, ms) => vraiSetTimeout(fn, ms >= 10000 ? 0 : ms);
+    w.eval(SCRIPT);
+    submitInvite(w, 'confrere@example.test');
+    await tick();
+    return { evenements: JSON.parse(JSON.stringify(w.dataLayer || [])), signalements };
+  };
+  const succes = () => Promise.resolve({ ok: true, status: 200 });
+
+  let r = await lancer({}, succes);
+  assert.deepStrictEqual(r.evenements, [{ event: 'referral_invite_sent' }]);
+  assert.deepStrictEqual(r.signalements, [], 'rien à signaler sur un succès');
+
+  const echecs = [
+    ['http_500', {}, () => Promise.resolve({ ok: false, status: 500 })],
+    ['network', {}, () => Promise.reject(new TypeError('Failed to fetch'))],
+    ['timeout', {}, (options) => new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); });
+    })],
+    ['no_referrer', { loginEmail: null }, succes],
+    ['no_endpoint', { action: '' }, succes],
+  ];
+  for (const [raison, options, repondre] of echecs) {
+    r = await lancer(options, repondre);
+    assert.deepStrictEqual(r.evenements, [{ event: 'referral_invite_failed', failure_reason: raison }], raison);
+    assert.deepStrictEqual(r.signalements, ['Referral invite failed: ' + raison], raison);
+    assert.ok(!r.signalements.some((m) => /Failed to fetch/.test(m)), 'le signalement ne doit pas passer pour une coupure réseau');
+  }
+});
+
 test('double envoi pendant la requête : un seul appel', async () => {
   const { w } = page();
   let terminer;

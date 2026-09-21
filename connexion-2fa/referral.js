@@ -7,6 +7,30 @@
   var TIMEOUT_MS = 10000;
   var pending = false;
 
+  // Mesure dans le dataLayer et signalement des échecs au suivi d'erreurs de la page.
+  function track(event, failureReason) {
+    try {
+      var payload = { event: event };
+      if (failureReason) payload.failure_reason = failureReason;
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push(payload);
+    } catch (e) {}
+  }
+
+  function report(reason) {
+    try {
+      var error = new Error("Referral invite failed: " + reason);
+      window.dispatchEvent(new ErrorEvent("error", { message: error.message, error: error }));
+    } catch (e) {}
+  }
+
+  function failureReason(error) {
+    var status = /^HTTP (\d{3})$/.exec((error && error.message) || "");
+    if (status) return "http_" + status[1];
+    if (error && error.name === "AbortError") return "timeout";
+    return "network";
+  }
+
   function getReferrer() {
     try {
       var session = JSON.parse(sessionStorage.getItem(SESSION_KEY));
@@ -107,8 +131,16 @@
     var referrer = getReferrer();
     showFail(form, false);
 
-    if (!invitee || !referrer || endpoint.indexOf("https://") !== 0) {
+    if (!invitee) {
       showFail(form, true);
+      return;
+    }
+    // Sans parrain ou sans adresse d'envoi, c'est une panne, pas une erreur de saisie.
+    var blocked = !referrer ? "no_referrer" : endpoint.indexOf("https://") !== 0 ? "no_endpoint" : "";
+    if (blocked) {
+      showFail(form, true);
+      track("referral_invite_failed", blocked);
+      report(blocked);
       return;
     }
 
@@ -123,10 +155,14 @@
       setBusy(form, false);
       form.reset();
       showConfirmation(invitee);
-    }, function () {
+      track("referral_invite_sent");
+    }, function (error) {
       pending = false;
       setBusy(form, false);
       showFail(form, true);
+      var reason = failureReason(error);
+      track("referral_invite_failed", reason);
+      report(reason);
     });
   }, true);
 
