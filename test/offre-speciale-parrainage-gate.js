@@ -235,6 +235,60 @@ test('refus rendu pendant le paiement après inscription : affiché sans rappele
   assert.strictEqual(w.localStorage.getItem('signup-server-offer'), null, 'relais non réécrit');
 });
 
+test('refus par raison : écran exact, lien adapté, code gardé seulement pour un problème de compte', async () => {
+  const attendus = [
+    { reason: 'already-subscribed', titre: /déjà un abonnement Ordotype/, lien: '/membership/compte', garde: false },
+    { reason: 'already-paid', titre: /réservée aux confrères qui découvrent Ordotype/, lien: '/nos-offres', garde: false },
+    { reason: 'identity', titre: /Connectez-vous avec le compte qui a reçu l’invitation/, lien: null, garde: true },
+    { reason: 'refused-by-stripe', titre: /Connectez-vous avec le compte qui a reçu l’invitation/, lien: null, garde: true },
+    { reason: 'used', titre: /n’est plus valable/, lien: '/nos-offres', garde: false },
+    { reason: 'raison-inconnue', titre: /n’est plus valable/, lien: '/nos-offres', garde: false },
+  ];
+  for (const a of attendus) {
+    const { w } = page({ query: '?invitation=CODE42' });
+    installFetch(w, () => reply(403, { eligible: false, reason: a.reason }));
+    w.eval(GATE);
+    await tick();
+    click(w, 'signup-rempla-stripe-customer');
+    await tick();
+    assert.ok(screen(w) && a.titre.test(screen(w).textContent), a.reason);
+    const lien = screen(w).querySelector('a');
+    assert.strictEqual(lien ? lien.getAttribute('href') : null, a.lien, a.reason);
+    assert.strictEqual(w.localStorage.getItem('ordo-parrainage-invitation') === 'CODE42', a.garde, a.reason);
+    assert.ok(events(w).includes('parrainage_refused'), a.reason);
+  }
+});
+
+test('403 sans verdict du serveur (CDN, pare-feu) : panne signalée, code gardé, pas d’écran de refus', async () => {
+  const reponses = {
+    'html': () => ({ ok: false, status: 403, json: () => Promise.reject(new Error('pas du JSON')) }),
+    'json sans verdict': () => reply(403, { message: 'Forbidden' }),
+  };
+  for (const [nom, repondre] of Object.entries(reponses)) {
+    const { w, rapports } = page({ query: '?invitation=CODE42' });
+    installFetch(w, repondre);
+    w.eval(GATE);
+    await tick();
+    click(w, 'signup-rempla-stripe-customer');
+    await tick();
+    assert.strictEqual(screen(w), null, nom);
+    assert.ok(rapports.includes('ParrainageCheckoutFailed'), nom);
+    assert.strictEqual(w.localStorage.getItem('ordo-parrainage-invitation'), 'CODE42', nom);
+    assert.ok(!events(w).includes('parrainage_refused'), nom);
+  }
+});
+
+test('refus transmis par la page intermédiaire : même écran par raison, sans appel au serveur', async () => {
+  for (const [reason, titre] of [['already-subscribed', /déjà un abonnement/], ['already-paid', /découvrent Ordotype/], ['identity', /Connectez-vous/], ['used', /plus valable/]]) {
+    const { w } = page({ query: '?invitation=CODE42&refus=' + reason });
+    const calls = installFetch(w, () => reply(200, {}));
+    w.eval(GATE);
+    await tick();
+    assert.ok(screen(w) && titre.test(screen(w).textContent), reason);
+    assert.strictEqual(calls.length, 0, reason);
+  }
+});
+
 test('chargeur : une autre offre retire le relais laissé par une offre à remise serveur', async () => {
   const relais = JSON.stringify({ offer: 'parrainage-3m', promotionCode: 'CODE42', page: PAGE + '?invitation=CODE42' });
   const { w } = chargeur({ slug: '6-mois-offerts-reactivation-remplacants-septembre-2026', stored: { 'signup-server-offer': relais } });

@@ -31,6 +31,11 @@
     var REDIRECT_LABEL = 'Patientez…';
     var RETRY_LABEL = 'Réessayer';
     var OFFERS_URL = '/nos-offres';
+    var ACCOUNT_URL = '/membership/compte';
+    var OFFERS_CTA = { label: 'Voir les offres Ordotype', href: OFFERS_URL };
+    // Refus liés au compte connecté et non à l'invitation : le code reste gardé,
+    // il resservira une fois connecté avec le bon compte.
+    var ACCOUNT_REASONS = ['identity', 'refused-by-stripe'];
 
     var BTN_MS_ID = 'signup-rempla-from-decouverte';
     var BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
@@ -124,7 +129,9 @@
         return node;
     }
 
-    function card(title, paragraphs) {
+    // `cta` absent : le bouton vers les offres ; `null` : aucun bouton.
+    function card(title, paragraphs, cta) {
+        var action = cta === undefined ? OFFERS_CTA : cta;
         var wrap = el('div', 'ordo-expired');
         wrap.setAttribute('data-parrainage-screen', '');
         var box = el('div', 'ordo-expired-card');
@@ -132,14 +139,16 @@
         paragraphs.forEach(function(text) {
             box.appendChild(el('p', 'ordo-expired-text', text));
         });
-        var row = el('div', 'ordo-expired-actions');
-        var btn = el('a', 'button is-gradient w-inline-block');
-        btn.href = OFFERS_URL;
-        var content = el('div', 'button-content outer');
-        content.appendChild(el('div', null, 'Voir les offres Ordotype'));
-        btn.appendChild(content);
-        row.appendChild(btn);
-        box.appendChild(row);
+        if (action) {
+            var row = el('div', 'ordo-expired-actions');
+            var btn = el('a', 'button is-gradient w-inline-block');
+            btn.href = action.href;
+            var content = el('div', 'button-content outer');
+            content.appendChild(el('div', null, action.label));
+            btn.appendChild(content);
+            row.appendChild(btn);
+            box.appendChild(row);
+        }
         wrap.appendChild(box);
         return wrap;
     }
@@ -157,6 +166,37 @@
             'Elle a déjà été utilisée, ou son délai est passé.',
             'Vous pouvez découvrir nos offres, sans engagement.'
         ]);
+    }
+
+    function alreadySubscribedScreen() {
+        return card('Vous avez déjà un abonnement Ordotype', [],
+            { label: 'Accéder à mon compte', href: ACCOUNT_URL });
+    }
+
+    function newcomersOnlyScreen() {
+        return card('Cette offre est réservée aux confrères qui découvrent Ordotype', [
+            'Vous pouvez découvrir nos offres, sans engagement.'
+        ]);
+    }
+
+    function wrongAccountScreen() {
+        return card('Connectez-vous avec le compte qui a reçu l’invitation', [
+            'Votre invitation reste valable.'
+        ], null);
+    }
+
+    // Un écran par raison de refus du serveur ; toute raison inconnue garde
+    // l'écran historique.
+    function refusalScreen(reason) {
+        if (reason === 'already-subscribed') return alreadySubscribedScreen();
+        if (reason === 'already-paid') return newcomersOnlyScreen();
+        if (ACCOUNT_REASONS.indexOf(reason) !== -1) return wrongAccountScreen();
+        return invalidInvitationScreen();
+    }
+
+    function forgetCodeUnlessAccountIssue(reason) {
+        if (ACCOUNT_REASONS.indexOf(reason) !== -1) return;
+        try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* stockage indisponible */ }
     }
 
     function showScreen(screen) {
@@ -230,10 +270,14 @@
                 body: JSON.stringify(payload)
             }).then(function(resp) {
                 if (resp.status === 403) {
-                    return resp.json().catch(function() { return {}; }).then(function(data) {
-                        track('parrainage_refused', { reason: (data && data.reason) || 'unknown' });
-                        try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* stockage indisponible */ }
-                        showScreen(invalidInvitationScreen());
+                    return resp.json().catch(function() { return null; }).then(function(data) {
+                        // Seul un verdict du serveur est un refus. Un 403 de CDN ou de
+                        // pare-feu est une panne : on la signale et on garde le code.
+                        if (!data || data.eligible !== false) throw new Error('Session API error: 403 without verdict');
+                        var reason = data.reason || 'unknown';
+                        track('parrainage_refused', { reason: reason });
+                        forgetCodeUnlessAccountIssue(reason);
+                        showScreen(refusalScreen(reason));
                         return null;
                     });
                 }
@@ -284,8 +328,10 @@
         // Refus déjà rendu par le serveur pendant le paiement automatique qui suit
         // l'inscription : on l'affiche sans redemander, et sans réarmer le relais
         // d'un code refusé.
-        if (param('refus')) {
-            showScreen(invalidInvitationScreen());
+        var refus = param('refus');
+        if (refus) {
+            forgetCodeUnlessAccountIssue(refus);
+            showScreen(refusalScreen(refus));
             return;
         }
 
