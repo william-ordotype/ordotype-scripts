@@ -16,6 +16,15 @@
  *   - une réponse arrivée après le filet ne révèle pas deux fois ;
  *   - aucune minuterie ne survit : le délai est borné, pas simplement long.
  *
+ * Un appareil réglé sur un fuseau français (métropole ou outre-mer) n'est pas
+ * concerné par la redirection : la page n'est jamais cachée, donc il n'y a ni
+ * attente, ni délai de secours, ni signalement. Le service est quand même
+ * appelé, pour qu'il puisse encore rediriger. Un fuseau illisible garde le
+ * comportement prudent : page cachée jusqu'à la réponse.
+ *
+ * Le fuseau est imposé par le test : sans cela, le résultat dépendrait de
+ * l'heure de la machine qui le lance.
+ *
  * Les cas sont rejoués sur les 4 copies du fichier.
  *
  * Usage : node test/geo-redirect-reveal.js
@@ -31,6 +40,9 @@ const SOURCES = [
     'fin-internat-v2/geo-redirect.js',
 ];
 const DELAI = 5000;
+const FUSEAU_ETRANGER = 'Africa/Casablanca';
+const ILLISIBLE = { illisible: true };
+const SANS_INTL = { sansIntl: true };
 
 /** Horloge virtuelle : les délais sont respectés, donc assertables. */
 function horloge() {
@@ -62,7 +74,17 @@ function horloge() {
     };
 }
 
-function env(source) {
+function intlSimule(fuseau) {
+    if (fuseau === SANS_INTL) return undefined;
+    return {
+        DateTimeFormat() {
+            if (fuseau === ILLISIBLE) throw new RangeError('Intl indisponible');
+            return { resolvedOptions: () => ({ timeZone: fuseau }) };
+        },
+    };
+}
+
+function env(source, fuseau) {
     const trace = { signalements: [] };
     const style = { id: null, innerHTML: null };
     let balise = null;
@@ -93,12 +115,14 @@ function env(source) {
     const sauvegarde = {
         window: global.window, document: global.document,
         setTimeout: global.setTimeout, clearTimeout: global.clearTimeout, console: global.console,
+        Intl: global.Intl,
     };
     global.window = win;
     global.document = doc;
     global.setTimeout = (fn, d) => h.set(fn, d);
     global.clearTimeout = (id) => h.clear(id);
     global.console = { log() {}, warn() {}, error() {} };
+    global.Intl = intlSimule(fuseau === undefined ? FUSEAU_ETRANGER : fuseau);
 
     const restaure = () => Object.assign(global, sauvegarde);
     try {
@@ -111,7 +135,9 @@ function env(source) {
     const rappel = Object.keys(win).find((k) => /^georedirect\d+loaded$/.test(k));
     return {
         trace, style, horloge: h, restaure,
-        visible: () => /opacity:1\.0/.test(style.innerHTML),
+        visible: () => style.id === null || /opacity:1\.0/.test(style.innerHTML),
+        cachee: () => style.id !== null,
+        serviceAppele: () => balise !== null && /\/gr\?id=/.test(balise.src),
         repondre: (redirect) => win[rappel](redirect),
         echouer: () => balise.onerror(),
     };
@@ -177,22 +203,83 @@ const CAS = [
     }],
 ];
 
+// Appareil réglé sur un fuseau français : aucun de ces cas ne doit cacher la
+// page, ni armer le délai de secours, ni signaler quoi que ce soit.
+const CAS_FRANCE = [
+    ['jamais cachée, service appelé quand même, aucune minuterie', (e) => {
+        if (e.cachee()) return 'la page est cachée alors que la redirection ne concerne pas ce visiteur';
+        if (!e.serviceAppele()) return 'le service n est plus appelé : plus aucune redirection possible';
+        if (e.horloge.enAttente() !== 0) return 'un délai de secours est armé pour une page déjà visible';
+        return '';
+    }],
+
+    ['service MUET : rien à signaler, la page n a jamais attendu', (e) => {
+        e.horloge.avancer(DELAI * 2);
+        if (!e.visible()) return 'page invisible';
+        if (e.trace.signalements.length !== 0) return 'signalement pour une page qui n a jamais été cachée';
+        return '';
+    }],
+
+    ['réponse, redirection ou échec du service : rien ne casse', (e) => {
+        e.repondre(true);
+        e.horloge.avancer(DELAI + 1);
+        e.repondre(false);
+        e.horloge.avancer(1);
+        e.echouer();
+        if (!e.visible()) return 'page invisible';
+        if (e.trace.signalements.length !== 0) return 'signalement inattendu';
+        if (e.horloge.enAttente() !== 0) return 'une minuterie survit';
+        return '';
+    }],
+];
+
+// Fuseau illisible : on ne sait pas, donc on garde la prudence d'avant.
+const CAS_ILLISIBLE = [
+    ['cachée et délai de secours armé, comme avant', (e) => {
+        if (!e.cachee()) return 'page montrée sans savoir si une redirection va suivre';
+        if (e.visible()) return 'page visible avant la réponse du service';
+        if (e.horloge.enAttente() !== 1) return 'le délai de secours n est pas armé';
+        e.horloge.avancer(DELAI + 1);
+        if (!e.visible()) return 'jamais révélée';
+        return '';
+    }],
+];
+
+const SCENARIOS = [
+    [FUSEAU_ETRANGER, CAS],
+    ['Europe/Paris', CAS_FRANCE],
+    ['Indian/Reunion', CAS_FRANCE],
+    ['America/Cayenne', CAS_FRANCE],
+    [ILLISIBLE, CAS_ILLISIBLE],
+    [SANS_INTL, CAS_ILLISIBLE],
+    ['', CAS_ILLISIBLE],
+];
+
+function libelle(fuseau) {
+    if (fuseau === ILLISIBLE) return 'Intl en erreur';
+    if (fuseau === SANS_INTL) return 'sans Intl';
+    return fuseau === '' ? 'fuseau vide' : fuseau;
+}
+
 let echecs = 0;
+let total = 0;
 for (const src of SOURCES) {
-    for (const [nom, cas] of CAS) {
+    for (const [fuseau, liste] of SCENARIOS) for (const [nom, cas] of liste) {
+        total += 1;
         let e = null;
+        const titre = `${src} [${libelle(fuseau)}] — ${nom}`;
         try {
-            e = env(src);
+            e = env(src, fuseau);
             const souci = cas(e);
             e.restaure();
-            if (souci) { echecs += 1; console.log(`FAIL  ${src} — ${nom}\n      ${souci}`); }
-            else console.log(`ok    ${src} — ${nom}`);
+            if (souci) { echecs += 1; console.log(`FAIL  ${titre}\n      ${souci}`); }
+            else console.log(`ok    ${titre}`);
         } catch (err) {
             if (e) e.restaure();
             echecs += 1;
-            console.log(`FAIL  ${src} — ${nom}\n      exception : ${err.message}`);
+            console.log(`FAIL  ${titre}\n      exception : ${err.message}`);
         }
     }
 }
-console.log(echecs ? `\n${echecs} cas en échec.` : `\n${SOURCES.length * CAS.length} cas (${CAS.length} × ${SOURCES.length}), tous verts`);
+console.log(echecs ? `\n${echecs} cas en échec sur ${total}.` : `\n${total} cas sur ${SOURCES.length} fichiers, tous verts`);
 process.exit(echecs ? 1 : 0);

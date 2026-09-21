@@ -5,14 +5,28 @@
  */
 (function(g, e, o, t, a, r, ge, tl, y, s) {
   var REVEAL_TIMEOUT_MS = 5000;
+  var FRENCH_TIME_ZONES = [
+    'Europe/Paris', 'Indian/Reunion', 'America/Martinique', 'America/Guadeloupe',
+    'America/Cayenne', 'Indian/Mayotte'
+  ];
 
-  g.getElementsByTagName(o)[0].insertAdjacentHTML(
-    'afterbegin',
-    '<style id="georedirect1741959196388style">body{opacity:0.0 !important;}</style>'
-  );
+  var timeZone = '';
+  try {
+    timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch (err) {}
 
-  var revealed = false;
+  // The page is hidden only while a redirect is likely. A device set to a
+  // French time zone keeps it visible from the start; the service still
+  // runs and can still redirect.
+  var revealed = FRENCH_TIME_ZONES.indexOf(timeZone) !== -1;
   var safety = null;
+
+  if (!revealed) {
+    g.getElementsByTagName(o)[0].insertAdjacentHTML(
+      'afterbegin',
+      '<style id="georedirect1741959196388style">body{opacity:0.0 !important;}</style>'
+    );
+  }
 
   s = function() {
     if (revealed) return;
@@ -30,14 +44,16 @@
   // answering or by failing. A request that does neither, which a filtering
   // proxy can produce, would leave the page invisible for good. This is the
   // only exit from that case, and it says so rather than passing silently.
-  safety = setTimeout(function() {
-    safety = null;
-    s();
-    var reporter = window.OrdoErrorReporter;
-    if (reporter && typeof reporter.reportNetwork === 'function') {
-      reporter.reportNetwork('GeoRedirectV2', new Error('Geo service silent after ' + REVEAL_TIMEOUT_MS + ' ms, page revealed'));
-    }
-  }, REVEAL_TIMEOUT_MS);
+  if (!revealed) {
+    safety = setTimeout(function() {
+      safety = null;
+      s();
+      var reporter = window.OrdoErrorReporter;
+      if (reporter && typeof reporter.reportNetwork === 'function') {
+        reporter.reportNetwork('GeoRedirectV2', new Error('Geo service silent after ' + REVEAL_TIMEOUT_MS + ' ms, page revealed'));
+      }
+    }, REVEAL_TIMEOUT_MS);
+  }
 
   t = g.getElementsByTagName(o)[0];
   y = g.createElement(e);
