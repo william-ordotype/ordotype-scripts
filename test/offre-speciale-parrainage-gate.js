@@ -208,6 +208,39 @@ test('double clic : un seul appel ; sans identité Memberstack : aucun appel', a
   assert.strictEqual(calls.length, 0);
 });
 
+test('relais vers la page intermédiaire d’inscription : offre et code liés à l’adresse propre de la page', async () => {
+  const { w } = page({ query: '?invitation=CODE42&utm_source=sendinblue&_se=abc', member: null });
+  installFetch(w, () => reply(200, {}));
+  w.eval(GATE);
+  await tick();
+  const attendue = PAGE + '?invitation=CODE42';
+  assert.strictEqual(w.localStorage.getItem('signup-cancel-url'), attendue, 'retour Stripe avec le code, sans les paramètres de campagne');
+  assert.deepStrictEqual(JSON.parse(w.localStorage.getItem('signup-server-offer')),
+    { offer: 'parrainage-3m', promotionCode: 'CODE42', page: attendue });
+
+  const sansCode = page({ member: null });
+  installFetch(sansCode.w, () => reply(200, {}));
+  sansCode.w.eval(GATE);
+  await tick();
+  assert.strictEqual(sansCode.w.localStorage.getItem('signup-server-offer'), null, 'aucun relais sans invitation');
+});
+
+test('refus rendu pendant le paiement après inscription : affiché sans rappeler le serveur, relais non réarmé', async () => {
+  const { w } = page({ query: '?invitation=CODE42&refus=used', member: { stripeCustomerId: 'cus_filleul', memberId: 'mem_filleul' } });
+  const calls = installFetch(w, () => reply(200, {}));
+  w.eval(GATE);
+  await tick();
+  assert.ok(screen(w) && /n’est plus valable/.test(screen(w).textContent), 'écran de refus');
+  assert.strictEqual(calls.length, 0, 'aucun appel au serveur');
+  assert.strictEqual(w.localStorage.getItem('signup-server-offer'), null, 'relais non réécrit');
+});
+
+test('chargeur : une autre offre retire le relais laissé par une offre à remise serveur', async () => {
+  const relais = JSON.stringify({ offer: 'parrainage-3m', promotionCode: 'CODE42', page: PAGE + '?invitation=CODE42' });
+  const { w } = chargeur({ slug: '6-mois-offerts-reactivation-remplacants-septembre-2026', stored: { 'signup-server-offer': relais } });
+  assert.strictEqual(w.localStorage.getItem('signup-server-offer'), null);
+});
+
 test('visiteur non identifié : un seul bouton, celui de la page, et le code reste gardé', async () => {
   const { w } = page({ query: '?invitation=CODE42', member: null });
   installFetch(w, () => reply(200, {}));
@@ -222,7 +255,7 @@ test('visiteur non identifié : un seul bouton, celui de la page, et le code res
   assert.strictEqual(w.localStorage.getItem('ordo-parrainage-invitation'), 'CODE42');
 });
 
-function chargeur({ slug, winback = false, stripeCustomer = true }) {
+function chargeur({ slug, winback = false, stripeCustomer = true, stored = {} }) {
   const virtualConsole = new VirtualConsole();
   const dom = new JSDOM(GABARIT, { url: PAGE, runScripts: 'outside-only', virtualConsole });
   const w = dom.window;
@@ -230,6 +263,7 @@ function chargeur({ slug, winback = false, stripeCustomer = true }) {
   w.WINBACK_GATE = winback;
   w.CMS_CHECKOUT_CONFIG = { priceId: 'price_praticien', couponId: '', paymentMethods: ['sepa_debit'], option: 'offre-speciale' };
   if (stripeCustomer) w.localStorage.setItem('_ms-mem', JSON.stringify({ id: 'mem_x', stripeCustomerId: 'cus_x' }));
+  Object.keys(stored).forEach((k) => w.localStorage.setItem(k, stored[k]));
   w.eval(LOADER);
   const scripts = () => Array.from(w.document.querySelectorAll('script[src]')).map((s) => s.src.split('@main/')[1]);
   return { w, scripts };

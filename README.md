@@ -1243,8 +1243,8 @@ Auto-checkout page for users who started signup but didn't complete payment. Cre
 window.CMS_CHECKOUT_CONFIG = {
     priceId: "{{wf priceid}}",
     couponId: "{{wf couponid}}",
-    successUrl: "${window.location.origin}/membership/mes-informations-praticien",
-    cancelUrl: "${window.location.origin}/nos-offres",
+    successUrl: "{{wf successurl}}",
+    cancelUrl: "{{wf cancelurl}}",
     paymentMethods: "{{wf payment-method-types}}".split(','),
     option: "{{wf option}}"
 };
@@ -1259,6 +1259,36 @@ window.CMS_CHECKOUT_CONFIG = {
 - **Supports `${window.location.origin}` placeholder** in URLs (resolved at runtime)
 - Sends abandon-cart webhook before redirect
 - Shows fallback button if checkout session creation fails
+
+### Server-discount offers (relay from the offer page)
+
+Some offers grant their discount on the server, from a code checked there, never
+from a coupon. A new member signs up on the offer page and lands here without going
+back to it, so the offer page leaves a relay in localStorage:
+
+| Key | Written by | Content |
+|-----|------------|---------|
+| `signup-server-offer` | the offer page's gate | `{ offer, promotionCode, page }`, `page` being the offer page's own URL with the code |
+| `signup-cancel-url` | the offer page's gate (overwrites the template's value) | the same `page` URL |
+
+`auto-checkout.js` uses the relay only when `relay.page` equals the resolved
+`cancelUrl`. It knows nothing of the offer itself.
+
+- **The item's CMS `cancelUrl` must be empty** (the `validation` item): a CMS value
+  takes precedence over `signup-cancel-url`, so the relay would never match and the
+  member would be charged the full price.
+- With a relay: sends `offer`, `promotionCode` and `memberId` instead of `couponId`,
+  never reuses the inline pre-flight session, and proceeds without a
+  `stripeCustomerId` (the server resolves it from the member).
+- A 403 carrying `eligible: false` is a refusal: the relay is removed, `offer_refused`
+  is tracked, and the member goes back to the offer page with `refus=<reason>`, which
+  the gate displays without asking the server again. Any other failure (network,
+  5xx, a 403 without a verdict) also goes back to the offer page instead of showing
+  the fallback button, which knows neither the offer nor the code.
+- `stripe_signup_click` and the abandon-cart webhook carry `offer` (and the webhook
+  `promotionCode`), so a server-offer checkout is distinguishable downstream.
+- Offer pages remove a relay left by another offer (`clearOtherOfferKeys` in
+  `inscription-offre-speciale/loader.js`) before their own script runs.
 
 ### Console Prefixes
 

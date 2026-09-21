@@ -254,6 +254,25 @@
         });
     }
 
+    // Un confrère qui crée son compte ne revient pas ici : l'inscription l'envoie
+    // vers le paiement automatique, qui lit les clés `signup-*` de la page. On lui
+    // laisse donc l'offre et le code, liés à l'adresse de cette page, qui devient
+    // aussi l'adresse de retour de Stripe : le code survit à un paiement annulé.
+    function handOffToSignup(code) {
+        var page = window.location.origin + window.location.pathname
+            + '?invitation=' + encodeURIComponent(code);
+        try {
+            localStorage.setItem('signup-cancel-url', page);
+            localStorage.setItem('signup-server-offer', JSON.stringify({
+                offer: OFFER_ID,
+                promotionCode: code,
+                page: page
+            }));
+        } catch (e) {
+            report('ParrainageHandoff', e);
+        }
+    }
+
     function init() {
         var code = invitationCode();
         if (!code) {
@@ -261,6 +280,16 @@
             track('parrainage_missing_invitation');
             return;
         }
+
+        // Refus déjà rendu par le serveur pendant le paiement automatique qui suit
+        // l'inscription : on l'affiche sans redemander, et sans réarmer le relais
+        // d'un code refusé.
+        if (param('refus')) {
+            showScreen(invalidInvitationScreen());
+            return;
+        }
+
+        handOffToSignup(code);
 
         var stripeBtn = document.getElementById(BTN_STRIPE_ID);
         if (!stripeBtn) {

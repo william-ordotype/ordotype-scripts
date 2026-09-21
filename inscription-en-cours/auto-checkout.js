@@ -150,25 +150,6 @@
     var ms = await waitForStripeCustomer(MS_WAIT_TIMEOUT_MS);
     var stripeCustomerId = ms.stripeCustomerId;
 
-    if (!stripeCustomerId) {
-        // Après l'attente, l'absence est un vrai échec et non une course :
-        // `no_customer_id` redevient un chiffre exploitable. Le bouton de repli
-        // reste VISIBLE : c'est le seul chemin qu'il reste à l'utilisateur.
-        console.error(PREFIX, 'No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms');
-        reportSideEffect(new Error('No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms'));
-        trackCheckoutFailure('no_customer_id');
-        return;
-    }
-
-    console.log(PREFIX, 'Stripe customer found');
-
-    // Masqué seulement maintenant : on sait qu'on va prendre la main dessus.
-    const btn = document.getElementById('checkoutStripe');
-    if (btn) btn.style.display = 'none';
-
-    const customerEmail = ms.email;
-    const userId = ms.memberId;
-
     // Get config from CMS or localStorage fallback
     const config = window.CMS_CHECKOUT_CONFIG || {};
 
@@ -193,30 +174,105 @@
         : ['card', 'sepa_debit'];
     const option = resolveOption();
 
-    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods });
+    // Offre dont la remise est accordée par le serveur (et non par un coupon) : la
+    // page de l'offre laisse dans `signup-server-offer` l'offre et le code à
+    // présenter, liés à sa propre adresse. Ils ne valent que pour une inscription
+    // partie de cette page : dès qu'une autre offre a écrit son `signup-cancel-url`,
+    // ils sont ignorés.
+    var serverOffer = null;
+    try {
+        var handoff = JSON.parse(localStorage.getItem('signup-server-offer') || 'null');
+        if (handoff && handoff.offer && handoff.promotionCode && handoff.page === cancelUrl) serverOffer = handoff;
+    } catch (e) {
+        serverOffer = null;
+    }
+
+    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods, serverOffer: serverOffer ? serverOffer.offer : null });
+
+    // Sans client Stripe après l'attente, l'inscription ne peut pas partir, sauf
+    // pour une offre serveur : le serveur retrouve alors le client depuis le membre.
+    if (!stripeCustomerId && !(serverOffer && ms.memberId)) {
+        // Après l'attente, l'absence est un vrai échec et non une course :
+        // `no_customer_id` redevient un chiffre exploitable. Le bouton de repli
+        // reste VISIBLE : c'est le seul chemin qu'il reste à l'utilisateur.
+        console.error(PREFIX, 'No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms');
+        reportSideEffect(new Error('No Stripe customer ID after ' + MS_WAIT_TIMEOUT_MS + 'ms'));
+        trackCheckoutFailure('no_customer_id');
+        return;
+    }
+
+    console.log(PREFIX, stripeCustomerId ? 'Stripe customer found' : 'Server offer: customer resolved by the server from the member');
+
+    // Masqué seulement maintenant : on sait qu'on va prendre la main dessus.
+    const btn = document.getElementById('checkoutStripe');
+    if (btn) btn.style.display = 'none';
+
+    const customerEmail = ms.email;
+    const userId = ms.memberId;
+
+    // Retour vers la page de l'offre, sans laisser `/inscription-en-cours` dans
+    // l'historique : un « retour » du navigateur y relancerait le paiement.
+    function backToOffer(url) {
+        window.location.replace(url);
+    }
+
+    function withParam(url, key, value) {
+        try {
+            var u = new URL(url, window.location.origin);
+            u.searchParams.set(key, value);
+            return u.toString();
+        } catch (e) {
+            return url;
+        }
+    }
 
     const fnUrl = 'https://checkout.ordotype.fr/.netlify/functions/create-checkout-session';
 
     let sessionId, checkoutUrl;
     try {
         // Reuse in-flight fetch from the footer inline kicker if present, else fire one now.
+        // Le pré-vol de la page ne connaît pas l'offre serveur : on ne le réutilise
+        // jamais dans ce cas, la session partirait au plein tarif.
         let resp;
-        if (window.__checkoutSessionPromise) {
+        if (window.__checkoutSessionPromise && !serverOffer) {
             console.log(PREFIX, 'Using pre-flight session');
             resp = await window.__checkoutSessionPromise;
         } else {
+            // Un pré-vol abandonné ne doit pas finir en rejet non traité.
+            if (window.__checkoutSessionPromise) window.__checkoutSessionPromise.catch(function() {});
+            var payload = {
+                stripeCustomerId: stripeCustomerId || null,
+                priceId: priceId,
+                successUrl: successUrl,
+                cancelUrl: cancelUrl,
+                payment_method_types: paymentMethods
+            };
+            if (serverOffer) {
+                payload.offer = serverOffer.offer;
+                payload.promotionCode = serverOffer.promotionCode;
+                payload.memberId = userId || null;
+            } else {
+                payload.couponId = couponId;
+            }
             resp = await fetch(fnUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    stripeCustomerId,
-                    priceId,
-                    couponId,
-                    successUrl,
-                    cancelUrl,
-                    payment_method_types: paymentMethods
-                })
+                body: JSON.stringify(payload)
             });
+        }
+
+        // Offre serveur refusée (code déjà utilisé, périmé, compte non éligible) :
+        // pas de repli au plein tarif. Retour à la page de l'offre avec la raison,
+        // pour qu'elle affiche le refus sans redemander au serveur. Un 403 sans
+        // verdict (CDN, pare-feu) n'est pas un refus : c'est une panne.
+        if (serverOffer && resp.status === 403) {
+            var refus = await resp.json().catch(function() { return null; });
+            if (!refus || refus.eligible !== false) throw new Error('Session API error: 403 without verdict');
+            var reason = refus.reason || 'unknown';
+            track({ event: 'offer_refused', option: option, offer: serverOffer.offer, reason: reason });
+            try { localStorage.removeItem('signup-server-offer'); } catch (e) { /* stockage indisponible */ }
+            backToOffer(withParam(cancelUrl, 'refus', reason));
+            return;
         }
 
         if (!resp.ok) {
@@ -241,6 +297,15 @@
 
     } catch (err) {
         console.error(PREFIX, 'Error creating session:', err);
+        if (serverOffer) {
+            // Le bouton de repli de cette page ne connaît ni l'offre ni le code :
+            // retour à la page de l'offre, où le membre, désormais connecté,
+            // relance le paiement avec son code.
+            reportSideEffect(err);
+            trackCheckoutFailure(checkoutFailureReason(err));
+            backToOffer(cancelUrl);
+            return;
+        }
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('AutoCheckout', err);
         // Restore the fallback button first: the user must never wait on a tag
         // callback, and dataLayer.push runs GTM's callbacks synchronously.
@@ -265,6 +330,8 @@
             successUrl,
             cancelUrl,
             originPage: window.location.href,
+            offer: serverOffer ? serverOffer.offer : undefined,
+            promotionCode: serverOffer ? serverOffer.promotionCode : undefined,
             paymentMethods
         };
 
@@ -311,6 +378,7 @@
             option,
             priceId: resolvedPriceId,
             coupon: resolvedCouponId,
+            offer: serverOffer ? serverOffer.offer : undefined,
             checkoutSessionId: sessionId
         });
     } catch (err) {
