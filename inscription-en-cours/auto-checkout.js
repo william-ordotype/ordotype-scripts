@@ -193,30 +193,79 @@
         : ['card', 'sepa_debit'];
     const option = resolveOption();
 
-    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods });
+    // Offre parrainage : la remise ne passe que par le code d'invitation, vérifié
+    // côté serveur, jamais par un coupon. Le confrère qui crée son compte depuis
+    // la page de l'offre arrive ici sans repasser par elle : on reprend le code
+    // qu'elle a gardé. Seulement quand l'inscription vient bien de cette page,
+    // sinon un code resté en mémoire s'appliquerait à une autre offre.
+    const PARRAINAGE_PAGE = '/inscription-offre-speciale/3-mois-50-parrainage';
+    const PARRAINAGE_STORAGE_KEY = 'ordo-parrainage-invitation';
+    const PARRAINAGE_CODE_PATTERN = /^[A-Za-z0-9_-]{3,64}$/;
+    function parrainageCode() {
+        if (String(cancelUrl || '').indexOf(PARRAINAGE_PAGE) === -1) return null;
+        try {
+            const code = localStorage.getItem(PARRAINAGE_STORAGE_KEY);
+            return code && PARRAINAGE_CODE_PATTERN.test(code) ? code : null;
+        } catch (e) {
+            return null;
+        }
+    }
+    const invitationCode = parrainageCode();
+    const parrainagePage = invitationCode
+        ? String(cancelUrl).split('?')[0] + '?invitation=' + encodeURIComponent(invitationCode)
+        : null;
+    if (!invitationCode && String(cancelUrl || '').indexOf(PARRAINAGE_PAGE) !== -1) {
+        reportSideEffect(new Error('Inscription depuis la page parrainage sans code d’invitation en mémoire'));
+    }
+
+    console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods, parrainage: !!invitationCode });
 
     const fnUrl = 'https://checkout.ordotype.fr/.netlify/functions/create-checkout-session';
 
     let sessionId, checkoutUrl;
     try {
         // Reuse in-flight fetch from the footer inline kicker if present, else fire one now.
+        // Le pré-vol de la page ignore le code d'invitation : en parrainage on ne le
+        // réutilise jamais, la session partirait au plein tarif.
         let resp;
-        if (window.__checkoutSessionPromise) {
+        if (window.__checkoutSessionPromise && !invitationCode) {
             console.log(PREFIX, 'Using pre-flight session');
             resp = await window.__checkoutSessionPromise;
         } else {
-            resp = await fetch(fnUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+            const payload = invitationCode
+                ? {
+                    offer: 'parrainage-3m',
+                    promotionCode: invitationCode,
+                    memberId: userId || null,
+                    stripeCustomerId,
+                    priceId,
+                    successUrl,
+                    cancelUrl: parrainagePage,
+                    payment_method_types: paymentMethods
+                }
+                : {
                     stripeCustomerId,
                     priceId,
                     couponId,
                     successUrl,
                     cancelUrl,
                     payment_method_types: paymentMethods
-                })
+                };
+            resp = await fetch(fnUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
+        }
+
+        // Invitation refusée par le serveur (déjà utilisée, périmée, compte déjà
+        // abonné) : pas de repli au plein tarif. Retour à la page de l'offre, qui
+        // explique le refus.
+        if (invitationCode && resp.status === 403) {
+            const refus = await resp.json().catch(() => ({}));
+            track({ event: 'parrainage_refused', option, reason: (refus && refus.reason) || 'unknown' });
+            window.location.href = parrainagePage;
+            return;
         }
 
         if (!resp.ok) {
