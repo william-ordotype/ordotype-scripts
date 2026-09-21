@@ -104,6 +104,29 @@ async function initStripeCheckout() {
         btn.click();
     }
 
+    // Deepest single-child descendant: the element that holds the button text
+    function labelOf(btn) {
+        let node = btn;
+        while (node.children && node.children.length === 1) node = node.children[0];
+        return node;
+    }
+
+    // HTTP 409 from the checkout function: the member already has a subscription
+    // to this offer's family, or a payment on it is pending. The Stripe button
+    // becomes a link to the account page. The fallback button stays hidden and a
+    // held click is dropped: either would start a second subscription.
+    const ACCOUNT_URL = '/membership/compte';
+    function showCurrentOffer(reason) {
+        const pending = reason === 'payment-pending';
+        window.ORDO_PENDING_CHECKOUT_CLICK = false;
+        if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
+        signupBtnStripe.setAttribute('href', ACCOUNT_URL);
+        labelOf(signupBtnStripe).textContent = pending ? 'Régulariser mon paiement' : 'Mon offre actuelle';
+        signupBtnStripe.style.display = 'flex';
+        console.log(PREFIX, 'Already subscribed, linking to the account page');
+        trackCheckoutFailure(pending ? 'payment_pending' : 'already_subscribed');
+    }
+
     // Memberstack data (from shared utility)
     const ms = window.OrdoMemberstack || {};
     const stripeCustomerId = ms.stripeCustomerId;
@@ -182,6 +205,13 @@ async function initStripeCheckout() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         }, 2, 1000);
+
+        if (resp.status === 409) {
+            let refusal = {};
+            try { refusal = (await resp.json()) || {}; } catch (ignored) {}
+            showCurrentOffer(refusal.error);
+            return;
+        }
 
         // fetchWithRetry only retries network errors, so a 4xx/5xx arrives here
         // as a readable Response whose JSON error body parses fine. Without this
