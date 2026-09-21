@@ -10,6 +10,21 @@
   var ORIGINAL_URL = "/nos-offres";
   var REDIRECT_URL = "/nos-offres-v2";
 
+  // The browser keeps showing this page until the next one arrives. Hide it
+  // meanwhile, and show it again if the navigation never happens or the page
+  // is restored from the back/forward cache.
+  function hideWhileLeaving() {
+    var root = document.documentElement;
+    root.style.setProperty('opacity', '0', 'important');
+    function show() {
+      root.style.removeProperty('opacity');
+    }
+    setTimeout(show, 5000);
+    window.addEventListener('pageshow', function(event) {
+      if (event.persisted) show();
+    });
+  }
+
   // Only run on the specified signup page
   if (window.location.pathname !== ORIGINAL_URL) {
     return;
@@ -27,6 +42,7 @@
   // If the user is in variant "B", redirect to the new signup-v2 URL
   if (variant === "B") {
     console.log('[ABTest] Redirecting to variant B');
+    hideWhileLeaving();
     window.location.href = REDIRECT_URL;
   } else {
     console.log('[ABTest] User is in variant A');

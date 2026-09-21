@@ -21,21 +21,15 @@
         timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     } catch (err) {}
 
-    // The page is hidden only while a redirect is likely. A device set to a
-    // French time zone keeps it visible from the start; the service still
-    // runs and can still redirect.
-    var revealed = FRENCH_TIME_ZONES.indexOf(timeZone) !== -1;
+    // A device set to a French time zone is not expected to be redirected,
+    // so the page is not hidden for it. The service still runs and can still
+    // redirect; the visitor then sees this page briefly before leaving.
+    var hidden = FRENCH_TIME_ZONES.indexOf(timeZone) === -1;
+    var revealed = false;
     var safety = null;
 
-    if (!revealed) {
-        g.getElementsByTagName(o)[0].insertAdjacentHTML(
-            'afterbegin',
-            '<style id="georedirect1761060850637style">body{opacity:0.0 !important;}</style>'
-        );
-    }
-
     s = function() {
-        if (revealed) return;
+        if (!hidden || revealed) return;
         revealed = true;
         g.getElementById('georedirect1761060850637style').innerHTML = 'body{opacity:1.0 !important;}';
     };
@@ -46,12 +40,16 @@
         safety = null;
     }
 
-    // The page starts at opacity 0 and is revealed by the geo service, either
-    // by answering or by failing. A request that does neither, which a
-    // filtering proxy can produce, would leave the page invisible for good.
-    // This is the only exit from that case, and it says so rather than
-    // passing silently.
-    if (!revealed) {
+    if (hidden) {
+        g.getElementsByTagName(o)[0].insertAdjacentHTML(
+            'afterbegin',
+            '<style id="georedirect1761060850637style">body{opacity:0.0 !important;}</style>'
+        );
+
+        // A hidden page is revealed by the geo service, either by answering
+        // or by failing. A request that does neither, which a filtering proxy
+        // can produce, would leave it invisible for good. This is the only
+        // exit from that case, and it says so rather than passing silently.
         safety = setTimeout(function() {
             safety = null;
             s();
@@ -69,6 +67,7 @@
     y.onerror = function() { cancelSafety(); s(); };
     window.georedirect1761060850637loaded = function(redirect) {
         cancelSafety();
+        if (!hidden) return;
         var to = 0;
         if (redirect) { to = 5000; }
         setTimeout(function() { s(); }, to);

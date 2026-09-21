@@ -17,10 +17,14 @@
  *   - aucune minuterie ne survit : le délai est borné, pas simplement long.
  *
  * Un appareil réglé sur un fuseau français (métropole ou outre-mer) n'est pas
- * concerné par la redirection : la page n'est jamais cachée, donc il n'y a ni
- * attente, ni délai de secours, ni signalement. Le service est quand même
- * appelé, pour qu'il puisse encore rediriger. Un fuseau illisible garde le
+ * censé être redirigé : la page n'est jamais cachée, donc il n'y a ni attente,
+ * ni délai de secours, ni signalement. Le service est quand même appelé, pour
+ * qu'il puisse encore rediriger l'exception. Un fuseau illisible garde le
  * comportement prudent : page cachée jusqu'à la réponse.
+ *
+ * La liste des fuseaux est lue dans chaque fichier : les 4 copies doivent
+ * porter la même, chaque nom doit être un fuseau que le moteur Intl reconnaît
+ * sous ce nom exact, et les cas « fuseau français » sont rejoués sur chacun.
  *
  * Le fuseau est imposé par le test : sans cela, le résultat dépendrait de
  * l'heure de la machine qui le lance.
@@ -43,6 +47,15 @@ const DELAI = 5000;
 const FUSEAU_ETRANGER = 'Africa/Casablanca';
 const ILLISIBLE = { illisible: true };
 const SANS_INTL = { sansIntl: true };
+const IntlReel = Intl;
+
+/** La liste FRENCH_TIME_ZONES telle qu'écrite dans le fichier. */
+function fuseauxDe(source) {
+    const texte = fs.readFileSync(path.join(ROOT, source), 'utf8');
+    const bloc = /FRENCH_TIME_ZONES = \[([^\]]*)\]/.exec(texte);
+    if (!bloc) throw new Error(`${source} : liste FRENCH_TIME_ZONES introuvable`);
+    return bloc[1].split(',').map((z) => z.trim().replace(/^'|'$/g, '')).filter(Boolean);
+}
 
 /** Horloge virtuelle : les délais sont respectés, donc assertables. */
 function horloge() {
@@ -88,13 +101,14 @@ function env(source, fuseau) {
     const trace = { signalements: [] };
     const style = { id: null, innerHTML: null };
     let balise = null;
+    const inseres = [];
 
     const tete = {
         insertAdjacentHTML(_ou, html) {
             style.id = /id="([^"]+)"/.exec(html)[1];
             style.innerHTML = /<style[^>]*>([^<]*)</.exec(html)[1];
         },
-        parentNode: { insertBefore() {} },
+        parentNode: { insertBefore(el) { inseres.push(el); } },
     };
 
     const doc = {
@@ -137,13 +151,21 @@ function env(source, fuseau) {
         trace, style, horloge: h, restaure,
         visible: () => style.id === null || /opacity:1\.0/.test(style.innerHTML),
         cachee: () => style.id !== null,
-        serviceAppele: () => balise !== null && /\/gr\?id=/.test(balise.src),
+        serviceAppele: () => inseres.some((el) => el === balise && /\/gr\?id=/.test(el.src)),
         repondre: (redirect) => win[rappel](redirect),
         echouer: () => balise.onerror(),
     };
 }
 
 const CAS = [
+    ['cachée dès le chargement, délai de secours armé, service appelé', (e) => {
+        if (!e.cachee()) return 'page montrée alors qu une redirection peut suivre';
+        if (e.visible()) return 'page visible avant la réponse du service';
+        if (e.horloge.enAttente() !== 1) return 'le délai de secours n est pas armé';
+        if (!e.serviceAppele()) return 'le service n est pas inséré dans la page';
+        return '';
+    }],
+
     ['service qui répond : révélée tout de suite', (e) => {
         e.repondre(false);
         e.horloge.avancer(1);
@@ -215,7 +237,7 @@ const CAS_FRANCE = [
 
     ['service MUET : rien à signaler, la page n a jamais attendu', (e) => {
         e.horloge.avancer(DELAI * 2);
-        if (!e.visible()) return 'page invisible';
+        if (e.cachee()) return 'page cachée';
         if (e.trace.signalements.length !== 0) return 'signalement pour une page qui n a jamais été cachée';
         return '';
     }],
@@ -226,7 +248,7 @@ const CAS_FRANCE = [
         e.repondre(false);
         e.horloge.avancer(1);
         e.echouer();
-        if (!e.visible()) return 'page invisible';
+        if (e.cachee()) return 'page cachée';
         if (e.trace.signalements.length !== 0) return 'signalement inattendu';
         if (e.horloge.enAttente() !== 0) return 'une minuterie survit';
         return '';
@@ -245,17 +267,35 @@ const CAS_ILLISIBLE = [
     }],
 ];
 
-const SCENARIOS = [
-    [FUSEAU_ETRANGER, CAS],
-    ['Europe/Paris', CAS_FRANCE],
-    ['Indian/Reunion', CAS_FRANCE],
-    ['America/Cayenne', CAS_FRANCE],
-    ['Pacific/Noumea', CAS_FRANCE],
-    ['Pacific/Tahiti', CAS_FRANCE],
-    [ILLISIBLE, CAS_ILLISIBLE],
-    [SANS_INTL, CAS_ILLISIBLE],
-    ['', CAS_ILLISIBLE],
-];
+function scenarios(source) {
+    return [[FUSEAU_ETRANGER, CAS]]
+        .concat(fuseauxDe(source).map((z) => [z, CAS_FRANCE]))
+        .concat([[ILLISIBLE, CAS_ILLISIBLE], [SANS_INTL, CAS_ILLISIBLE], ['', CAS_ILLISIBLE]]);
+}
+
+/** Même liste partout, métropole incluse, et des noms que Intl rend tels quels. */
+function controlerListes() {
+    const soucis = [];
+    const reference = fuseauxDe(SOURCES[0]);
+    if (reference.indexOf('Europe/Paris') === -1) soucis.push(`${SOURCES[0]} : Europe/Paris absent`);
+    if (reference.indexOf(FUSEAU_ETRANGER) !== -1) soucis.push(`${SOURCES[0]} : le fuseau étranger du test est dans la liste`);
+    for (const src of SOURCES.slice(1)) {
+        const liste = fuseauxDe(src);
+        if (liste.join('|') !== reference.join('|')) {
+            soucis.push(`${src} : liste différente de ${SOURCES[0]}\n        ${liste.join(', ')}`);
+        }
+    }
+    for (const z of reference) {
+        let rendu = null;
+        try {
+            rendu = new IntlReel.DateTimeFormat('en', { timeZone: z }).resolvedOptions().timeZone;
+        } catch (err) {
+            rendu = 'inconnu (' + err.message + ')';
+        }
+        if (rendu !== z) soucis.push(`fuseau ${z} : Intl rend ${rendu}`);
+    }
+    return soucis;
+}
 
 function libelle(fuseau) {
     if (fuseau === ILLISIBLE) return 'Intl en erreur';
@@ -264,9 +304,16 @@ function libelle(fuseau) {
 }
 
 let echecs = 0;
-let total = 0;
+let total = 1;
+const soucisListes = controlerListes();
+if (soucisListes.length) {
+    echecs += 1;
+    console.log('FAIL  listes de fuseaux\n      ' + soucisListes.join('\n      '));
+} else {
+    console.log('ok    listes de fuseaux identiques dans les 4 fichiers, noms reconnus par Intl');
+}
 for (const src of SOURCES) {
-    for (const [fuseau, liste] of SCENARIOS) for (const [nom, cas] of liste) {
+    for (const [fuseau, liste] of scenarios(src)) for (const [nom, cas] of liste) {
         total += 1;
         let e = null;
         const titre = `${src} [${libelle(fuseau)}] — ${nom}`;
