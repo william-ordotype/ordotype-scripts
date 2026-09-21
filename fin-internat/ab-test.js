@@ -13,6 +13,21 @@
     const ORIGINAL_URL = '/membership/fin-internat';
     const REDIRECT_URL = '/membership/fin-internat-v2';
 
+    // The browser keeps showing this page until the next one arrives. Hide it
+    // meanwhile, and show it again if the navigation never happens or the
+    // page is restored from the back/forward cache.
+    function hideWhileLeaving() {
+        const root = document.documentElement;
+        root.style.setProperty('opacity', '0', 'important');
+        function show() {
+            root.style.removeProperty('opacity');
+        }
+        setTimeout(show, 5000);
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) show();
+        });
+    }
+
     // Only run on the specified page
     if (window.location.pathname !== ORIGINAL_URL) {
         return;
@@ -33,6 +48,7 @@
     // If the user is in variant "B", redirect to the V2 URL
     if (variant === 'B') {
         console.log(PREFIX, 'Redirecting to B variant');
+        hideWhileLeaving();
         window.location.href = REDIRECT_URL;
     }
 })();
