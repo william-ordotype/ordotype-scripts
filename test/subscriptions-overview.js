@@ -210,8 +210,8 @@ async function main() {
   // Payment method section: the method Stripe will charge, replacing the page's own block
   const pmSection = (w) => w.document.querySelector('.ordo-pm');
   const VISA = { type: 'card', brand: 'visa', last4: '4242', expMonth: 8, expYear: 2027, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
-  async function withPms(list, pms, others) {
-    const t = page();
+  async function withPms(list, pms, others, { portal = true } = {}) {
+    const t = page({ portal });
     installFetch(t.w, [{ status: 200, body: { subscriptions: list, paymentMethods: pms, otherPaymentMethods: others } }]);
     t.w.eval(SCRIPT);
     await wait(60);
@@ -222,13 +222,25 @@ async function main() {
     const s = pmSection(t.w);
     assert.ok(s, 'section rendered');
     assert.strictEqual(text(s), 'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Médecine Générale. Modifier');
-    const link = s.querySelector('a.ordo-subs-btn');
-    assert.strictEqual(link.getAttribute('href'), '/membership/moyen-de-paiement');
-    assert.ok(!link.classList.contains('is-primary'));
+    // "Modifier" opens the billing portal, where another saved method can be made the default
+    const edit = s.querySelector('button.ordo-subs-btn');
+    assert.strictEqual(edit.textContent, 'Modifier');
+    assert.ok(!edit.classList.contains('is-primary'));
+    assert.strictEqual(s.querySelector('a.ordo-subs-btn'), null);
+    edit.click();
+    assert.strictEqual(t.opened.length, 1);
     assert.ok(s.querySelector('svg path'), 'card icon drawn');
     assert.strictEqual(anchor(t.w).lastElementChild, s, 'after the subscriptions box');
     assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
     assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
+    t.dom.window.close();
+  }
+  {
+    // Without the portal, "Modifier" falls back to the payment method page
+    const t = await withPms([CARDS[0]], [VISA], [], { portal: false });
+    const link = pmSection(t.w).querySelector('a.ordo-subs-btn');
+    assert.strictEqual(link.textContent, 'Modifier');
+    assert.strictEqual(link.getAttribute('href'), '/membership/moyen-de-paiement');
     t.dom.window.close();
   }
   {
@@ -262,8 +274,8 @@ async function main() {
     assert.strictEqual(s.querySelectorAll('.ordo-pm-row').length, 2);
     assert.strictEqual(text(s),
       'Moyen de paiement Prélèvement SEPA •••• 4521 Utilisé pour : Médecine Générale. Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Module Rhumatologie et Stockage. Modifier');
-    assert.strictEqual(s.querySelectorAll('a.ordo-subs-btn').length, 1);
-    assert.ok(s.querySelector('.ordo-subs-actions a.ordo-subs-btn'));
+    assert.strictEqual(s.querySelectorAll('.ordo-subs-btn').length, 1);
+    assert.ok(s.querySelector('.ordo-subs-actions button.ordo-subs-btn'));
     t.dom.window.close();
   }
   {
@@ -370,7 +382,8 @@ async function main() {
   // payment method page, which stays the link's address and the fallback
   const CHECKOUT = { url: 'https://checkout.stripe.com/c/pay/cs_test_123#fragment', id: 'cs_test_123' };
   async function withSetup(outcomes, { memberstack = null, list = [CARDS[0]], pms = [VISA] } = {}) {
-    const t = page();
+    // Without the portal, so that every button goes through the SEPA setup
+    const t = page({ portal: false });
     const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: list, paymentMethods: pms } }].concat(outcomes));
     const navigations = [];
     const beacons = [];
