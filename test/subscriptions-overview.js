@@ -1005,8 +1005,95 @@ async function main() {
     assert.strictEqual(t.reported.length, 1);
   }
 
+  // Measurement: the list outcome, each click, and the result of what waits for an answer
+  {
+    const t = page();
+    t.w.dataLayer = [];
+    t.w.OrdoRollout = { 'subscriptions-overview.js': { enabled: true, bucket: 7, percent: 100, reason: 'open' } };
+    const resilier = Object.assign({}, CARDS[0], { action: { label: 'Résilier', href: '#cancellation-warning-modal' } });
+    const canceling = Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' });
+    const pdf = Buffer.from('%PDF-1.4 facture').toString('base64');
+    const INV = [{ ref: 'aaaaaaaaaaaaaaaaaaaa', date: '2026-09-14', label: 'Médecine Générale', amount: 1500, currency: 'eur', status: 'paid', pdf: true }];
+    installFetch(t.w, [
+      { status: 200, body: { subscriptions: [resilier, canceling, CARDS[3]], paymentMethods: [VISA], invoices: INV } },
+      { status: 200, body: { ok: true, filename: 'f.pdf', pdf } },
+      { status: 502, body: { error: 'upstream_error' } },
+    ]);
+    t.w.URL.createObjectURL = () => 'blob:x';
+    t.w.URL.revokeObjectURL = () => {};
+    t.w.HTMLAnchorElement.prototype.click = function() {};
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const ev = (name) => t.w.dataLayer.filter((e) => e.event === name);
+    assert.deepStrictEqual(ev('subscriptions_list').map((e) => [e.subs_outcome, e.subs_status, e.rollout_percent, e.rollout_bucket]),
+      [['shown', 'active+canceling+free', 100, 7]]);
+    cards(t.w)[0].querySelector('button').click();
+    const help = t.w.document.querySelector('.ordo-help a[href^="mailto:"]');
+    help.addEventListener('click', (e) => e.preventDefault());
+    help.dispatchEvent(new t.w.MouseEvent('click', { bubbles: true, cancelable: true }));
+    invSection(t.w).querySelector('button.ordo-inv-pdf').click();
+    await wait(60);
+    cards(t.w)[1].querySelector('button').click();
+    await wait(60);
+    const actions = ev('subscriptions_action').map((e) => [e.subs_action, e.subs_status, e.subs_outcome]);
+    assert.deepStrictEqual(actions, [
+      ['resilier', 'active', 'click'],
+      ['aide_email', '', 'click'],
+      ['pdf', 'paid', 'click'],
+      ['pdf', 'paid', 'ok'],
+      ['reabonner', 'canceling', 'click'],
+      ['reabonner', 'canceling', 'failed'],
+    ]);
+    t.dom.window.close();
+  }
+  {
+    // A list that cannot load says so, with its status; no dataLayer at all breaks nothing
+    const t = page();
+    t.w.dataLayer = [];
+    installFetch(t.w, [{ status: 502, body: { error: 'upstream_error' } }]);
+    t.w.eval(SCRIPT);
+    await wait(100);
+    assert.deepStrictEqual(t.w.dataLayer.filter((e) => e.event === 'subscriptions_list').map((e) => [e.subs_outcome, e.subs_status]), [['failed', '502']]);
+    const t2 = page();
+    delete t2.w.dataLayer;
+    installFetch(t2.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    t2.w.eval(SCRIPT);
+    await wait(60);
+    cards(t2.w)[0].click();
+    assert.strictEqual(cards(t2.w).length, CARDS.length);
+    assert.deepStrictEqual(t2.erreurs, []);
+    t.dom.window.close();
+    t2.dom.window.close();
+  }
+  {
+    // Every clickable element of the list is named for the measurement
+    const t = page({ pause: { ok: true } });
+    const withButton = Object.assign({}, CARDS[0], { action: { label: 'Gérer mon offre', href: '/membership/desabonnement-module-rhumato' } });
+    const INV = [{ ref: 'cccccccccccccccccccc', date: '2026-08-14', label: null, amount: 3000, currency: 'eur', status: 'uncollectible', pdf: true, pay: 'invoice' }];
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [withButton, CARDS[5], CARDS[6]], paymentMethods: [VISA], invoices: INV } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const named = Array.from(anchor(t.w).querySelectorAll('a, button')).filter((n) => !n.hasAttribute('data-subs-action'));
+    assert.deepStrictEqual(named.map((n) => n.textContent), [], 'no anonymous button or link');
+    const names = Array.from(anchor(t.w).querySelectorAll('[data-subs-action]')).map((n) => n.getAttribute('data-subs-action'));
+    for (const want of ['gerer_mon_offre', 'impaye_modifier_moyen', 'reprendre_pause', 'annuler_pause', 'mettre_a_jour_moyen', 'regler', 'portail', 'aide_email', 'aide_telephone', 'video_moyen_de_paiement', 'video_factures']) {
+      assert.ok(names.includes(want), want);
+    }
+    t.dom.window.close();
+  }
+
+  // A misconfigured function (503) is an outage: hidden, and reported
+  {
+    const t = page();
+    installFetch(t.w, [{ status: 503, body: { error: 'not_configured' } }]);
+    t.w.eval(SCRIPT);
+    await wait(100);
+    assert.strictEqual(anchor(t.w).style.display, 'none');
+    assert.strictEqual(t.reported.length, 1);
+  }
+
   // Expected refusals: hidden, not reported
-  for (const status of [401, 409, 429, 503]) {
+  for (const status of [401, 409, 429]) {
     const t = page();
     installFetch(t.w, [{ status, body: { error: 'x' } }]);
     t.w.eval(SCRIPT);

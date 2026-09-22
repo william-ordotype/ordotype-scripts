@@ -13,7 +13,7 @@
   var MS_MAX_ATTEMPTS = 50;
   var SKELETON_DELAY_MS = 200;
   var RETRY_DELAY_MS = 400;
-  var EXPECTED = [401, 409, 429, 503];
+  var EXPECTED = [401, 409, 429];
 
   var member = window.OrdoAccount && window.OrdoAccount.member;
   if (!member || !member.id) return;
@@ -239,7 +239,7 @@
   function footOf(c) {
     if (c.status === 'past_due') {
       // Saving a new payment method also retries the unpaid invoice.
-      return footRow('Paiement en échec', paymentLink('ordo-subs-link', 'Modifier le moyen de paiement'));
+      return footRow('Paiement en échec', paymentLink('ordo-subs-link', 'Modifier le moyen de paiement', c.status));
     }
     if ((c.status === 'paused' || c.status === 'pause_scheduled') && c.resumesOn) {
       return footRow('Reprise automatique le', day(c.resumesOn));
@@ -317,9 +317,11 @@
           paymentMethods: ['sepa_debit'],
           originPage: window.location.href
         });
+        trackOutcome(link.getAttribute('data-subs-action'), link.getAttribute('data-subs-status'), 'ok');
         window.location.assign(data.url);
       });
     }).catch(function(err) {
+      trackOutcome(link.getAttribute('data-subs-action'), link.getAttribute('data-subs-status'), 'failed');
       var reporter = window.OrdoErrorReporter;
       if (reporter) {
         try {
@@ -333,19 +335,79 @@
     });
   }
 
+  // --- Measurement (GA4 through GTM). Never allowed to break the page.
+  var TRACK_SLUG = /[^a-z0-9]+/g;
+
+  function slug(text) {
+    var t = String(text || '').toLowerCase();
+    if (t.normalize) t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return t.replace(TRACK_SLUG, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  }
+
+  function track(eventName, params) {
+    if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
+    var payload = { event: eventName };
+    var rollout = window.OrdoRollout && window.OrdoRollout['subscriptions-overview.js'];
+    if (rollout) {
+      payload.rollout_percent = rollout.percent;
+      payload.rollout_bucket = rollout.bucket;
+      payload.rollout_reason = rollout.reason;
+    }
+    for (var k in params) {
+      if (Object.prototype.hasOwnProperty.call(params, k)) payload[k] = params[k];
+    }
+    try { window.dataLayer.push(payload); } catch (e) { /* no-op */ }
+  }
+
+  // Every clickable element of the list says what it is; one listener counts the clicks.
+  function mark(node, action, status) {
+    node.setAttribute('data-subs-action', slug(action));
+    if (status) node.setAttribute('data-subs-status', String(status));
+    return node;
+  }
+
+  function trackOutcome(action, status, outcome) {
+    track('subscriptions_action', { subs_action: slug(action), subs_status: status || '', subs_outcome: outcome });
+  }
+
+  // "active+free", sorted and without duplicates: what the member actually saw.
+  function statusesOf(list) {
+    var seen = [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && seen.indexOf(list[i].status) === -1) seen.push(list[i].status);
+    }
+    return seen.sort().join('+') || 'empty';
+  }
+
+  function listenClicks() {
+    anchor.addEventListener('click', function(e) {
+      var t = e.target && e.target.closest ? e.target.closest('[data-subs-action]') : null;
+      if (!t || !anchor.contains(t)) return;
+      trackOutcome(t.getAttribute('data-subs-action'), t.getAttribute('data-subs-status'), 'click');
+    }, true);
+  }
+
   function portalAvailable() {
     return Boolean(window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function');
   }
 
   function portalButton(cls, label) {
-    var b = el('button', cls, label);
+    var b = mark(el('button', cls, label), label === 'Modifier' ? 'modifier_moyen' : label);
     b.type = 'button';
     b.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
     return b;
   }
 
-  function paymentLink(cls, label) {
-    var a = el('a', cls, label);
+  var PAYMENT_ACTIONS = {
+    'Modifier': 'modifier_moyen',
+    'Mettre à jour': 'mettre_a_jour_moyen',
+    'Ajouter un moyen de paiement': 'ajouter_moyen',
+    'Modifier le moyen de paiement': 'impaye_modifier_moyen',
+    'Régler': 'regler'
+  };
+
+  function paymentLink(cls, label, status) {
+    var a = mark(el('a', cls, label), PAYMENT_ACTIONS[label] || label, status);
     a.setAttribute('href', PAYMENT_URL);
     a.addEventListener('click', function(e) { openPaymentSetup(e, a); });
     return a;
@@ -373,10 +435,10 @@
     return b;
   }
 
-  function pauseActions() {
+  function pauseActions(c) {
     var row = el('div', 'ordo-subs-actions');
-    var resume = button('Reprendre mon abonnement', true);
-    var cancel = button('Annuler définitivement', false);
+    var resume = mark(button('Reprendre mon abonnement', true), 'reprendre_pause', c.status);
+    var cancel = mark(button('Annuler définitivement', false), 'annuler_pause', c.status);
     var msg = el('div', 'ordo-subs-note ordo-subs-msg');
     msg.setAttribute('role', 'status');
     var pause = window.OrdoPause;
@@ -420,7 +482,7 @@
 
   function reactivateActions(c) {
     var row = el('div', 'ordo-subs-actions');
-    var btn = button('Me réabonner', true);
+    var btn = mark(button('Me réabonner', true), 'reabonner', c.status);
     var msg = el('div', 'ordo-subs-note ordo-subs-msg');
     msg.setAttribute('role', 'status');
     btn.addEventListener('click', function() {
@@ -429,12 +491,14 @@
       btn.disabled = true;
       msg.textContent = 'Traitement en cours…';
       request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(data) {
+        trackOutcome('reabonner', c.status, 'ok');
         render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices, data.others);
       }).catch(function(err) {
         btn.disabled = false;
         if (err && err.status === 409) msg.textContent = 'Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.';
         else if (err && err.status === 401) msg.textContent = 'Votre session a expiré : reconnectez-vous puis réessayez.';
         else msg.textContent = 'Une erreur est survenue. Merci de réessayer.';
+        trackOutcome('reabonner', c.status, 'failed');
         reportIfActionable(err);
       });
     });
@@ -449,17 +513,17 @@
     }
     if (c.status === 'paused' || c.status === 'pause_scheduled') {
       var pause = window.OrdoPause;
-      return pause && typeof pause.resume === 'function' ? pauseActions() : null;
+      return pause && typeof pause.resume === 'function' ? pauseActions(c) : null;
     }
     var action = c.action;
     if (!action || !action.label || typeof action.href !== 'string') return null;
     var row = el('div', 'ordo-subs-actions');
     if (ELEMENT_LINK.test(action.href)) {
-      var b = button(action.label, false);
+      var b = mark(button(action.label, false), action.label, c.status);
       b.addEventListener('click', function() { showElement(action.href.slice(1)); });
       row.appendChild(b);
     } else if (SITE_LINK.test(action.href)) {
-      var a = el('a', 'ordo-subs-btn', action.label);
+      var a = mark(el('a', 'ordo-subs-btn', action.label), action.label, c.status);
       a.setAttribute('href', action.href);
       row.appendChild(a);
     } else {
@@ -774,7 +838,9 @@
       setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
       btn.removeAttribute('title');
       btn.lastChild.textContent = 'PDF';
+      trackOutcome('pdf', inv.status, 'ok');
     }).catch(function(err) {
+      trackOutcome('pdf', inv.status, 'failed');
       btn.setAttribute('title', 'Téléchargement impossible pour le moment. Réessayez.');
       btn.lastChild.textContent = 'Réessayer';
       reportIfActionable(err);
@@ -798,8 +864,10 @@
         bad.status = 200;
         throw bad;
       }
+      trackOutcome('regler', inv.status, 'ok');
       window.location.assign(payload.url);
     }).catch(function(err) {
+      trackOutcome('regler', inv.status, 'failed');
       btn.textContent = 'Réessayer';
       btn.setAttribute('title', 'Paiement impossible pour le moment. Réessayez.');
       btn.disabled = false;
@@ -810,15 +878,15 @@
 
   function invoiceAction(inv) {
     if (inv.status === 'due' || inv.status === 'uncollectible') {
-      if (inv.pay !== 'invoice' || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return paymentLink('ordo-subs-link', 'Régler');
-      var pay = el('button', 'ordo-subs-link', 'Régler');
+      if (inv.pay !== 'invoice' || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return paymentLink('ordo-subs-link', 'Régler', inv.status);
+      var pay = mark(el('button', 'ordo-subs-link', 'Régler'), 'regler', inv.status);
       pay.type = 'button';
       pay.setAttribute('aria-label', 'Régler la facture du ' + day(inv.date));
       pay.addEventListener('click', function() { payInvoice(inv, pay); });
       return pay;
     }
     if (!inv.pdf || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return null;
-    var btn = el('button', 'ordo-inv-pdf');
+    var btn = mark(el('button', 'ordo-inv-pdf'), 'pdf', inv.status);
     btn.type = 'button';
     btn.setAttribute('aria-label', 'Télécharger la facture du ' + day(inv.date));
     btn.appendChild(svgIcon('download', 16));
@@ -865,7 +933,7 @@
     }
     root.appendChild(table);
     if (window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function') {
-      var more = el('button', 'ordo-subs-link', 'Toutes mes factures et mes informations de facturation');
+      var more = mark(el('button', 'ordo-subs-link', 'Toutes mes factures et mes informations de facturation'), 'portail');
       more.type = 'button';
       more.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
       root.appendChild(more);
@@ -878,12 +946,12 @@
   var HELP_EMAIL = 'comptabilite@ordotype.fr';
   var HELP_PHONE = { href: 'tel:+33676520055', text: '+33 (0)6 76 52 00 55' };
   var HELP_VIDEOS = [
-    { href: '/academie/ajouter-moyen-paiement', text: 'Vidéo : ajouter un moyen de paiement' },
-    { href: '/academie/obtenir-factures', text: 'Vidéo : obtenir mes factures' }
+    { href: '/academie/ajouter-moyen-paiement', text: 'Vidéo : ajouter un moyen de paiement', action: 'video_moyen_de_paiement' },
+    { href: '/academie/obtenir-factures', text: 'Vidéo : obtenir mes factures', action: 'video_factures' }
   ];
 
-  function iconLink(cls, href, icon, text) {
-    var a = el('a', cls);
+  function iconLink(cls, href, icon, text, action) {
+    var a = mark(el('a', cls), action);
     a.setAttribute('href', href);
     a.appendChild(svgIcon(icon, 20));
     a.appendChild(el('span', null, text));
@@ -895,16 +963,16 @@
     root.setAttribute('aria-label', 'Aide');
     root.appendChild(el('p', 'ordo-help-title', 'Une question sur votre abonnement ou vos factures ?'));
     var contacts = el('div', 'ordo-help-row');
-    contacts.appendChild(iconLink('ordo-help-contact', 'mailto:' + HELP_EMAIL, 'mail', HELP_EMAIL));
+    contacts.appendChild(iconLink('ordo-help-contact', 'mailto:' + HELP_EMAIL, 'mail', HELP_EMAIL, 'aide_email'));
     var phone = el('div', 'ordo-help-phone');
-    phone.appendChild(iconLink('ordo-help-contact', HELP_PHONE.href, 'phone', HELP_PHONE.text));
+    phone.appendChild(iconLink('ordo-help-contact', HELP_PHONE.href, 'phone', HELP_PHONE.text, 'aide_telephone'));
     phone.appendChild(el('span', 'ordo-help-note', 'Appel non surtaxé'));
     contacts.appendChild(phone);
     root.appendChild(contacts);
     root.appendChild(el('div', 'ordo-help-divider'));
     var videos = el('div', 'ordo-help-row');
     for (var i = 0; i < HELP_VIDEOS.length; i++) {
-      videos.appendChild(iconLink('ordo-help-video', HELP_VIDEOS[i].href, 'play', HELP_VIDEOS[i].text));
+      videos.appendChild(iconLink('ordo-help-video', HELP_VIDEOS[i].href, 'play', HELP_VIDEOS[i].text, HELP_VIDEOS[i].action));
     }
     root.appendChild(videos);
     return root;
@@ -1097,6 +1165,7 @@
       return;
     }
     hide();
+    listenClicks();
     // The list is requested with the page, not when its tab opens: it is usually ready (and rendered,
     // replacing the page's own blocks) before the member gets there. The skeleton only shows if not.
     var settled = false;
@@ -1104,9 +1173,11 @@
       settled = true;
       clearTimeout(skeletonTimer);
       render(data.list, null, data.pms, data.invoices, data.others);
+      track('subscriptions_list', { subs_outcome: 'shown', subs_status: statusesOf(data.list) });
       console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
     }).catch(function(err) {
       settled = true;
+      track('subscriptions_list', { subs_outcome: 'failed', subs_status: err && err.status ? String(err.status) : 'network' });
       clearTimeout(skeletonTimer);
       clear();
       hide();
