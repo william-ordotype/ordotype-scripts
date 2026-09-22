@@ -311,6 +311,17 @@
     });
   }
 
+  function portalAvailable() {
+    return Boolean(window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function');
+  }
+
+  function portalButton(cls, label) {
+    var b = el('button', cls, label);
+    b.type = 'button';
+    b.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
+    return b;
+  }
+
   function paymentLink(cls, label) {
     var a = el('a', cls, label);
     a.setAttribute('href', PAYMENT_URL);
@@ -633,7 +644,11 @@
     var saved = none ? null : othersBox(others || []);
     if (saved) root.appendChild(saved);
     var label = none ? 'Ajouter un moyen de paiement' : (urgent ? 'Mettre à jour' : 'Modifier');
-    var link = paymentLink('ordo-subs-btn' + (none || urgent ? ' is-primary' : ''), label);
+    // "Modifier" opens the billing portal, where a saved method can be made the default. Adding one, or
+    // replacing an expired or failing one, goes through the SEPA setup, which also retries the unpaid invoice.
+    var link = !none && !urgent && portalAvailable()
+      ? portalButton('ordo-subs-btn', label)
+      : paymentLink('ordo-subs-btn' + (none || urgent ? ' is-primary' : ''), label);
     if (several) {
       var actions = el('div', 'ordo-subs-actions');
       actions.appendChild(link);
