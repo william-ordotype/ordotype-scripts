@@ -40,13 +40,17 @@ const CARDS = [
   { label: 'Essai terminé', status: 'ended', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null },
 ];
 
-function page({ visible = true, prefilled = false, portal = true, whitespace = false } = {}) {
+function page({ visible = true, prefilled = false, portal = true, whitespace = false, pause = null, confirmAnswer = true } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
   const dom = new JSDOM(
     `<!doctype html><html><head></head><body>
-      <div class="tab-pane"><div class="w-embed"><div id="ordotype-subscriptions">${prefilled ? '<p>x</p>' : ''}${whitespace ? '\n  ' : ''}</div></div></div>
+      <div class="tab-pane"><div class="w-embed"><div id="ordotype-subscriptions">${prefilled ? '<p>x</p>' : ''}${whitespace ? '\n  ' : ''}</div></div>
+        <div class="inner-block-wraper" id="old-section"><div class="abonnement-wrapper">Ancien bloc</div></div>
+        <div class="inner-block-wraper" id="invoices-block">Mes factures</div>
+      </div>
+      <div id="cancellation-warning-modal" style="display:none">Êtes-vous sûr ?</div>
     </body></html>`,
     { url: 'https://www.ordotype.fr/membership/compte', runScripts: 'outside-only', virtualConsole }
   );
@@ -61,6 +65,16 @@ function page({ visible = true, prefilled = false, portal = true, whitespace = f
     reportNetwork(ctx, err) { network.push({ ctx, err }); return true; },
   };
   if (portal) w.OrdoBillingPortal = { open() { opened.push(true); } };
+  const pauseCalls = [];
+  if (pause) {
+    w.OrdoPause = {
+      resume(cb) { pauseCalls.push('resume'); setTimeout(() => cb(pause.ok), 0); },
+      cancelDefinitive(cb) { pauseCalls.push('cancel'); setTimeout(() => cb(pause.ok), 0); },
+      resumedUrl: '/membership/abonnement-repris',
+      redirectDelay: 100000,
+    };
+  }
+  w.confirm = () => confirmAnswer;
   const observer = { callback: null, target: null };
   w.IntersectionObserver = function(cb) {
     observer.callback = cb;
@@ -70,7 +84,7 @@ function page({ visible = true, prefilled = false, portal = true, whitespace = f
     };
     this.disconnect = () => {};
   };
-  return { dom, w, erreurs, reported, network, opened, observer };
+  return { dom, w, erreurs, reported, network, opened, observer, pauseCalls };
 }
 
 function installFetch(w, outcomes) {
@@ -148,6 +162,104 @@ async function main() {
     assert.strictEqual(t.w.document.querySelectorAll('#ordo-subs-style').length, 1);
     assert.deepStrictEqual(t.erreurs, []);
     assert.strictEqual(t.reported.length + t.network.length, 0);
+  }
+
+  // The old per-plan section is hidden once the list is shown; other sections stay
+  {
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(t.w.document.getElementById('old-section').style.display, 'none');
+    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
+    t.dom.window.close();
+  }
+
+  // On a load error the old section stays as the fallback
+  {
+    const t = page();
+    installFetch(t.w, [{ status: 502, body: { error: 'upstream_error' } }]);
+    t.w.eval(SCRIPT);
+    await wait(100);
+    assert.strictEqual(t.w.document.getElementById('old-section').style.display, '');
+    t.dom.window.close();
+  }
+
+  // Card buttons: site link, page element, refused link
+  {
+    const t = page();
+    const withActions = [
+      Object.assign({}, CARDS[0], { label: 'MG', action: { label: 'Résilier', href: '#cancellation-warning-modal' } }),
+      Object.assign({}, CARDS[3], { label: 'SP', action: { label: 'Voir les offres', href: '/nos-offres' } }),
+      Object.assign({}, CARDS[3], { label: 'Piège', action: { label: 'Cliquer', href: '//evil.example/x' } }),
+      Object.assign({}, CARDS[3], { label: 'Script', action: { label: 'Cliquer', href: 'javascript:alert(1)' } }),
+    ];
+    installFetch(t.w, [{ status: 200, body: { subscriptions: withActions } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const btn = cards(t.w)[0].querySelector('.ordo-subs-actions button');
+    assert.strictEqual(btn.textContent, 'Résilier');
+    btn.click();
+    assert.strictEqual(t.w.document.getElementById('cancellation-warning-modal').style.display, 'block');
+    const link = cards(t.w)[1].querySelector('.ordo-subs-actions a');
+    assert.strictEqual(link.textContent, 'Voir les offres');
+    assert.strictEqual(link.getAttribute('href'), '/nos-offres');
+    assert.strictEqual(cards(t.w)[2].querySelector('.ordo-subs-actions'), null);
+    assert.strictEqual(cards(t.w)[3].querySelector('.ordo-subs-actions'), null);
+    t.dom.window.close();
+  }
+
+  // Missing page element: reported, nothing thrown
+  {
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[0], { action: { label: 'Résilier', href: '#absent' } })] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
+    assert.strictEqual(t.reported.length, 1);
+    t.dom.window.close();
+  }
+
+  // Pause cards: resume and definitive cancellation through the pause script
+  {
+    const t = page({ pause: { ok: true } });
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[6], CARDS[7]] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const [paused, scheduled] = cards(t.w);
+    assert.ok(cardText(t.w, 0).endsWith('Annuler définitivement Reprendre mon abonnement'));
+    assert.ok(scheduled.querySelector('.ordo-subs-actions'));
+    paused.querySelector('.is-primary').click();
+    await wait(20);
+    assert.deepStrictEqual(t.pauseCalls, ['resume']);
+    assert.ok(text(paused).includes('Votre abonnement a été réactivé !'));
+    t.dom.window.close();
+  }
+  {
+    const t = page({ pause: { ok: false }, confirmAnswer: false });
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[6]] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const buttons = cards(t.w)[0].querySelectorAll('button');
+    buttons[0].click();
+    assert.deepStrictEqual(t.pauseCalls, [], 'no call without confirmation');
+    t.w.confirm = () => true;
+    buttons[0].click();
+    await wait(20);
+    assert.deepStrictEqual(t.pauseCalls, ['cancel']);
+    assert.ok(text(cards(t.w)[0]).includes('Une erreur est survenue. Merci de réessayer.'));
+    assert.strictEqual(buttons[0].disabled, false);
+    t.dom.window.close();
+  }
+
+  // Without the pause script, no dead buttons
+  {
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[6]] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions'), null);
+    t.dom.window.close();
   }
 
   // No portal available: plain text instead of a dead button

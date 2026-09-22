@@ -64,11 +64,18 @@
     '.ordo-subs-link{background:none;border:0;padding:0;font:inherit;font-weight:600;text-align:left;align-self:flex-start;color:var(--primary-1,#153cf5);text-decoration:underline;cursor:pointer}',
     '.ordo-subs-link:hover{color:var(--primary-600,#263fd3)}',
     '.ordo-subs-empty{font-size:.9375rem;color:var(--neutral-500,#47505c)}',
+    '.ordo-subs-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}',
+    '.ordo-subs-btn{display:inline-flex;align-items:center;justify-content:center;min-height:2.5rem;padding:0 16px;border-radius:4px;border:1px solid var(--neutral-400,#858c95);background:#fff;color:var(--base-900,#0c0e16);font:inherit;font-size:.9375rem;font-weight:600;line-height:1.2;text-decoration:none;cursor:pointer;transition:background-color .2s}',
+    '.ordo-subs-btn:hover{background:var(--neutral-100,#f7f7fb);color:var(--base-900,#0c0e16)}',
+    '.ordo-subs-btn.is-primary{background:var(--primary-500,#3454f6);border-color:var(--primary-500,#3454f6);color:#fff}',
+    '.ordo-subs-btn.is-primary:hover{background:var(--primary-600,#263fd3);border-color:var(--primary-600,#263fd3);color:#fff}',
+    '.ordo-subs-btn[disabled]{opacity:.5;cursor:default}',
+    '.ordo-subs-msg{flex-basis:100%;text-align:right}',
     '.ordo-subs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
     '.ordo-subs-skel{height:132px;border-radius:12px;background:var(--neutral-100,#f7f7fb);border:1px solid var(--gris300,#ecedef);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
     '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
     '@media (prefers-reduced-motion:reduce){.ordo-subs-skel{animation:none}}',
-    '@media (max-width:479px){.ordo-subs-card{padding:18px 16px;gap:12px}.ordo-subs-amount{font-size:1.5rem}.ordo-subs-foot{flex-direction:column}}'
+    '@media (max-width:479px){.ordo-subs-card{padding:18px 16px;gap:12px}.ordo-subs-amount{font-size:1.5rem}.ordo-subs-foot{flex-direction:column}.ordo-subs-btn{width:100%}.ordo-subs-msg{text-align:left}}'
   ].join('');
 
   function injectStyle() {
@@ -209,6 +216,101 @@
     return null;
   }
 
+  function reportProblem(name, detail) {
+    var reporter = window.OrdoErrorReporter;
+    if (!reporter) return;
+    var err = new Error(detail);
+    err.name = name;
+    try { reporter.report('SubscriptionsOverview', err); } catch (e) { /* no-op */ }
+  }
+
+  var SITE_LINK = /^\/(?!\/)[A-Za-z0-9\-._~\/?=&%]*$/;
+  var ELEMENT_LINK = /^#[A-Za-z][\w-]*$/;
+
+  function showElement(id) {
+    var target = document.getElementById(id);
+    if (!target) {
+      reportProblem('SubscriptionsOverviewMissingElement', '#' + id + ' not found');
+      return;
+    }
+    target.style.display = 'block';
+    target.style.opacity = '0';
+    target.style.transition = 'opacity 0.4s ease';
+    void target.offsetHeight;
+    target.style.opacity = '1';
+  }
+
+  function button(label, primary) {
+    var b = el('button', 'ordo-subs-btn' + (primary ? ' is-primary' : ''), label);
+    b.type = 'button';
+    return b;
+  }
+
+  function pauseActions() {
+    var row = el('div', 'ordo-subs-actions');
+    var resume = button('Reprendre mon abonnement', true);
+    var cancel = button('Annuler définitivement', false);
+    var msg = el('div', 'ordo-subs-note ordo-subs-msg');
+    msg.setAttribute('role', 'status');
+    var pause = window.OrdoPause;
+    function busy(on) {
+      resume.disabled = on;
+      cancel.disabled = on;
+    }
+    function after(okText, then) {
+      return function(ok) {
+        if (ok) {
+          msg.textContent = okText;
+          setTimeout(then, pause.redirectDelay || 3000);
+          return;
+        }
+        busy(false);
+        msg.textContent = 'Une erreur est survenue. Merci de réessayer.';
+      };
+    }
+    resume.addEventListener('click', function() {
+      busy(true);
+      msg.textContent = 'Traitement en cours…';
+      pause.resume(after('Votre abonnement a été réactivé !', function() {
+        window.location.href = pause.resumedUrl || '/membership/abonnement-repris';
+      }));
+    });
+    cancel.addEventListener('click', function() {
+      if (!window.confirm('Êtes-vous sûr de vouloir annuler définitivement votre abonnement ?')) return;
+      busy(true);
+      msg.textContent = 'Traitement en cours…';
+      pause.cancelDefinitive(after('Votre abonnement a été annulé.', function() {
+        window.location.reload();
+      }));
+    });
+    row.appendChild(cancel);
+    row.appendChild(resume);
+    row.appendChild(msg);
+    return row;
+  }
+
+  function actionsOf(c) {
+    if (c.status === 'paused' || c.status === 'pause_scheduled') {
+      var pause = window.OrdoPause;
+      return pause && typeof pause.resume === 'function' ? pauseActions() : null;
+    }
+    var action = c.action;
+    if (!action || !action.label || typeof action.href !== 'string') return null;
+    var row = el('div', 'ordo-subs-actions');
+    if (ELEMENT_LINK.test(action.href)) {
+      var b = button(action.label, false);
+      b.addEventListener('click', function() { showElement(action.href.slice(1)); });
+      row.appendChild(b);
+    } else if (SITE_LINK.test(action.href)) {
+      var a = el('a', 'ordo-subs-btn', action.label);
+      a.setAttribute('href', action.href);
+      row.appendChild(a);
+    } else {
+      return null;
+    }
+    return row;
+  }
+
   function card(c) {
     var root = el('div', 'ordo-subs-card');
     root.setAttribute('role', 'listitem');
@@ -241,7 +343,30 @@
 
     var foot = footOf(c);
     if (foot) root.appendChild(foot);
+    var actions = actionsOf(c);
+    if (actions) root.appendChild(actions);
     return root;
+  }
+
+  function closestSection(node) {
+    while (node && node !== document.body) {
+      if (node.classList && node.classList.contains('inner-block-wraper')) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  // The previous per-plan blocks stay as the fallback until the list is shown.
+  function hideOldSection() {
+    var blocks = document.querySelectorAll('.abonnement-wrapper');
+    var hidden = [];
+    for (var i = 0; i < blocks.length; i++) {
+      var section = closestSection(blocks[i]);
+      if (section && hidden.indexOf(section) === -1 && !section.contains(anchor)) {
+        section.style.display = 'none';
+        hidden.push(section);
+      }
+    }
   }
 
   function intro() {
@@ -301,6 +426,7 @@
     }
     anchor.appendChild(root);
     show();
+    hideOldSection();
   }
 
   function memberToken() {

@@ -44,6 +44,54 @@
         }
     }
 
+    // Same two calls for the subscriptions list; onResult(true) on HTTP 200.
+    function send(webhookUrl, actionName, onResult) {
+        var done = false;
+        function finish(ok) {
+            if (done) return;
+            done = true;
+            if (typeof onResult === 'function') onResult(ok);
+        }
+        var ms = window.OrdoMemberstack;
+        var account = window.OrdoAccount && window.OrdoAccount.member;
+        var memberId = (ms && ms.memberId) || (account && account.id) || '';
+        if (!memberId) {
+            report(actionName, 'PauseStateMissingMemberId', 'member id unavailable');
+            return finish(false);
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.onload = function() {
+            if (xhr.status === 200) return finish(true);
+            var body = xhr.responseText ? ' — ' + String(xhr.responseText).slice(0, 200) : '';
+            report(actionName, 'PauseStateActionFailed', 'HTTP ' + xhr.status + body);
+            finish(false);
+        };
+        xhr.onerror = function() {
+            report(actionName, 'PauseStateNetworkError', 'network error');
+            finish(false);
+        };
+        xhr.ontimeout = function() {
+            report(actionName, 'PauseStateTimeout', 'timeout after ' + REQUEST_TIMEOUT + 'ms');
+            finish(false);
+        };
+        try {
+            xhr.open('POST', webhookUrl);
+            xhr.timeout = REQUEST_TIMEOUT;
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.send('memberId=' + encodeURIComponent(memberId) + '&pageUrl=' + encodeURIComponent(window.location.href));
+        } catch (err) {
+            report(actionName, 'PauseStateSendFailed', (err && err.message) || String(err));
+            finish(false);
+        }
+    }
+
+    window.OrdoPause = {
+        resume: function(onResult) { send(RESUME_WEBHOOK, 'resume', onResult); },
+        cancelDefinitive: function(onResult) { send(CANCEL_DEFINITIVE_WEBHOOK, 'cancel-definitive', onResult); },
+        resumedUrl: '/membership/abonnement-repris',
+        redirectDelay: REDIRECT_DELAY
+    };
+
     // Group key → display label mapping
     var GROUP_LABELS = {
         'bouton-compte-praticien-only': 'Module MG - Compte Praticien',
