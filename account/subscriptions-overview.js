@@ -36,46 +36,43 @@
 
   var STYLE_ID = 'ordo-subs-style';
   var CSS = [
-    '.ordo-subs{display:flex;flex-direction:column;gap:20px;margin-bottom:2.5rem;color:var(--base-900,#0c0e16)}',
-    '.ordo-subs-intro{display:flex;flex-direction:column;gap:6px}',
-    '.ordo-subs-title{margin:0;font-size:1.375rem;line-height:1.3;font-weight:700}',
-    '.ordo-subs-sub{margin:0;font-size:.9375rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
-    '.ordo-subs-list{display:flex;flex-direction:column;gap:16px}',
-    '.ordo-subs-card{background:#fff;border:1px solid var(--gris300,#ecedef);border-radius:12px;padding:22px 24px;display:flex;flex-direction:column;gap:14px}',
-    '.ordo-subs-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 16px}',
-    '.ordo-subs-label{font-size:1.0625rem;line-height:1.4;font-weight:600}',
-    '.ordo-subs-status{display:inline-flex;align-items:center;gap:8px;font-size:.8125rem;font-weight:500;white-space:nowrap}',
-    '.ordo-subs-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}',
-    '.ordo-subs-tone-ok{background:var(--success-500,#1ac057)}',
-    '.ordo-subs-tone-free{background:var(--primary-500,#3454f6)}',
-    '.ordo-subs-tone-alert{background:var(--error-500,#ee4343)}',
-    '.ordo-subs-tone-muted{background:var(--neutral-400,#858c95)}',
-    '.ordo-subs-body{display:flex;flex-direction:column;gap:8px}',
-    '.ordo-subs-price{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}',
-    '.ordo-subs-amount{font-size:1.625rem;line-height:1.2;font-weight:700;letter-spacing:-.01em}',
+    '.ordo-subs{display:flex;flex-direction:column;gap:1rem;margin-bottom:2.5rem;padding:1rem;border:1px solid var(--base-200,#0c0e1633);border-radius:.25rem;color:var(--base-900,#0c0e16)}',
+    '.ordo-subs-title{margin:0;font-size:1rem;line-height:1.5;font-weight:600}',
+    '.ordo-subs-flash{margin:0;font-size:.875rem;line-height:1.5;font-weight:600;color:var(--success-700,#106820)}',
+    '.ordo-subs-list{display:flex;flex-direction:column;gap:1rem}',
+    '.ordo-subs-card{background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);border-radius:.25rem;padding:1.5rem;display:flex;flex-direction:column;gap:.75rem}',
+    '.ordo-subs-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:.5rem 1rem}',
+    '.ordo-subs-label{font-size:1rem;line-height:1.5;font-weight:600}',
+    '.ordo-subs-tag{flex:none;height:1.5rem;padding:0 .5rem;border-radius:.25rem;font-size:.75rem;font-weight:600;line-height:1.5rem;white-space:nowrap}',
+    '.ordo-subs-tone-ok,.ordo-subs-tone-free{background:var(--primary-500,#3454f6);color:var(--inverted-900,#ffffffe6)}',
+    '.ordo-subs-tone-alert{background:var(--error-500,#ee4343);color:var(--inverted-900,#ffffffe6)}',
+    '.ordo-subs-tone-muted{background:var(--inverted-900,#ffffffe6);color:var(--base-900,#0c0e16)}',
+    '.ordo-subs-body{display:flex;flex-direction:column;gap:.5rem}',
+    '.ordo-subs-price{display:flex;flex-wrap:wrap;align-items:baseline;gap:.25rem .5rem}',
+    '.ordo-subs-amount{font-size:1.25rem;line-height:1.4;font-weight:600}',
     '.ordo-subs-period,.ordo-subs-old,.ordo-subs-muted,.ordo-subs-note{color:var(--neutral-500,#47505c)}',
-    '.ordo-subs-period,.ordo-subs-old{font-size:.9375rem}',
-    '.ordo-subs-offer{display:flex;flex-wrap:wrap;align-items:center;gap:8px}',
-    '.ordo-subs-badge{background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:.8125rem;font-weight:600;padding:4px 10px;border-radius:999px}',
+    '.ordo-subs-period,.ordo-subs-old{font-size:.875rem}',
+    '.ordo-subs-offer{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}',
+    '.ordo-subs-badge{height:1.5rem;padding:0 .5rem;border-radius:.25rem;background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:.75rem;font-weight:600;line-height:1.5rem;white-space:nowrap}',
     '.ordo-subs-note,.ordo-subs-muted{font-size:.875rem;line-height:1.5}',
-    '.ordo-subs-foot{border-top:1px solid var(--gris300,#ecedef);padding-top:14px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 16px;font-size:.875rem}',
+    '.ordo-subs-foot{border-top:1px solid var(--base-100,#0c0e161a);padding-top:.75rem;display:flex;flex-wrap:wrap;justify-content:space-between;gap:.125rem 1rem;font-size:.875rem;line-height:1.5}',
     '.ordo-subs-foot-label{color:var(--neutral-500,#47505c)}',
     '.ordo-subs-foot-value{font-weight:600}',
     '.ordo-subs-link{background:none;border:0;padding:0;font:inherit;font-weight:600;text-align:left;align-self:flex-start;color:var(--primary-1,#153cf5);text-decoration:underline;cursor:pointer}',
     '.ordo-subs-link:hover{color:var(--primary-600,#263fd3)}',
-    '.ordo-subs-empty{font-size:.9375rem;color:var(--neutral-500,#47505c)}',
-    '.ordo-subs-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}',
-    '.ordo-subs-btn{display:inline-flex;align-items:center;justify-content:center;min-height:2.5rem;padding:0 16px;border-radius:4px;border:1px solid var(--neutral-400,#858c95);background:#fff;color:var(--base-900,#0c0e16);font:inherit;font-size:.9375rem;font-weight:600;line-height:1.2;text-decoration:none;cursor:pointer;transition:background-color .2s}',
-    '.ordo-subs-btn:hover{background:var(--neutral-100,#f7f7fb);color:var(--base-900,#0c0e16)}',
+    '.ordo-subs-empty{margin:0;font-size:.875rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
+    '.ordo-subs-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}',
+    '.ordo-subs-btn{display:inline-flex;align-items:center;justify-content:center;padding:.5rem 1rem;border-radius:.25rem;border:1px solid var(--base-500,#0c0e1680);background:transparent;color:var(--base-900,#0c0e16);font:inherit;font-size:.875rem;font-weight:600;line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;transition:background-color .2s}',
+    '.ordo-subs-btn:hover{background:var(--base-100,#0c0e161a);color:var(--base-900,#0c0e16)}',
     '.ordo-subs-btn.is-primary{background:var(--primary-500,#3454f6);border-color:var(--primary-500,#3454f6);color:#fff}',
     '.ordo-subs-btn.is-primary:hover{background:var(--primary-600,#263fd3);border-color:var(--primary-600,#263fd3);color:#fff}',
     '.ordo-subs-btn[disabled]{opacity:.5;cursor:default}',
     '.ordo-subs-msg{flex-basis:100%;text-align:right}',
     '.ordo-subs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-    '.ordo-subs-skel{height:132px;border-radius:12px;background:var(--neutral-100,#f7f7fb);border:1px solid var(--gris300,#ecedef);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
+    '.ordo-subs-skel{height:132px;border-radius:.25rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
     '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
     '@media (prefers-reduced-motion:reduce){.ordo-subs-skel{animation:none}}',
-    '@media (max-width:479px){.ordo-subs-card{padding:18px 16px;gap:12px}.ordo-subs-amount{font-size:1.5rem}.ordo-subs-foot{flex-direction:column}.ordo-subs-btn{width:100%}.ordo-subs-msg{text-align:left}}'
+    '@media (max-width:479px){.ordo-subs-card{padding:1rem}.ordo-subs-amount{font-size:1.125rem}.ordo-subs-foot{flex-direction:column}.ordo-subs-btn{width:100%}.ordo-subs-msg{text-align:left}}'
   ].join('');
 
   function injectStyle() {
@@ -163,10 +160,6 @@
 
   function priceRow(c) {
     var row = el('div', 'ordo-subs-price');
-    if (c.status === 'free') {
-      row.appendChild(el('span', 'ordo-subs-amount', 'Gratuit'));
-      return row;
-    }
     var shown = c.offeredUntil ? 0 : c.price.current;
     row.appendChild(el('span', 'ordo-subs-amount', money(shown, c.price.currency)));
     row.appendChild(el('span', 'ordo-subs-period', period(c.price)));
@@ -212,7 +205,7 @@
       var currency = c.price ? c.price.currency : 'eur';
       return footRow(label, money(c.next.amount, currency) + ' le ' + day(c.next.date));
     }
-    if (c.status === 'canceling' && c.endsOn) return footRow('Se termine le', day(c.endsOn));
+    if ((c.status === 'canceling' || c.status === 'free') && c.endsOn) return footRow('Se termine le', day(c.endsOn));
     return null;
   }
 
@@ -289,7 +282,37 @@
     return row;
   }
 
+  var REF = /^[0-9a-f]{20}$/;
+
+  function reactivateActions(c) {
+    var row = el('div', 'ordo-subs-actions');
+    var btn = button('Me réabonner', true);
+    var msg = el('div', 'ordo-subs-note ordo-subs-msg');
+    msg.setAttribute('role', 'status');
+    btn.addEventListener('click', function() {
+      var question = 'Votre abonnement continuera après le ' + day(c.endsOn) + ', aux mêmes conditions. Confirmer ?';
+      if (!window.confirm(question)) return;
+      btn.disabled = true;
+      msg.textContent = 'Traitement en cours…';
+      request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(list) {
+        render(list, 'C’est fait : votre abonnement continue.');
+      }).catch(function(err) {
+        btn.disabled = false;
+        if (err && err.status === 409) msg.textContent = 'Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.';
+        else if (err && err.status === 401) msg.textContent = 'Votre session a expiré : reconnectez-vous puis réessayez.';
+        else msg.textContent = 'Une erreur est survenue. Merci de réessayer.';
+        reportIfActionable(err);
+      });
+    });
+    row.appendChild(btn);
+    row.appendChild(msg);
+    return row;
+  }
+
   function actionsOf(c) {
+    if (c.status === 'canceling' && typeof c.reactivation === 'string' && REF.test(c.reactivation)) {
+      return reactivateActions(c);
+    }
     if (c.status === 'paused' || c.status === 'pause_scheduled') {
       var pause = window.OrdoPause;
       return pause && typeof pause.resume === 'function' ? pauseActions() : null;
@@ -318,16 +341,11 @@
     var head = el('div', 'ordo-subs-head');
     head.appendChild(el('div', 'ordo-subs-label', c.label || 'Abonnement'));
     var st = STATUS[c.status] || STATUS.active;
-    var pill = el('div', 'ordo-subs-status');
-    var dot = el('span', 'ordo-subs-dot ordo-subs-tone-' + st.tone);
-    dot.setAttribute('aria-hidden', 'true');
-    pill.appendChild(dot);
-    pill.appendChild(el('span', null, st.text));
-    head.appendChild(pill);
+    head.appendChild(el('span', 'ordo-subs-tag ordo-subs-tone-' + st.tone, st.text));
     root.appendChild(head);
 
     var body = el('div', 'ordo-subs-body');
-    if (c.status === 'free' || (c.price && c.status !== 'paused')) body.appendChild(priceRow(c));
+    if (c.price && c.status !== 'paused') body.appendChild(priceRow(c));
     if (c.note) body.appendChild(el('div', 'ordo-subs-muted', c.note));
     if (c.offeredUntil) body.appendChild(offerRow('Offert', 'jusqu’au ' + day(c.offeredUntil)));
     if (c.discount) body.appendChild(offerRow(badgeText(c.discount, c.price && c.price.currency), noteText(c.discount)));
@@ -371,10 +389,7 @@
   }
 
   function intro() {
-    var box = el('div', 'ordo-subs-intro');
-    box.appendChild(el('h3', 'ordo-subs-title', 'Mes abonnements'));
-    box.appendChild(el('p', 'ordo-subs-sub', 'Vos accès Ordotype, vos remises en cours et vos prochaines échéances.'));
-    return box;
+    return el('h3', 'ordo-subs-title', 'Mes abonnements');
   }
 
   function clear() {
@@ -412,11 +427,16 @@
     show();
   }
 
-  function render(list) {
+  function render(list, flash) {
     injectStyle();
     clear();
     var root = el('div', 'ordo-subs');
     root.appendChild(intro());
+    if (flash) {
+      var line = el('p', 'ordo-subs-flash', flash);
+      line.setAttribute('role', 'status');
+      root.appendChild(line);
+    }
     if (!list.length) {
       root.appendChild(el('p', 'ordo-subs-empty', 'Vous n’avez pas d’abonnement en cours.'));
     } else {
@@ -446,18 +466,23 @@
     });
   }
 
-  function request() {
+  function request(method, body) {
     return memberToken().then(function(token) {
       if (!token) {
         var e = new Error('no member token');
         e.status = 401;
         throw e;
       }
-      return fetch(API_URL, {
-        method: 'GET',
+      var opts = {
+        method: method || 'GET',
         credentials: 'omit',
         headers: { Authorization: 'Bearer ' + token }
-      });
+      };
+      if (body) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      return fetch(API_URL, opts);
     }).then(function(res) {
       return res.json().catch(function() { return {}; }).then(function(payload) {
         if (!res.ok) {
@@ -476,11 +501,11 @@
   }
 
   function load() {
-    return request().catch(function(err) {
+    return request('GET').catch(function(err) {
       if (err && err.status) throw err;
       return new Promise(function(resolve) {
         setTimeout(resolve, RETRY_DELAY_MS);
-      }).then(request);
+      }).then(function() { return request('GET'); });
     });
   }
 

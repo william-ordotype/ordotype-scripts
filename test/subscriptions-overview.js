@@ -40,6 +40,7 @@ const CARDS = [
   { label: 'Essai terminé', status: 'ended', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null },
   { label: 'Essai gratuit', status: 'free', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null,
     note: 'Valable 15 jours à partir de votre inscription.' },
+  { label: 'Essai daté', status: 'free', price: null, discount: null, offeredUntil: null, next: null, endsOn: '2026-10-07', resumesOn: null },
 ];
 
 function page({ visible = true, prefilled = false, portal = true, whitespace = false, pause = null, confirmAnswer = true } = {}) {
@@ -135,7 +136,8 @@ async function main() {
       'Module Rhumatologie Actif 0 € / mois au lieu de 5 € Offert jusqu’au 1er octobre 2026 Puis 5 € / mois Prochain prélèvement 5 € le 1er octobre 2026');
     assert.strictEqual(cardText(t.w, 2),
       'Offert Actif 0 € / mois au lieu de 30 € Offert jusqu’au 20 mars 2027 Puis 30 € / mois Prochain prélèvement 30 € le 20 mars 2027');
-    assert.strictEqual(cardText(t.w, 3), 'Module Soins palliatifs Gratuit Gratuit');
+    assert.strictEqual(cardText(t.w, 3), 'Module Soins palliatifs Gratuit');
+    assert.strictEqual(cards(t.w)[3].querySelector('.ordo-subs-amount'), null);
     assert.strictEqual(cardText(t.w, 4), 'Stockage Résiliation programmée 2 € / mois Se termine le 30 septembre 2026');
     assert.strictEqual(cardText(t.w, 5), 'Impayé Paiement à régulariser 30 € / mois Paiement en échec Modifier le moyen de paiement');
     assert.strictEqual(cardText(t.w, 6), 'En pause En pause Reprise automatique le 17 mars 2027');
@@ -146,7 +148,8 @@ async function main() {
     assert.strictEqual(cardText(t.w, 10), 'Abonnement Actif 150 MAD / an Prochain prélèvement 150 MAD le 10 janvier 2027');
 
     assert.strictEqual(cardText(t.w, 12), 'Essai terminé Terminé');
-    assert.strictEqual(cardText(t.w, 13), 'Essai gratuit Gratuit Gratuit Valable 15 jours à partir de votre inscription.');
+    assert.strictEqual(cardText(t.w, 13), 'Essai gratuit Gratuit Valable 15 jours à partir de votre inscription.');
+    assert.strictEqual(cardText(t.w, 14), 'Essai daté Gratuit Se termine le 7 octobre 2026');
     assert.ok(cards(t.w)[12].querySelector('.ordo-subs-tone-muted'));
 
     // Labels are text, never markup
@@ -157,8 +160,8 @@ async function main() {
     cards(t.w)[5].querySelector('button').click();
     assert.strictEqual(t.opened.length, 1);
 
-    // Status dots follow the status
-    assert.ok(cards(t.w)[0].querySelector('.ordo-subs-tone-ok'));
+    // Status tags follow the status
+    assert.ok(cards(t.w)[0].querySelector('.ordo-subs-tag.ordo-subs-tone-ok'));
     assert.ok(cards(t.w)[3].querySelector('.ordo-subs-tone-free'));
     assert.ok(cards(t.w)[5].querySelector('.ordo-subs-tone-alert'));
     assert.ok(cards(t.w)[4].querySelector('.ordo-subs-tone-muted'));
@@ -252,6 +255,61 @@ async function main() {
     assert.deepStrictEqual(t.pauseCalls, ['cancel']);
     assert.ok(text(cards(t.w)[0]).includes('Une erreur est survenue. Merci de réessayer.'));
     assert.strictEqual(buttons[0].disabled, false);
+    t.dom.window.close();
+  }
+
+  // Scheduled cancellation: resubscribe on the same subscription
+  {
+    const REF = '0123456789abcdef0123';
+    const canceling = Object.assign({}, CARDS[4], { label: 'Stockage', reactivation: REF });
+    const reactivated = Object.assign({}, CARDS[4], { label: 'Stockage', status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } });
+    const t = page({ confirmAnswer: false });
+    const calls = installFetch(t.w, [
+      { status: 200, body: { subscriptions: [canceling] } },
+      { status: 200, body: { ok: true, subscriptions: [reactivated] } },
+    ]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const btn = cards(t.w)[0].querySelector('.ordo-subs-actions button');
+    assert.strictEqual(btn.textContent, 'Me réabonner');
+    btn.click();
+    await wait(20);
+    assert.strictEqual(calls.length, 1, 'no call without confirmation');
+    t.w.confirm = () => true;
+    btn.click();
+    await wait(60);
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls[1].options.method, 'POST');
+    assert.strictEqual(calls[1].options.headers['Content-Type'], 'application/json');
+    assert.strictEqual(calls[1].options.headers.Authorization, 'Bearer jeton-de-test');
+    assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'reactivate', ref: REF });
+    assert.ok(text(anchor(t.w)).includes('C’est fait : votre abonnement continue.'));
+    assert.ok(cardText(t.w, 0).startsWith('Stockage Actif'));
+    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions'), null);
+    t.dom.window.close();
+  }
+  {
+    const t = page();
+    installFetch(t.w, [
+      { status: 200, body: { subscriptions: [Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' })] } },
+      { status: 409, body: { error: 'not_reactivable' } },
+    ]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const btn = cards(t.w)[0].querySelector('.ordo-subs-actions button');
+    btn.click();
+    await wait(60);
+    assert.ok(text(cards(t.w)[0]).includes('Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.'));
+    assert.strictEqual(btn.disabled, false);
+    assert.strictEqual(t.reported.length, 0);
+    t.dom.window.close();
+  }
+  {
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[4], { reactivation: 'sub_123' })] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions'), null);
     t.dom.window.close();
   }
 
