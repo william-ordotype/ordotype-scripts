@@ -84,7 +84,9 @@
     },
     // Live members only, like invoice-emails.js: verified on www with the override.
     'subscriptions-overview.js': {
-      'www.ordotype.fr': 0
+      // 100 % d'emblée depuis le 2026-09-22, après la recette sur de vrais comptes avec l'override.
+      // Si la liste ne se charge pas, l'ancienne section du site reste affichée.
+      'www.ordotype.fr': 100
     }
   };
   const HOST = window.location.hostname;
