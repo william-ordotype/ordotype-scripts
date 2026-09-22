@@ -551,6 +551,21 @@ async function main() {
     t.dom.window.close();
   }
   {
+    // The invoice emails script can run after the list is rendered: the toggle still moves in
+    const t2 = page();
+    t2.w.document.getElementById('invoices-block').innerHTML = '<div class="w-embed"><div id="ordotype-invoice-emails">Recevoir mes factures par e-mail</div></div>';
+    const node = t2.w.document.getElementById('ordotype-invoice-emails').parentElement;
+    installFetch(t2.w, [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES } }]);
+    t2.w.eval(SCRIPT);
+    await wait(60);
+    assert.ok(invSection(t2.w), 'list rendered first');
+    assert.strictEqual(node.parentElement.id, 'invoices-block', 'toggle not moved yet');
+    t2.w.OrdoInvoiceEmails = { relocate(container) { container.appendChild(node); return true; } };
+    await wait(260);
+    assert.ok(invSection(t2.w).querySelector('.ordo-inv-emails #ordotype-invoice-emails'), 'moved once the script is there');
+    t2.dom.window.close();
+  }
+  {
     // Without the portal hook, no dead link
     const { t } = await withInvoices(INVOICES, { portal: false });
     assert.ok(!text(invSection(t.w)).includes('Toutes mes factures'));
@@ -872,19 +887,35 @@ async function main() {
     assert.ok(text(anchor(t.w)).endsWith('Vous n’avez pas d’abonnement en cours.'));
   }
 
-  // Nothing is requested before the block is visible, and the block stays hidden until then
+  // The list is requested with the page, before its tab is open, and is already there when it opens
   {
     const t = page({ visible: false });
     const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(calls.length, 0);
-    assert.strictEqual(anchor(t.w).style.display, 'none');
-    assert.strictEqual(anchor(t.w).parentElement.style.display, 'none');
+    assert.strictEqual(calls.length, 1, 'requested at load');
+    assert.strictEqual(cards(t.w).length, CARDS.length, 'rendered while the tab is closed');
     assert.strictEqual(t.observer.target.className, 'tab-pane');
     t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(260);
+    assert.strictEqual(calls.length, 1, 'not requested again');
+    assert.strictEqual(t.w.document.querySelector('.ordo-subs-skel'), null, 'no placeholder over the list');
+    assert.strictEqual(cards(t.w).length, CARDS.length);
+  }
+  {
+    // Still loading when the tab opens: the placeholder shows, then the list replaces it; while the
+    // tab stays closed, the block stays hidden
+    const t = page({ visible: false });
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS }, delay: 500 }]);
+    t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(anchor(t.w).style.display, 'none');
+    assert.strictEqual(anchor(t.w).parentElement.style.display, 'none');
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(260);
+    assert.ok(t.w.document.querySelector('.ordo-subs-skel'));
+    await wait(300);
+    assert.strictEqual(t.w.document.querySelector('.ordo-subs-skel'), null);
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
 

@@ -886,6 +886,17 @@
     try { return emails.relocate(container) !== false; } catch (e) { return false; }
   }
 
+  // invoice-emails.js runs after this script: the list can be ready first, so the move waits for it.
+  function whenInvoiceEmails(run) {
+    var tries = 0;
+    (function poll() {
+      var emails = window.OrdoInvoiceEmails;
+      if (emails && typeof emails.relocate === 'function') return run();
+      if (++tries > MS_MAX_ATTEMPTS) return;
+      setTimeout(poll, 200);
+    })();
+  }
+
   function placeInvoices(invoices) {
     var block = document.getElementById('invoices-block');
     if (!Array.isArray(invoices)) {
@@ -896,7 +907,9 @@
     if (invoices.length) {
       var section = invoicesSection(invoices);
       anchor.appendChild(section.root);
-      if (moveToggle(section.slot)) toggleMoved = true;
+      whenInvoiceEmails(function() {
+        if (anchor.contains(section.slot) && moveToggle(section.slot)) toggleMoved = true;
+      });
     } else if (toggleMoved && moveToggle(block)) {
       toggleMoved = false;
     }
@@ -1049,19 +1062,27 @@
       return;
     }
     hide();
+    // The list is requested with the page, not when its tab opens: it is usually ready (and rendered,
+    // replacing the page's own blocks) before the member gets there. The skeleton only shows if not.
+    var settled = false;
+    load().then(function(data) {
+      settled = true;
+      clearTimeout(skeletonTimer);
+      render(data.list, null, data.pms, data.invoices, data.others);
+      console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
+    }).catch(function(err) {
+      settled = true;
+      clearTimeout(skeletonTimer);
+      clear();
+      hide();
+      console.error(PREFIX + ' Load error:', err && err.message);
+      reportIfActionable(err);
+    });
     whenVisible(function() {
-      skeletonTimer = setTimeout(showSkeleton, SKELETON_DELAY_MS);
-      load().then(function(data) {
-        clearTimeout(skeletonTimer);
-        render(data.list, null, data.pms, data.invoices, data.others);
-        console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
-      }).catch(function(err) {
-        clearTimeout(skeletonTimer);
-        clear();
-        hide();
-        console.error(PREFIX + ' Load error:', err && err.message);
-        reportIfActionable(err);
-      });
+      if (settled) return;
+      skeletonTimer = setTimeout(function() {
+        if (!settled) showSkeleton();
+      }, SKELETON_DELAY_MS);
     });
   }
 
