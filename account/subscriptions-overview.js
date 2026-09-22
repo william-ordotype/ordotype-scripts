@@ -734,8 +734,39 @@
     });
   }
 
+  var INVOICE_PAGE = /^https:\/\/invoice\.stripe\.com\//;
+
+  // An unpaid invoice that a new payment method would not settle opens its own Stripe payment page.
+  function payInvoice(inv, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.textContent = 'Patientez…';
+    call('POST', { action: 'invoice_pay', ref: inv.ref }).then(function(payload) {
+      if (!payload || typeof payload.url !== 'string' || !INVOICE_PAGE.test(payload.url)) {
+        var bad = new Error('account-subscriptions: invoice payment page missing');
+        bad.status = 200;
+        throw bad;
+      }
+      window.location.assign(payload.url);
+    }).catch(function(err) {
+      btn.textContent = 'Réessayer';
+      btn.setAttribute('title', 'Paiement impossible pour le moment. Réessayez.');
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      reportIfActionable(err);
+    });
+  }
+
   function invoiceAction(inv) {
-    if (inv.status === 'due' || inv.status === 'uncollectible') return paymentLink('ordo-subs-link', 'Régler');
+    if (inv.status === 'due' || inv.status === 'uncollectible') {
+      if (inv.pay !== 'invoice' || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return paymentLink('ordo-subs-link', 'Régler');
+      var pay = el('button', 'ordo-subs-link', 'Régler');
+      pay.type = 'button';
+      pay.setAttribute('aria-label', 'Régler la facture du ' + day(inv.date));
+      pay.addEventListener('click', function() { payInvoice(inv, pay); });
+      return pay;
+    }
     if (!inv.pdf || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return null;
     var btn = el('button', 'ordo-inv-pdf');
     btn.type = 'button';

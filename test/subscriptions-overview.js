@@ -604,6 +604,56 @@ async function main() {
     t.dom.window.close();
   }
   {
+    // An invoice a new payment method would not settle opens its own Stripe payment page, fetched on click
+    const unpaid = [{ ref: 'dddddddddddddddddddd', date: '2026-06-02', label: 'Médecine Générale', amount: 3000, currency: 'eur', status: 'uncollectible', pdf: true, pay: 'invoice' }];
+    const page = 'https://invoice.stripe.com/i/acct_x/live_abc?s=ap';
+    const { t, calls } = await withInvoices(unpaid, { outcomes: [{ status: 200, body: { ok: true, url: page } }] });
+    const navs = [];
+    t.w.__navigate = (u) => navs.push(u);
+    const s = invSection(t.w);
+    assert.strictEqual(text(s.querySelector('.ordo-inv-row:not(.ordo-inv-head)')), '2 juin 2026 Médecine Générale 30 € Impayée Régler');
+    assert.strictEqual(s.querySelector('a[href="/membership/moyen-de-paiement"]'), null, 'not the payment method page');
+    const btn = s.querySelector('button.ordo-subs-link[aria-label="Régler la facture du 2 juin 2026"]');
+    btn.click();
+    assert.strictEqual(btn.textContent, 'Patientez…');
+    await wait(60);
+    assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'invoice_pay', ref: 'dddddddddddddddddddd' });
+    assert.deepStrictEqual(navs, [page]);
+    t.dom.window.close();
+  }
+  {
+    // The page is refused unless it is Stripe's invoice page; a failure says so and is reported once
+    const unpaid = [{ ref: 'dddddddddddddddddddd', date: '2026-06-02', label: null, amount: 3000, currency: 'eur', status: 'uncollectible', pdf: true, pay: 'invoice' }];
+    const { t } = await withInvoices(unpaid, { outcomes: [
+      { status: 200, body: { ok: true, url: 'https://exemple.com/payer' } },
+      { status: 502, body: { error: 'upstream_error' } },
+    ] });
+    const navs = [];
+    t.w.__navigate = (u) => navs.push(u);
+    const btn = invSection(t.w).querySelector('button.ordo-subs-link');
+    btn.click();
+    await wait(60);
+    assert.deepStrictEqual(navs, []);
+    assert.strictEqual(btn.textContent, 'Réessayer');
+    assert.strictEqual(btn.disabled, false);
+    btn.click();
+    await wait(60);
+    assert.deepStrictEqual(navs, []);
+    assert.strictEqual(t.reported.length + t.network.length, 2);
+    t.dom.window.close();
+  }
+  {
+    // A settle-by-new-method invoice, or an older response without `pay`, keeps the payment method link
+    const due = [
+      { ref: 'eeeeeeeeeeeeeeeeeeee', date: '2026-09-14', label: null, amount: 3000, currency: 'eur', status: 'due', pdf: true, pay: 'setup' },
+      { ref: 'ffffffffffffffffffff', date: '2026-08-14', label: null, amount: 3000, currency: 'eur', status: 'uncollectible', pdf: true },
+      { ref: 'not-a-ref', date: '2026-07-14', label: null, amount: 3000, currency: 'eur', status: 'uncollectible', pdf: true, pay: 'invoice' },
+    ];
+    const { t } = await withInvoices(due);
+    assert.strictEqual(invSection(t.w).querySelectorAll('a.ordo-subs-link[href="/membership/moyen-de-paiement"]').length, 3);
+    t.dom.window.close();
+  }
+  {
     // Labels are text; an invalid reference gets no download button
     const odd = [{ ref: 'not-a-ref', date: '2026-09-14', label: '<img src=x onerror=alert(1)>', amount: 100, currency: 'eur', status: 'paid', pdf: true }];
     const { t } = await withInvoices(odd);
