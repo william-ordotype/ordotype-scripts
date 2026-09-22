@@ -594,6 +594,19 @@
   var BILLED = ['active', 'past_due', 'pending', 'canceling', 'pause_scheduled', 'paused'];
 
   // The page's own block stays only while the list cannot show the payment method itself.
+  // The page's own blocks start hidden on www (page head CSS, class `ordo-subs-pending` on <html>):
+  // `ordo-keep` shows one that the list still needs, `ordo-subs-fallback` brings them all back.
+  function keepBlock(block, keep) {
+    if (!block) return;
+    if (keep) block.classList.add('ordo-keep');
+    else block.classList.remove('ordo-keep');
+    block.style.display = keep ? '' : 'none';
+  }
+
+  function fallbackToPageBlocks() {
+    document.documentElement.classList.add('ordo-subs-fallback');
+  }
+
   function togglePaymentBlock(list, pms) {
     var block = document.getElementById('payment-method-block');
     if (!block) return;
@@ -601,7 +614,7 @@
     for (var i = 0; i < list.length; i++) {
       if (BILLED.indexOf(list[i].status) !== -1) billed = true;
     }
-    block.style.display = billed && !pms.length ? '' : 'none';
+    keepBlock(block, billed && !pms.length);
   }
 
   var CARD_BRANDS = {
@@ -1003,7 +1016,7 @@
   function placeInvoices(invoices) {
     var block = document.getElementById('invoices-block');
     if (!Array.isArray(invoices)) {
-      if (block) block.style.display = '';
+      keepBlock(block, true);
       if (toggleMoved && moveToggle(block)) toggleMoved = false;
       return;
     }
@@ -1017,7 +1030,7 @@
       toggleMoved = false;
     }
     anchor.appendChild(helpSection());
-    if (block) block.style.display = 'none';
+    keepBlock(block, false);
   }
 
   function render(list, flash, pms, invoices, others) {
@@ -1158,6 +1171,7 @@
     anchor = document.getElementById(ANCHOR_ID);
     if (!anchor) {
       console.log(PREFIX + ' Anchor not found');
+      fallbackToPageBlocks();
       return;
     }
     if (anchor.firstElementChild) {
@@ -1181,6 +1195,7 @@
       clearTimeout(skeletonTimer);
       clear();
       hide();
+      fallbackToPageBlocks();
       console.error(PREFIX + ' Load error:', err && err.message);
       reportIfActionable(err);
     });

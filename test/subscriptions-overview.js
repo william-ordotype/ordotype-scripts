@@ -1082,6 +1082,51 @@ async function main() {
     t.dom.window.close();
   }
 
+  // The page's own blocks start hidden (page head CSS): the list says which ones it still needs,
+  // and hands them all back when it cannot show itself
+  {
+    const t = page();
+    const INV = [{ ref: 'aaaaaaaaaaaaaaaaaaaa', date: '2026-09-14', label: 'Médecine Générale', amount: 1500, currency: 'eur', status: 'paid', pdf: true }];
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INV } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const html = t.w.document.documentElement;
+    assert.ok(!html.classList.contains('ordo-subs-fallback'), 'list shown: no fallback');
+    assert.ok(!t.w.document.getElementById('payment-method-block').classList.contains('ordo-keep'));
+    assert.ok(!t.w.document.getElementById('invoices-block').classList.contains('ordo-keep'));
+    t.dom.window.close();
+  }
+  {
+    // Billed without a readable payment method, invoices unknown: those two page blocks are kept
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [], invoices: null } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.ok(t.w.document.getElementById('payment-method-block').classList.contains('ordo-keep'));
+    assert.ok(t.w.document.getElementById('invoices-block').classList.contains('ordo-keep'));
+    assert.ok(!t.w.document.documentElement.classList.contains('ordo-subs-fallback'));
+    t.dom.window.close();
+  }
+  for (const status of [502, 401]) {
+    // The list cannot show itself: every page block comes back, whatever the reason
+    const t = page();
+    installFetch(t.w, [{ status, body: { error: 'x' } }]);
+    t.w.eval(SCRIPT);
+    await wait(100);
+    assert.ok(t.w.document.documentElement.classList.contains('ordo-subs-fallback'), `status ${status}`);
+    t.dom.window.close();
+  }
+  {
+    // No place for the list on the page: the page blocks stay
+    const t = page();
+    t.w.document.getElementById('ordotype-subscriptions').remove();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.ok(t.w.document.documentElement.classList.contains('ordo-subs-fallback'));
+    t.dom.window.close();
+  }
+
   // A misconfigured function (503) is an outage: hidden, and reported
   {
     const t = page();
