@@ -691,6 +691,7 @@
       document.body.removeChild(a);
       setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
       btn.removeAttribute('title');
+      btn.lastChild.textContent = 'PDF';
     }).catch(function(err) {
       btn.setAttribute('title', 'Téléchargement impossible pour le moment. Réessayez.');
       btn.lastChild.textContent = 'Réessayer';

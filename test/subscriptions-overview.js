@@ -537,8 +537,15 @@ async function main() {
     t.dom.window.close();
   }
   {
-    // A failed download says so on the button, and is reported once
-    const { t } = await withInvoices(INVOICES, { outcomes: [{ status: 502, body: { error: 'upstream_error' } }] });
+    // A failed download says so on the button, and is reported once; a successful retry restores it
+    const pdf = Buffer.from('%PDF-1.4 facture').toString('base64');
+    const { t } = await withInvoices(INVOICES, { outcomes: [
+      { status: 502, body: { error: 'upstream_error' } },
+      { status: 200, body: { ok: true, filename: 'Facture-Ordotype-2026-09-14.pdf', pdf } },
+    ] });
+    t.w.URL.createObjectURL = () => 'blob:facture';
+    t.w.URL.revokeObjectURL = () => {};
+    t.w.HTMLAnchorElement.prototype.click = function() {};
     const btn = invSection(t.w).querySelector('button.ordo-inv-pdf');
     btn.click();
     await wait(60);
@@ -546,6 +553,10 @@ async function main() {
     assert.ok(btn.getAttribute('title').startsWith('Téléchargement impossible'));
     assert.strictEqual(btn.disabled, false);
     assert.strictEqual(t.reported.length + t.network.length, 1);
+    btn.click();
+    await wait(60);
+    assert.strictEqual(btn.lastChild.textContent, 'PDF');
+    assert.strictEqual(btn.getAttribute('title'), null);
     t.dom.window.close();
   }
   {
