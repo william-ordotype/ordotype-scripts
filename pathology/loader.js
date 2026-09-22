@@ -99,7 +99,8 @@
   const JQUERY_WAIT_MS = 20000;
   const TIER3 = [
     `${BASE}/member-redirects.js`,
-    `${BASE}/countdown.js`
+    `${BASE}/countdown.js`,
+    `${BASE}/omnidoc-links.js`
   ];
 
   // Load a single script with retry. `ordered` (async = false): fetched in
