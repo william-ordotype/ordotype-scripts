@@ -428,6 +428,169 @@ async function main() {
     s.t.dom.window.close();
   }
 
+  // Invoices: the last ones with a clear status, their PDF downloaded through the function, and the
+  // page's invoices block replaced by this section and a help box
+  const INVOICES = [
+    { ref: 'aaaaaaaaaaaaaaaaaaaa', date: '2026-09-14', label: 'Médecine Générale', amount: 1500, currency: 'eur', status: 'paid', pdf: true },
+    { ref: 'bbbbbbbbbbbbbbbbbbbb', date: '2026-09-01', label: 'Module Rhumatologie', amount: 500, currency: 'eur', status: 'processing', pdf: true },
+    { ref: 'cccccccccccccccccccc', date: '2026-08-14', label: null, amount: 3000, currency: 'eur', status: 'due', pdf: true },
+  ];
+  const invSection = (w) => w.document.querySelector('.ordo-inv');
+  const helpBox = (w) => w.document.querySelector('.ordo-help');
+  async function withInvoices(invoices, { outcomes = [], portal = true, toggle = false, list = [CARDS[0]] } = {}) {
+    const t = page({ portal });
+    if (toggle) {
+      t.w.document.getElementById('invoices-block').innerHTML = '<div class="w-embed"><div id="ordotype-invoice-emails">Recevoir mes factures par e-mail</div></div>';
+      // Like the real toggle, it keeps its own node: once detached, getElementById no longer finds it.
+      const node = t.w.document.getElementById('ordotype-invoice-emails').parentElement;
+      t.relocated = [];
+      t.w.OrdoInvoiceEmails = {
+        relocate(container) {
+          container.appendChild(node);
+          t.relocated.push(container);
+          return true;
+        },
+      };
+    }
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: list, paymentMethods: [VISA], invoices } }].concat(outcomes));
+    t.w.__navigate = () => {};
+    t.w.eval(NAV_SCRIPT);
+    await wait(60);
+    return { t, calls };
+  }
+  {
+    const { t } = await withInvoices(INVOICES, { toggle: true });
+    const s = invSection(t.w);
+    assert.ok(s, 'invoices section rendered');
+    const rows = Array.from(s.querySelectorAll('.ordo-inv-row:not(.ordo-inv-head)')).map((r) => text(r));
+    assert.deepStrictEqual(rows, [
+      '14 sept. 2026 Médecine Générale 15 € Payée PDF',
+      '1er sept. 2026 Module Rhumatologie 5 € Prélèvement en cours PDF',
+      '14 août 2026 Abonnement 30 € À régler Régler',
+    ]);
+    assert.strictEqual(text(s.querySelector('.ordo-inv-head')), 'Date Abonnement Montant Statut Facture');
+    assert.strictEqual(s.querySelectorAll('[role="row"]').length, 4);
+    assert.ok(s.querySelector('.ordo-inv-tone-paid') && s.querySelector('.ordo-inv-tone-pending') && s.querySelector('.ordo-inv-tone-due'));
+    assert.strictEqual(s.querySelectorAll('.ordo-inv-row')[3].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
+    assert.strictEqual(s.querySelector('button.ordo-inv-pdf').getAttribute('aria-label'), 'Télécharger la facture du 14 septembre 2026');
+    // Order: subscriptions, payment method, invoices, help
+    const order = Array.from(anchor(t.w).children).map((n) => n.className);
+    assert.deepStrictEqual(order, ['ordo-subs', 'ordo-subs ordo-pm', 'ordo-subs ordo-inv', 'ordo-help']);
+    // The page's invoices block gives way, and its invoice emails toggle moves into the section
+    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, 'none');
+    assert.strictEqual(t.relocated.length, 1);
+    assert.ok(s.querySelector('.ordo-inv-emails #ordotype-invoice-emails'));
+    // The billing portal stays one click away
+    const more = Array.from(s.querySelectorAll('button.ordo-subs-link')).find((b) => b.textContent === 'Toutes mes factures et mes informations de facturation');
+    more.click();
+    assert.strictEqual(t.opened.length, 1);
+    // Help box with icons: email, phone, videos
+    const help = helpBox(t.w);
+    assert.strictEqual(text(help), 'Une question sur votre abonnement ou vos factures ? comptabilite@ordotype.fr +33 (0)6 76 52 00 55 Appel non surtaxé Vidéo : ajouter un moyen de paiement Vidéo : obtenir mes factures');
+    assert.strictEqual(help.querySelector('a[href="mailto:comptabilite@ordotype.fr"]').querySelectorAll('svg').length, 1);
+    assert.ok(help.querySelector('a[href="tel:+33676520055"] svg'));
+    assert.strictEqual(help.querySelectorAll('a.ordo-help-video svg').length, 2);
+    assert.deepStrictEqual(t.erreurs, []);
+    t.dom.window.close();
+  }
+  {
+    // Without the portal hook, no dead link
+    const { t } = await withInvoices(INVOICES, { portal: false });
+    assert.ok(!text(invSection(t.w)).includes('Toutes mes factures'));
+    t.dom.window.close();
+  }
+  {
+    // Invoices unknown (the function could not read them): the page's block stays, no help box
+    const { t } = await withInvoices(null);
+    assert.strictEqual(invSection(t.w), null);
+    assert.strictEqual(helpBox(t.w), null);
+    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
+    t.dom.window.close();
+  }
+  {
+    // No invoice at all: no section, the help box replaces the block
+    const { t } = await withInvoices([]);
+    assert.strictEqual(invSection(t.w), null);
+    assert.ok(helpBox(t.w));
+    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, 'none');
+    t.dom.window.close();
+  }
+  {
+    // The PDF is fetched through the function and saved under its dated name
+    const pdf = Buffer.from('%PDF-1.4 facture').toString('base64');
+    const { t, calls } = await withInvoices(INVOICES, { outcomes: [{ status: 200, body: { ok: true, filename: 'Facture-Ordotype-2026-09-14.pdf', pdf } }] });
+    const blobs = [];
+    const saved = [];
+    t.w.URL.createObjectURL = (b) => { blobs.push(b); return 'blob:facture'; };
+    t.w.URL.revokeObjectURL = () => {};
+    t.w.HTMLAnchorElement.prototype.click = function() { saved.push({ href: this.getAttribute('href'), download: this.download }); };
+    invSection(t.w).querySelector('button.ordo-inv-pdf').click();
+    await wait(60);
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls[1].options.method, 'POST');
+    assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'invoice_pdf', ref: 'aaaaaaaaaaaaaaaaaaaa' });
+    assert.strictEqual(blobs.length, 1);
+    assert.strictEqual(blobs[0].type, 'application/pdf');
+    assert.strictEqual(Buffer.from(await blobs[0].arrayBuffer()).toString('latin1'), '%PDF-1.4 facture');
+    assert.deepStrictEqual(saved, [{ href: 'blob:facture', download: 'Facture-Ordotype-2026-09-14.pdf' }]);
+    assert.strictEqual(t.reported.length + t.network.length, 0);
+    t.dom.window.close();
+  }
+  {
+    // A failed download says so on the button, and is reported once
+    const { t } = await withInvoices(INVOICES, { outcomes: [{ status: 502, body: { error: 'upstream_error' } }] });
+    const btn = invSection(t.w).querySelector('button.ordo-inv-pdf');
+    btn.click();
+    await wait(60);
+    assert.strictEqual(btn.lastChild.textContent, 'Réessayer');
+    assert.ok(btn.getAttribute('title').startsWith('Téléchargement impossible'));
+    assert.strictEqual(btn.disabled, false);
+    assert.strictEqual(t.reported.length + t.network.length, 1);
+    t.dom.window.close();
+  }
+  {
+    // Labels are text; an invalid reference gets no download button
+    const odd = [{ ref: 'not-a-ref', date: '2026-09-14', label: '<img src=x onerror=alert(1)>', amount: 100, currency: 'eur', status: 'paid', pdf: true }];
+    const { t } = await withInvoices(odd);
+    assert.strictEqual(invSection(t.w).querySelector('img'), null);
+    assert.ok(text(invSection(t.w)).includes('<img src=x onerror=alert(1)>'));
+    assert.strictEqual(invSection(t.w).querySelector('button.ordo-inv-pdf'), null);
+    t.dom.window.close();
+  }
+  {
+    // Resubscribing re-renders everything once: one invoices section, one help box, the toggle kept
+    const canceling = Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' });
+    const after = Object.assign({}, canceling, { status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } });
+    const { t } = await withInvoices(INVOICES, {
+      toggle: true,
+      list: [canceling],
+      outcomes: [{ status: 200, body: { ok: true, subscriptions: [after], paymentMethods: [VISA], invoices: INVOICES } }],
+    });
+    cards(t.w)[0].querySelector('button').click();
+    await wait(60);
+    assert.strictEqual(t.w.document.querySelectorAll('.ordo-inv').length, 1);
+    assert.strictEqual(t.w.document.querySelectorAll('.ordo-help').length, 1);
+    assert.ok(invSection(t.w).querySelector('#ordotype-invoice-emails'), 'toggle moved into the new section');
+    t.dom.window.close();
+  }
+  {
+    // A later render without invoices gives the toggle back to the page's block, shown again
+    const canceling = Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' });
+    const after = Object.assign({}, canceling, { status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } });
+    const { t } = await withInvoices(INVOICES, {
+      toggle: true,
+      list: [canceling],
+      outcomes: [{ status: 200, body: { ok: true, subscriptions: [after], paymentMethods: [VISA], invoices: null } }],
+    });
+    cards(t.w)[0].querySelector('button').click();
+    await wait(60);
+    const block = t.w.document.getElementById('invoices-block');
+    assert.strictEqual(block.style.display, '');
+    assert.ok(block.querySelector('#ordotype-invoice-emails'), 'toggle back in the block');
+    assert.strictEqual(invSection(t.w), null);
+    t.dom.window.close();
+  }
+
   // On a load error the old section stays as the fallback, and so does the payment method block
   {
     const t = page();

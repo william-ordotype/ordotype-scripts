@@ -51,6 +51,9 @@
   // membre voit son interrupteur arriver d'un coup, sans clignotement.
   var SKELETON_DELAY_MS = 200;
   var skeletonTimer = null;
+  // L'observateur qui attend encore que le bloc soit visible, pour le réarmer
+  // si le bloc change de conteneur (voir `relocate`).
+  var pendingObserver = null;
 
   /**
    * Les codes attendus ne sont pas des incidents : session expirée, membre non
@@ -536,6 +539,7 @@
       for (var i = 0; i < entries.length; i++) {
         if (entries[i].isIntersecting) {
           obs.disconnect();
+          pendingObserver = null;
           fire();
           return;
         }
@@ -544,8 +548,27 @@
     // à l'ouverture, pas au défilement. La marge couvre le cas où le bloc
     // arriverait juste sous la ligne de flottaison.
     }, { rootMargin: '200px' });
+    pendingObserver = obs;
     obs.observe(observed());
   }
+
+  /**
+   * Déplace le bloc dans un autre conteneur, sans perdre son état : un
+   * interrupteur déjà affiché garde ses écouteurs, et un bloc qui attend encore
+   * d'être vu observe désormais son nouveau conteneur, l'ancien pouvant être
+   * masqué. Sert à la section « Factures » de la liste des abonnements.
+   */
+  function relocate(container) {
+    if (!anchor || !container || typeof container.appendChild !== 'function') return false;
+    container.appendChild(wrapper() || anchor);
+    if (pendingObserver) {
+      pendingObserver.disconnect();
+      pendingObserver.observe(observed());
+    }
+    return true;
+  }
+
+  window.OrdoInvoiceEmails = { relocate: relocate };
 
   function init() {
     anchor = document.getElementById(ANCHOR_ID);
