@@ -322,6 +322,20 @@ async function main() {
     t.dom.window.close();
   }
   {
+    // Each subscription a method pays comes with its logo (Webflow files only)
+    const ok = 'https://cdn.prod.website-files.com/604b/66695dd3_ModuleIcon.svg';
+    const pm = Object.assign({}, VISA, { usedBy: ['Module de Médecine générale', 'Module Rhumatologie', 'Stockage'], usedByIcons: [ok, null, 'https://exemple.com/x.svg'] });
+    const t = await withPms([CARDS[0]], [pm]);
+    const detail = pmSection(t.w).querySelector('.ordo-pm-detail');
+    assert.strictEqual(text(detail), 'Expire en août 2027. Utilisée pour : Module de Médecine générale, Module Rhumatologie et Stockage.');
+    const imgs = detail.querySelectorAll('img');
+    assert.strictEqual(imgs.length, 1);
+    assert.strictEqual(imgs[0].getAttribute('src'), ok);
+    assert.strictEqual(imgs[0].getAttribute('width'), '16');
+    assert.strictEqual(imgs[0].parentElement.textContent, 'Module de Médecine générale,');
+    t.dom.window.close();
+  }
+  {
     // Nothing on file: say so, and offer to add one
     const none = { type: 'none', brand: null, last4: null, expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
     const t = await withPms([CARDS[0]], [none]);
@@ -525,7 +539,7 @@ async function main() {
       '1er sept. 2026 Module Rhumatologie 5 € Prélèvement en cours PDF',
       '14 août 2026 Abonnement 30 € À régler Régler',
     ]);
-    assert.strictEqual(text(s.querySelector('.ordo-inv-head')), 'Date Abonnement Montant Statut Facture');
+    assert.strictEqual(text(s.querySelector('.ordo-inv-head')), 'Date Abonnement Montant Statut Factures');
     assert.strictEqual(s.querySelectorAll('[role="row"]').length, 4);
     assert.ok(s.querySelector('.ordo-inv-tone-paid') && s.querySelector('.ordo-inv-tone-pending') && s.querySelector('.ordo-inv-tone-due'));
     assert.strictEqual(s.querySelectorAll('.ordo-inv-row')[3].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
@@ -876,6 +890,25 @@ async function main() {
     assert.strictEqual(cards(t.w)[0].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
     assert.ok(cardText(t.w, 0).endsWith('Paiement en échec Modifier le moyen de paiement'));
     assert.strictEqual(t.opened.length, 0);
+  }
+
+  // Logo from the collection (Webflow files only), and the whole offer in one blue chip
+  {
+    const t = page();
+    const withLogo = Object.assign({}, CARDS[0], { icon: 'https://cdn.prod.website-files.com/604b/66695dd3_ModuleIcon.svg' });
+    const badLogo = Object.assign({}, CARDS[1], { icon: 'https://exemple.com/x.svg' });
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [withLogo, badLogo] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const img = cards(t.w)[0].querySelector('.ordo-subs-head .ordo-subs-name img.ordo-subs-logo');
+    assert.ok(img, 'logo before the name');
+    assert.strictEqual(img.getAttribute('src'), withLogo.icon);
+    assert.strictEqual(img.getAttribute('alt'), '');
+    assert.strictEqual(cards(t.w)[1].querySelector('img'), null, 'a logo from elsewhere is not shown');
+    const chip = cards(t.w)[0].querySelector('.ordo-subs-offer .ordo-subs-badge');
+    assert.strictEqual(text(chip), '-50 % jusqu’au 21 décembre 2026');
+    assert.strictEqual(text(chip.querySelector('strong')), '-50 %');
+    t.dom.window.close();
   }
 
   // Empty list

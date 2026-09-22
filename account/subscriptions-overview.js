@@ -42,10 +42,11 @@
     '.ordo-subs-flash{margin:0;font-size:.875rem;line-height:1.5;font-weight:600;color:var(--success-700,#106820)}',
     '.ordo-subs-list{display:flex;flex-direction:column;gap:1rem}',
     '.ordo-subs-card{background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);border-radius:.25rem;padding:1.5rem;display:flex;flex-direction:column;gap:.75rem}',
-    '.ordo-subs-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:.5rem 1rem}',
+    '.ordo-subs-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem 1rem}',
     '.ordo-subs-label{font-size:1rem;line-height:1.5;font-weight:600}',
     '.ordo-subs-tag{flex:none;height:1.5rem;padding:0 .5rem;border-radius:.25rem;font-size:.75rem;font-weight:600;line-height:1.5rem;white-space:nowrap}',
-    '.ordo-subs-tone-ok,.ordo-subs-tone-free{background:var(--primary-500,#3454f6);color:var(--inverted-900,#ffffffe6)}',
+    '.ordo-subs-tone-ok{background:var(--primary-500,#3454f6);color:var(--inverted-900,#ffffffe6)}',
+    '.ordo-subs-tone-free{background:var(--success-700,#106820);color:#fff}',
     '.ordo-subs-tone-alert{background:var(--error-500,#ee4343);color:var(--inverted-900,#ffffffe6)}',
     '.ordo-subs-tone-muted{background:var(--inverted-900,#ffffffe6);color:var(--base-900,#0c0e16)}',
     '.ordo-subs-body{display:flex;flex-direction:column;gap:.5rem}',
@@ -54,7 +55,12 @@
     '.ordo-subs-period,.ordo-subs-old,.ordo-subs-muted,.ordo-subs-note{color:var(--neutral-500,#47505c)}',
     '.ordo-subs-period,.ordo-subs-old{font-size:.875rem}',
     '.ordo-subs-offer{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}',
-    '.ordo-subs-badge{height:1.5rem;padding:0 .5rem;border-radius:.25rem;background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:.75rem;font-weight:600;line-height:1.5rem;white-space:nowrap}',
+    '.ordo-subs-badge{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:0 .375rem;min-height:1.5rem;box-sizing:border-box;padding:.1875rem .5rem;border-radius:.25rem;background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:.8125rem;font-weight:500;line-height:1.125rem}',
+    '.ordo-subs-badge strong{font-weight:700;white-space:nowrap}',
+    '.ordo-subs-name{flex:1 1 auto;display:flex;align-items:center;gap:.75rem;min-width:0;overflow-wrap:anywhere}',
+    '.ordo-subs-logo{flex:none;width:40px;height:40px;object-fit:contain}',
+    '.ordo-subs-logo.is-small{width:16px;height:16px;vertical-align:-3px;margin-right:.25rem}',
+    '.ordo-pm-use{white-space:nowrap}',
     '.ordo-subs-note,.ordo-subs-muted{font-size:.875rem;line-height:1.5}',
     '.ordo-subs-foot{border-top:1px solid var(--base-100,#0c0e161a);padding-top:.75rem;display:flex;flex-wrap:wrap;justify-content:space-between;gap:.125rem 1rem;font-size:.875rem;line-height:1.5}',
     '.ordo-subs-foot-label{color:var(--neutral-500,#47505c)}',
@@ -185,11 +191,27 @@
     return '';
   }
 
+  // The whole offer (amount and end date) in one blue chip.
   function offerRow(badge, note) {
     var row = el('div', 'ordo-subs-offer');
-    row.appendChild(el('span', 'ordo-subs-badge', badge));
-    if (note) row.appendChild(el('span', 'ordo-subs-note', note));
+    var chip = el('span', 'ordo-subs-badge');
+    chip.appendChild(el('strong', null, badge));
+    if (note) chip.appendChild(el('span', null, note));
+    row.appendChild(chip);
     return row;
+  }
+
+  var LOGO_URL = /^https:\/\/(cdn\.prod\.website-files\.com|uploads-ssl\.webflow\.com|assets\.website-files\.com)\//;
+
+  function logo(src, size) {
+    if (typeof src !== 'string' || !LOGO_URL.test(src)) return null;
+    var px = String(size || 40);
+    var img = el('img', size ? 'ordo-subs-logo is-small' : 'ordo-subs-logo');
+    img.setAttribute('src', src);
+    img.setAttribute('alt', '');
+    img.setAttribute('width', px);
+    img.setAttribute('height', px);
+    return img;
   }
 
   function priceRow(c) {
@@ -451,7 +473,11 @@
     root.setAttribute('role', 'listitem');
 
     var head = el('div', 'ordo-subs-head');
-    head.appendChild(el('div', 'ordo-subs-label', c.label || 'Abonnement'));
+    var name = el('div', 'ordo-subs-name');
+    var img = logo(c.icon);
+    if (img) name.appendChild(img);
+    name.appendChild(el('div', 'ordo-subs-label', c.label || 'Abonnement'));
+    head.appendChild(name);
     var st = STATUS[c.status] || STATUS.active;
     head.appendChild(el('span', 'ordo-subs-tag ordo-subs-tone-' + st.tone, st.text));
     root.appendChild(head);
@@ -573,26 +599,35 @@
     return 'Moyen de paiement enregistré';
   }
 
-  // "A", "A et B", "A, B et C"
-  function joinLabels(labels) {
-    if (labels.length < 2) return labels.join('');
-    return labels.slice(0, -1).join(', ') + ' et ' + labels[labels.length - 1];
+  // "A.", "A et B.", "A, B et C.", each subscription with its logo when it has one; the punctuation
+  // stays with the name so that a line never starts with it.
+  function usedList(box, used, icons) {
+    var last = used.length - 1;
+    for (var i = 0; i < used.length; i++) {
+      if (i) box.appendChild(document.createTextNode(i === last ? ' et ' : ' '));
+      var item = el('span', 'ordo-pm-use');
+      var img = logo(icons[i], 16);
+      if (img) item.appendChild(img);
+      item.appendChild(document.createTextNode(used[i] + (i === last ? '.' : (i === last - 1 ? '' : ','))));
+      box.appendChild(item);
+    }
   }
 
   function pmDetail(pm, several) {
-    var parts = [];
+    var box = el('div', 'ordo-subs-muted ordo-pm-detail');
     var month = Number(pm.expMonth);
     if (pm.type === 'card' && month >= 1 && month <= 12 && pm.expYear) {
       var when = MOIS[month - 1] + ' ' + pm.expYear;
-      parts.push(pm.expired ? 'A expiré en ' + when + '.' : 'Expire en ' + when + '.');
+      box.appendChild(document.createTextNode(pm.expired ? 'A expiré en ' + when + '. ' : 'Expire en ' + when + '. '));
     }
     var used = Array.isArray(pm.usedBy) ? pm.usedBy : [];
-    if (used.length && pm.type !== 'none') {
-      parts.push((pm.type === 'card' ? 'Utilisée' : 'Utilisé') + ' pour : ' + joinLabels(used) + '.');
-    } else if (used.length && several) {
-      parts.push('Pour : ' + joinLabels(used) + '.');
+    var icons = Array.isArray(pm.usedByIcons) ? pm.usedByIcons : [];
+    var prefix = pm.type !== 'none' ? (pm.type === 'card' ? 'Utilisée' : 'Utilisé') + ' pour : ' : (several ? 'Pour : ' : '');
+    if (used.length && prefix) {
+      box.appendChild(document.createTextNode(prefix));
+      usedList(box, used, icons);
     }
-    return parts.join(' ');
+    return box.firstChild ? box : null;
   }
 
   // Saved methods nothing charges: named, never offered.
@@ -633,7 +668,7 @@
       else if (pm.expiresSoon) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-soon', 'Expire bientôt'));
       text.appendChild(name);
       var detail = pmDetail(pm, several);
-      if (detail) text.appendChild(el('div', 'ordo-subs-muted', detail));
+      if (detail) text.appendChild(detail);
       row.appendChild(text);
       rows.push(row);
       root.appendChild(row);
@@ -800,7 +835,7 @@
     table.setAttribute('aria-label', 'Dernières factures');
     var head = el('div', 'ordo-inv-row ordo-inv-head');
     head.setAttribute('role', 'row');
-    var titles = ['Date', 'Abonnement', 'Montant', 'Statut', 'Facture'];
+    var titles = ['Date', 'Abonnement', 'Montant', 'Statut', 'Factures'];
     for (var h = 0; h < titles.length; h++) {
       var th = el('span', 'ordo-inv-cell', titles[h]);
       th.setAttribute('role', 'columnheader');
