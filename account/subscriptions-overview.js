@@ -76,6 +76,31 @@
     '.ordo-pm-name{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;font-size:1rem;line-height:1.5;font-weight:600}',
     '.ordo-pm-tone-expired{background:var(--error-100,#fee1e1);color:var(--error-700,#ba1b1b)}',
     '.ordo-pm-tone-soon{background:var(--warning-100,#fef9c3);color:var(--warning-800,#864e0e)}',
+    '.ordo-inv-table{display:flex;flex-direction:column}',
+    '.ordo-inv-row{display:grid;grid-template-columns:7.5rem minmax(0,1fr) 6rem 10rem 6.5rem;gap:.25rem 1rem;align-items:center;padding:.75rem 0;border-bottom:1px solid var(--base-100,#0c0e161a);font-size:.875rem;line-height:1.5}',
+    '.ordo-inv-row:last-child{border-bottom:0}',
+    '.ordo-inv-head{padding-top:0;color:var(--neutral-500,#47505c);font-weight:500}',
+    '.ordo-inv-amount,.ordo-inv-head .ordo-inv-cell:nth-child(3){text-align:right}',
+    '.ordo-inv-amount{font-weight:600}',
+    '.ordo-inv-action,.ordo-inv-head .ordo-inv-cell:nth-child(5){text-align:right}',
+    '.ordo-inv-pdf{display:inline-flex;align-items:center;gap:.375rem;background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--base-900,#0c0e16);text-decoration:underline;cursor:pointer}',
+    '.ordo-inv-pdf:hover{color:var(--primary-600,#263fd3)}',
+    '.ordo-inv-pdf[disabled]{opacity:.5;cursor:default}',
+    '.ordo-inv-tone-paid{background:var(--success-100,#defce9);color:var(--success-700,#106820)}',
+    '.ordo-inv-tone-pending{background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3)}',
+    '.ordo-inv-tone-due{background:var(--error-100,#fee1e1);color:var(--error-700,#ba1b1b)}',
+    '.ordo-inv-emails:empty{display:none}',
+    '.ordo-help{margin-bottom:2.5rem;padding:1.5rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);border-radius:.25rem;display:flex;flex-direction:column;align-items:center;gap:1rem;text-align:center;color:var(--base-900,#0c0e16)}',
+    '.ordo-help-title{margin:0;font-size:1rem;line-height:1.5}',
+    '.ordo-help-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:.75rem 2.5rem}',
+    '.ordo-help-contact{display:inline-flex;align-items:center;gap:.625rem;min-height:1.75rem;font-size:1rem;font-weight:600;color:var(--base-900,#0c0e16);text-decoration:none}',
+    '.ordo-help-contact:hover{color:var(--primary-600,#263fd3)}',
+    '.ordo-help-phone{display:flex;flex-direction:column;align-items:center;gap:2px}',
+    '.ordo-help-note{font-size:.75rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
+    '.ordo-help-divider{align-self:stretch;border-top:1px solid var(--base-100,#0c0e161a)}',
+    '.ordo-help-video{display:inline-flex;align-items:center;gap:.5rem;min-height:1.75rem;font-size:.875rem;font-weight:600;color:var(--primary-500,#3454f6);text-decoration:none}',
+    '.ordo-help-video:hover{color:var(--primary-600,#263fd3)}',
+    '@media (max-width:767px){.ordo-inv-head{display:none}.ordo-inv-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"date amount" "label status" "label action"}.ordo-inv-date{grid-area:date}.ordo-inv-amount{grid-area:amount}.ordo-inv-label{grid-area:label;color:var(--neutral-500,#47505c)}.ordo-inv-status{grid-area:status;text-align:right}.ordo-inv-action{grid-area:action}.ordo-help-row{flex-direction:column;align-items:center}}',
     '.ordo-subs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
     '.ordo-subs-skel{height:132px;border-radius:.25rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
     '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
@@ -370,7 +395,7 @@
       btn.disabled = true;
       msg.textContent = 'Traitement en cours…';
       request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(data) {
-        render(data.list, 'C’est fait : votre abonnement continue.', data.pms);
+        render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices);
       }).catch(function(err) {
         btn.disabled = false;
         if (err && err.status === 409) msg.textContent = 'Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.';
@@ -490,28 +515,37 @@
   var SVG_NS = 'http://www.w3.org/2000/svg';
   var ICON_PATHS = {
     card: ['M4.5 5h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M2.5 9.5h19', 'M6 15h4'],
-    bank: ['M3 9.5 12 4l9 5.5', 'M5 10v8M9.5 10v8M14.5 10v8M19 10v8', 'M3 20h18']
+    bank: ['M3 9.5 12 4l9 5.5', 'M5 10v8M9.5 10v8M14.5 10v8M19 10v8', 'M3 20h18'],
+    mail: ['M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'm3.5 6.5 8.5 6.5 8.5-6.5'],
+    phone: ['M5.5 3.5h3l1.5 4.5-2 1.5a11.5 11.5 0 0 0 6.5 6.5l1.5-2 4.5 1.5v3a1.5 1.5 0 0 1-1.6 1.5A16.5 16.5 0 0 1 4 5.1a1.5 1.5 0 0 1 1.5-1.6z'],
+    play: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M10 8.8v6.4l5.2-3.2z'],
+    download: ['M12 4v11', 'M7.5 10.5 12 15l4.5-4.5', 'M5 19h14']
   };
 
-  function pmIcon(pm) {
-    var box = el('span', 'ordo-pm-icon' + (pm.expired ? ' is-alert' : ''));
-    box.setAttribute('aria-hidden', 'true');
+  function svgIcon(name, size) {
     var svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('width', '22');
-    svg.setAttribute('height', '22');
+    svg.setAttribute('width', String(size || 20));
+    svg.setAttribute('height', String(size || 20));
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('fill', 'none');
     svg.setAttribute('stroke', 'currentColor');
     svg.setAttribute('stroke-width', '1.5');
     svg.setAttribute('stroke-linecap', 'round');
     svg.setAttribute('stroke-linejoin', 'round');
-    var paths = pm.type === 'sepa_debit' ? ICON_PATHS.bank : ICON_PATHS.card;
+    svg.setAttribute('aria-hidden', 'true');
+    var paths = ICON_PATHS[name];
     for (var i = 0; i < paths.length; i++) {
       var p = document.createElementNS(SVG_NS, 'path');
       p.setAttribute('d', paths[i]);
       svg.appendChild(p);
     }
-    box.appendChild(svg);
+    return svg;
+  }
+
+  function pmIcon(pm) {
+    var box = el('span', 'ordo-pm-icon' + (pm.expired ? ' is-alert' : ''));
+    box.setAttribute('aria-hidden', 'true');
+    box.appendChild(svgIcon(pm.type === 'sepa_debit' ? 'bank' : 'card', 22));
     return box;
   }
 
@@ -617,7 +651,182 @@
     show();
   }
 
-  function render(list, flash, pms) {
+  var MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+  function shortDay(ymd) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+    if (!m) return '';
+    var d = Number(m[3]);
+    return (d === 1 ? '1er' : String(d)) + ' ' + MOIS_COURTS[Number(m[2]) - 1] + ' ' + m[1];
+  }
+
+  var INVOICE_STATUS = {
+    paid: { text: 'Payée', tone: 'paid' },
+    processing: { text: 'Prélèvement en cours', tone: 'pending' },
+    open: { text: 'En attente', tone: 'pending' },
+    due: { text: 'À régler', tone: 'due' },
+    uncollectible: { text: 'Impayée', tone: 'due' }
+  };
+
+  function downloadInvoice(inv, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    call('POST', { action: 'invoice_pdf', ref: inv.ref }).then(function(payload) {
+      if (!payload || typeof payload.pdf !== 'string' || !payload.pdf) {
+        var bad = new Error('account-subscriptions: invoice pdf missing');
+        bad.status = 200;
+        throw bad;
+      }
+      var bin = window.atob(payload.pdf);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = typeof payload.filename === 'string' && payload.filename ? payload.filename : 'Facture-Ordotype.pdf';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+      btn.removeAttribute('title');
+      btn.lastChild.textContent = 'PDF';
+    }).catch(function(err) {
+      btn.setAttribute('title', 'Téléchargement impossible pour le moment. Réessayez.');
+      btn.lastChild.textContent = 'Réessayer';
+      reportIfActionable(err);
+    }).then(function() {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+    });
+  }
+
+  function invoiceAction(inv) {
+    if (inv.status === 'due' || inv.status === 'uncollectible') return paymentLink('ordo-subs-link', 'Régler');
+    if (!inv.pdf || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return null;
+    var btn = el('button', 'ordo-inv-pdf');
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Télécharger la facture du ' + day(inv.date));
+    btn.appendChild(svgIcon('download', 16));
+    btn.appendChild(el('span', null, 'PDF'));
+    btn.addEventListener('click', function() { downloadInvoice(inv, btn); });
+    return btn;
+  }
+
+  function invoicesSection(invoices) {
+    var root = el('div', 'ordo-subs ordo-inv');
+    root.appendChild(el('h3', 'ordo-subs-title', 'Factures'));
+    var table = el('div', 'ordo-inv-table');
+    table.setAttribute('role', 'table');
+    table.setAttribute('aria-label', 'Dernières factures');
+    var head = el('div', 'ordo-inv-row ordo-inv-head');
+    head.setAttribute('role', 'row');
+    var titles = ['Date', 'Abonnement', 'Montant', 'Statut', 'Facture'];
+    for (var h = 0; h < titles.length; h++) {
+      var th = el('span', 'ordo-inv-cell', titles[h]);
+      th.setAttribute('role', 'columnheader');
+      head.appendChild(th);
+    }
+    table.appendChild(head);
+    for (var i = 0; i < invoices.length; i++) {
+      var inv = invoices[i];
+      var st = INVOICE_STATUS[inv.status] || INVOICE_STATUS.open;
+      var row = el('div', 'ordo-inv-row');
+      row.setAttribute('role', 'row');
+      var cells = [
+        el('span', 'ordo-inv-cell ordo-inv-date', shortDay(inv.date)),
+        el('span', 'ordo-inv-cell ordo-inv-label', inv.label || 'Abonnement'),
+        el('span', 'ordo-inv-cell ordo-inv-amount', typeof inv.amount === 'number' ? money(inv.amount, inv.currency) : ''),
+        el('span', 'ordo-inv-cell ordo-inv-status'),
+        el('span', 'ordo-inv-cell ordo-inv-action')
+      ];
+      cells[3].appendChild(el('span', 'ordo-subs-tag ordo-inv-tone-' + st.tone, st.text));
+      var action = invoiceAction(inv);
+      if (action) cells[4].appendChild(action);
+      for (var c = 0; c < cells.length; c++) {
+        cells[c].setAttribute('role', 'cell');
+        row.appendChild(cells[c]);
+      }
+      table.appendChild(row);
+    }
+    root.appendChild(table);
+    if (window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function') {
+      var more = el('button', 'ordo-subs-link', 'Toutes mes factures et mes informations de facturation');
+      more.type = 'button';
+      more.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
+      root.appendChild(more);
+    }
+    var slot = el('div', 'ordo-inv-emails');
+    root.appendChild(slot);
+    return { root: root, slot: slot };
+  }
+
+  var HELP_EMAIL = 'comptabilite@ordotype.fr';
+  var HELP_PHONE = { href: 'tel:+33676520055', text: '+33 (0)6 76 52 00 55' };
+  var HELP_VIDEOS = [
+    { href: '/academie/ajouter-moyen-paiement', text: 'Vidéo : ajouter un moyen de paiement' },
+    { href: '/academie/obtenir-factures', text: 'Vidéo : obtenir mes factures' }
+  ];
+
+  function iconLink(cls, href, icon, text) {
+    var a = el('a', cls);
+    a.setAttribute('href', href);
+    a.appendChild(svgIcon(icon, 20));
+    a.appendChild(el('span', null, text));
+    return a;
+  }
+
+  function helpSection() {
+    var root = el('aside', 'ordo-help');
+    root.setAttribute('aria-label', 'Aide');
+    root.appendChild(el('p', 'ordo-help-title', 'Une question sur votre abonnement ou vos factures ?'));
+    var contacts = el('div', 'ordo-help-row');
+    contacts.appendChild(iconLink('ordo-help-contact', 'mailto:' + HELP_EMAIL, 'mail', HELP_EMAIL));
+    var phone = el('div', 'ordo-help-phone');
+    phone.appendChild(iconLink('ordo-help-contact', HELP_PHONE.href, 'phone', HELP_PHONE.text));
+    phone.appendChild(el('span', 'ordo-help-note', 'Appel non surtaxé'));
+    contacts.appendChild(phone);
+    root.appendChild(contacts);
+    root.appendChild(el('div', 'ordo-help-divider'));
+    var videos = el('div', 'ordo-help-row');
+    for (var i = 0; i < HELP_VIDEOS.length; i++) {
+      videos.appendChild(iconLink('ordo-help-video', HELP_VIDEOS[i].href, 'play', HELP_VIDEOS[i].text));
+    }
+    root.appendChild(videos);
+    return root;
+  }
+
+  // The page's invoices block (portal button, help, invoice emails toggle) gives way to the
+  // invoices section and the help box, once the invoices are known. The toggle moves into the
+  // section, and back into the block whenever a later render has no section to hold it.
+  var toggleMoved = false;
+
+  function moveToggle(container) {
+    var emails = window.OrdoInvoiceEmails;
+    if (!container || !emails || typeof emails.relocate !== 'function') return false;
+    try { return emails.relocate(container) !== false; } catch (e) { return false; }
+  }
+
+  function placeInvoices(invoices) {
+    var block = document.getElementById('invoices-block');
+    if (!Array.isArray(invoices)) {
+      if (block) block.style.display = '';
+      if (toggleMoved && moveToggle(block)) toggleMoved = false;
+      return;
+    }
+    if (invoices.length) {
+      var section = invoicesSection(invoices);
+      anchor.appendChild(section.root);
+      if (moveToggle(section.slot)) toggleMoved = true;
+    } else if (toggleMoved && moveToggle(block)) {
+      toggleMoved = false;
+    }
+    anchor.appendChild(helpSection());
+    if (block) block.style.display = 'none';
+  }
+
+  function render(list, flash, pms, invoices) {
     pms = Array.isArray(pms) ? pms : [];
     injectStyle();
     clear();
@@ -638,6 +847,7 @@
     }
     anchor.appendChild(root);
     if (pms.length) anchor.appendChild(paymentSection(list, pms));
+    placeInvoices(invoices);
     show();
     hideOldSection();
     togglePaymentBlock(list, pms);
@@ -659,7 +869,7 @@
     });
   }
 
-  function request(method, body) {
+  function call(method, body) {
     return memberToken().then(function(token) {
       if (!token) {
         var e = new Error('no member token');
@@ -683,16 +893,23 @@
           err.status = res.status;
           throw err;
         }
-        if (!payload || !Array.isArray(payload.subscriptions)) {
-          var bad = new Error('account-subscriptions: unexpected body');
-          bad.status = res.status;
-          throw bad;
-        }
-        return {
-          list: payload.subscriptions,
-          pms: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : []
-        };
+        return payload;
       });
+    });
+  }
+
+  function request(method, body) {
+    return call(method, body).then(function(payload) {
+      if (!payload || !Array.isArray(payload.subscriptions)) {
+        var bad = new Error('account-subscriptions: unexpected body');
+        bad.status = 200;
+        throw bad;
+      }
+      return {
+        list: payload.subscriptions,
+        pms: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [],
+        invoices: Array.isArray(payload.invoices) ? payload.invoices : null
+      };
     });
   }
 
@@ -756,7 +973,7 @@
       skeletonTimer = setTimeout(showSkeleton, SKELETON_DELAY_MS);
       load().then(function(data) {
         clearTimeout(skeletonTimer);
-        render(data.list, null, data.pms);
+        render(data.list, null, data.pms, data.invoices);
         console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
       }).catch(function(err) {
         clearTimeout(skeletonTimer);
