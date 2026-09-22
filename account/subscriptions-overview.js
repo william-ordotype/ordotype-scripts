@@ -68,6 +68,13 @@
     '.ordo-subs-btn.is-primary:hover{background:var(--primary-600,#263fd3);border-color:var(--primary-600,#263fd3);color:#fff}',
     '.ordo-subs-btn[disabled]{opacity:.5;cursor:default}',
     '.ordo-subs-msg{flex-basis:100%;text-align:right}',
+    '.ordo-pm-row{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem 1rem}',
+    '.ordo-pm-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:48px;height:32px;box-sizing:border-box;border:1px solid var(--base-200,#0c0e1633);border-radius:.25rem;color:var(--base-900,#0c0e16)}',
+    '.ordo-pm-icon.is-alert{border-color:var(--error-300,#fca6a6);color:var(--error-700,#ba1b1b)}',
+    '.ordo-pm-text{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:2px}',
+    '.ordo-pm-name{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;font-size:1rem;line-height:1.5;font-weight:600}',
+    '.ordo-pm-tone-expired{background:var(--error-100,#fee1e1);color:var(--error-700,#ba1b1b)}',
+    '.ordo-pm-tone-soon{background:var(--warning-100,#fef9c3);color:var(--warning-800,#864e0e)}',
     '.ordo-subs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
     '.ordo-subs-skel{height:132px;border-radius:.25rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
     '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
@@ -294,8 +301,8 @@
       if (!window.confirm(question)) return;
       btn.disabled = true;
       msg.textContent = 'Traitement en cours…';
-      request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(list) {
-        render(list, 'C’est fait : votre abonnement continue.');
+      request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(data) {
+        render(data.list, 'C’est fait : votre abonnement continue.', data.pms);
       }).catch(function(err) {
         btn.disabled = false;
         if (err && err.status === 409) msg.textContent = 'Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.';
@@ -391,14 +398,118 @@
   // Adding a payment method only matters when something is billed or paused.
   var BILLED = ['active', 'past_due', 'pending', 'canceling', 'pause_scheduled', 'paused'];
 
-  function togglePaymentBlock(list) {
+  // The page's own block stays only while the list cannot show the payment method itself.
+  function togglePaymentBlock(list, pms) {
     var block = document.getElementById('payment-method-block');
     if (!block) return;
     var billed = false;
     for (var i = 0; i < list.length; i++) {
       if (BILLED.indexOf(list[i].status) !== -1) billed = true;
     }
-    block.style.display = billed ? '' : 'none';
+    block.style.display = billed && !pms.length ? '' : 'none';
+  }
+
+  var PAYMENT_URL = '/membership/moyen-de-paiement';
+  var CARD_BRANDS = {
+    visa: 'Visa',
+    mastercard: 'Mastercard',
+    amex: 'American Express',
+    diners: 'Diners Club',
+    discover: 'Discover',
+    jcb: 'JCB',
+    unionpay: 'UnionPay',
+    cartes_bancaires: 'CB'
+  };
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var ICON_PATHS = {
+    card: ['M4.5 5h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M2.5 9.5h19', 'M6 15h4'],
+    bank: ['M3 9.5 12 4l9 5.5', 'M5 10v8M9.5 10v8M14.5 10v8M19 10v8', 'M3 20h18']
+  };
+
+  function pmIcon(pm) {
+    var box = el('span', 'ordo-pm-icon' + (pm.expired ? ' is-alert' : ''));
+    box.setAttribute('aria-hidden', 'true');
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('width', '22');
+    svg.setAttribute('height', '22');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.5');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    var paths = pm.type === 'sepa_debit' ? ICON_PATHS.bank : ICON_PATHS.card;
+    for (var i = 0; i < paths.length; i++) {
+      var p = document.createElementNS(SVG_NS, 'path');
+      p.setAttribute('d', paths[i]);
+      svg.appendChild(p);
+    }
+    box.appendChild(svg);
+    return box;
+  }
+
+  function pmName(pm) {
+    var dots = pm.last4 ? ' •••• ' + pm.last4 : '';
+    if (pm.type === 'card') {
+      var known = Object.prototype.hasOwnProperty.call(CARD_BRANDS, pm.brand);
+      return 'Carte ' + (known ? CARD_BRANDS[pm.brand] : 'bancaire') + dots;
+    }
+    if (pm.type === 'sepa_debit') return 'Prélèvement SEPA' + dots;
+    if (pm.type === 'link') return 'Paiement via Link';
+    if (pm.type === 'none') return 'Aucun moyen de paiement enregistré';
+    return 'Moyen de paiement enregistré';
+  }
+
+  function pmDetail(pm, several) {
+    var parts = [];
+    var month = Number(pm.expMonth);
+    if (pm.type === 'card' && month >= 1 && month <= 12 && pm.expYear) {
+      var when = MOIS[month - 1] + ' ' + pm.expYear;
+      parts.push(pm.expired ? 'A expiré en ' + when + '.' : 'Expire en ' + when + '.');
+    }
+    if (several && pm.usedBy && pm.usedBy.length) parts.push('Pour : ' + pm.usedBy.join(', ') + '.');
+    return parts.join(' ');
+  }
+
+  function paymentSection(list, pms) {
+    var root = el('div', 'ordo-subs ordo-pm');
+    root.appendChild(el('h3', 'ordo-subs-title', 'Moyen de paiement'));
+    var several = pms.length > 1;
+    var urgent = false;
+    var none = true;
+    var rows = [];
+    for (var i = 0; i < pms.length; i++) {
+      var pm = pms[i];
+      if (pm.type !== 'none') none = false;
+      if (pm.expired || pm.expiresSoon) urgent = true;
+      var row = el('div', 'ordo-pm-row');
+      row.appendChild(pmIcon(pm));
+      var text = el('div', 'ordo-pm-text');
+      var name = el('div', 'ordo-pm-name');
+      name.appendChild(el('span', null, pmName(pm)));
+      if (pm.expired) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-expired', 'Expirée'));
+      else if (pm.expiresSoon) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-soon', 'Expire bientôt'));
+      text.appendChild(name);
+      var detail = pmDetail(pm, several);
+      if (detail) text.appendChild(el('div', 'ordo-subs-muted', detail));
+      row.appendChild(text);
+      rows.push(row);
+      root.appendChild(row);
+    }
+    for (var j = 0; j < list.length; j++) {
+      if (list[j].status === 'past_due') urgent = true;
+    }
+    var label = none ? 'Ajouter un moyen de paiement' : (urgent ? 'Mettre à jour' : 'Modifier');
+    var link = el('a', 'ordo-subs-btn' + (none || urgent ? ' is-primary' : ''), label);
+    link.setAttribute('href', PAYMENT_URL);
+    if (several) {
+      var actions = el('div', 'ordo-subs-actions');
+      actions.appendChild(link);
+      root.appendChild(actions);
+    } else {
+      rows[0].appendChild(link);
+    }
+    return root;
   }
 
   function intro() {
@@ -440,7 +551,8 @@
     show();
   }
 
-  function render(list, flash) {
+  function render(list, flash, pms) {
+    pms = Array.isArray(pms) ? pms : [];
     injectStyle();
     clear();
     var root = el('div', 'ordo-subs');
@@ -459,9 +571,10 @@
       root.appendChild(box);
     }
     anchor.appendChild(root);
+    if (pms.length) anchor.appendChild(paymentSection(list, pms));
     show();
     hideOldSection();
-    togglePaymentBlock(list);
+    togglePaymentBlock(list, pms);
   }
 
   function memberToken() {
@@ -509,7 +622,10 @@
           bad.status = res.status;
           throw bad;
         }
-        return payload.subscriptions;
+        return {
+          list: payload.subscriptions,
+          pms: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : []
+        };
       });
     });
   }
@@ -572,10 +688,10 @@
     hide();
     whenVisible(function() {
       skeletonTimer = setTimeout(showSkeleton, SKELETON_DELAY_MS);
-      load().then(function(list) {
+      load().then(function(data) {
         clearTimeout(skeletonTimer);
-        render(list);
-        console.log(PREFIX + ' Rendered ' + list.length + ' subscription(s)');
+        render(data.list, null, data.pms);
+        console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
       }).catch(function(err) {
         clearTimeout(skeletonTimer);
         clear();

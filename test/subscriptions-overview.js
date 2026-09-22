@@ -204,6 +204,121 @@ async function main() {
     t.dom.window.close();
   }
 
+  // Payment method section: the method Stripe will charge, replacing the page's own block
+  const pmSection = (w) => w.document.querySelector('.ordo-pm');
+  const VISA = { type: 'card', brand: 'visa', last4: '4242', expMonth: 8, expYear: 2027, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
+  async function withPms(list, pms) {
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: list, paymentMethods: pms } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    return t;
+  }
+  {
+    const t = await withPms([CARDS[0]], [VISA]);
+    const s = pmSection(t.w);
+    assert.ok(s, 'section rendered');
+    assert.strictEqual(text(s), 'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Modifier');
+    const link = s.querySelector('a.ordo-subs-btn');
+    assert.strictEqual(link.getAttribute('href'), '/membership/moyen-de-paiement');
+    assert.ok(!link.classList.contains('is-primary'));
+    assert.ok(s.querySelector('svg path'), 'card icon drawn');
+    assert.strictEqual(anchor(t.w).lastElementChild, s, 'after the subscriptions box');
+    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
+    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
+    t.dom.window.close();
+  }
+  {
+    const expired = Object.assign({}, VISA, { expMonth: 6, expYear: 2026, expired: true });
+    const t = await withPms([CARDS[0]], [expired]);
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Visa •••• 4242 Expirée A expiré en juin 2026. Mettre à jour');
+    assert.ok(pmSection(t.w).querySelector('.ordo-pm-tone-expired'));
+    assert.ok(pmSection(t.w).querySelector('.ordo-pm-icon.is-alert'));
+    assert.ok(pmSection(t.w).querySelector('a.ordo-subs-btn.is-primary'));
+    t.dom.window.close();
+  }
+  {
+    const soon = Object.assign({}, VISA, { brand: 'mastercard', expMonth: 10, expYear: 2026, expiresSoon: true });
+    const t = await withPms([CARDS[0]], [soon]);
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Mastercard •••• 4242 Expire bientôt Expire en octobre 2026. Mettre à jour');
+    assert.ok(pmSection(t.w).querySelector('.ordo-pm-tone-soon'));
+    t.dom.window.close();
+  }
+  {
+    const sepa = { type: 'sepa_debit', brand: null, last4: '4521', expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
+    const t = await withPms([CARDS[0]], [sepa]);
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Prélèvement SEPA •••• 4521 Modifier');
+    t.dom.window.close();
+  }
+  {
+    // Two methods: one row each, with the cards they pay, and a single button below
+    const sepa = { type: 'sepa_debit', brand: null, last4: '4521', expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
+    const card = Object.assign({}, VISA, { usedBy: ['Module Rhumatologie', 'Stockage'] });
+    const t = await withPms([CARDS[0], CARDS[1]], [sepa, card]);
+    const s = pmSection(t.w);
+    assert.strictEqual(s.querySelectorAll('.ordo-pm-row').length, 2);
+    assert.strictEqual(text(s),
+      'Moyen de paiement Prélèvement SEPA •••• 4521 Pour : Médecine Générale. Carte Visa •••• 4242 Expire en août 2027. Pour : Module Rhumatologie, Stockage. Modifier');
+    assert.strictEqual(s.querySelectorAll('a.ordo-subs-btn').length, 1);
+    assert.ok(s.querySelector('.ordo-subs-actions a.ordo-subs-btn'));
+    t.dom.window.close();
+  }
+  {
+    // Nothing on file: say so, and offer to add one
+    const none = { type: 'none', brand: null, last4: null, expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
+    const t = await withPms([CARDS[0]], [none]);
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Aucun moyen de paiement enregistré Ajouter un moyen de paiement');
+    assert.ok(pmSection(t.w).querySelector('a.ordo-subs-btn.is-primary'));
+    t.dom.window.close();
+  }
+  {
+    // A failed payment makes the update the primary action, even on a valid card
+    const t = await withPms([CARDS[5]], [VISA]);
+    assert.strictEqual(pmSection(t.w).querySelector('a.ordo-subs-btn').textContent, 'Mettre à jour');
+    assert.ok(pmSection(t.w).querySelector('a.ordo-subs-btn.is-primary'));
+    t.dom.window.close();
+  }
+  {
+    // Labels and card details are text, never markup; odd expiry data is skipped
+    const odd = Object.assign({}, VISA, { brand: '<b>x</b>', last4: '<img src=x>', expMonth: 13, usedBy: ['<img src=x onerror=alert(1)>'] });
+    const t = await withPms([CARDS[0], CARDS[1]], [odd, VISA]);
+    assert.strictEqual(pmSection(t.w).querySelector('img'), null);
+    assert.strictEqual(pmSection(t.w).querySelector('b'), null);
+    assert.ok(text(pmSection(t.w)).includes('Carte bancaire •••• <img src=x>'));
+    assert.ok(!text(pmSection(t.w)).includes('undefined'));
+    assert.deepStrictEqual(t.erreurs, []);
+    t.dom.window.close();
+  }
+  {
+    // An unexpected brand never reads an inherited property
+    const t = await withPms([CARDS[0]], [Object.assign({}, VISA, { brand: 'constructor' })]);
+    assert.ok(text(pmSection(t.w)).startsWith('Moyen de paiement Carte bancaire •••• 4242'));
+    t.dom.window.close();
+  }
+  {
+    // No payment method in the response (free account): no section, and the block goes too
+    const t = await withPms([CARDS[3]], []);
+    assert.strictEqual(pmSection(t.w), null);
+    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
+    t.dom.window.close();
+  }
+  {
+    // Resubscribing re-renders the whole list: one payment section, never two
+    const t = page();
+    const canceling = Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' });
+    installFetch(t.w, [
+      { status: 200, body: { subscriptions: [canceling], paymentMethods: [VISA] } },
+      { status: 200, body: { ok: true, subscriptions: [Object.assign({}, canceling, { status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } })], paymentMethods: [VISA] } },
+    ]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    cards(t.w)[0].querySelector('button').click();
+    await wait(60);
+    assert.strictEqual(t.w.document.querySelectorAll('.ordo-pm').length, 1);
+    assert.ok(text(anchor(t.w)).includes('C’est fait'));
+    t.dom.window.close();
+  }
+
   // On a load error the old section stays as the fallback, and so does the payment method block
   {
     const t = page();
