@@ -322,6 +322,20 @@ async function main() {
     t.dom.window.close();
   }
   {
+    // Each subscription a method pays comes with its logo (Webflow files only)
+    const ok = 'https://cdn.prod.website-files.com/604b/66695dd3_ModuleIcon.svg';
+    const pm = Object.assign({}, VISA, { usedBy: ['Module de Médecine générale', 'Module Rhumatologie', 'Stockage'], usedByIcons: [ok, null, 'https://exemple.com/x.svg'] });
+    const t = await withPms([CARDS[0]], [pm]);
+    const detail = pmSection(t.w).querySelector('.ordo-pm-detail');
+    assert.strictEqual(text(detail), 'Expire en août 2027. Utilisée pour : Module de Médecine générale, Module Rhumatologie et Stockage.');
+    const imgs = detail.querySelectorAll('img');
+    assert.strictEqual(imgs.length, 1);
+    assert.strictEqual(imgs[0].getAttribute('src'), ok);
+    assert.strictEqual(imgs[0].getAttribute('width'), '16');
+    assert.strictEqual(imgs[0].parentElement.textContent, 'Module de Médecine générale,');
+    t.dom.window.close();
+  }
+  {
     // Nothing on file: say so, and offer to add one
     const none = { type: 'none', brand: null, last4: null, expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
     const t = await withPms([CARDS[0]], [none]);

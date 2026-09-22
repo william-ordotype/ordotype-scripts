@@ -58,6 +58,8 @@
     '.ordo-subs-badge strong{font-weight:700;white-space:nowrap}',
     '.ordo-subs-name{display:flex;align-items:center;gap:.75rem;min-width:0}',
     '.ordo-subs-logo{flex:none;width:40px;height:40px;object-fit:contain}',
+    '.ordo-subs-logo.is-small{width:16px;height:16px;vertical-align:-3px;margin-right:.25rem}',
+    '.ordo-pm-use{white-space:nowrap}',
     '.ordo-subs-note,.ordo-subs-muted{font-size:.875rem;line-height:1.5}',
     '.ordo-subs-foot{border-top:1px solid var(--base-100,#0c0e161a);padding-top:.75rem;display:flex;flex-wrap:wrap;justify-content:space-between;gap:.125rem 1rem;font-size:.875rem;line-height:1.5}',
     '.ordo-subs-foot-label{color:var(--neutral-500,#47505c)}',
@@ -200,13 +202,14 @@
 
   var LOGO_URL = /^https:\/\/(cdn\.prod\.website-files\.com|uploads-ssl\.webflow\.com|assets\.website-files\.com)\//;
 
-  function logo(src) {
+  function logo(src, size) {
     if (typeof src !== 'string' || !LOGO_URL.test(src)) return null;
-    var img = el('img', 'ordo-subs-logo');
+    var px = String(size || 40);
+    var img = el('img', size ? 'ordo-subs-logo is-small' : 'ordo-subs-logo');
     img.setAttribute('src', src);
     img.setAttribute('alt', '');
-    img.setAttribute('width', '40');
-    img.setAttribute('height', '40');
+    img.setAttribute('width', px);
+    img.setAttribute('height', px);
     return img;
   }
 
@@ -595,26 +598,35 @@
     return 'Moyen de paiement enregistré';
   }
 
-  // "A", "A et B", "A, B et C"
-  function joinLabels(labels) {
-    if (labels.length < 2) return labels.join('');
-    return labels.slice(0, -1).join(', ') + ' et ' + labels[labels.length - 1];
+  // "A.", "A et B.", "A, B et C.", each subscription with its logo when it has one; the punctuation
+  // stays with the name so that a line never starts with it.
+  function usedList(box, used, icons) {
+    var last = used.length - 1;
+    for (var i = 0; i < used.length; i++) {
+      if (i) box.appendChild(document.createTextNode(i === last ? ' et ' : ' '));
+      var item = el('span', 'ordo-pm-use');
+      var img = logo(icons[i], 16);
+      if (img) item.appendChild(img);
+      item.appendChild(document.createTextNode(used[i] + (i === last ? '.' : (i === last - 1 ? '' : ','))));
+      box.appendChild(item);
+    }
   }
 
   function pmDetail(pm, several) {
-    var parts = [];
+    var box = el('div', 'ordo-subs-muted ordo-pm-detail');
     var month = Number(pm.expMonth);
     if (pm.type === 'card' && month >= 1 && month <= 12 && pm.expYear) {
       var when = MOIS[month - 1] + ' ' + pm.expYear;
-      parts.push(pm.expired ? 'A expiré en ' + when + '.' : 'Expire en ' + when + '.');
+      box.appendChild(document.createTextNode(pm.expired ? 'A expiré en ' + when + '. ' : 'Expire en ' + when + '. '));
     }
     var used = Array.isArray(pm.usedBy) ? pm.usedBy : [];
-    if (used.length && pm.type !== 'none') {
-      parts.push((pm.type === 'card' ? 'Utilisée' : 'Utilisé') + ' pour : ' + joinLabels(used) + '.');
-    } else if (used.length && several) {
-      parts.push('Pour : ' + joinLabels(used) + '.');
+    var icons = Array.isArray(pm.usedByIcons) ? pm.usedByIcons : [];
+    var prefix = pm.type !== 'none' ? (pm.type === 'card' ? 'Utilisée' : 'Utilisé') + ' pour : ' : (several ? 'Pour : ' : '');
+    if (used.length && prefix) {
+      box.appendChild(document.createTextNode(prefix));
+      usedList(box, used, icons);
     }
-    return parts.join(' ');
+    return box.firstChild ? box : null;
   }
 
   // Saved methods nothing charges: named, never offered.
@@ -655,7 +667,7 @@
       else if (pm.expiresSoon) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-soon', 'Expire bientôt'));
       text.appendChild(name);
       var detail = pmDetail(pm, several);
-      if (detail) text.appendChild(el('div', 'ordo-subs-muted', detail));
+      if (detail) text.appendChild(detail);
       row.appendChild(text);
       rows.push(row);
       root.appendChild(row);
