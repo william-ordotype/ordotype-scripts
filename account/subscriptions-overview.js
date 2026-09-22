@@ -328,6 +328,7 @@
 
     var body = el('div', 'ordo-subs-body');
     if (c.status === 'free' || (c.price && c.status !== 'paused')) body.appendChild(priceRow(c));
+    if (c.note) body.appendChild(el('div', 'ordo-subs-muted', c.note));
     if (c.offeredUntil) body.appendChild(offerRow('Offert', 'jusqu’au ' + day(c.offeredUntil)));
     if (c.discount) body.appendChild(offerRow(badgeText(c.discount, c.price && c.price.currency), noteText(c.discount)));
     var then = thenText(c);
