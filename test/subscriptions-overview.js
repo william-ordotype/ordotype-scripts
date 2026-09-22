@@ -210,9 +210,9 @@ async function main() {
   // Payment method section: the method Stripe will charge, replacing the page's own block
   const pmSection = (w) => w.document.querySelector('.ordo-pm');
   const VISA = { type: 'card', brand: 'visa', last4: '4242', expMonth: 8, expYear: 2027, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
-  async function withPms(list, pms) {
+  async function withPms(list, pms, others) {
     const t = page();
-    installFetch(t.w, [{ status: 200, body: { subscriptions: list, paymentMethods: pms } }]);
+    installFetch(t.w, [{ status: 200, body: { subscriptions: list, paymentMethods: pms, otherPaymentMethods: others } }]);
     t.w.eval(SCRIPT);
     await wait(60);
     return t;
@@ -221,7 +221,7 @@ async function main() {
     const t = await withPms([CARDS[0]], [VISA]);
     const s = pmSection(t.w);
     assert.ok(s, 'section rendered');
-    assert.strictEqual(text(s), 'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Modifier');
+    assert.strictEqual(text(s), 'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Médecine Générale. Modifier');
     const link = s.querySelector('a.ordo-subs-btn');
     assert.strictEqual(link.getAttribute('href'), '/membership/moyen-de-paiement');
     assert.ok(!link.classList.contains('is-primary'));
@@ -234,7 +234,7 @@ async function main() {
   {
     const expired = Object.assign({}, VISA, { expMonth: 6, expYear: 2026, expired: true });
     const t = await withPms([CARDS[0]], [expired]);
-    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Visa •••• 4242 Expirée A expiré en juin 2026. Mettre à jour');
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Visa •••• 4242 Expirée A expiré en juin 2026. Utilisée pour : Médecine Générale. Mettre à jour');
     assert.ok(pmSection(t.w).querySelector('.ordo-pm-tone-expired'));
     assert.ok(pmSection(t.w).querySelector('.ordo-pm-icon.is-alert'));
     assert.ok(pmSection(t.w).querySelector('a.ordo-subs-btn.is-primary'));
@@ -243,14 +243,14 @@ async function main() {
   {
     const soon = Object.assign({}, VISA, { brand: 'mastercard', expMonth: 10, expYear: 2026, expiresSoon: true });
     const t = await withPms([CARDS[0]], [soon]);
-    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Mastercard •••• 4242 Expire bientôt Expire en octobre 2026. Mettre à jour');
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Mastercard •••• 4242 Expire bientôt Expire en octobre 2026. Utilisée pour : Médecine Générale. Mettre à jour');
     assert.ok(pmSection(t.w).querySelector('.ordo-pm-tone-soon'));
     t.dom.window.close();
   }
   {
     const sepa = { type: 'sepa_debit', brand: null, last4: '4521', expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
     const t = await withPms([CARDS[0]], [sepa]);
-    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Prélèvement SEPA •••• 4521 Modifier');
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Prélèvement SEPA •••• 4521 Utilisé pour : Médecine Générale. Modifier');
     t.dom.window.close();
   }
   {
@@ -261,9 +261,52 @@ async function main() {
     const s = pmSection(t.w);
     assert.strictEqual(s.querySelectorAll('.ordo-pm-row').length, 2);
     assert.strictEqual(text(s),
-      'Moyen de paiement Prélèvement SEPA •••• 4521 Pour : Médecine Générale. Carte Visa •••• 4242 Expire en août 2027. Pour : Module Rhumatologie, Stockage. Modifier');
+      'Moyen de paiement Prélèvement SEPA •••• 4521 Utilisé pour : Médecine Générale. Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Module Rhumatologie et Stockage. Modifier');
     assert.strictEqual(s.querySelectorAll('a.ordo-subs-btn').length, 1);
     assert.ok(s.querySelector('.ordo-subs-actions a.ordo-subs-btn'));
+    t.dom.window.close();
+  }
+  {
+    // Saved methods nothing charges: named under the charged one, never offered
+    const others = [
+      { type: 'card', brand: 'mastercard', last4: '4444', expMonth: 7, expYear: 2028 },
+      { type: 'sepa_debit', brand: null, last4: '0012', expMonth: null, expYear: null },
+      { type: 'link', brand: null, last4: null, expMonth: null, expYear: null },
+      { type: 'paypal', brand: null, last4: null },
+      null
+    ];
+    const sepa = { type: 'sepa_debit', brand: null, last4: '4521', expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
+    const t = await withPms([CARDS[0]], [sepa], others);
+    const s = pmSection(t.w);
+    assert.strictEqual(text(s), 'Moyen de paiement Prélèvement SEPA •••• 4521 Utilisé pour : Médecine Générale. Modifier '
+      + 'Aussi enregistrée : carte •••• 4444, non utilisée Aussi enregistré : prélèvement SEPA •••• 0012, non utilisé '
+      + 'Aussi enregistré : paiement via Link, non utilisé');
+    assert.strictEqual(s.querySelectorAll('.ordo-pm-others .ordo-subs-muted').length, 3, 'unknown type and null skipped');
+    assert.strictEqual(s.querySelectorAll('a, button').length, 1, 'no action on a saved method');
+    assert.strictEqual(s.lastElementChild.className, 'ordo-pm-others', 'below the charged method and its button');
+    assert.deepStrictEqual(t.erreurs, []);
+    t.dom.window.close();
+  }
+  {
+    // Several charged methods: the saved ones come before the single button
+    const sepa = { type: 'sepa_debit', brand: null, last4: '4521', expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
+    const t = await withPms([CARDS[0], CARDS[1]], [sepa, VISA], [{ type: 'card', brand: 'visa', last4: '4444', expMonth: 7, expYear: 2028 }]);
+    const s = pmSection(t.w);
+    const kids = Array.from(s.children).map((n) => n.className);
+    assert.deepStrictEqual(kids, ['ordo-subs-title', 'ordo-pm-row', 'ordo-pm-row', 'ordo-pm-others', 'ordo-subs-actions']);
+    t.dom.window.close();
+  }
+  {
+    // Nothing charged on file: no "also saved" line under "no payment method"
+    const none = { type: 'none', brand: null, last4: null, expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
+    const t = await withPms([CARDS[0]], [none], [{ type: 'card', brand: 'visa', last4: '4444', expMonth: 7, expYear: 2028 }]);
+    assert.strictEqual(pmSection(t.w).querySelector('.ordo-pm-others'), null);
+    t.dom.window.close();
+  }
+  {
+    // Labels of saved methods are text, never markup
+    const t = await withPms([CARDS[0]], [VISA], [{ type: 'card', brand: 'visa', last4: '<img src=x onerror=alert(1)>' }]);
+    assert.strictEqual(pmSection(t.w).querySelector('img'), null);
     t.dom.window.close();
   }
   {
@@ -311,13 +354,14 @@ async function main() {
     const canceling = Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' });
     installFetch(t.w, [
       { status: 200, body: { subscriptions: [canceling], paymentMethods: [VISA] } },
-      { status: 200, body: { ok: true, subscriptions: [Object.assign({}, canceling, { status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } })], paymentMethods: [VISA] } },
+      { status: 200, body: { ok: true, subscriptions: [Object.assign({}, canceling, { status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } })], paymentMethods: [VISA], otherPaymentMethods: [{ type: 'link' }] } },
     ]);
     t.w.eval(SCRIPT);
     await wait(60);
     cards(t.w)[0].querySelector('button').click();
     await wait(60);
     assert.strictEqual(t.w.document.querySelectorAll('.ordo-pm').length, 1);
+    assert.strictEqual(t.w.document.querySelectorAll('.ordo-pm-others').length, 1, 'saved methods kept after the re-render');
     assert.ok(text(anchor(t.w)).includes('C’est fait'));
     t.dom.window.close();
   }
