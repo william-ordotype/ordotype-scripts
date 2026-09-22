@@ -11,6 +11,8 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'account/subscriptions-overview.js'), 'utf8');
+// jsdom cannot navigate: the redirections are captured instead (same approach as test/fin-internat.js).
+const NAV_SCRIPT = SCRIPT.split('window.location.assign(').join('window.__navigate(');
 
 const CARDS = [
   { label: 'Médecine Générale', status: 'active', price: { amount: 3000, current: 1500, currency: 'eur', interval: 'month', intervalCount: 1 },
@@ -318,6 +320,112 @@ async function main() {
     assert.strictEqual(t.w.document.querySelectorAll('.ordo-pm').length, 1);
     assert.ok(text(anchor(t.w)).includes('C’est fait'));
     t.dom.window.close();
+  }
+
+  // Updating the payment method opens Stripe directly: same request, return page and tracking as the
+  // payment method page, which stays the link's address and the fallback
+  const CHECKOUT = { url: 'https://checkout.stripe.com/c/pay/cs_test_123#fragment', id: 'cs_test_123' };
+  async function withSetup(outcomes, { memberstack = null, list = [CARDS[0]], pms = [VISA] } = {}) {
+    const t = page();
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: list, paymentMethods: pms } }].concat(outcomes));
+    const navigations = [];
+    const beacons = [];
+    t.w.__navigate = (u) => navigations.push(u);
+    Object.defineProperty(t.w.navigator, 'sendBeacon', { configurable: true, value: (url, blob) => { beacons.push({ url, blob }); return true; } });
+    if (memberstack) t.w.OrdoMemberstack = memberstack;
+    t.w.eval(NAV_SCRIPT);
+    await wait(60);
+    return { t, calls, navigations, beacons };
+  }
+  const click = (w, node, init = {}) => {
+    const ev = new w.MouseEvent('click', Object.assign({ bubbles: true, cancelable: true, button: 0 }, init));
+    node.dispatchEvent(ev);
+    return ev;
+  };
+  {
+    const s = await withSetup([{ status: 200, body: CHECKOUT }], { memberstack: { stripeCustomerId: 'cus_ms', memberId: 'mem_ms', email: 'dr@example.fr' } });
+    const link = pmSection(s.t.w).querySelector('a.ordo-subs-btn');
+    assert.strictEqual(link.getAttribute('href'), '/membership/moyen-de-paiement', 'the page stays the address');
+    const ev = click(s.t.w, link);
+    assert.ok(ev.defaultPrevented);
+    await wait(60);
+    assert.strictEqual(s.calls.length, 2);
+    assert.strictEqual(s.calls[1].url, 'https://billing.ordotype.fr/.netlify/functions/create-checkout');
+    assert.deepStrictEqual(JSON.parse(s.calls[1].options.body), {
+      stripeCustomerId: 'cus_ms',
+      cancelUrl: 'https://www.ordotype.fr/membership/compte',
+      successUrl: 'https://www.ordotype.fr/membership/moyen-de-paiement-ajoute',
+      payment_method_types: ['sepa_debit'],
+    });
+    assert.strictEqual(s.beacons.length, 1);
+    assert.strictEqual(s.beacons[0].url, 'https://billing.ordotype.fr/.netlify/functions/notify-webhook');
+    const tracking = JSON.parse(await s.beacons[0].blob.text());
+    assert.deepStrictEqual(tracking, {
+      type: 'setup-tracking', checkoutSessionId: 'cs_test_123', stripeCustomerId: 'cus_ms', memberstackUserId: 'mem_ms',
+      memberstackEmail: 'dr@example.fr', option: 'setup-sepa', paymentMethods: ['sepa_debit'], originPage: 'https://www.ordotype.fr/membership/compte',
+    });
+    assert.deepStrictEqual(s.navigations, [CHECKOUT.url]);
+    assert.strictEqual(s.t.reported.length + s.t.network.length, 0);
+    s.t.dom.window.close();
+  }
+  {
+    // Without the shared member utilities, the account snapshot provides the Stripe customer
+    const s = await withSetup([{ status: 200, body: CHECKOUT }]);
+    click(s.t.w, pmSection(s.t.w).querySelector('a.ordo-subs-btn'));
+    await wait(60);
+    assert.strictEqual(JSON.parse(s.calls[1].options.body).stripeCustomerId, 'cus_test');
+    assert.deepStrictEqual(s.navigations, [CHECKOUT.url]);
+    s.t.dom.window.close();
+  }
+  {
+    // A double click creates one session only
+    const s = await withSetup([{ status: 200, body: CHECKOUT, delay: 40 }]);
+    const link = pmSection(s.t.w).querySelector('a.ordo-subs-btn');
+    click(s.t.w, link);
+    const second = click(s.t.w, link);
+    assert.ok(second.defaultPrevented);
+    assert.strictEqual(link.textContent, 'Patientez…');
+    await wait(120);
+    assert.strictEqual(s.calls.length, 2);
+    assert.strictEqual(s.navigations.length, 1);
+    s.t.dom.window.close();
+  }
+  for (const failure of [{ status: 500, body: { error: 'boom' } }, { status: 200, body: { url: 'javascript:alert(1)' } }, { transport: 'Failed to fetch' }]) {
+    // Any failure lands on the payment method page, and says so
+    const s = await withSetup([failure]);
+    const link = pmSection(s.t.w).querySelector('a.ordo-subs-btn');
+    click(s.t.w, link);
+    await wait(60);
+    assert.deepStrictEqual(s.navigations, ['/membership/moyen-de-paiement'], JSON.stringify(failure));
+    assert.strictEqual(s.beacons.length, 0);
+    assert.strictEqual(s.t.reported.length + s.t.network.length, 1);
+    assert.strictEqual(link.textContent, 'Modifier');
+    s.t.dom.window.close();
+  }
+  {
+    // A new-tab click keeps the browser's own behaviour, and so does a member without a Stripe customer
+    const s = await withSetup([{ status: 200, body: CHECKOUT }]);
+    const ev = click(s.t.w, pmSection(s.t.w).querySelector('a.ordo-subs-btn'), { ctrlKey: true });
+    assert.ok(!ev.defaultPrevented);
+    await wait(30);
+    assert.strictEqual(s.calls.length, 1);
+    s.t.dom.window.close();
+    const n = await withSetup([{ status: 200, body: CHECKOUT }]);
+    n.t.w.OrdoAccount.member.stripeCustomerId = '';
+    const ev2 = click(n.t.w, pmSection(n.t.w).querySelector('a.ordo-subs-btn'));
+    assert.ok(!ev2.defaultPrevented);
+    await wait(30);
+    assert.strictEqual(n.calls.length, 1);
+    n.t.dom.window.close();
+  }
+  {
+    // The failed-payment link on a card opens Stripe the same way
+    const s = await withSetup([{ status: 200, body: CHECKOUT }], { list: [CARDS[5]] });
+    click(s.t.w, cards(s.t.w)[0].querySelector('a.ordo-subs-link'));
+    await wait(60);
+    assert.strictEqual(s.calls[1].url, 'https://billing.ordotype.fr/.netlify/functions/create-checkout');
+    assert.deepStrictEqual(s.navigations, [CHECKOUT.url]);
+    s.t.dom.window.close();
   }
 
   // On a load error the old section stays as the fallback, and so does the payment method block
