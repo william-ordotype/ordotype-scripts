@@ -74,6 +74,7 @@
     '.ordo-pm-icon.is-alert{border-color:var(--error-300,#fca6a6);color:var(--error-700,#ba1b1b)}',
     '.ordo-pm-text{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:2px}',
     '.ordo-pm-name{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;font-size:1rem;line-height:1.5;font-weight:600}',
+    '.ordo-pm-others{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--base-100,#0c0e161a);padding-top:.75rem}',
     '.ordo-pm-tone-expired{background:var(--error-100,#fee1e1);color:var(--error-700,#ba1b1b)}',
     '.ordo-pm-tone-soon{background:var(--warning-100,#fef9c3);color:var(--warning-800,#864e0e)}',
     '.ordo-inv-table{display:flex;flex-direction:column}',
@@ -395,7 +396,7 @@
       btn.disabled = true;
       msg.textContent = 'Traitement en cours…';
       request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(data) {
-        render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices);
+        render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices, data.others);
       }).catch(function(err) {
         btn.disabled = false;
         if (err && err.status === 409) msg.textContent = 'Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.';
@@ -561,6 +562,12 @@
     return 'Moyen de paiement enregistré';
   }
 
+  // "A", "A et B", "A, B et C"
+  function joinLabels(labels) {
+    if (labels.length < 2) return labels.join('');
+    return labels.slice(0, -1).join(', ') + ' et ' + labels[labels.length - 1];
+  }
+
   function pmDetail(pm, several) {
     var parts = [];
     var month = Number(pm.expMonth);
@@ -568,11 +575,34 @@
       var when = MOIS[month - 1] + ' ' + pm.expYear;
       parts.push(pm.expired ? 'A expiré en ' + when + '.' : 'Expire en ' + when + '.');
     }
-    if (several && pm.usedBy && pm.usedBy.length) parts.push('Pour : ' + pm.usedBy.join(', ') + '.');
+    var used = Array.isArray(pm.usedBy) ? pm.usedBy : [];
+    if (used.length && pm.type !== 'none') {
+      parts.push((pm.type === 'card' ? 'Utilisée' : 'Utilisé') + ' pour : ' + joinLabels(used) + '.');
+    } else if (used.length && several) {
+      parts.push('Pour : ' + joinLabels(used) + '.');
+    }
     return parts.join(' ');
   }
 
-  function paymentSection(list, pms) {
+  // Saved methods nothing charges: named, never offered.
+  function otherName(o) {
+    var dots = o.last4 ? ' •••• ' + o.last4 : '';
+    if (o.type === 'card') return 'Aussi enregistrée : carte' + dots + ', non utilisée';
+    if (o.type === 'sepa_debit') return 'Aussi enregistré : prélèvement SEPA' + dots + ', non utilisé';
+    if (o.type === 'link') return 'Aussi enregistré : paiement via Link, non utilisé';
+    return null;
+  }
+
+  function othersBox(others) {
+    var box = el('div', 'ordo-pm-others');
+    for (var i = 0; i < others.length; i++) {
+      var name = others[i] && otherName(others[i]);
+      if (name) box.appendChild(el('div', 'ordo-subs-muted', name));
+    }
+    return box.firstChild ? box : null;
+  }
+
+  function paymentSection(list, pms, others) {
     var root = el('div', 'ordo-subs ordo-pm');
     root.appendChild(el('h3', 'ordo-subs-title', 'Moyen de paiement'));
     var several = pms.length > 1;
@@ -600,6 +630,8 @@
     for (var j = 0; j < list.length; j++) {
       if (list[j].status === 'past_due') urgent = true;
     }
+    var saved = none ? null : othersBox(others || []);
+    if (saved) root.appendChild(saved);
     var label = none ? 'Ajouter un moyen de paiement' : (urgent ? 'Mettre à jour' : 'Modifier');
     var link = paymentLink('ordo-subs-btn' + (none || urgent ? ' is-primary' : ''), label);
     if (several) {
@@ -826,8 +858,9 @@
     if (block) block.style.display = 'none';
   }
 
-  function render(list, flash, pms, invoices) {
+  function render(list, flash, pms, invoices, others) {
     pms = Array.isArray(pms) ? pms : [];
+    others = Array.isArray(others) ? others : [];
     injectStyle();
     clear();
     var root = el('div', 'ordo-subs');
@@ -846,7 +879,7 @@
       root.appendChild(box);
     }
     anchor.appendChild(root);
-    if (pms.length) anchor.appendChild(paymentSection(list, pms));
+    if (pms.length) anchor.appendChild(paymentSection(list, pms, others));
     placeInvoices(invoices);
     show();
     hideOldSection();
@@ -908,6 +941,7 @@
       return {
         list: payload.subscriptions,
         pms: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [],
+        others: Array.isArray(payload.otherPaymentMethods) ? payload.otherPaymentMethods : [],
         invoices: Array.isArray(payload.invoices) ? payload.invoices : null
       };
     });
@@ -973,7 +1007,7 @@
       skeletonTimer = setTimeout(showSkeleton, SKELETON_DELAY_MS);
       load().then(function(data) {
         clearTimeout(skeletonTimer);
-        render(data.list, null, data.pms, data.invoices);
+        render(data.list, null, data.pms, data.invoices, data.others);
         console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
       }).catch(function(err) {
         clearTimeout(skeletonTimer);
