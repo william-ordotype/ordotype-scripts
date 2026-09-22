@@ -38,6 +38,8 @@ const CARDS = [
     discount: null, offeredUntil: null, next: { date: '2027-01-10', amount: 15000 }, endsOn: null, resumesOn: null },
   { label: '<img src=x onerror=alert(1)>', status: 'free', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null },
   { label: 'Essai terminé', status: 'ended', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null },
+  { label: 'Essai gratuit', status: 'free', price: null, discount: null, offeredUntil: null, next: null, endsOn: null, resumesOn: null,
+    note: 'Valable 15 jours à partir de votre inscription.' },
 ];
 
 function page({ visible = true, prefilled = false, portal = true, whitespace = false, pause = null, confirmAnswer = true } = {}) {
@@ -144,6 +146,7 @@ async function main() {
     assert.strictEqual(cardText(t.w, 10), 'Abonnement Actif 150 MAD / an Prochain prélèvement 150 MAD le 10 janvier 2027');
 
     assert.strictEqual(cardText(t.w, 12), 'Essai terminé Terminé');
+    assert.strictEqual(cardText(t.w, 13), 'Essai gratuit Gratuit Gratuit Valable 15 jours à partir de votre inscription.');
     assert.ok(cards(t.w)[12].querySelector('.ordo-subs-tone-muted'));
 
     // Labels are text, never markup
