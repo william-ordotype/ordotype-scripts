@@ -439,13 +439,25 @@ left on the page (usually behind a fallback button).
 | Parameter | Values |
 |-----------------|-------------------------------------------------------------|
 | `checkout_source` | `pricing`, `pricing-v2`, `inscription-en-cours`, `comeback`, `shared`, `winback` |
-| `failure_reason`  | `network`, `api_<http status>`, `invalid_payload`, `no_customer_id`, `no_price_id`, `other` |
+| `failure_reason`  | `network`, `api_<http status>`, `invalid_payload`, `no_customer_id`, `no_price_id`, `already_subscribed`, `payment_pending`, `other` |
 | `option`          | the offer slug — always the same value the page's `stripe_signup_click` reports |
 
 Emitted by `pricing/stripe-checkout.js`, `pricing-v2/stripe-checkout.js`,
 `inscription-en-cours/auto-checkout.js`,
 `inscription-non-terminee/comeback-checkout.js`, `shared/stripe-checkout.js`
 and `inscription-offre-speciale/winback-gate.js`.
+
+**Already subscribed (HTTP 409).** The checkout function answers 409
+`{ error: "already-subscribed" }` when the member already has a live
+subscription to the offer's family, and `{ error: "payment-pending" }` when a
+payment on it is pending. `shared/stripe-checkout.js`, `pricing/` and
+`pricing-v2/` then turn the Stripe button(s) into a link to
+`/membership/compte` labelled « Mon offre actuelle » (or « Régulariser mon
+paiement »), keep the Memberstack fallback button hidden and drop any held click:
+falling back to the Memberstack button there would start a second subscription.
+Any other error keeps the usual fallback. `failure_reason` is
+`already_subscribed` or `payment_pending`. Test:
+`node test/stripe-checkout-already-subscribed.js`.
 
 Each emitter also reports to Sentry through `OrdoErrorReporter` when it is
 loaded on the page; the dataLayer event is what makes the failure *rate*

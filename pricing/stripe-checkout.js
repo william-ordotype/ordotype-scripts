@@ -120,6 +120,29 @@
     var priceId2 = btn2.dataset.price;
     var couponId2 = btn2.dataset.coupon || null;
 
+    // HTTP 409 from the checkout function: the member already has a subscription
+    // to this offer's family, or a payment on it is pending. The Stripe buttons
+    // become links to the account page; the fallback buttons stay hidden, since
+    // they would start a second subscription.
+    var ACCOUNT_URL = '/membership/compte';
+    function labelOf(btn) {
+      var node = btn;
+      while (node.children && node.children.length === 1) node = node.children[0];
+      return node;
+    }
+    function showCurrentOffer(reason) {
+      var pending = reason === 'payment-pending';
+      var label = pending ? 'Régulariser mon paiement' : 'Mon offre actuelle';
+      if (noStripe1) noStripe1.style.display = 'none';
+      if (noStripe2) noStripe2.style.display = 'none';
+      [btn1, btn2].forEach(function(btn) {
+        btn.setAttribute('href', ACCOUNT_URL);
+        labelOf(btn).textContent = label;
+        btn.style.display = 'flex';
+      });
+      trackCheckoutFailure(pending ? 'payment_pending' : 'already_subscribed');
+    }
+
     var paymentMethods = ['sepa_debit'];
     var pageCurrency = (window.OrdoPageCurrency || 'eur').toLowerCase();
 
@@ -165,6 +188,13 @@
           },
           2, 1000
         );
+        if (resp.status === 409) {
+          var refusal = {};
+          try { refusal = (await resp.json()) || {}; } catch (ignored) {}
+          showCurrentOffer(refusal.error);
+          return;
+        }
+
         // fetchWithRetry only retries network errors, so a 4xx/5xx arrives here
         // as a perfectly readable Response. Without this check the JSON error
         // body parses, url1/url2 come out undefined, the catch never runs and
