@@ -54,7 +54,10 @@
     '.ordo-subs-period,.ordo-subs-old,.ordo-subs-muted,.ordo-subs-note{color:var(--neutral-500,#47505c)}',
     '.ordo-subs-period,.ordo-subs-old{font-size:.875rem}',
     '.ordo-subs-offer{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}',
-    '.ordo-subs-badge{height:1.5rem;padding:0 .5rem;border-radius:.25rem;background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:.75rem;font-weight:600;line-height:1.5rem;white-space:nowrap}',
+    '.ordo-subs-badge{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:0 .375rem;min-height:1.5rem;box-sizing:border-box;padding:.1875rem .5rem;border-radius:.25rem;background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:.8125rem;font-weight:500;line-height:1.125rem}',
+    '.ordo-subs-badge strong{font-weight:700;white-space:nowrap}',
+    '.ordo-subs-name{display:flex;align-items:center;gap:.75rem;min-width:0}',
+    '.ordo-subs-logo{flex:none;width:40px;height:40px;object-fit:contain}',
     '.ordo-subs-note,.ordo-subs-muted{font-size:.875rem;line-height:1.5}',
     '.ordo-subs-foot{border-top:1px solid var(--base-100,#0c0e161a);padding-top:.75rem;display:flex;flex-wrap:wrap;justify-content:space-between;gap:.125rem 1rem;font-size:.875rem;line-height:1.5}',
     '.ordo-subs-foot-label{color:var(--neutral-500,#47505c)}',
@@ -185,11 +188,26 @@
     return '';
   }
 
+  // The whole offer (amount and end date) in one blue chip.
   function offerRow(badge, note) {
     var row = el('div', 'ordo-subs-offer');
-    row.appendChild(el('span', 'ordo-subs-badge', badge));
-    if (note) row.appendChild(el('span', 'ordo-subs-note', note));
+    var chip = el('span', 'ordo-subs-badge');
+    chip.appendChild(el('strong', null, badge));
+    if (note) chip.appendChild(el('span', null, note));
+    row.appendChild(chip);
     return row;
+  }
+
+  var LOGO_URL = /^https:\/\/(cdn\.prod\.website-files\.com|uploads-ssl\.webflow\.com|assets\.website-files\.com)\//;
+
+  function logo(src) {
+    if (typeof src !== 'string' || !LOGO_URL.test(src)) return null;
+    var img = el('img', 'ordo-subs-logo');
+    img.setAttribute('src', src);
+    img.setAttribute('alt', '');
+    img.setAttribute('width', '40');
+    img.setAttribute('height', '40');
+    return img;
   }
 
   function priceRow(c) {
@@ -451,7 +469,11 @@
     root.setAttribute('role', 'listitem');
 
     var head = el('div', 'ordo-subs-head');
-    head.appendChild(el('div', 'ordo-subs-label', c.label || 'Abonnement'));
+    var name = el('div', 'ordo-subs-name');
+    var img = logo(c.icon);
+    if (img) name.appendChild(img);
+    name.appendChild(el('div', 'ordo-subs-label', c.label || 'Abonnement'));
+    head.appendChild(name);
     var st = STATUS[c.status] || STATUS.active;
     head.appendChild(el('span', 'ordo-subs-tag ordo-subs-tone-' + st.tone, st.text));
     root.appendChild(head);
@@ -800,7 +822,7 @@
     table.setAttribute('aria-label', 'Dernières factures');
     var head = el('div', 'ordo-inv-row ordo-inv-head');
     head.setAttribute('role', 'row');
-    var titles = ['Date', 'Abonnement', 'Montant', 'Statut', 'Facture'];
+    var titles = ['Date', 'Abonnement', 'Montant', 'Statut', 'Factures'];
     for (var h = 0; h < titles.length; h++) {
       var th = el('span', 'ordo-inv-cell', titles[h]);
       th.setAttribute('role', 'columnheader');

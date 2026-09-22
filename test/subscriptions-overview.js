@@ -525,7 +525,7 @@ async function main() {
       '1er sept. 2026 Module Rhumatologie 5 € Prélèvement en cours PDF',
       '14 août 2026 Abonnement 30 € À régler Régler',
     ]);
-    assert.strictEqual(text(s.querySelector('.ordo-inv-head')), 'Date Abonnement Montant Statut Facture');
+    assert.strictEqual(text(s.querySelector('.ordo-inv-head')), 'Date Abonnement Montant Statut Factures');
     assert.strictEqual(s.querySelectorAll('[role="row"]').length, 4);
     assert.ok(s.querySelector('.ordo-inv-tone-paid') && s.querySelector('.ordo-inv-tone-pending') && s.querySelector('.ordo-inv-tone-due'));
     assert.strictEqual(s.querySelectorAll('.ordo-inv-row')[3].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
@@ -876,6 +876,25 @@ async function main() {
     assert.strictEqual(cards(t.w)[0].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
     assert.ok(cardText(t.w, 0).endsWith('Paiement en échec Modifier le moyen de paiement'));
     assert.strictEqual(t.opened.length, 0);
+  }
+
+  // Logo from the collection (Webflow files only), and the whole offer in one blue chip
+  {
+    const t = page();
+    const withLogo = Object.assign({}, CARDS[0], { icon: 'https://cdn.prod.website-files.com/604b/66695dd3_ModuleIcon.svg' });
+    const badLogo = Object.assign({}, CARDS[1], { icon: 'https://exemple.com/x.svg' });
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [withLogo, badLogo] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const img = cards(t.w)[0].querySelector('.ordo-subs-head .ordo-subs-name img.ordo-subs-logo');
+    assert.ok(img, 'logo before the name');
+    assert.strictEqual(img.getAttribute('src'), withLogo.icon);
+    assert.strictEqual(img.getAttribute('alt'), '');
+    assert.strictEqual(cards(t.w)[1].querySelector('img'), null, 'a logo from elsewhere is not shown');
+    const chip = cards(t.w)[0].querySelector('.ordo-subs-offer .ordo-subs-badge');
+    assert.strictEqual(text(chip), '-50 % jusqu’au 21 décembre 2026');
+    assert.strictEqual(text(chip.querySelector('strong')), '-50 %');
+    t.dom.window.close();
   }
 
   // Empty list
