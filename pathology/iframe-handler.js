@@ -252,7 +252,7 @@
 
     // Hide loading state after iframe loads
     $('iframe').on('load', function(ev) {
-      // Iframes outside the tabs (videos in the content) are not ours.
+      // Only iframes inside a tab pane are handled; others are ignored.
       var tab = ev.target.closest('[data-w-tab]');
       if (!tab) return;
 

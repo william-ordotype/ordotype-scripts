@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Pathologie : une iframe hors des onglets (vidéo dans le contenu) ne fait
- * pas planter le gestionnaire de chargement, et une iframe d'onglet envoie
+ * Pathologie : une iframe hors des onglets (ajoutée par un script tiers) ne
+ * fait pas planter le gestionnaire de chargement, et une iframe d'onglet envoie
  * toujours `iframeLoaded` avec le bon type.
  *
  * jQuery est simulé : seules les méthodes appelées par le script existent.
@@ -15,9 +15,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'pathology', 'iframe-handler.js'), 'utf8');
 
 const HTML = `<!doctype html><html><body>
-  <div class="rappels-cliniques-content">
-    <iframe id="video" src="about:blank"></iframe>
-  </div>
+  <iframe id="tiers" src="about:blank"></iframe>
   <div class="pathologies_tab">
     <div class="loading-spinner"></div>
     <div class="w-tab-pane" data-w-tab="Conseil patient">
@@ -78,11 +76,11 @@ function verifier(nom, obtenu, attendu) {
 
 {
     const { w, appels, erreurs } = monter();
-    w.document.getElementById('video').dispatchEvent(new w.Event('load'));
+    w.document.getElementById('tiers').dispatchEvent(new w.Event('load'));
     verifier('iframe hors onglet : aucune erreur', erreurs, []);
     verifier('iframe hors onglet : spinner des onglets intact', appels.spinnerCache, 0);
     verifier('iframe hors onglet : rien envoyé', appels.envois.length, 0);
-    verifier('iframe hors onglet : pas marquée chargée', w.document.getElementById('video').dataset.loaded, undefined);
+    verifier('iframe hors onglet : pas marquée chargée', w.document.getElementById('tiers').dataset.loaded, undefined);
 }
 
 {
