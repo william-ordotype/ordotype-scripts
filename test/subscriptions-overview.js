@@ -157,9 +157,10 @@ async function main() {
     assert.strictEqual(cards(t.w)[11].querySelector('img'), null);
     assert.ok(cardText(t.w, 11).startsWith('<img src=x onerror=alert(1)>'));
 
-    // Payment method link opens the billing portal
-    cards(t.w)[5].querySelector('button').click();
-    assert.strictEqual(t.opened.length, 1);
+    // A failed payment links to the payment method page, which also retries the unpaid invoice
+    const fix = cards(t.w)[5].querySelector('a.ordo-subs-link');
+    assert.strictEqual(fix.getAttribute('href'), '/membership/moyen-de-paiement');
+    assert.strictEqual(cards(t.w)[5].querySelector('button'), null);
 
     // Status tags follow the status
     assert.ok(cards(t.w)[0].querySelector('.ordo-subs-tag.ordo-subs-tone-ok'));
@@ -462,14 +463,15 @@ async function main() {
     t.dom.window.close();
   }
 
-  // No portal available: plain text instead of a dead button
+  // The failed-payment link does not depend on the billing portal hook
   {
     const t = page({ portal: false });
     installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[5]] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(cards(t.w)[0].querySelector('button'), null);
-    assert.ok(cardText(t.w, 0).endsWith('Paiement en échec Modifiez votre moyen de paiement'));
+    assert.strictEqual(cards(t.w)[0].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
+    assert.ok(cardText(t.w, 0).endsWith('Paiement en échec Modifier le moyen de paiement'));
+    assert.strictEqual(t.opened.length, 0);
   }
 
   // Empty list

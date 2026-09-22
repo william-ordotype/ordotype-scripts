@@ -9,6 +9,7 @@
   var PREFIX = '[SubscriptionsOverview]';
   var API_URL = 'https://webhooks.ordotype.fr/.netlify/functions/account-subscriptions';
   var ANCHOR_ID = 'ordotype-subscriptions';
+  var PAYMENT_URL = '/membership/moyen-de-paiement';
   var MS_MAX_ATTEMPTS = 50;
   var SKELETON_DELAY_MS = 200;
   var RETRY_DELAY_MS = 400;
@@ -179,12 +180,6 @@
     return row;
   }
 
-  function openPortal() {
-    if (window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function') {
-      window.OrdoBillingPortal.open();
-    }
-  }
-
   function footRow(label, value) {
     var foot = el('div', 'ordo-subs-foot');
     foot.appendChild(el('span', 'ordo-subs-foot-label', label));
@@ -195,13 +190,10 @@
 
   function footOf(c) {
     if (c.status === 'past_due') {
-      if (window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function') {
-        var btn = el('button', 'ordo-subs-link', 'Modifier le moyen de paiement');
-        btn.type = 'button';
-        btn.addEventListener('click', openPortal);
-        return footRow('Paiement en échec', btn);
-      }
-      return footRow('Paiement en échec', 'Modifiez votre moyen de paiement');
+      // The payment method page also retries the unpaid invoice once the new method is saved.
+      var fix = el('a', 'ordo-subs-link', 'Modifier le moyen de paiement');
+      fix.setAttribute('href', PAYMENT_URL);
+      return footRow('Paiement en échec', fix);
     }
     if ((c.status === 'paused' || c.status === 'pause_scheduled') && c.resumesOn) {
       return footRow('Reprise automatique le', day(c.resumesOn));
@@ -409,7 +401,6 @@
     block.style.display = billed && !pms.length ? '' : 'none';
   }
 
-  var PAYMENT_URL = '/membership/moyen-de-paiement';
   var CARD_BRANDS = {
     visa: 'Visa',
     mastercard: 'Mastercard',
