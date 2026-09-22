@@ -252,6 +252,10 @@
 
     // Hide loading state after iframe loads
     $('iframe').on('load', function(ev) {
+      // Only iframes inside a tab pane are handled; others are ignored.
+      var tab = ev.target.closest('[data-w-tab]');
+      if (!tab) return;
+
       ev.target.dataset.loaded = '1';
       if (spinnerSafetyTimeout) {
         clearTimeout(spinnerSafetyTimeout);
@@ -261,7 +265,7 @@
       $('.pathologies_tab .tab_right-icon').show();
 
       if (window.pathologyId) {
-        var prescriptionTypeFr = ev.target.closest('[data-w-tab]').getAttribute('data-w-tab');
+        var prescriptionTypeFr = tab.getAttribute('data-w-tab');
         var prescriptionType = prescriptionTypeFr === "Conseil patient" ? "recommendation" : "prescription";
 
         dispatchIframeLoadedEvent({
