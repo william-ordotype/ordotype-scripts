@@ -388,6 +388,19 @@
     }
   }
 
+  // Adding a payment method only matters when something is billed or paused.
+  var BILLED = ['active', 'past_due', 'pending', 'canceling', 'pause_scheduled', 'paused'];
+
+  function togglePaymentBlock(list) {
+    var block = document.getElementById('payment-method-block');
+    if (!block) return;
+    var billed = false;
+    for (var i = 0; i < list.length; i++) {
+      if (BILLED.indexOf(list[i].status) !== -1) billed = true;
+    }
+    block.style.display = billed ? '' : 'none';
+  }
+
   function intro() {
     return el('h3', 'ordo-subs-title', 'Mes abonnements');
   }
@@ -448,6 +461,7 @@
     anchor.appendChild(root);
     show();
     hideOldSection();
+    togglePaymentBlock(list);
   }
 
   function memberToken() {

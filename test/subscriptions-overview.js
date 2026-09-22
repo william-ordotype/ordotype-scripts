@@ -51,6 +51,7 @@ function page({ visible = true, prefilled = false, portal = true, whitespace = f
     `<!doctype html><html><head></head><body>
       <div class="tab-pane"><div class="w-embed"><div id="ordotype-subscriptions">${prefilled ? '<p>x</p>' : ''}${whitespace ? '\n  ' : ''}</div></div>
         <div class="inner-block-wraper" id="old-section"><div class="abonnement-wrapper">Ancien bloc</div></div>
+        <div class="inner-block-wraper" id="payment-method-block">Ajouter un moyen de paiement</div>
         <div class="inner-block-wraper" id="invoices-block">Mes factures</div>
       </div>
       <div id="cancellation-warning-modal" style="display:none">Êtes-vous sûr ?</div>
@@ -178,16 +179,39 @@ async function main() {
     await wait(60);
     assert.strictEqual(t.w.document.getElementById('old-section').style.display, 'none');
     assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
+    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '');
     t.dom.window.close();
   }
 
-  // On a load error the old section stays as the fallback
+  // Nothing billed (free or ended plans only, or no plan): no payment method block
+  for (const list of [[CARDS[3], CARDS[12], CARDS[13]], []]) {
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: list } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
+    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
+    t.dom.window.close();
+  }
+
+  // A paused or canceling subscription keeps it: the card may need updating before billing resumes
+  for (const kept of [CARDS[4], CARDS[6], CARDS[5]]) {
+    const t = page();
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[3], kept] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '', kept.status);
+    t.dom.window.close();
+  }
+
+  // On a load error the old section stays as the fallback, and so does the payment method block
   {
     const t = page();
     installFetch(t.w, [{ status: 502, body: { error: 'upstream_error' } }]);
     t.w.eval(SCRIPT);
     await wait(100);
     assert.strictEqual(t.w.document.getElementById('old-section').style.display, '');
+    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '');
     t.dom.window.close();
   }
 
