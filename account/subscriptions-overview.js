@@ -190,10 +190,8 @@
 
   function footOf(c) {
     if (c.status === 'past_due') {
-      // The payment method page also retries the unpaid invoice once the new method is saved.
-      var fix = el('a', 'ordo-subs-link', 'Modifier le moyen de paiement');
-      fix.setAttribute('href', PAYMENT_URL);
-      return footRow('Paiement en échec', fix);
+      // Saving a new payment method also retries the unpaid invoice.
+      return footRow('Paiement en échec', paymentLink('ordo-subs-link', 'Modifier le moyen de paiement'));
     }
     if ((c.status === 'paused' || c.status === 'pause_scheduled') && c.resumesOn) {
       return footRow('Reprise automatique le', day(c.resumesOn));
@@ -214,6 +212,84 @@
     var err = new Error(detail);
     err.name = name;
     try { reporter.report('SubscriptionsOverview', err); } catch (e) { /* no-op */ }
+  }
+
+  // Updating the payment method opens Stripe's secure page directly, with the same request, return page
+  // and tracking as the payment method page. The link keeps that page as its address: a new tab, a
+  // member without a Stripe customer, or any failure lands there instead.
+  var SETUP_URL = 'https://billing.ordotype.fr/.netlify/functions/create-checkout';
+  var SETUP_HOOK_URL = 'https://billing.ordotype.fr/.netlify/functions/notify-webhook';
+  var SETUP_SUCCESS_PATH = '/membership/moyen-de-paiement-ajoute';
+  var CHECKOUT_URL = /^https:\/\/[a-z0-9.-]+\/c\/pay\/([^?#\/]+)/;
+
+  function sendSetupTracking(payload) {
+    var data = JSON.stringify(payload);
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(SETUP_HOOK_URL, new Blob([data], { type: 'text/plain' }))) return;
+    } catch (e) { /* fall back to fetch */ }
+    try {
+      fetch(SETUP_HOOK_URL, { method: 'POST', keepalive: true, body: data }).catch(function() {});
+    } catch (e) { /* no-op */ }
+  }
+
+  function openPaymentSetup(e, link) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var ms = window.OrdoMemberstack || {};
+    var customer = ms.stripeCustomerId || (member && member.stripeCustomerId);
+    if (!customer) return;
+    e.preventDefault();
+    if (link.getAttribute('aria-busy') === 'true') return;
+    link.setAttribute('aria-busy', 'true');
+    var label = link.textContent;
+    link.textContent = 'Patientez…';
+    fetch(SETUP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stripeCustomerId: customer,
+        cancelUrl: window.location.href,
+        successUrl: window.location.origin + SETUP_SUCCESS_PATH,
+        payment_method_types: ['sepa_debit']
+      })
+    }).then(function(res) {
+      return res.json().catch(function() { return {}; }).then(function(data) {
+        var m = data && typeof data.url === 'string' ? CHECKOUT_URL.exec(data.url) : null;
+        if (!res.ok || !m) {
+          var err = new Error('create-checkout ' + res.status + ': no checkout url');
+          err.status = res.status;
+          throw err;
+        }
+        sendSetupTracking({
+          type: 'setup-tracking',
+          checkoutSessionId: data.id || m[1],
+          stripeCustomerId: customer,
+          memberstackUserId: ms.memberId || (member && member.id) || null,
+          memberstackEmail: ms.email || null,
+          option: 'setup-sepa',
+          paymentMethods: ['sepa_debit'],
+          originPage: window.location.href
+        });
+        window.location.assign(data.url);
+      });
+    }).catch(function(err) {
+      var reporter = window.OrdoErrorReporter;
+      if (reporter) {
+        try {
+          if (err && !err.status && typeof reporter.reportNetwork === 'function') reporter.reportNetwork('SubscriptionsOverview', err);
+          else reporter.report('SubscriptionsOverview', err);
+        } catch (x) { /* no-op */ }
+      }
+      link.textContent = label;
+      link.removeAttribute('aria-busy');
+      window.location.assign(PAYMENT_URL);
+    });
+  }
+
+  function paymentLink(cls, label) {
+    var a = el('a', cls, label);
+    a.setAttribute('href', PAYMENT_URL);
+    a.addEventListener('click', function(e) { openPaymentSetup(e, a); });
+    return a;
   }
 
   var SITE_LINK = /^\/(?!\/)[A-Za-z0-9\-._~\/?=&%]*$/;
@@ -491,8 +567,7 @@
       if (list[j].status === 'past_due') urgent = true;
     }
     var label = none ? 'Ajouter un moyen de paiement' : (urgent ? 'Mettre à jour' : 'Modifier');
-    var link = el('a', 'ordo-subs-btn' + (none || urgent ? ' is-primary' : ''), label);
-    link.setAttribute('href', PAYMENT_URL);
+    var link = paymentLink('ordo-subs-btn' + (none || urgent ? ' is-primary' : ''), label);
     if (several) {
       var actions = el('div', 'ordo-subs-actions');
       actions.appendChild(link);
