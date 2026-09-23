@@ -268,7 +268,10 @@
   var SETUP_URL = 'https://billing.ordotype.fr/.netlify/functions/create-checkout';
   var SETUP_HOOK_URL = 'https://billing.ordotype.fr/.netlify/functions/notify-webhook';
   var SETUP_SUCCESS_PATH = '/membership/moyen-de-paiement-ajoute';
-  var CHECKOUT_URL = /^https:\/\/[a-z0-9.-]+\/c\/pay\/([^?#\/]+)/;
+  // Only the scheme and host are checked: Stripe serves the same page under several paths
+  // (/c/pay/, /g/pay/, /f/pay/...), and rejecting one of them sent the member back to the page.
+  var CHECKOUT_URL = /^https:\/\/[a-z0-9.-]+\//;
+  var SESSION_ID = /\b(cs_(?:live|test)_[A-Za-z0-9]+)/;
 
   function sendSetupTracking(payload) {
     var data = JSON.stringify(payload);
@@ -309,7 +312,7 @@
         }
         sendSetupTracking({
           type: 'setup-tracking',
-          checkoutSessionId: data.id || m[1],
+          checkoutSessionId: data.id || (SESSION_ID.exec(data.url) || [])[1] || null,
           stripeCustomerId: customer,
           memberstackUserId: ms.memberId || (member && member.id) || null,
           memberstackEmail: ms.email || null,
