@@ -461,7 +461,7 @@ async function main() {
     assert.strictEqual(s.navigations.length, 1);
     s.t.dom.window.close();
   }
-  for (const failure of [{ status: 500, body: { error: 'boom' } }, { status: 200, body: { url: 'javascript:alert(1)' } }, { transport: 'Failed to fetch' }]) {
+  for (const failure of [{ status: 500, body: { error: 'boom' } }, { status: 200, body: { url: 'javascript:alert(1)' } }, { status: 200, body: { url: 'http://checkout.stripe.com/g/pay/cs_live_x' } }, { status: 200, body: {} }, { transport: 'Failed to fetch' }]) {
     // Any failure lands on the payment method page, and says so
     const s = await withSetup([failure]);
     const link = pmSection(s.t.w).querySelector('a.ordo-subs-btn');
@@ -488,6 +488,17 @@ async function main() {
     await wait(30);
     assert.strictEqual(n.calls.length, 1);
     n.t.dom.window.close();
+  }
+  for (const path of ['g', 'f']) {
+    // Stripe serves the same page under other paths than /c/pay/: all of them open, none falls back
+    const url = 'https://checkout.stripe.com/' + path + '/pay/cs_live_a1B2c3#fragment';
+    const s = await withSetup([{ status: 200, body: { url } }]);
+    click(s.t.w, pmSection(s.t.w).querySelector('a.ordo-subs-btn'));
+    await wait(60);
+    assert.deepStrictEqual(s.navigations, [url], path);
+    assert.strictEqual(JSON.parse(await s.beacons[0].blob.text()).checkoutSessionId, 'cs_live_a1B2c3', 'id read from the address when the body has none');
+    assert.strictEqual(s.t.reported.length + s.t.network.length, 0);
+    s.t.dom.window.close();
   }
   {
     // The failed-payment link on a card opens Stripe the same way
