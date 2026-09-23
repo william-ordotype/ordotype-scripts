@@ -13,6 +13,9 @@
   var MS_MAX_ATTEMPTS = 50;
   var SKELETON_DELAY_MS = 200;
   var RETRY_DELAY_MS = 400;
+  // Same delay as the page head rule that brings the page's own blocks back: past it, the
+  // member already sees those blocks, so the list is recorded as timed out instead of silent.
+  var LIST_TIMEOUT_MS = 8000;
   var EXPECTED = [401, 409, 429];
 
   var member = window.OrdoAccount && window.OrdoAccount.member;
@@ -1077,7 +1080,17 @@
     });
   }
 
-  function call(method, body) {
+  // `timeoutMs` is only passed for the list: actions (PDF, payment, reactivation) can
+  // legitimately take longer and must never be cut short.
+  function call(method, body, timeoutMs) {
+    var controller = null;
+    var timer = null;
+    function stop() {
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+    function aborted() {
+      return !!(controller && controller.signal.aborted);
+    }
     return memberToken().then(function(token) {
       if (!token) {
         var e = new Error('no member token');
@@ -1093,9 +1106,20 @@
         opts.headers['Content-Type'] = 'application/json';
         opts.body = JSON.stringify(body);
       }
+      // Without AbortController (very old browsers) the request keeps its previous behaviour.
+      if (timeoutMs && typeof AbortController === 'function') {
+        controller = new AbortController();
+        opts.signal = controller.signal;
+        timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      }
       return fetch(API_URL, opts);
     }).then(function(res) {
-      return res.json().catch(function() { return {}; }).then(function(payload) {
+      return res.json().catch(function(e) {
+        // A body that stalls past the delay is a timeout, not an empty answer.
+        if (aborted()) throw e;
+        return {};
+      }).then(function(payload) {
+        stop();
         if (!res.ok) {
           var err = new Error('account-subscriptions ' + res.status + ' ' + (payload.error || ''));
           err.status = res.status;
@@ -1103,11 +1127,20 @@
         }
         return payload;
       });
+    }).catch(function(err) {
+      stop();
+      if (aborted()) {
+        // Given a status on purpose: `load` retries status-less errors, which would double the wait.
+        var timeout = new Error('account-subscriptions: no answer after ' + timeoutMs + ' ms');
+        timeout.status = 'timeout';
+        throw timeout;
+      }
+      throw err;
     });
   }
 
-  function request(method, body) {
-    return call(method, body).then(function(payload) {
+  function request(method, body, timeoutMs) {
+    return call(method, body, timeoutMs).then(function(payload) {
       if (!payload || !Array.isArray(payload.subscriptions)) {
         var bad = new Error('account-subscriptions: unexpected body');
         bad.status = 200;
@@ -1123,11 +1156,11 @@
   }
 
   function load() {
-    return request('GET').catch(function(err) {
+    return request('GET', null, LIST_TIMEOUT_MS).catch(function(err) {
       if (err && err.status) throw err;
       return new Promise(function(resolve) {
         setTimeout(resolve, RETRY_DELAY_MS);
-      }).then(function() { return request('GET'); });
+      }).then(function() { return request('GET', null, LIST_TIMEOUT_MS); });
     });
   }
 
@@ -1172,6 +1205,7 @@
     if (!anchor) {
       console.log(PREFIX + ' Anchor not found');
       fallbackToPageBlocks();
+      track('subscriptions_list', { subs_outcome: 'no-anchor' });
       return;
     }
     if (anchor.firstElementChild) {
@@ -1191,7 +1225,12 @@
       console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
     }).catch(function(err) {
       settled = true;
-      track('subscriptions_list', { subs_outcome: 'failed', subs_status: err && err.status ? String(err.status) : 'network' });
+      // `timeout` goes in subs_outcome, the dimension registered in GA4: subs_status is sent but
+      // not registered, so a value placed there alone would never be readable.
+      track('subscriptions_list', {
+        subs_outcome: err && err.status === 'timeout' ? 'timeout' : 'failed',
+        subs_status: err && err.status ? String(err.status) : 'network'
+      });
       clearTimeout(skeletonTimer);
       clear();
       hide();
