@@ -85,7 +85,9 @@ async function test(name, fn) {
     assert.strictEqual(champ(d, 'email'), 'claire.martin@exemple.fr');
     assert.strictEqual(champ(d, 'vat-id'), 'Non renseigné');
     assert.strictEqual(txt(d, '[data-ordo-initiales]'), 'CM');
-    assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Claire Martin');
+    assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Dr Claire Martin');
+    assert.strictEqual(txt(d, '[data-ordo-rpps-entete]'), 'N° RPPS 10000668540');
+    assert.ok(!d.querySelector('[data-ordo-rpps-verifie]'), 'pas de coche sans vérification annuaire');
     assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Médecin · Médecine générale · Libéral');
     assert.strictEqual(txt(d, '[data-ordo-v2="securite"] [data-ordo-champ="email"]'), 'claire.martin@exemple.fr');
     assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'bloc profil affiché');
@@ -112,6 +114,7 @@ async function test(name, fn) {
     assert.strictEqual(pro.length, 3);
     for (const el of pro) assert.ok(!visible(w, el));
     assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Interne · Médecine générale');
+    assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Claire Martin', 'pas de « Dr » pour un interne');
     d.querySelector('[data-ordo-edit="pro"]').click();
     const tva = d.querySelector('[data-ordo-form-slot="pro"] [data-ms-member="vat-id"]');
     assert.ok(tva, 'formulaire pro déplacé');
@@ -120,6 +123,33 @@ async function test(name, fn) {
     statut.value = 'Medecin';
     statut.dispatchEvent(new w.Event('change'));
     assert.ok(visible(w, tva.closest('.form-field-wrapper') || tva.parentNode), 'TVA revient pour un médecin');
+  });
+
+  await test('en-tête : « Dr » aussi pour « Médecin » accentué ; pas de ligne RPPS sans numéro, et une seule après relecture', async () => {
+    const m = clone(MEDECIN);
+    m.customFields.statut = 'Médecin';
+    m.customFields['n-rpps'] = '';
+    const { w, d } = await page({ member: m });
+    assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Dr Claire Martin');
+    assert.ok(!visible(w, d.querySelector('[data-ordo-rpps-entete]')));
+    await tick(10);
+    assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-entete]').length, 1);
+  });
+
+  await test('RPPS vérifié dans l\'annuaire : coche verte dans la carte et l\'en-tête ; « not found » : aucune', async () => {
+    const m = clone(MEDECIN);
+    m.customFields['statut-rpps'] = 'C';
+    let r = await page({ member: m });
+    assert.strictEqual(r.d.querySelectorAll('[data-ordo-rpps-verifie]').length, 2);
+    assert.strictEqual(champ(r.d, 'n-rpps'), '10000668540Vérifié');
+    m.customFields['statut-rpps'] = 'not found';
+    r = await page({ member: m });
+    assert.strictEqual(r.d.querySelectorAll('[data-ordo-rpps-verifie]').length, 0);
+    const pas = clone(MEDECIN);
+    pas.customFields['n-rpps'] = 'Pas de RPPS';
+    r = await page({ member: pas });
+    assert.ok(!visible(r.w, r.d.querySelector('[data-ordo-rpps-entete]')), 'pas de ligne RPPS pour un texte');
+    assert.strictEqual(champ(r.d, 'n-rpps'), 'Pas de RPPS');
   });
 
   await test('valeur hors liste conservée : ajoutée comme option et sélectionnée', async () => {

@@ -68,6 +68,44 @@
     return text(fields().statut).toLowerCase() === 'interne';
   }
 
+  /**
+   * RPPS trouvé dans l'annuaire santé : `statut-rpps` porte alors sa catégorie professionnelle
+   * (C civil, E étudiant, M militaire). Vide ou « not found » : non vérifié.
+   */
+  function rppsVerifie() {
+    return /^[CEM]$/.test(text(fields()['statut-rpps']).toUpperCase()) && !!text(fields()['n-rpps']);
+  }
+
+  /** Coche verte « Vérifié », construite élément par élément (jamais de HTML injecté). */
+  function checkBadge() {
+    var badge = document.createElement('span');
+    badge.setAttribute('data-ordo-rpps-verifie', '1');
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:8px;color:#106820;font-size:13px;font-weight:600;vertical-align:middle';
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    var circle = document.createElementNS(NS, 'circle');
+    circle.setAttribute('cx', '12'); circle.setAttribute('cy', '12'); circle.setAttribute('r', '11');
+    circle.setAttribute('fill', '#106820');
+    var path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', 'm7 12.5 3.2 3.2L17 9');
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', '#ffffff'); path.setAttribute('stroke-width', '2.2');
+    path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(circle);
+    svg.appendChild(path);
+    badge.appendChild(svg);
+    badge.appendChild(document.createTextNode('Vérifié'));
+    return badge;
+  }
+
+  /** « Medecin » (valeur de la liste) comme « Médecin » (saisie plus ancienne). */
+  function isMedecin() {
+    return text(fields().statut).toLowerCase().replace(/é/g, 'e') === 'medecin';
+  }
+
   function email() {
     return text((member.auth && member.auth.email) || member.email);
   }
@@ -165,13 +203,16 @@
     var f = fields();
     var all = document.querySelectorAll('[data-ordo-v2] [data-ordo-champ]');
     for (var i = 0; i < all.length; i++) {
-      setValue(all[i], displayValue(all[i].getAttribute('data-ordo-champ')));
+      var key = all[i].getAttribute('data-ordo-champ');
+      setValue(all[i], displayValue(key));
+      if (key === 'n-rpps' && rppsVerifie()) all[i].appendChild(checkBadge());
     }
 
     if (profil) {
       var prenom = text(f.prnom);
       var nom = text(f.nom);
-      var complet = (prenom + ' ' + nom).trim() || email();
+      var complet = (prenom + ' ' + nom).trim();
+      complet = complet ? (isMedecin() ? 'Dr ' + complet : complet) : email();
       var initiales = ((prenom.charAt(0) || '') + (nom.charAt(0) || '')).toUpperCase() || email().charAt(0).toUpperCase();
       var ini = profil.querySelector('[data-ordo-initiales]');
       if (ini) ini.textContent = initiales;
@@ -184,10 +225,26 @@
         var line = parts.filter(Boolean).join(' · ');
         resume.textContent = line;
         show(resume, !!line);
+        var rpps = text(f['n-rpps']);
+        renderRpps(resume, /^\d{11}$/.test(rpps) ? rpps : '');
       }
       var interne = profil.querySelectorAll('[data-ordo-si-pas-interne]');
       for (var j = 0; j < interne.length; j++) show(interne[j], !isInterne());
     }
+  }
+
+  /** Numéro RPPS sous le résumé de l'en-tête, s'il est renseigné. */
+  function renderRpps(resume, rpps) {
+    var line = profil.querySelector('[data-ordo-rpps-entete]');
+    if (!line) {
+      line = document.createElement('div');
+      line.className = 'compte-v2_muted';
+      line.setAttribute('data-ordo-rpps-entete', '1');
+      resume.parentNode.insertBefore(line, resume.nextSibling);
+    }
+    line.textContent = rpps ? 'N° RPPS ' + rpps : '';
+    if (rpps && rppsVerifie()) line.appendChild(checkBadge());
+    show(line, !!rpps);
   }
 
   // --- Modification ----------------------------------------------------------------------------
