@@ -178,6 +178,29 @@ abbr:hover::after {
     z-index: 20;
 }
 
+/* Liens « avis » du rappel clinique : même infobulle que les abréviations, pour dire
+   où ils mènent avant le clic. Le texte est porté par la feuille de style, pas par le
+   contenu des fiches : il se change ici, sans rééditer les fiches. */
+.rc-html a[href^="/avis-specialise"] {
+    position: relative;
+}
+
+.rc-html a[href^="/avis-specialise"]:hover::after {
+    content: "Annuaire Omnidoc, partenaire gratuit";
+    position: absolute;
+    bottom: 1.5em;
+    left: 50%;
+    padding: 0.3em 0.6em;
+    transform: translateX(-50%);
+    color: white;
+    background-color: black;
+    border-radius: 0.2em;
+    font-size: 0.9em;
+    font-weight: 400;
+    white-space: nowrap;
+    z-index: 20;
+}
+
 /* Hide scrollbars */
 .notice-rappels-wrapper::-webkit-scrollbar,
 .career20_tabs-menu::-webkit-scrollbar {
