@@ -92,7 +92,7 @@
     // restent affichés tant que le script n'a pas rendu la nouvelle présentation.
     'profile-overview.js': {
       'ordotype.webflow.io': 100,
-      'www.ordotype.fr': 0
+      'www.ordotype.fr': 100
     }
   };
   const HOST = window.location.hostname;

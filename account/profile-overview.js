@@ -482,6 +482,7 @@
           watchSave(block, section, attempt + 1);
         } else {
           track('edit', section, 'unconfirmed');
+          report('ProfileOverviewSaveUnconfirmed', 'Save not confirmed for section ' + section);
         }
       });
     }, SAVE_POLL_MS);

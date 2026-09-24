@@ -244,8 +244,8 @@ async function test(name, fn) {
     assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="perso"]')));
   });
 
-  await test('enregistrement non constaté : la carte reste ouverte, la saisie aussi', async () => {
-    const { w, d, pushed } = await page();
+  await test('enregistrement non constaté : la carte reste ouverte, la saisie aussi, Sentry prévenu', async () => {
+    const { w, d, pushed, reports } = await page();
     d.querySelector('[data-ordo-edit="perso"]').click();
     const form = d.querySelector('[data-ordo-form-slot="perso"] form');
     form.querySelector('#first-name').value = 'Clara'; // Memberstack renvoie toujours « Claire »
@@ -254,6 +254,11 @@ async function test(name, fn) {
     assert.ok(visible(w, d.querySelector('[data-ordo-form-slot="perso"]')), 'pas refermée sur une supposition');
     assert.strictEqual(form.querySelector('#first-name').value, 'Clara');
     assert.ok(!pushed.some((p) => p.profile_outcome === 'saved'));
+    assert.strictEqual(reports.length, 0, 'pas de signalement avant la fin des relectures');
+    await tick(8000);
+    assert.ok(pushed.some((p) => p.profile_outcome === 'unconfirmed'));
+    assert.deepStrictEqual(reports.map((r) => r.name), ['ProfileOverviewSaveUnconfirmed']);
+    assert.ok(!/Clara/.test(reports[0].message), 'aucune saisie du membre dans le signalement');
   });
 
   await test('relecture : l\'objet membre partagé est mis à jour, pas remplacé ; le SIRET du finder survit', async () => {
