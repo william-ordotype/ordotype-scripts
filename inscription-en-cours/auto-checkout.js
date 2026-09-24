@@ -166,21 +166,59 @@
         }
     }
 
-    // Page d'offre d'où vient l'inscription, marquée pour ne la renvoyer qu'une
-    // fois : si elle échoue encore à passer l'offre, on ne boucle pas.
+    // Page d'offre à rejoindre, marquée pour ne la renvoyer qu'une fois : si elle
+    // échoue encore à passer l'offre, on ne boucle pas.
     const OFFER_RETRY_PARAM = 'reprise-paiement';
-    function offerPageFromReferrer() {
+    const OFFER_PATH = '/inscription-offre-speciale/';
+    function markedOfferPage(url) {
         try {
             var ref = new URL(document.referrer);
-            if (ref.origin !== window.location.origin) return null;
-            if (ref.pathname.indexOf('/inscription-offre-speciale/') !== 0) return null;
-            if (ref.searchParams.has(OFFER_RETRY_PARAM)) return null;
-            ref.searchParams.set(OFFER_RETRY_PARAM, '1');
-            return ref.toString();
+            if (ref.origin === window.location.origin && ref.pathname.indexOf(OFFER_PATH) === 0
+                && ref.searchParams.has(OFFER_RETRY_PARAM)) return null;
+        } catch (e) { /* pas de provenance lisible : pas encore renvoyé */ }
+        try {
+            var target = new URL(url, window.location.origin);
+            target.searchParams.set(OFFER_RETRY_PARAM, '1');
+            return target.toString();
         } catch (e) {
             return null;
         }
     }
+    function offerPageFromReferrer() {
+        try {
+            var ref = new URL(document.referrer);
+            if (ref.origin !== window.location.origin) return null;
+            if (ref.pathname.indexOf(OFFER_PATH) !== 0) return null;
+            return markedOfferPage(ref.toString());
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // L'offre portée par l'adresse de cette page. La page de l'offre la pose sur
+    // son formulaire d'inscription, qui y renvoie le membre : elle arrive ici même
+    // quand le stockage du navigateur n'a rien gardé. Le slug seul désigne la page.
+    function readUrlOffer() {
+        try {
+            var q = new URLSearchParams(window.location.search);
+            var slug = q.get('offre');
+            if (!slug || !/^[a-z0-9-]+$/.test(slug)) return null;
+            return {
+                slug: slug,
+                priceId: q.get('prix') || '',
+                couponId: q.get('coupon') || '',
+                paymentMethods: q.get('moyens') || '',
+                page: window.location.origin + OFFER_PATH + slug
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Les clés de la page de l'offre n'ont pas survécu : la fiche ne fixe ni prix
+    // ni retour, et `signup-cancel-url` est absent (pas seulement vide).
+    const keysLost = !config.priceId && !config.cancelUrl && readStored('signup-cancel-url') === null;
+    const urlOffer = keysLost ? readUrlOffer() : null;
 
     // Helper to replace ${window.location.origin} placeholder with actual origin
     const resolveUrl = (url) => {
@@ -188,15 +226,19 @@
         return url.replace(/\$\{window\.location\.origin\}/g, window.location.origin);
     };
 
-    const priceId = config.priceId || localStorage.getItem('signup-price-id') || '';
-    const couponId = config.couponId || localStorage.getItem('signup-coupon-id') || '';
+    // L'offre de l'adresse ne remplace les clés que si elle porte sa remise. Sans
+    // coupon (remise accordée par le serveur, ou offre sans coupon), c'est sa page
+    // qui sait la faire valoir : on y retourne plus bas.
+    const fromUrl = urlOffer && urlOffer.priceId && urlOffer.couponId ? urlOffer : null;
+    const priceId = config.priceId || (fromUrl ? fromUrl.priceId : localStorage.getItem('signup-price-id')) || '';
+    const couponId = config.couponId || (fromUrl ? fromUrl.couponId : localStorage.getItem('signup-coupon-id')) || '';
     const successUrl = resolveUrl(config.successUrl) || localStorage.getItem('signup-success-url') || `${window.location.origin}/membership/mes-informations`;
-    const cancelUrl = resolveUrl(config.cancelUrl) || localStorage.getItem('signup-cancel-url') || window.location.href;
+    const cancelUrl = resolveUrl(config.cancelUrl) || (fromUrl ? fromUrl.page : localStorage.getItem('signup-cancel-url')) || window.location.href;
     const parsePaymentMethods = (value) => (Array.isArray(value) ? value : String(value || '').split(','))
         .map((v) => String(v).trim())
         .filter(Boolean);
     const cmsPaymentMethods = parsePaymentMethods(config.paymentMethods);
-    const storedPaymentMethods = parsePaymentMethods(localStorage.getItem('signup-payment-methods'));
+    const storedPaymentMethods = parsePaymentMethods(fromUrl ? fromUrl.paymentMethods : localStorage.getItem('signup-payment-methods'));
     const paymentMethods = (!config.priceId && storedPaymentMethods.length) ? storedPaymentMethods
         : cmsPaymentMethods.length ? cmsPaymentMethods
         : storedPaymentMethods.length ? storedPaymentMethods
@@ -218,14 +260,20 @@
 
     console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods, serverOffer: serverOffer ? serverOffer.offer : null });
 
-    // Offre perdue en route : la fiche ne fixe ni prix ni retour, et la page de
-    // l'offre n'a rien laissé (`signup-cancel-url` absent, pas seulement vide).
-    // Le serveur appliquerait alors son prix par défaut sans coupon : le plein
-    // tarif, sur une inscription partie d'une page qui promettait une remise.
-    // Retour à cette page, une seule fois : elle porte l'offre dans sa propre
-    // configuration et relance le paiement pour le membre, désormais connecté.
-    if (!config.priceId && !config.cancelUrl && !serverOffer && readStored('signup-cancel-url') === null) {
-        var offerPage = offerPageFromReferrer();
+    // Clés perdues, mais l'adresse porte l'offre et sa remise : le paiement part
+    // avec elles. Mesuré, pour savoir combien d'inscriptions le stockage perd.
+    if (fromUrl) {
+        console.warn(PREFIX, 'Offre reprise de l’adresse, clés absentes:', fromUrl.slug);
+        track({ event: 'offer_from_url', option: option, offer: fromUrl.slug });
+    }
+
+    // Offre perdue en route, et l'adresse ne suffit pas à la payer. Le serveur
+    // appliquerait son prix par défaut sans coupon : le plein tarif, sur une
+    // inscription partie d'une page qui promettait une remise. Retour à la page
+    // de l'offre, une seule fois : elle porte l'offre dans sa propre configuration
+    // et la fait valoir pour le membre, désormais connecté.
+    if (keysLost && !fromUrl && !serverOffer) {
+        var offerPage = urlOffer ? markedOfferPage(urlOffer.page) : offerPageFromReferrer();
         var lost = new Error('Offre perdue avant le paiement, ' + (offerPage
             ? 'retour à ' + new URL(offerPage).pathname
             : 'pas de page d’offre à rejoindre (' + (referrerPath() || 'sans provenance') + '), paiement au prix par défaut'));

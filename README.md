@@ -1273,12 +1273,20 @@ window.CMS_CHECKOUT_CONFIG = {
 - Shows fallback button if checkout session creation fails
 - **Offer lost on the way**: when the CMS item sets neither `priceId` nor `cancelUrl` and
   `signup-cancel-url` is absent from localStorage (not merely empty), the offer page's keys
-  never arrived and the server would charge its default price without a coupon. The script
-  reports `OfferLostBeforeCheckout` and, when the referrer is an
-  `/inscription-offre-speciale/*` page, sends the member back to it once
-  (`?reprise-paiement=1`, `checkout_failed` with `offer_lost`): the page carries its own
-  config and restarts the payment for the now logged-in member. A second arrival without
-  keys, or any other referrer, proceeds as before and is still reported.
+  never arrived and the server would charge its default price without a coupon.
+  - **Offer in the URL**: the offer page sets `data-ordo-signup-redirect` on its signup form
+    (read by the auth-bundle, which sends the new member there instead of the plan's
+    redirect) to `/inscription-en-cours/validation?offre=<slug>&prix=<price>&coupon=<coupon>&moyens=<methods>`.
+    When the keys are lost and the URL carries a price and a coupon, the payment uses them,
+    returns to `/inscription-offre-speciale/<slug>` on cancel, and tracks `offer_from_url`.
+    The keys, when present, always win: the URL changes nothing for flows that work today.
+  - **Back to the offer page**: otherwise (no offer in the URL, or an offer without a coupon,
+    whose discount is granted by the server) the script reports `OfferLostBeforeCheckout`
+    and sends the member once (`?reprise-paiement=1`, `checkout_failed` with `offer_lost`)
+    to the offer page named by the URL's slug, or else by the referrer. The member, now
+    logged in, clicks the offer's button again there; the page applies its own config. A
+    second arrival without keys, or no offer page to go back to, proceeds as before and is
+    still reported.
 
 ### Server-discount offers (relay from the offer page)
 

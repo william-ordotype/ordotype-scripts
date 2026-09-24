@@ -29,12 +29,12 @@ const CLES_OFFRE = {
   'signup-payment-methods': 'sepa_debit',
 };
 
-function page({ referrer = PAGE_OFFRE, cles = {}, cms = {}, reporter = true } = {}) {
+function page({ referrer = PAGE_OFFRE, cles = {}, cms = {}, reporter = true, query = '' } = {}) {
   const navigations = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => { if (/navigation/i.test(e.message)) navigations.push(e.message); });
   const dom = new JSDOM('<!doctype html><html><body><a id="checkoutStripe" href="#" class="button hidden">Payer</a></body></html>',
-    { url: VALIDATION, referrer: referrer || undefined, runScripts: 'outside-only', virtualConsole });
+    { url: VALIDATION + query, referrer: referrer || undefined, runScripts: 'outside-only', virtualConsole });
   const w = dom.window;
   w.localStorage.setItem('_ms-mem', JSON.stringify(MEMBRE));
   for (const [k, v] of Object.entries(cles)) w.localStorage.setItem(k, v);
@@ -140,6 +140,58 @@ test('fiche qui fixe son prix ou son retour (variantes /inscription-en-cours/*) 
     assert.strictEqual(calls.length, 1, JSON.stringify(cms));
     assert.strictEqual(pertes().length, 0, JSON.stringify(cms));
   }
+});
+
+
+const URL_OFFRE = '?offre=3&prix=price_praticien&coupon=OZHO87wz&moyens=sepa_debit';
+
+test('clés perdues, offre dans l’adresse : paiement avec le prix, le coupon et les moyens de l’adresse, retour vers la page de l’offre, mesuré', async () => {
+  for (const referrer of [PAGE_OFFRE, null]) {
+    const { w, calls, events, pertes } = page({ query: URL_OFFRE, referrer });
+    w.eval(SCRIPT);
+    await tick();
+    assert.strictEqual(calls.length, 1, String(referrer));
+    assert.deepStrictEqual(calls[0].body, {
+      stripeCustomerId: 'cus_nouveau',
+      priceId: 'price_praticien',
+      couponId: 'OZHO87wz',
+      successUrl: ORIGIN + '/membership/mes-informations',
+      cancelUrl: PAGE_OFFRE,
+      payment_method_types: ['sepa_debit'],
+    }, String(referrer));
+    assert.strictEqual(pertes().length, 0, 'rien de perdu : pas d’alerte');
+    assert.ok(events().some((e) => e.event === 'offer_from_url' && e.offer === '3'), 'reprise mesurée');
+  }
+});
+
+test('clés présentes : elles priment, l’adresse est ignorée (parrainage, winback, pages actuelles inchangés)', async () => {
+  const { w, calls, events } = page({ query: '?offre=autre&prix=price_autre&coupon=AUTRE&moyens=card', cles: CLES_OFFRE });
+  w.eval(SCRIPT);
+  await tick();
+  assert.strictEqual(calls[0].body.priceId, 'price_praticien');
+  assert.strictEqual(calls[0].body.couponId, 'COUPON_PAGE');
+  assert.strictEqual(calls[0].body.cancelUrl, PAGE_OFFRE);
+  assert.ok(!events().some((e) => e.event === 'offer_from_url'));
+});
+
+test('clés perdues, offre sans coupon dans l’adresse (remise serveur) : retour à SA page, même sans provenance, jamais le plein tarif', async () => {
+  for (const referrer of [null, ORIGIN + '/nos-offres']) {
+    const { w, calls, pertes, urls } = page({ query: '?offre=3-mois-50-parrainage&prix=price_praticien&coupon=&moyens=sepa_debit', referrer });
+    w.eval(SCRIPT);
+    await tick();
+    assert.strictEqual(calls.length, 0, String(referrer));
+    assert.strictEqual(pertes().length, 1, String(referrer));
+    assert.ok(urls.includes(ORIGIN + '/inscription-offre-speciale/3-mois-50-parrainage?reprise-paiement=1'), urls.join(' | '));
+  }
+});
+
+test('slug illisible dans l’adresse : ignoré, comportement sans adresse', async () => {
+  const { w, calls, urls } = page({ query: '?offre=../../x&prix=p&coupon=c', referrer: null });
+  w.eval(SCRIPT);
+  await tick();
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].body.priceId, '');
+  assert.ok(!urls.some((u) => u.includes('reprise-paiement')));
 });
 
 (async () => {
