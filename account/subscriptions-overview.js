@@ -45,7 +45,7 @@
     '.ordo-subs-flash{margin:0;font-size:.875rem;line-height:1.5;font-weight:600;color:var(--success-700,#106820)}',
     '.ordo-subs-list{display:flex;flex-direction:column;gap:1rem}',
     '.ordo-subs-card{background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);border-radius:.25rem;padding:1.5rem;display:flex;flex-direction:column;gap:.75rem}',
-    '.ordo-subs-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem 1rem}',
+    '.ordo-subs-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem 1rem}',
     '.ordo-subs-label{font-size:1rem;line-height:1.5;font-weight:600}',
     '.ordo-subs-tag{flex:none;height:1.5rem;padding:0 .5rem;border-radius:.25rem;font-size:.75rem;font-weight:600;line-height:1.5rem;white-space:nowrap}',
     '.ordo-subs-tone-ok{background:var(--primary-500,#3454f6);color:var(--inverted-900,#ffffffe6)}',
