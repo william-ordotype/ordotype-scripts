@@ -851,12 +851,18 @@
       input = el('select', 'ordo-addr-input');
       var codes = opts.options.slice();
       if (value && codes.indexOf(value) === -1) codes.unshift(value);
+      if (!value) {
+        var none = el('option', null, 'Choisir un pays');
+        none.value = '';
+        input.appendChild(none);
+      }
       for (var i = 0; i < codes.length; i++) {
         var o = el('option', null, countryName(codes[i]));
         o.value = codes[i];
         input.appendChild(o);
       }
-      input.value = value || 'FR';
+      input.value = value || '';
+      if (opts.locked) input.disabled = true;
     } else {
       input = el('input', 'ordo-addr-input');
       input.type = 'text';
@@ -869,6 +875,7 @@
     input.id = id;
     input.name = name;
     field.appendChild(input);
+    if (opts.hint) field.appendChild(el('span', 'ordo-subs-muted', opts.hint));
     return field;
   }
 
@@ -879,7 +886,7 @@
     var body = el('div');
     root.appendChild(body);
 
-    function showRead(flash) {
+    function showRead(flash, focus) {
       body.textContent = '';
       if (flash) {
         var ok = el('p', 'ordo-subs-flash', flash);
@@ -895,6 +902,7 @@
       edit.addEventListener('click', function() { showEdit(); });
       row.appendChild(edit);
       body.appendChild(row);
+      if (focus && typeof edit.focus === 'function') edit.focus();
     }
 
     function showEdit() {
@@ -911,7 +919,10 @@
       var l3 = el('div', 'ordo-addr-line');
       l3.appendChild(addressField('postalCode', 'Code postal', addr.postalCode, { autocomplete: 'postal-code', required: true, short: true, max: 20 }));
       l3.appendChild(addressField('city', 'Ville', addr.city, { autocomplete: 'address-level2', required: true, max: 100 }));
-      l3.appendChild(addressField('country', 'Pays', addr.country, { options: COUNTRIES }));
+      // Le pays fixe la TVA des prochaines factures : il ne se change pas ici (le serveur le refuse aussi).
+      l3.appendChild(addressField('country', 'Pays', addr.country, addr.country
+        ? { options: COUNTRIES, locked: true, hint: 'Pour changer de pays : ' + HELP_EMAIL }
+        : { options: COUNTRIES }));
       form.appendChild(l3);
       form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
       var error = el('p', 'ordo-addr-error');
@@ -921,7 +932,7 @@
       var actions = el('div', 'ordo-subs-actions');
       var cancel = mark(button('Annuler', false), 'adresse_annuler');
       cancel.type = 'button';
-      cancel.addEventListener('click', function() { showRead(); });
+      cancel.addEventListener('click', function() { showRead(null, true); });
       var save = mark(button('Enregistrer', true), 'adresse_enregistrer');
       save.type = 'submit';
       actions.appendChild(cancel);
@@ -933,6 +944,8 @@
         ['name', 'line1', 'line2', 'postalCode', 'city', 'country'].forEach(function(k) {
           values[k] = String(form.elements[k].value || '').trim();
         });
+        // Un nom vidé n'efface pas celui des factures : il n'est simplement pas envoyé.
+        // x
         if (!values.line1 || !values.postalCode || !values.city || !values.country) {
           error.textContent = 'Renseignez l’adresse, le code postal, la ville et le pays.';
           error.hidden = false;
@@ -950,12 +963,14 @@
           }
           addr = payload.billingAddress;
           trackOutcome('adresse_enregistrer', '', 'ok');
-          showRead('Adresse enregistrée.');
+          showRead('Adresse enregistrée.', true);
         }).catch(function(err) {
           trackOutcome('adresse_enregistrer', '', 'failed');
           reportIfActionable(err);
           error.textContent = err && err.status === 401
             ? 'Votre session a expiré : reconnectez-vous puis réessayez.'
+            : err && err.status === 409
+            ? 'Le pays ne se change pas ici : écrivez à ' + HELP_EMAIL + '.'
             : (err && err.status === 400
               ? 'Vérifiez les champs de l’adresse.'
               : 'L’adresse n’a pas pu être enregistrée. Réessayez dans un instant.');
