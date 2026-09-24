@@ -168,6 +168,8 @@
   function track(action, section, outcome) {
     if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
     var payload = { event: 'profile_action', profile_action: action, profile_section: section || '', profile_outcome: outcome || '' };
+    // Les trois valeurs réunies en une seule, lue par une seule dimension GA4.
+    payload.profile_step = action + ':' + (section || '-') + ':' + (outcome || '-');
     var rollout = window.OrdoRollout && window.OrdoRollout['profile-overview.js'];
     if (rollout) {
       payload.rollout_percent = rollout.percent;

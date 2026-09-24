@@ -257,6 +257,7 @@ async function test(name, fn) {
     assert.strictEqual(reports.length, 0, 'pas de signalement avant la fin des relectures');
     await tick(8000);
     assert.ok(pushed.some((p) => p.profile_outcome === 'unconfirmed'));
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:unconfirmed'), 'profile_step réunit les trois valeurs');
     assert.deepStrictEqual(reports.map((r) => r.name), ['ProfileOverviewSaveUnconfirmed']);
     assert.ok(!/Clara/.test(reports[0].message), 'aucune saisie du membre dans le signalement');
   });
