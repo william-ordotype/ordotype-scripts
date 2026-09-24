@@ -431,6 +431,9 @@
     form.addEventListener('submit', function() {
       var owner = block.parentNode && block.parentNode.getAttribute('data-ordo-form-slot');
       track('edit', owner || section, 'submit');
+      // Un double envoi ne lance pas une seconde surveillance : la première relit déjà les champs.
+      if (block.getAttribute('data-ordo-watching')) return;
+      block.setAttribute('data-ordo-watching', '1');
       watchSave(block, owner || section, 0);
     });
   }
@@ -447,7 +450,18 @@
     return false;
   }
 
-  /** Les valeurs du formulaire sont-elles celles que Memberstack a maintenant enregistrées ? */
+  // Téléphone reformaté à l'envoi (espaces), e-mail sans casse : même valeur, écriture différente.
+  function comparable(key, v) {
+    var t = text(v);
+    if (key === 'phone') return t.replace(/[\s().-]/g, '');
+    if (key === 'email') return t.toLowerCase();
+    return t;
+  }
+
+  /**
+   * Les valeurs du formulaire sont-elles celles que Memberstack a maintenant enregistrées ?
+   * null : aucun champ comparable (mot de passe), l'enregistrement ne se constate pas.
+   */
   function saved(block) {
     var inputs = block.querySelectorAll('input[data-ms-member], select[data-ms-member], textarea[data-ms-member]');
     var compared = 0;
@@ -457,10 +471,10 @@
       if (el.type === 'password' || el.type === 'checkbox' || el.type === 'hidden' || key === 'siret') continue;
       if (hiddenIn(el, block)) continue; // champ masqué (interne…) : non concerné
       var current = key === 'email' ? email() : text(fields()[key]);
-      if (text(el.value) !== current) return false;
+      if (comparable(key, el.value) !== comparable(key, current)) return false;
       compared += 1;
     }
-    return compared > 0;
+    return compared > 0 ? true : null;
   }
 
   /**
@@ -469,23 +483,33 @@
    * ouverte aussi, les champs tels que le membre les a saisis.
    */
   function watchSave(block, section, attempt) {
+    function done(outcome) {
+      block.removeAttribute('data-ordo-watching');
+      track('edit', section, outcome);
+    }
     setTimeout(function() {
       if (failed(block)) {
-        track('edit', section, 'failed');
+        done('failed');
         return;
       }
       refresh().then(function() {
+        var state = saved(block);
         if (failed(block)) {
-          track('edit', section, 'failed');
-        } else if (saved(block)) {
-          track('edit', section, 'saved');
+          done('failed');
+        } else if (state === true) {
+          done('saved');
           if (section !== 'password') closeEdit(section);
         } else if (attempt + 1 < SAVE_POLL_TRIES) {
           watchSave(block, section, attempt + 1);
+        } else if (state === null) {
+          // Rien à comparer (mot de passe) et pas d'erreur affichée : envoyé, pas vérifiable.
+          done('unverified');
         } else {
-          track('edit', section, 'unconfirmed');
+          done('unconfirmed');
           report('ProfileOverviewSaveUnconfirmed', 'Save not confirmed for section ' + section);
         }
+      }, function() {
+        block.removeAttribute('data-ordo-watching');
       });
     }, SAVE_POLL_MS);
   }

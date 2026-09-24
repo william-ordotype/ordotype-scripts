@@ -28,7 +28,7 @@ const MEDECIN = {
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-async function page({ member = MEDECIN, fixture = FIXTURE, reporter = true, fresh = null, before = null } = {}) {
+async function page({ member = MEDECIN, fixture = FIXTURE, reporter = true, fresh = null, before = null, fastPoll = false } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -48,7 +48,8 @@ async function page({ member = MEDECIN, fixture = FIXTURE, reporter = true, fres
   w.console.log = () => {};
   w.console.warn = () => {};
   if (before) before(w);
-  w.eval(SCRIPT);
+  // fastPoll : relectures toutes les 5 ms au lieu de 1,5 s, même nombre d'essais.
+  w.eval(fastPoll ? SCRIPT.replace('SAVE_POLL_MS = 1500', 'SAVE_POLL_MS = 5') : SCRIPT);
   // Comme dans le navigateur, le script attend la fin de l'analyse de la page.
   if (w.document.readyState === 'loading') {
     await new Promise((r) => w.document.addEventListener('DOMContentLoaded', r));
@@ -260,6 +261,44 @@ async function test(name, fn) {
     assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:unconfirmed'), 'profile_step réunit les trois valeurs');
     assert.deepStrictEqual(reports.map((r) => r.name), ['ProfileOverviewSaveUnconfirmed']);
     assert.ok(!/Clara/.test(reports[0].message), 'aucune saisie du membre dans le signalement');
+  });
+
+  await test('mot de passe changé : rien à comparer, aucun signalement', async () => {
+    const { w, d, pushed, reports } = await page({ fastPoll: true });
+    d.querySelector('[data-ordo-edit="password"]').click();
+    const form = d.querySelector('[data-ordo-form-slot="password"] form');
+    form.querySelector('[data-ms-member="current-password"]').value = 'Ancien1!';
+    form.querySelector('[data-ms-member="new-password"]').value = 'Nouveau1!';
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(200);
+    assert.deepStrictEqual(reports, []);
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:password:unverified'));
+    assert.ok(!pushed.some((p) => p.profile_step === 'edit:password:unconfirmed'));
+  });
+
+  await test('double envoi non constaté : un seul signalement', async () => {
+    const { w, d, reports } = await page({ fastPoll: true });
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    const form = d.querySelector('[data-ordo-form-slot="perso"] form');
+    form.querySelector('#first-name').value = 'Clara'; // Memberstack renvoie toujours « Claire »
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(200);
+    assert.strictEqual(reports.length, 1);
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(200);
+    assert.strictEqual(reports.length, 2, 'un nouvel envoi après la fin de la surveillance est de nouveau surveillé');
+  });
+
+  await test('contact : téléphone reformaté avec espaces à l\'envoi = même numéro, enregistré', async () => {
+    const { w, d, pushed, reports } = await page({ fastPoll: true });
+    d.querySelector('[data-ordo-edit="contact"]').click();
+    const form = d.querySelector('[data-ordo-form-slot="contact"] form');
+    form.querySelector('[data-ms-member="phone"]').value = '+33 6 12 34 56 78'; // enregistré : +33612345678
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(200);
+    assert.deepStrictEqual(reports, []);
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:contact:saved'));
   });
 
   await test('relecture : l\'objet membre partagé est mis à jour, pas remplacé ; le SIRET du finder survit', async () => {
