@@ -26,7 +26,7 @@
     ['addicto', 'Addictologie'], ['allergo', 'Allergologie'], ['card_mal_vasc', 'Cardiologie'],
     ['chir_maxilo_stoma', 'Chirurgie maxillo-faciale'], ['chir_orale', 'Chirurgie orale'],
     ['chir_ortho_trauma', 'Chirurgie orthopédique'], ['chir_vasc', 'Chirurgie vasculaire'],
-    ['chir_visce_dig', 'Chirurgie viscérale et digestive'], ['derm_venero', 'Dermatologie'],
+    ['chir_visce_dig', 'Chirurgie viscérale et digestive'], ['derm_venero', 'Dermatologie'], ['doul_soins_pal', 'Douleur et soins palliatifs'],
     ['endo_diab_nutr', 'Endocrinologie, diabétologie, nutrition'],
     ['gastro_hépato', 'Gastro-entérologie et hépatologie'], ['gen_med', 'Génétique médicale'],
     ['geria', 'Gériatrie'], ['gyneco_med_obst', 'Gynécologie médicale et obstétrique'],
