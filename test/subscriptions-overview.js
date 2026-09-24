@@ -1223,7 +1223,8 @@ async function main() {
     let form = section(t.w).querySelector('form');
     assert.strictEqual(form.elements.line1.value, '12 rue de la République');
     assert.strictEqual(form.elements.country.value, 'FR');
-    assert.ok(form.elements.country.disabled, 'pays verrouillé quand il existe');
+    assert.ok(!form.elements.country.disabled, 'pays modifiable');
+    assert.ok(text(form).includes('Le pays détermine la TVA'), 'phrase TVA sous le pays');
     [...form.querySelectorAll('button')].find((b) => b.textContent === 'Annuler').click();
     assert.strictEqual(section(t.w).querySelector('form'), null);
     assert.strictEqual(t.w.document.activeElement, section(t.w).querySelector('.ordo-subs-btn'), 'focus rendu au bouton');
@@ -1256,18 +1257,21 @@ async function main() {
     assert.ok(text(section(t.w)).includes('Adresse enregistrée.'));
     assert.ok(text(section(t.w)).includes('3 place Bellecour'));
 
-    // Nom vidé : non envoyé (le nom actuel est gardé) ; pays verrouillé : refus 409 expliqué
+    // Nom vidé : non envoyé (le nom actuel est gardé) ; changement de pays envoyé
     t = page();
-    calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 409, body: { error: 'country_locked' } }]);
+    calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 200, body: { ok: true, billingAddress: { ...ADRESSE, country: 'RE' } } }]);
     t.w.eval(SCRIPT);
     await wait(60);
     section(t.w).querySelector('.ordo-subs-btn').click();
     form = section(t.w).querySelector('form');
     form.elements.name.value = '';
+    form.elements.country.value = 'RE';
     form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
     await wait(60);
-    assert.ok(!('name' in JSON.parse(calls[1].options.body).address), 'nom vidé non envoyé');
-    assert.ok(text(section(t.w)).includes('Le pays ne se change pas ici'));
+    const corpsPays = JSON.parse(calls[1].options.body).address;
+    assert.ok(!('name' in corpsPays), 'nom vidé non envoyé');
+    assert.strictEqual(corpsPays.country, 'RE', 'nouveau pays envoyé');
+    assert.ok(text(section(t.w)).includes('La Réunion'), 'nouveau pays affiché');
 
     // Sans pays : aucun présélectionné, il faut en choisir un
     t = page();

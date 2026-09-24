@@ -862,7 +862,6 @@
         input.appendChild(o);
       }
       input.value = value || '';
-      if (opts.locked) input.disabled = true;
     } else {
       input = el('input', 'ordo-addr-input');
       input.type = 'text';
@@ -919,10 +918,10 @@
       var l3 = el('div', 'ordo-addr-line');
       l3.appendChild(addressField('postalCode', 'Code postal', addr.postalCode, { autocomplete: 'postal-code', required: true, short: true, max: 20 }));
       l3.appendChild(addressField('city', 'Ville', addr.city, { autocomplete: 'address-level2', required: true, max: 100 }));
-      // Le pays fixe la TVA des prochaines factures : il ne se change pas ici (le serveur le refuse aussi).
-      l3.appendChild(addressField('country', 'Pays', addr.country, addr.country
-        ? { options: COUNTRIES, locked: true, hint: 'Pour changer de pays : ' + HELP_EMAIL }
-        : { options: COUNTRIES }));
+      l3.appendChild(addressField('country', 'Pays', addr.country, {
+        options: COUNTRIES,
+        hint: 'Le pays détermine la TVA appliquée à vos prochaines factures.'
+      }));
       form.appendChild(l3);
       form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
       var error = el('p', 'ordo-addr-error');
@@ -969,8 +968,6 @@
           reportIfActionable(err);
           error.textContent = err && err.status === 401
             ? 'Votre session a expiré : reconnectez-vous puis réessayez.'
-            : err && err.status === 409
-            ? 'Le pays ne se change pas ici : écrivez à ' + HELP_EMAIL + '.'
             : (err && err.status === 400
               ? 'Vérifiez les champs de l’adresse.'
               : 'L’adresse n’a pas pu être enregistrée. Réessayez dans un instant.');
