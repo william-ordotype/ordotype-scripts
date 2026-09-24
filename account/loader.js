@@ -87,6 +87,12 @@
       // 100 % d'emblée depuis le 2026-09-22, après la recette sur de vrais comptes avec l'override.
       // Si la liste ne se charge pas, l'ancienne section du site reste affichée.
       'www.ordotype.fr': 100
+    },
+    // Nouvelle présentation de « Mon profil » et « Connexion et Sécurité ». Les anciens blocs
+    // restent affichés tant que le script n'a pas rendu la nouvelle présentation.
+    'profile-overview.js': {
+      'ordotype.webflow.io': 100,
+      'www.ordotype.fr': 0
     }
   };
   const HOST = window.location.hostname;
@@ -198,6 +204,7 @@
     'billing-portal.js',
     'subscriptions-overview.js', // « Mes abonnements » list. Gated by GATES.
     'invoice-emails.js', // Opt-in « recevoir mes factures par e-mail ». Gated by GATES.
+    'profile-overview.js', // Mon profil + Connexion et Sécurité, après les scripts dont il déplace les blocs. Gated by GATES.
     'phone-input.js'
   ];
 
