@@ -186,7 +186,7 @@ abbr:hover::after {
 }
 
 .rc-html a[href^="/avis-specialise"]:hover::after {
-    content: "Annuaire Omnidoc, partenaire gratuit";
+    content: "Téléexpertise d’Omnidoc";
     position: absolute;
     bottom: 1.5em;
     left: 50%;
