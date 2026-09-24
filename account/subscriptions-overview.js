@@ -945,7 +945,7 @@
           values[k] = String(form.elements[k].value || '').trim();
         });
         // Un nom vidé n'efface pas celui des factures : il n'est simplement pas envoyé.
-        // x
+        if (!values.name && addr.name) delete values.name;
         if (!values.line1 || !values.postalCode || !values.city || !values.country) {
           error.textContent = 'Renseignez l’adresse, le code postal, la ville et le pays.';
           error.hidden = false;
