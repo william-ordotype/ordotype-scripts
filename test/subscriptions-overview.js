@@ -1181,6 +1181,129 @@ async function main() {
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
 
+  // Adresse de facturation
+  {
+    const ADRESSE = { name: 'Dr Claire Martin', line1: '12 rue de la République', line2: '', postalCode: '69002', city: 'Lyon', country: 'FR' };
+    const PM = [{ type: 'card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2028, expired: false, expiresSoon: false, usedBy: [] }];
+    const corps = (adresse) => ({ subscriptions: CARDS.slice(0, 1), paymentMethods: PM, invoices: [], billingAddress: adresse });
+    const section = (w) => w.document.querySelector('.ordo-addr');
+
+    // Lecture : après le moyen de paiement, avant l'aide ; pays en toutes lettres
+    let t = page();
+    installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    const s1 = section(t.w);
+    assert.ok(s1, 'section adresse affichée');
+    assert.ok(t.w.document.querySelector('.ordo-pm').compareDocumentPosition(s1) & 4, 'après le moyen de paiement');
+    assert.ok(text(s1).includes('Dr Claire Martin'));
+    assert.ok(text(s1).includes('69002 Lyon'));
+    assert.ok(text(s1).includes('France'));
+    assert.ok(text(s1).includes('Modifier'));
+
+    // Sans client Stripe : pas de section ; nom absent : « Non renseigné » ; sans adresse : « Ajouter »
+    t = page();
+    installFetch(t.w, [{ status: 200, body: corps(null) }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(section(t.w), null);
+    t = page();
+    installFetch(t.w, [{ status: 200, body: corps({ name: '', line1: '', line2: '', postalCode: '', city: '', country: '' }) }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.ok(text(section(t.w)).includes('Non renseigné'));
+    assert.ok(section(t.w).querySelector('.ordo-subs-btn.is-primary'), '« Ajouter » en bouton principal');
+
+    // Modifier : champs préremplis ; Annuler revient à la lecture
+    t = page();
+    let calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    section(t.w).querySelector('.ordo-subs-btn').click();
+    let form = section(t.w).querySelector('form');
+    assert.strictEqual(form.elements.line1.value, '12 rue de la République');
+    assert.strictEqual(form.elements.country.value, 'FR');
+    assert.ok(form.elements.country.disabled, 'pays verrouillé quand il existe');
+    [...form.querySelectorAll('button')].find((b) => b.textContent === 'Annuler').click();
+    assert.strictEqual(section(t.w).querySelector('form'), null);
+    assert.strictEqual(t.w.document.activeElement, section(t.w).querySelector('.ordo-subs-btn'), 'focus rendu au bouton');
+
+    // Champ obligatoire manquant : message, aucun appel
+    section(t.w).querySelector('.ordo-subs-btn').click();
+    form = section(t.w).querySelector('form');
+    form.elements.city.value = '  ';
+    form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
+    assert.strictEqual(calls.length, 1, 'pas d\'appel');
+    assert.ok(!form.querySelector('.ordo-addr-error').hidden);
+
+    // Enregistrement : corps envoyé, puis lecture à jour et confirmation
+    t = page();
+    const nouvelle = { ...ADRESSE, line1: '3 place Bellecour', line2: 'Bât. B' };
+    calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 200, body: { ok: true, billingAddress: nouvelle } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    section(t.w).querySelector('.ordo-subs-btn').click();
+    form = section(t.w).querySelector('form');
+    form.elements.line1.value = ' 3 place Bellecour ';
+    form.elements.line2.value = 'Bât. B';
+    form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
+    await wait(60);
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls[1].options.method, 'POST');
+    const envoye = JSON.parse(calls[1].options.body);
+    assert.strictEqual(envoye.action, 'address_update');
+    assert.deepStrictEqual(envoye.address, { name: 'Dr Claire Martin', line1: '3 place Bellecour', line2: 'Bât. B', postalCode: '69002', city: 'Lyon', country: 'FR' });
+    assert.ok(text(section(t.w)).includes('Adresse enregistrée.'));
+    assert.ok(text(section(t.w)).includes('3 place Bellecour'));
+
+    // Nom vidé : non envoyé (le nom actuel est gardé) ; pays verrouillé : refus 409 expliqué
+    t = page();
+    calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 409, body: { error: 'country_locked' } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    section(t.w).querySelector('.ordo-subs-btn').click();
+    form = section(t.w).querySelector('form');
+    form.elements.name.value = '';
+    form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
+    await wait(60);
+    assert.ok(!('name' in JSON.parse(calls[1].options.body).address), 'nom vidé non envoyé');
+    assert.ok(text(section(t.w)).includes('Le pays ne se change pas ici'));
+
+    // Sans pays : aucun présélectionné, il faut en choisir un
+    t = page();
+    calls = installFetch(t.w, [{ status: 200, body: corps({ name: '', line1: '', line2: '', postalCode: '', city: '', country: '' }) }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    section(t.w).querySelector('.ordo-subs-btn').click();
+    form = section(t.w).querySelector('form');
+    assert.strictEqual(form.elements.country.value, '');
+    assert.ok(!form.elements.country.disabled);
+    form.elements.line1.value = '1 rue Test';
+    form.elements.postalCode.value = '97400';
+    form.elements.city.value = 'Saint-Denis';
+    form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
+    assert.strictEqual(calls.length, 1, 'pas d\'appel sans pays');
+
+    // Refus du serveur : message, boutons réactivés, rien d'autre d'effacé
+    t = page();
+    calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 400, body: { error: 'invalid_body' } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    section(t.w).querySelector('.ordo-subs-btn').click();
+    form = section(t.w).querySelector('form');
+    form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
+    await wait(60);
+    assert.ok(text(section(t.w)).includes('Vérifiez les champs'));
+    assert.ok(![...form.querySelectorAll('button')].some((b) => b.disabled));
+
+    // Valeurs rendues comme du texte
+    t = page();
+    installFetch(t.w, [{ status: 200, body: corps({ ...ADRESSE, name: '<img src=x onerror=alert(1)>' }) }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(section(t.w).querySelector('img'), null);
+  }
+
   console.log('subscriptions-overview: OK');
 }
 
