@@ -21,7 +21,8 @@
   var PREFIX = '[ProfileOverview]';
   var HTML_CLASS = 'ordo-profil-v2';
   var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
-  var SAVE_CHECK_MS = 1500;
+  var SAVE_POLL_MS = 1500;
+  var SAVE_POLL_TRIES = 6; // ~9 s pour voir l'enregistrement arriver chez Memberstack
   var VIDE = 'Non renseigné';
 
   var account = window.OrdoAccount;
@@ -107,6 +108,21 @@
     node.style.fontWeight = value ? '' : '400';
   }
 
+  /** Déplacements faits par ce script, pour tout remettre en place si le rendu échoue. */
+  var moved = [];
+  function move(node, target, before) {
+    if (!node || !target || node.parentNode === target) return;
+    moved.push({ node: node, parent: node.parentNode, next: node.nextSibling });
+    target.insertBefore(node, before || null);
+  }
+  function restoreMoved() {
+    for (var i = moved.length - 1; i >= 0; i--) {
+      var m = moved[i];
+      try { m.parent.insertBefore(m.node, m.next && m.next.parentNode === m.parent ? m.next : null); } catch (e) { /* no-op */ }
+    }
+    moved = [];
+  }
+
   function show(node, on, display) {
     if (node) node.style.display = on ? (display || '') : 'none';
   }
@@ -190,6 +206,8 @@
       var el = inputs[i];
       var key = el.getAttribute('data-ms-member');
       if (el.type === 'password' || el.type === 'checkbox' || el.type === 'hidden') continue;
+      // Le finder SIREN écrit lui-même ce champ : y remettre la valeur du chargement annulerait un SIREN tout juste enregistré.
+      if (key === 'siret') continue;
       if (key === 'email') { el.value = email(); continue; }
       if (Object.prototype.hasOwnProperty.call(fields(), key)) el.value = text(fields()[key]);
     }
@@ -266,9 +284,14 @@
       track('edit', section, 'no-form');
       return false;
     }
+    closeOthers(section);
     for (var i = 0; i < blocks.length; i++) {
-      if (blocks[i].parentNode !== c.slot) c.slot.appendChild(blocks[i]);
+      var from = blocks[i].parentNode;
+      var origin = from && from.getAttribute && from.getAttribute('data-ordo-form-slot');
+      if (from !== c.slot) c.slot.appendChild(blocks[i]);
+      if (origin && origin !== section) closeEdit(origin);
       show(blocks[i], true);
+      resetFormState(blocks[i]);
       refill(blocks[i]);
       keepUnlistedValues(blocks[i]);
       if (section === 'pro') {
@@ -277,7 +300,6 @@
       }
       bindForm(blocks[i], section);
     }
-    closeOthers(section);
     show(c.lecture, false);
     show(c.button, false);
     show(c.slot, true, 'block');
@@ -285,6 +307,14 @@
     if (focus && typeof focus.focus === 'function') focus.focus();
     track('edit', section, 'open');
     return true;
+  }
+
+  /** Après un enregistrement, Webflow masque le formulaire et affiche son message : on revient aux champs. */
+  function resetFormState(block) {
+    var form = block.tagName === 'FORM' ? block : block.querySelector('form');
+    if (form) form.style.display = '';
+    var msgs = block.querySelectorAll('.w-form-done, .w-form-fail');
+    for (var i = 0; i < msgs.length; i++) msgs[i].style.display = 'none';
   }
 
   function closeEdit(section) {
@@ -295,13 +325,16 @@
     show(c.button, true);
     var blocks = c.slot.querySelectorAll('.w-form, form');
     for (var i = 0; i < blocks.length; i++) refill(blocks[i]);
+    // Statut remis à sa valeur : les scripts qui en dépendent (mode d'exercice, finder SIREN, TVA) doivent le savoir.
+    var statut = c.slot.querySelector('select[data-ms-member="statut"]');
+    if (statut) statut.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   function closeOthers(except) {
     var slots = document.querySelectorAll('[data-ordo-v2] [data-ordo-form-slot]');
     for (var i = 0; i < slots.length; i++) {
       var s = slots[i].getAttribute('data-ordo-form-slot');
-      if (s !== except && s !== 'suppression' && slots[i].style.display !== 'none' && slots[i].childNodes.length) closeEdit(s);
+      if (s !== except && s !== 'suppression' && slots[i].style.display !== 'none') closeEdit(s);
     }
   }
 
@@ -339,7 +372,7 @@
     form.addEventListener('submit', function() {
       var owner = block.parentNode && block.parentNode.getAttribute('data-ordo-form-slot');
       track('edit', owner || section, 'submit');
-      setTimeout(function() { afterSave(block, owner || section); }, SAVE_CHECK_MS);
+      watchSave(block, owner || section, 0);
     });
   }
 
@@ -348,15 +381,53 @@
     return !!(fail && window.getComputedStyle(fail).display !== 'none');
   }
 
-  /** Après un enregistrement : relire le membre, remettre la lecture à jour, refermer sauf échec. */
-  function afterSave(block, section) {
-    refresh().then(function() {
+  function hiddenIn(el, block) {
+    for (var n = el; n && n !== block; n = n.parentNode) {
+      if (n.style && n.style.display === 'none') return true;
+    }
+    return false;
+  }
+
+  /** Les valeurs du formulaire sont-elles celles que Memberstack a maintenant enregistrées ? */
+  function saved(block) {
+    var inputs = block.querySelectorAll('input[data-ms-member], select[data-ms-member], textarea[data-ms-member]');
+    var compared = 0;
+    for (var i = 0; i < inputs.length; i++) {
+      var el = inputs[i];
+      var key = el.getAttribute('data-ms-member');
+      if (el.type === 'password' || el.type === 'checkbox' || el.type === 'hidden' || key === 'siret') continue;
+      if (hiddenIn(el, block)) continue; // champ masqué (interne…) : non concerné
+      var current = key === 'email' ? email() : text(fields()[key]);
+      if (text(el.value) !== current) return false;
+      compared += 1;
+    }
+    return compared > 0;
+  }
+
+  /**
+   * Après « Enregistrer » : on ne referme la carte qu'une fois l'enregistrement constaté chez
+   * Memberstack. Un échec la laisse ouverte, message compris ; faute de confirmation, elle reste
+   * ouverte aussi, les champs tels que le membre les a saisis.
+   */
+  function watchSave(block, section, attempt) {
+    setTimeout(function() {
       if (failed(block)) {
         track('edit', section, 'failed');
         return;
       }
-      if (section !== 'password') closeEdit(section);
-    });
+      refresh().then(function() {
+        if (failed(block)) {
+          track('edit', section, 'failed');
+        } else if (saved(block)) {
+          track('edit', section, 'saved');
+          if (section !== 'password') closeEdit(section);
+        } else if (attempt + 1 < SAVE_POLL_TRIES) {
+          watchSave(block, section, attempt + 1);
+        } else {
+          track('edit', section, 'unconfirmed');
+        }
+      });
+    }, SAVE_POLL_MS);
   }
 
   // --- Blocs déplacés d'office -----------------------------------------------------------------
@@ -365,7 +436,7 @@
   function placeSirenFinder() {
     var slot = profil && profil.querySelector('[data-ordo-siren-slot]');
     var root = document.querySelector('.ordo-siren');
-    if (slot && root && root.parentNode !== slot) slot.appendChild(root);
+    if (slot && root) move(root, slot);
   }
 
   function placeDelete() {
@@ -387,9 +458,23 @@
     });
   }
 
+  /**
+   * Le bouton Google d'origine vit dans le conteneur Memberstack `manage-providers`, qui affiche
+   * « Compte Google connecté » et la croix de déliaison. On déplace ce conteneur à la place du
+   * bouton de la carte ; sans lui, le bouton de la carte relaie le clic.
+   */
   function placeGoogle() {
     var btn = securite && securite.querySelector('[data-ordo-google]');
     if (!btn) return;
+    var providers = outsideV2('[data-ms-auth="manage-providers"]');
+    if (providers && !providers.closest('[data-ordo-v2]')) {
+      move(providers, btn.parentNode, btn);
+      show(btn, false);
+      providers.addEventListener('click', function(e) {
+        if (e.target && e.target.closest && e.target.closest('[data-ms-auth-provider]')) track('google', 'connexion', 'click');
+      });
+      return;
+    }
     btn.addEventListener('click', function(e) {
       e.preventDefault();
       var original = outsideV2('[data-ms-auth-provider="google"]');
@@ -421,7 +506,7 @@
     if (!block) return;
     var slot = block.querySelector('[data-ordo-totp-slot]');
     var container = document.getElementById('ordotype-totp-section');
-    if (container && slot && container.parentNode !== slot) slot.appendChild(container);
+    if (container && slot) move(container, slot);
     var last = null;
     function update() {
       var state = totpState(block, container);
@@ -461,7 +546,14 @@
     '[data-ordo-v2] .ot-totp__btn--primary:hover{background:#263fd3;border-color:#263fd3}',
     '[data-ordo-v2] .ot-totp__btn--secondary{color:#3454f6;border-color:#3454f6}',
     '[data-ordo-v2] .ot-totp__btn--danger{color:#ba1b1b;border-color:#ba1b1b}',
-    '[data-ordo-v2] .ot-totp__badge{border-radius:4px;background:#106820;color:#fff}'
+    '[data-ordo-v2] .ot-totp__badge{border-radius:4px;background:#106820;color:#fff}',
+    // Bouton Google d'origine, au format des boutons des cartes.
+    '[data-ordo-v2] [data-ms-auth="manage-providers"] > :not([data-ms-auth-provider]){display:none}',
+    '[data-ordo-v2] [data-ms-auth="manage-providers"]{flex-shrink:0}',
+    '[data-ordo-v2] .social-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;margin:0;padding:8px 16px;border:1px solid #0c0e1680;border-radius:4px;background:transparent;color:#0c0e16;font-size:14px;font-weight:600;text-decoration:none;box-shadow:none}',
+    '[data-ordo-v2] .social-btn:hover{border-color:#0c0e16}',
+    '[data-ordo-v2] .social-btn .social-image{width:18px;height:18px;margin:0}',
+    '@media screen and (max-width:767px){[data-ordo-v2] [data-ms-auth="manage-providers"]{width:100%;order:1}[data-ordo-v2] .social-btn{width:100%;min-height:44px}}'
   ].join('\n');
 
   function injectStyles() {
@@ -480,8 +572,19 @@
       return Promise.resolve(ms.getCurrentMember({ useCache: false })).then(function(res) {
         var data = res && res.data;
         if (!data || !data.id) return;
-        member.customFields = data.customFields || member.customFields;
-        if (data.auth) member.auth = data.auth;
+        // Mise à jour de l'objet existant, jamais un remplacement : d'autres scripts
+        // (finder SIREN, memberstack-utils) tiennent la même référence et y écrivent.
+        if (!member.customFields) member.customFields = {};
+        var cf = data.customFields || {};
+        for (var k in cf) {
+          if (Object.prototype.hasOwnProperty.call(cf, k)) member.customFields[k] = cf[k];
+        }
+        if (data.auth) {
+          if (!member.auth) member.auth = {};
+          for (var a in data.auth) {
+            if (Object.prototype.hasOwnProperty.call(data.auth, a)) member.auth[a] = data.auth[a];
+          }
+        }
         render();
       });
     }).catch(function(err) {
@@ -516,6 +619,7 @@
       console.log(PREFIX, 'Shown');
     } catch (err) {
       document.documentElement.classList.remove(HTML_CLASS);
+      restoreMoved();
       track('view', '', 'failed');
       report('ProfileOverviewInit', err);
       return;

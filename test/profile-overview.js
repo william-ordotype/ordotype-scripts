@@ -181,16 +181,77 @@ async function test(name, fn) {
     assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="contact"]')), 'Contact refermé');
   });
 
+  await test('l\'e-mail repart de Sécurité vers Contact : la ligne Sécurité se referme', async () => {
+    const { w, d } = await page();
+    d.querySelector('[data-ordo-edit="email"]').click();
+    d.querySelector('[data-ordo-edit="contact"]').click();
+    assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="email"]')), 'carte vide refermée');
+    assert.ok(visible(w, d.querySelector('[data-ordo-edit="email"]')), '« Modifier » de nouveau là');
+  });
+
+  await test('« Annuler » après un changement de statut prévient les autres scripts', async () => {
+    const { w, d } = await page();
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    const statut = d.querySelector('[data-ordo-form-slot="pro"] select[data-ms-member="statut"]');
+    let vu = null;
+    statut.addEventListener('change', (e) => { vu = e.target.value; });
+    statut.value = 'Interne';
+    const slot = d.querySelector('[data-ordo-form-slot="pro"]');
+    [...slot.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Annuler').click();
+    assert.strictEqual(vu, 'Medecin');
+  });
+
   await test('enregistrement : relecture du membre puis retour à la lecture', async () => {
     const fresh = clone(MEDECIN);
     fresh.customFields.prnom = 'Clara';
     const { w, d } = await page({ fresh });
     d.querySelector('[data-ordo-edit="perso"]').click();
     const form = d.querySelector('[data-ordo-form-slot="perso"] form');
+    form.querySelector('#first-name').value = 'Clara';
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     await tick(1700);
     assert.strictEqual(champ(d, 'prnom'), 'Clara');
     assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="perso"]')));
+  });
+
+  await test('enregistrement non constaté : la carte reste ouverte, la saisie aussi', async () => {
+    const { w, d, pushed } = await page();
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    const form = d.querySelector('[data-ordo-form-slot="perso"] form');
+    form.querySelector('#first-name').value = 'Clara'; // Memberstack renvoie toujours « Claire »
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(1700);
+    assert.ok(visible(w, d.querySelector('[data-ordo-form-slot="perso"]')), 'pas refermée sur une supposition');
+    assert.strictEqual(form.querySelector('#first-name').value, 'Clara');
+    assert.ok(!pushed.some((p) => p.profile_outcome === 'saved'));
+  });
+
+  await test('relecture : l\'objet membre partagé est mis à jour, pas remplacé ; le SIRET du finder survit', async () => {
+    const fresh = clone(MEDECIN);
+    fresh.customFields.siret = '11111111111111';
+    const m = clone(MEDECIN);
+    m.customFields.siret = '11111111111111';
+    let ref = null; // référence tenue par les autres scripts, prise AVANT la relecture
+    const { w, d } = await page({ member: m, fresh, before: (win) => { ref = win.OrdoAccount.member.customFields; } });
+    await tick(10);
+    assert.strictEqual(w.OrdoAccount.member.customFields, ref, 'même objet après relecture');
+    // Le finder vient d'enregistrer un nouveau SIREN : il écrit le champ caché.
+    d.getElementById('SIRET').value = '552100554';
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.strictEqual(d.getElementById('SIRET').value, '552100554', 'SIRET du finder conservé');
+  });
+
+  await test('après un enregistrement réussi, « Modifier » rouvre bien les champs', async () => {
+    const { w, d } = await page();
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    const wrap = d.querySelector('[data-ordo-form-slot="perso"] .w-form');
+    // État de succès Webflow : formulaire masqué, message affiché.
+    wrap.querySelector('form').style.display = 'none';
+    wrap.querySelector('.w-form-done').style.display = 'block';
+    [...wrap.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Annuler').click();
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    assert.ok(visible(w, wrap.querySelector('form')), 'champs de nouveau visibles');
+    assert.ok(!visible(w, wrap.querySelector('.w-form-done')), 'message de succès retiré');
   });
 
   await test('double authentification : cachée si non flaggé, affichée si flaggé', async () => {
@@ -211,9 +272,19 @@ async function test(name, fn) {
     assert.ok(visible(r.w, r.d.querySelector('[data-ordo-2fa-block]')), 'module déjà monté avant le script');
   });
 
-  await test('Google : relaie le clic au lien Memberstack d\'origine', async () => {
+  await test('Google : le bloc Memberstack d\'origine (état connecté, déliaison) prend la place du bouton', async () => {
+    const { w, d } = await page();
+    const providers = d.querySelector('[data-ordo-v2="securite"] [data-ms-auth="manage-providers"]');
+    assert.ok(providers, 'conteneur déplacé dans la carte');
+    assert.ok(providers.querySelector('[data-ms-auth-disconnect]'), 'déliaison conservée');
+    assert.ok(!visible(w, d.querySelector('[data-ordo-google]')), 'bouton de la carte masqué');
+  });
+
+  await test('Google sans conteneur Memberstack : le bouton de la carte relaie le clic', async () => {
     let clicked = 0;
     const { d } = await page({ before: (w) => {
+      const p = w.document.querySelector('[data-ms-auth="manage-providers"]');
+      p.removeAttribute('data-ms-auth');
       w.document.querySelector('[data-ms-auth-provider="google"]').addEventListener('click', () => { clicked += 1; });
     } });
     d.querySelector('[data-ordo-google]').click();
@@ -242,7 +313,7 @@ async function test(name, fn) {
     const m = clone(MEDECIN);
     m.customFields.prnom = '<img src=x onerror=alert(1)>';
     const { d } = await page({ member: m });
-    assert.ok(!d.querySelector('[data-ordo-v2] img'));
+    assert.ok(!d.querySelector('[data-ordo-v2] [data-ordo-champ] img, [data-ordo-v2] [data-ordo-nom-complet] img'));
     assert.strictEqual(champ(d, 'prnom'), '<img src=x onerror=alert(1)>');
   });
 
@@ -263,6 +334,19 @@ async function test(name, fn) {
     assert.strictEqual(reports.length, 1);
     assert.strictEqual(reports[0].name, 'ProfileOverviewInit');
     assert.ok(pushed.some((p) => p.profile_action === 'view' && p.profile_outcome === 'failed'));
+  });
+
+  await test('secours : une erreur après les déplacements remet finder et module TOTP à leur place', async () => {
+    const { d } = await page({ before: (w) => {
+      const root = w.document.createElement('div');
+      root.className = 'ordo-siren';
+      w.document.getElementById('SIRET').parentNode.appendChild(root);
+      Object.defineProperty(w, 'OrdoRollout', { get() { throw new Error('boom'); } });
+    } });
+    assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
+    assert.ok(!d.querySelector('[data-ordo-v2] .ordo-siren'), 'finder revenu dans l\'ancien formulaire');
+    assert.ok(!d.querySelector('[data-ordo-v2] #ordotype-totp-section'), 'module TOTP revenu');
+    assert.ok(!d.querySelector('[data-ordo-v2] [data-ms-auth="manage-providers"]'), 'Google revenu');
   });
 
   await test('membre absent : aucun effet', async () => {
