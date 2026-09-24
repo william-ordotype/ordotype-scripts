@@ -1224,7 +1224,8 @@ async function main() {
     assert.strictEqual(form.elements.line1.value, '12 rue de la République');
     assert.strictEqual(form.elements.country.value, 'FR');
     assert.ok(!form.elements.country.disabled, 'pays modifiable');
-    assert.ok(text(form).includes('Le pays détermine la TVA'), 'phrase TVA sous le pays');
+    assert.ok(text(form).includes('Le pays ou la collectivité d\'outre-mer détermine la TVA'), 'phrase TVA sous le pays');
+    assert.ok(text(form).includes('Pays (outre-mer inclus)'), 'libellé du pays');
     [...form.querySelectorAll('button')].find((b) => b.textContent === 'Annuler').click();
     assert.strictEqual(section(t.w).querySelector('form'), null);
     assert.strictEqual(t.w.document.activeElement, section(t.w).querySelector('.ordo-subs-btn'), 'focus rendu au bouton');
