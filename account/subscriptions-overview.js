@@ -79,6 +79,22 @@
     '.ordo-subs-btn[disabled]{opacity:.5;cursor:default}',
     '.ordo-subs-msg{flex-basis:100%;text-align:right}',
     '.ordo-pm-row{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem 1rem}',
+    '.ordo-addr-sub{margin:-.75rem 0 0;font-size:.875rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
+    '.ordo-addr-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:.75rem 1rem}',
+    '.ordo-addr-grid{flex:1 1 20rem;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem 1.5rem}',
+    '.ordo-addr-label{font-size:.875rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
+    '.ordo-addr-value{font-size:1rem;line-height:1.5;font-weight:500;overflow-wrap:anywhere}',
+    '.ordo-addr-value.is-empty{font-weight:400;color:var(--neutral-500,#47505c)}',
+    '.ordo-addr-form{display:flex;flex-direction:column;gap:1rem}',
+    '.ordo-addr-line{display:flex;flex-wrap:wrap;gap:1rem}',
+    '.ordo-addr-field{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:.375rem}',
+    '.ordo-addr-field.is-short{flex:0 1 10rem}',
+    '.ordo-addr-field label{font-size:.875rem;line-height:1.5;font-weight:600}',
+    '.ordo-addr-field label span{font-weight:400;color:var(--neutral-500,#47505c)}',
+    '.ordo-addr-input{width:100%;min-height:44px;box-sizing:border-box;margin:0;padding:.5rem .75rem;border:1px solid var(--base-500,#0c0e1680);border-radius:.25rem;background:#fff;color:var(--base-900,#0c0e16);font:inherit;font-size:1rem}',
+    '.ordo-addr-input:focus{outline:2px solid var(--primary-500,#3454f6);outline-offset:1px}',
+    'select.ordo-addr-input{-webkit-appearance:none;appearance:none;padding-right:2.75rem;background:#fff url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%230c0e16\' stroke-width=\'1.8\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E") no-repeat right .875rem center}',
+    '.ordo-addr-error{margin:0;font-size:.875rem;line-height:1.5;color:var(--error-700,#ba1b1b)}',
     '.ordo-pm-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:48px;height:32px;box-sizing:border-box;border:1px solid var(--base-200,#0c0e1633);border-radius:.25rem;color:var(--base-900,#0c0e16)}',
     '.ordo-pm-icon.is-alert{border-color:var(--error-300,#fca6a6);color:var(--error-700,#ba1b1b)}',
     '.ordo-pm-text{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:2px}',
@@ -115,6 +131,7 @@
     '.ordo-subs-skel{height:132px;border-radius:.25rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
     '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
     '@media (prefers-reduced-motion:reduce){.ordo-subs-skel{animation:none}}',
+    '@media (max-width:767px){.ordo-addr-grid{grid-template-columns:minmax(0,1fr)}.ordo-addr-field.is-short{flex:1 1 12rem}}',
     '@media (max-width:479px){.ordo-subs-card{padding:1rem}.ordo-subs-amount{font-size:1.125rem}.ordo-subs-foot{flex-direction:column}.ordo-subs-btn{width:100%}.ordo-subs-msg{text-align:left}}'
   ].join('');
 
@@ -498,7 +515,7 @@
       msg.textContent = 'Traitement en cours…';
       request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(data) {
         trackOutcome('reabonner', c.status, 'ok');
-        render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices, data.others);
+        render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices, data.others, data.address);
       }).catch(function(err) {
         btn.disabled = false;
         if (err && err.status === 409) msg.textContent = 'Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.';
@@ -777,6 +794,186 @@
     return root;
   }
 
+  // --- Adresse de facturation --------------------------------------------------------------
+
+  // Pays proposés : France et outre-mer d'abord (codes ISO propres à Stripe), puis les autres.
+  var COUNTRIES = ['FR', 'RE', 'GP', 'MQ', 'GF', 'YT', 'PM', 'BL', 'MF', 'NC', 'PF', 'WF',
+    'BE', 'LU', 'CH', 'MC', 'DE', 'ES', 'IT', 'PT', 'NL', 'GB', 'IE', 'MA', 'DZ', 'TN', 'SN', 'CI',
+    'CM', 'MG', 'MU', 'LB', 'CA', 'US'];
+
+  function countryName(code) {
+    if (!code) return '';
+    try {
+      var names = new Intl.DisplayNames(['fr'], { type: 'region' });
+      return names.of(code) || code;
+    } catch (e) {
+      return code;
+    }
+  }
+
+  function addressFilled(a) {
+    return !!(a && a.line1);
+  }
+
+  function addressValue(label, lines) {
+    var box = el('div');
+    box.appendChild(el('div', 'ordo-addr-label', label));
+    var value = el('div', 'ordo-addr-value' + (lines.length ? '' : ' is-empty'));
+    if (!lines.length) value.textContent = 'Non renseigné';
+    for (var i = 0; i < lines.length; i++) {
+      if (i) value.appendChild(document.createElement('br'));
+      value.appendChild(document.createTextNode(lines[i]));
+    }
+    box.appendChild(value);
+    return box;
+  }
+
+  function addressLines(a) {
+    var lines = [];
+    if (a.line1) lines.push(a.line1);
+    if (a.line2) lines.push(a.line2);
+    var city = [a.postalCode, a.city].filter(Boolean).join(' ');
+    if (city) lines.push(city);
+    if (a.country) lines.push(countryName(a.country));
+    return lines;
+  }
+
+  function addressField(name, label, value, opts) {
+    opts = opts || {};
+    var field = el('div', 'ordo-addr-field' + (opts.short ? ' is-short' : ''));
+    var id = 'ordo-addr-' + name;
+    var lab = el('label', null, label);
+    if (opts.optional) lab.appendChild(el('span', null, ' (facultatif)'));
+    lab.setAttribute('for', id);
+    field.appendChild(lab);
+    var input;
+    if (opts.options) {
+      input = el('select', 'ordo-addr-input');
+      var codes = opts.options.slice();
+      if (value && codes.indexOf(value) === -1) codes.unshift(value);
+      for (var i = 0; i < codes.length; i++) {
+        var o = el('option', null, countryName(codes[i]));
+        o.value = codes[i];
+        input.appendChild(o);
+      }
+      input.value = value || 'FR';
+    } else {
+      input = el('input', 'ordo-addr-input');
+      input.type = 'text';
+      input.value = value || '';
+      if (opts.placeholder) input.placeholder = opts.placeholder;
+      if (opts.autocomplete) input.setAttribute('autocomplete', opts.autocomplete);
+      if (opts.required) input.required = true;
+      input.maxLength = opts.max || 200;
+    }
+    input.id = id;
+    input.name = name;
+    field.appendChild(input);
+    return field;
+  }
+
+  function addressSection(addr) {
+    var root = el('div', 'ordo-subs ordo-addr');
+    root.appendChild(el('h3', 'ordo-subs-title', 'Adresse de facturation'));
+    root.appendChild(el('p', 'ordo-addr-sub', 'Elle figure sur vos factures.'));
+    var body = el('div');
+    root.appendChild(body);
+
+    function showRead(flash) {
+      body.textContent = '';
+      if (flash) {
+        var ok = el('p', 'ordo-subs-flash', flash);
+        ok.setAttribute('role', 'status');
+        body.appendChild(ok);
+      }
+      var row = el('div', 'ordo-addr-row');
+      var grid = el('div', 'ordo-addr-grid');
+      grid.appendChild(addressValue('Nom sur les factures', addr.name ? [addr.name] : []));
+      grid.appendChild(addressValue('Adresse', addressFilled(addr) ? addressLines(addr) : []));
+      row.appendChild(grid);
+      var edit = mark(button(addressFilled(addr) ? 'Modifier' : 'Ajouter', !addressFilled(addr)), 'adresse_modifier');
+      edit.addEventListener('click', function() { showEdit(); });
+      row.appendChild(edit);
+      body.appendChild(row);
+    }
+
+    function showEdit() {
+      body.textContent = '';
+      var form = el('form', 'ordo-addr-form');
+      form.noValidate = true;
+      var l1 = el('div', 'ordo-addr-line');
+      l1.appendChild(addressField('name', 'Nom sur les factures', addr.name, { placeholder: 'Nom et prénom, ou raison sociale', autocomplete: 'name', optional: true, max: 100 }));
+      form.appendChild(l1);
+      var l2 = el('div', 'ordo-addr-line');
+      l2.appendChild(addressField('line1', 'Adresse', addr.line1, { autocomplete: 'address-line1', required: true }));
+      l2.appendChild(addressField('line2', 'Complément', addr.line2, { placeholder: 'Bâtiment, étage…', autocomplete: 'address-line2', optional: true }));
+      form.appendChild(l2);
+      var l3 = el('div', 'ordo-addr-line');
+      l3.appendChild(addressField('postalCode', 'Code postal', addr.postalCode, { autocomplete: 'postal-code', required: true, short: true, max: 20 }));
+      l3.appendChild(addressField('city', 'Ville', addr.city, { autocomplete: 'address-level2', required: true, max: 100 }));
+      l3.appendChild(addressField('country', 'Pays', addr.country, { options: COUNTRIES }));
+      form.appendChild(l3);
+      form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
+      var error = el('p', 'ordo-addr-error');
+      error.setAttribute('role', 'alert');
+      error.hidden = true;
+      form.appendChild(error);
+      var actions = el('div', 'ordo-subs-actions');
+      var cancel = mark(button('Annuler', false), 'adresse_annuler');
+      cancel.type = 'button';
+      cancel.addEventListener('click', function() { showRead(); });
+      var save = mark(button('Enregistrer', true), 'adresse_enregistrer');
+      save.type = 'submit';
+      actions.appendChild(cancel);
+      actions.appendChild(save);
+      form.appendChild(actions);
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var values = {};
+        ['name', 'line1', 'line2', 'postalCode', 'city', 'country'].forEach(function(k) {
+          values[k] = String(form.elements[k].value || '').trim();
+        });
+        if (!values.line1 || !values.postalCode || !values.city || !values.country) {
+          error.textContent = 'Renseignez l’adresse, le code postal, la ville et le pays.';
+          error.hidden = false;
+          return;
+        }
+        error.hidden = true;
+        save.disabled = true;
+        cancel.disabled = true;
+        save.textContent = 'Enregistrement…';
+        call('POST', { action: 'address_update', address: values }).then(function(payload) {
+          if (!payload || !payload.billingAddress) {
+            var bad = new Error('account-subscriptions: unexpected address body');
+            bad.status = 200;
+            throw bad;
+          }
+          addr = payload.billingAddress;
+          trackOutcome('adresse_enregistrer', '', 'ok');
+          showRead('Adresse enregistrée.');
+        }).catch(function(err) {
+          trackOutcome('adresse_enregistrer', '', 'failed');
+          reportIfActionable(err);
+          error.textContent = err && err.status === 401
+            ? 'Votre session a expiré : reconnectez-vous puis réessayez.'
+            : (err && err.status === 400
+              ? 'Vérifiez les champs de l’adresse.'
+              : 'L’adresse n’a pas pu être enregistrée. Réessayez dans un instant.');
+          error.hidden = false;
+          save.disabled = false;
+          cancel.disabled = false;
+          save.textContent = 'Enregistrer';
+        });
+      });
+      body.appendChild(form);
+      var first = form.elements.line1;
+      if (first && typeof first.focus === 'function') first.focus();
+    }
+
+    showRead();
+    return root;
+  }
+
   function intro() {
     return el('h3', 'ordo-subs-title', 'Mes abonnements');
   }
@@ -1039,7 +1236,7 @@
     keepBlock(block, false);
   }
 
-  function render(list, flash, pms, invoices, others) {
+  function render(list, flash, pms, invoices, others, address) {
     pms = Array.isArray(pms) ? pms : [];
     others = Array.isArray(others) ? others : [];
     injectStyle();
@@ -1061,6 +1258,7 @@
     }
     anchor.appendChild(root);
     if (pms.length) anchor.appendChild(paymentSection(list, pms, others));
+    if (address) anchor.appendChild(addressSection(address));
     placeInvoices(invoices);
     show();
     hideOldSection();
@@ -1153,7 +1351,8 @@
         list: payload.subscriptions,
         pms: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [],
         others: Array.isArray(payload.otherPaymentMethods) ? payload.otherPaymentMethods : [],
-        invoices: Array.isArray(payload.invoices) ? payload.invoices : null
+        invoices: Array.isArray(payload.invoices) ? payload.invoices : null,
+        address: payload.billingAddress && typeof payload.billingAddress === 'object' ? payload.billingAddress : null
       };
     });
   }
@@ -1223,7 +1422,7 @@
     load().then(function(data) {
       settled = true;
       clearTimeout(skeletonTimer);
-      render(data.list, null, data.pms, data.invoices, data.others);
+      render(data.list, null, data.pms, data.invoices, data.others, data.address);
       track('subscriptions_list', { subs_outcome: 'shown', subs_status: statusesOf(data.list) });
       console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
     }).catch(function(err) {
