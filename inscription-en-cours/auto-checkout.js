@@ -153,6 +153,35 @@
     // Get config from CMS or localStorage fallback
     const config = window.CMS_CHECKOUT_CONFIG || {};
 
+    function readStored(key) {
+        try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    function referrerPath() {
+        try {
+            var ref = new URL(document.referrer);
+            return ref.origin === window.location.origin ? ref.pathname : ref.origin;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // Page d'offre d'où vient l'inscription, marquée pour ne la renvoyer qu'une
+    // fois : si elle échoue encore à passer l'offre, on ne boucle pas.
+    const OFFER_RETRY_PARAM = 'reprise-paiement';
+    function offerPageFromReferrer() {
+        try {
+            var ref = new URL(document.referrer);
+            if (ref.origin !== window.location.origin) return null;
+            if (ref.pathname.indexOf('/inscription-offre-speciale/') !== 0) return null;
+            if (ref.searchParams.has(OFFER_RETRY_PARAM)) return null;
+            ref.searchParams.set(OFFER_RETRY_PARAM, '1');
+            return ref.toString();
+        } catch (e) {
+            return null;
+        }
+    }
+
     // Helper to replace ${window.location.origin} placeholder with actual origin
     const resolveUrl = (url) => {
         if (!url) return url;
@@ -188,6 +217,27 @@
     }
 
     console.log(PREFIX, 'Config:', { priceId, hasCoupon: !!couponId, option, paymentMethods, serverOffer: serverOffer ? serverOffer.offer : null });
+
+    // Offre perdue en route : la fiche ne fixe ni prix ni retour, et la page de
+    // l'offre n'a rien laissé (`signup-cancel-url` absent, pas seulement vide).
+    // Le serveur appliquerait alors son prix par défaut sans coupon : le plein
+    // tarif, sur une inscription partie d'une page qui promettait une remise.
+    // Retour à cette page, une seule fois : elle porte l'offre dans sa propre
+    // configuration et relance le paiement pour le membre, désormais connecté.
+    if (!config.priceId && !config.cancelUrl && !serverOffer && readStored('signup-cancel-url') === null) {
+        var offerPage = offerPageFromReferrer();
+        var lost = new Error('Offre perdue avant le paiement, ' + (offerPage
+            ? 'retour à ' + new URL(offerPage).pathname
+            : 'pas de page d’offre à rejoindre (' + (referrerPath() || 'sans provenance') + '), paiement au prix par défaut'));
+        lost.name = 'OfferLostBeforeCheckout';
+        console.error(PREFIX, lost.message);
+        reportSideEffect(lost);
+        if (offerPage) {
+            trackCheckoutFailure('offer_lost');
+            backToOffer(offerPage);
+            return;
+        }
+    }
 
     // Sans client Stripe après l'attente, l'inscription ne peut pas partir, sauf
     // pour une offre serveur : le serveur retrouve alors le client depuis le membre.

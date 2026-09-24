@@ -1271,6 +1271,14 @@ window.CMS_CHECKOUT_CONFIG = {
 - **Supports `${window.location.origin}` placeholder** in URLs (resolved at runtime)
 - Sends abandon-cart webhook before redirect
 - Shows fallback button if checkout session creation fails
+- **Offer lost on the way**: when the CMS item sets neither `priceId` nor `cancelUrl` and
+  `signup-cancel-url` is absent from localStorage (not merely empty), the offer page's keys
+  never arrived and the server would charge its default price without a coupon. The script
+  reports `OfferLostBeforeCheckout` and, when the referrer is an
+  `/inscription-offre-speciale/*` page, sends the member back to it once
+  (`?reprise-paiement=1`, `checkout_failed` with `offer_lost`): the page carries its own
+  config and restarts the payment for the now logged-in member. A second arrival without
+  keys, or any other referrer, proceeds as before and is still reported.
 
 ### Server-discount offers (relay from the offer page)
 
