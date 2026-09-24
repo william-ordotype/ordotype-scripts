@@ -918,9 +918,9 @@
       var l3 = el('div', 'ordo-addr-line');
       l3.appendChild(addressField('postalCode', 'Code postal', addr.postalCode, { autocomplete: 'postal-code', required: true, short: true, max: 20 }));
       l3.appendChild(addressField('city', 'Ville', addr.city, { autocomplete: 'address-level2', required: true, max: 100 }));
-      l3.appendChild(addressField('country', 'Pays', addr.country, {
+      l3.appendChild(addressField('country', 'Pays (outre-mer inclus)', addr.country, {
         options: COUNTRIES,
-        hint: 'Le pays détermine la TVA appliquée à vos prochaines factures.'
+        hint: 'Le pays ou la collectivité d\'outre-mer détermine la TVA appliquée à vos prochaines factures.'
       }));
       form.appendChild(l3);
       form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
