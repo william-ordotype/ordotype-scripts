@@ -168,6 +168,8 @@
   function track(action, section, outcome) {
     if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
     var payload = { event: 'profile_action', profile_action: action, profile_section: section || '', profile_outcome: outcome || '' };
+    // Les trois valeurs réunies en une seule, lue par une seule dimension GA4.
+    payload.profile_step = action + ':' + (section || '-') + ':' + (outcome || '-');
     var rollout = window.OrdoRollout && window.OrdoRollout['profile-overview.js'];
     if (rollout) {
       payload.rollout_percent = rollout.percent;
@@ -429,7 +431,11 @@
     form.addEventListener('submit', function() {
       var owner = block.parentNode && block.parentNode.getAttribute('data-ordo-form-slot');
       track('edit', owner || section, 'submit');
-      watchSave(block, owner || section, 0);
+      // Chaque envoi remplace la surveillance en cours : un double envoi ne donne qu'une issue,
+      // un renvoi tardif repart pour une fenêtre complète.
+      var run = String(Number(block.getAttribute('data-ordo-watch') || 0) + 1);
+      block.setAttribute('data-ordo-watch', run);
+      watchSave(block, owner || section, 0, run);
     });
   }
 
@@ -445,7 +451,18 @@
     return false;
   }
 
-  /** Les valeurs du formulaire sont-elles celles que Memberstack a maintenant enregistrées ? */
+  // Téléphone reformaté à l'envoi (espaces), e-mail sans casse : même valeur, écriture différente.
+  function comparable(key, v) {
+    var t = text(v);
+    if (key === 'phone') return t.replace(/[\s().-]/g, '');
+    if (key === 'email') return t.toLowerCase();
+    return t;
+  }
+
+  /**
+   * Les valeurs du formulaire sont-elles celles que Memberstack a maintenant enregistrées ?
+   * null : aucun champ comparable (mot de passe), l'enregistrement ne se constate pas.
+   */
   function saved(block) {
     var inputs = block.querySelectorAll('input[data-ms-member], select[data-ms-member], textarea[data-ms-member]');
     var compared = 0;
@@ -455,10 +472,10 @@
       if (el.type === 'password' || el.type === 'checkbox' || el.type === 'hidden' || key === 'siret') continue;
       if (hiddenIn(el, block)) continue; // champ masqué (interne…) : non concerné
       var current = key === 'email' ? email() : text(fields()[key]);
-      if (text(el.value) !== current) return false;
+      if (comparable(key, el.value) !== comparable(key, current)) return false;
       compared += 1;
     }
-    return compared > 0;
+    return compared > 0 ? true : null;
   }
 
   /**
@@ -466,22 +483,32 @@
    * Memberstack. Un échec la laisse ouverte, message compris ; faute de confirmation, elle reste
    * ouverte aussi, les champs tels que le membre les a saisis.
    */
-  function watchSave(block, section, attempt) {
+  function watchSave(block, section, attempt, run) {
+    function current() {
+      return block.getAttribute('data-ordo-watch') === run;
+    }
     setTimeout(function() {
+      if (!current()) return;
       if (failed(block)) {
         track('edit', section, 'failed');
         return;
       }
       refresh().then(function() {
+        if (!current()) return;
+        var state = saved(block);
         if (failed(block)) {
           track('edit', section, 'failed');
-        } else if (saved(block)) {
+        } else if (state === true) {
           track('edit', section, 'saved');
           if (section !== 'password') closeEdit(section);
         } else if (attempt + 1 < SAVE_POLL_TRIES) {
-          watchSave(block, section, attempt + 1);
+          watchSave(block, section, attempt + 1, run);
+        } else if (state === null) {
+          // Rien à comparer (mot de passe) et pas d'erreur affichée : envoyé, pas vérifiable.
+          track('edit', section, 'unverified');
         } else {
           track('edit', section, 'unconfirmed');
+          report('ProfileOverviewSaveUnconfirmed', 'Save not confirmed for section ' + section);
         }
       });
     }, SAVE_POLL_MS);
