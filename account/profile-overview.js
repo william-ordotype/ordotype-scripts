@@ -431,10 +431,11 @@
     form.addEventListener('submit', function() {
       var owner = block.parentNode && block.parentNode.getAttribute('data-ordo-form-slot');
       track('edit', owner || section, 'submit');
-      // Un double envoi ne lance pas une seconde surveillance : la première relit déjà les champs.
-      if (block.getAttribute('data-ordo-watching')) return;
-      block.setAttribute('data-ordo-watching', '1');
-      watchSave(block, owner || section, 0);
+      // Chaque envoi remplace la surveillance en cours : un double envoi ne donne qu'une issue,
+      // un renvoi tardif repart pour une fenêtre complète.
+      var run = String(Number(block.getAttribute('data-ordo-watch') || 0) + 1);
+      block.setAttribute('data-ordo-watch', run);
+      watchSave(block, owner || section, 0, run);
     });
   }
 
@@ -482,34 +483,33 @@
    * Memberstack. Un échec la laisse ouverte, message compris ; faute de confirmation, elle reste
    * ouverte aussi, les champs tels que le membre les a saisis.
    */
-  function watchSave(block, section, attempt) {
-    function done(outcome) {
-      block.removeAttribute('data-ordo-watching');
-      track('edit', section, outcome);
+  function watchSave(block, section, attempt, run) {
+    function current() {
+      return block.getAttribute('data-ordo-watch') === run;
     }
     setTimeout(function() {
+      if (!current()) return;
       if (failed(block)) {
-        done('failed');
+        track('edit', section, 'failed');
         return;
       }
       refresh().then(function() {
+        if (!current()) return;
         var state = saved(block);
         if (failed(block)) {
-          done('failed');
+          track('edit', section, 'failed');
         } else if (state === true) {
-          done('saved');
+          track('edit', section, 'saved');
           if (section !== 'password') closeEdit(section);
         } else if (attempt + 1 < SAVE_POLL_TRIES) {
-          watchSave(block, section, attempt + 1);
+          watchSave(block, section, attempt + 1, run);
         } else if (state === null) {
           // Rien à comparer (mot de passe) et pas d'erreur affichée : envoyé, pas vérifiable.
-          done('unverified');
+          track('edit', section, 'unverified');
         } else {
-          done('unconfirmed');
+          track('edit', section, 'unconfirmed');
           report('ProfileOverviewSaveUnconfirmed', 'Save not confirmed for section ' + section);
         }
-      }, function() {
-        block.removeAttribute('data-ordo-watching');
       });
     }, SAVE_POLL_MS);
   }

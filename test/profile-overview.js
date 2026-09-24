@@ -290,6 +290,22 @@ async function test(name, fn) {
     assert.strictEqual(reports.length, 2, 'un nouvel envoi après la fin de la surveillance est de nouveau surveillé');
   });
 
+  await test('relecture qui ne répond jamais : l\'envoi suivant est tout de même surveillé', async () => {
+    const fresh = clone(MEDECIN);
+    fresh.customFields.prnom = 'Clara';
+    const { w, d, pushed } = await page({ fastPoll: true });
+    let n = 0;
+    w.$memberstackDom.getCurrentMember = () => (n++ === 0 ? new Promise(() => {}) : Promise.resolve({ data: clone(fresh) }));
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    const form = d.querySelector('[data-ordo-form-slot="perso"] form');
+    form.querySelector('#first-name').value = 'Clara';
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(100);
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(200);
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:saved'));
+  });
+
   await test('contact : téléphone reformaté avec espaces à l\'envoi = même numéro, enregistré', async () => {
     const { w, d, pushed, reports } = await page({ fastPoll: true });
     d.querySelector('[data-ordo-edit="contact"]').click();
