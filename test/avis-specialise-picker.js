@@ -108,8 +108,9 @@ select.value = 'derm_venero';
 select.dispatchEvent(new r.w.Event('change'));
 verifier('libre : un choix active le bouton',
   !r.d.getElementById('omd-continue').hasAttribute('aria-disabled') && lien(r).endsWith('specialty=derm_venero'));
-verifier('libre : 30 spécialités proposées', r.d.querySelectorAll('#omd-other option').length === 31,
+verifier('libre : 31 spécialités proposées', r.d.querySelectorAll('#omd-other option').length === 32,
   r.d.querySelectorAll('#omd-other option').length);
+verifier('libre : douleur et soins palliatifs proposés', !!r.d.querySelector('#omd-other option[value=doul_soins_pal]'));
 verifier('libre : chirurgie orale et neurochirurgie proposées',
   !!r.d.querySelector('#omd-other option[value=chir_orale]') && !!r.d.querySelector('#omd-other option[value=neuro_chir]'));
 verifier('libre : biologie médicale absente', !r.d.querySelector('#omd-other option[value=bio_med]'));
