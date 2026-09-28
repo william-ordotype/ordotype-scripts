@@ -12,6 +12,7 @@
   // Endpoints
   const BILLING_PORTAL_URL = 'https://billing.ordotype.fr/.netlify/functions/create-billing-portal';
   const WEBHOOK_URL = 'https://billing.ordotype.fr/.netlify/functions/notify-webhook';
+  const MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
 
   // State
   let portalUrl = null;
@@ -59,16 +60,42 @@
     console.log('[BillingPortal] Initialized');
   }
 
-  async function prefetchPortalSession() {
-    try {
-      const response = await fetch(BILLING_PORTAL_URL, {
+  function memberToken() {
+    return new Promise(function(resolve) {
+      var attempts = 0;
+      (function poll() {
+        if (window.$memberstackDom) return resolve(window.$memberstackDom);
+        if (++attempts > MS_MAX_ATTEMPTS) return resolve(null);
+        setTimeout(poll, 200);
+      })();
+    }).then(function(ms) {
+      if (!ms || typeof ms.getMemberCookie !== 'function') return '';
+      return Promise.resolve(ms.getMemberCookie()).then(function(t) {
+        return t ? String(t) : '';
+      });
+    });
+  }
+
+  // Without a member token the request goes out without the header.
+  function requestPortal() {
+    return memberToken().catch(function() { return ''; }).then(function(token) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = 'Bearer ' + token;
+      return fetch(BILLING_PORTAL_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           stripeCustomerId: member.stripeCustomerId,
-          returnUrl: window.location.href
+          returnUrl: window.location.href,
+          v: 2
         })
       });
+    });
+  }
+
+  async function prefetchPortalSession() {
+    try {
+      const response = await requestPortal();
 
       const data = await response.json();
 
@@ -132,14 +159,7 @@
     if (!portalUrl) {
       let status = 0;
       try {
-        const response = await fetch(BILLING_PORTAL_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            stripeCustomerId: member.stripeCustomerId,
-            returnUrl: window.location.href
-          })
-        });
+        const response = await requestPortal();
         status = response.status;
         const data = await response.json();
         if (data.url) {

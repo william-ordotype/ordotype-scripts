@@ -4,6 +4,8 @@
  * paiement en attente), la page transforme le bouton Stripe en lien vers le compte
  * et ne bascule jamais sur le bouton Memberstack, qui créerait un second
  * abonnement. Sur une vraie erreur (500), le repli d'avant reste intact.
+ * Sur pricing/ et pricing-v2/, seuls `already-subscribed` et `payment-pending`
+ * mènent au compte : tout autre 409 prend le repli Memberstack.
  *
  * Couvre shared/stripe-checkout.js (pages d'offre) et pricing/ + pricing-v2/
  * (deux boutons par page).
@@ -41,6 +43,7 @@ function page(gabarit, reponse, url) {
   w.console.warn = () => {};
   w.console.error = () => {};
   w.OrdoMemberstack = { stripeCustomerId: 'cus_test', memberId: 'mem_test', email: 'test@example.com' };
+  w.$memberstackDom = { getMemberCookie: () => Promise.resolve('jeton-de-test') };
   w.STRIPE_CHECKOUT_CONFIG = { priceId: 'price_rempla', couponId: 'C2', paymentMethods: ['sepa_debit'] };
   w.OrdoErrorReporter = { report: () => {} };
   w.dataLayer = [];
@@ -148,6 +151,25 @@ for (const [nom, code] of Object.entries(PRICING)) {
     assert.ok(!visible(w.document.getElementById('signup-prat-stripe-customer')));
     assert.deepStrictEqual(echecs(w), ['api_500']);
   });
+
+  for (const corps of [{ error: 'no_customer' }, { error: 'sandbox_disabled' }, {}, null]) {
+    test(`${nom}, 409 ${JSON.stringify(corps)} : repli Memberstack, jamais « Mon offre actuelle »`, async () => {
+      const { w, clics } = page(GABARIT_PRICING, { status: 409, body: corps }, 'https://www.ordotype.fr/nos-offres');
+      w.eval(code);
+      await tick();
+      for (const id of ['signup-prat-stripe-customer', 'signup-rempla-stripe-customer']) {
+        const b = w.document.getElementById(id);
+        assert.ok(!visible(b), id);
+        assert.strictEqual(texte(b), 'En profiter', id);
+        assert.strictEqual(b.getAttribute('href'), '#', id);
+      }
+      for (const id of ['signup-prat-from-decouverte', 'signup-rempla-from-decouverte']) {
+        assert.ok(visible(w.document.getElementById(id)), id);
+      }
+      assert.deepStrictEqual(clics, []);
+      assert.deepStrictEqual(echecs(w), ['api_409']);
+    });
+  }
 }
 
 (async () => {
