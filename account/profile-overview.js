@@ -525,6 +525,14 @@
     if (slot && root) move(root, slot);
   }
 
+  /** La vérification du RPPS se place juste sous la ligne « Numéro RPPS » de la carte. */
+  function placeRppsFinder() {
+    var root = document.querySelector('.ordo-rpps');
+    var champ = profil && profil.querySelector('[data-ordo-champ="n-rpps"]');
+    var row = champ && (champ.closest('.compte-v2_field') || champ);
+    if (root && row && row.parentNode) move(root, row.parentNode, row.nextSibling);
+  }
+
   function placeDelete() {
     var btn = securite && securite.querySelector('[data-ordo-supprimer]');
     if (!btn) return;
@@ -623,6 +631,7 @@
     '[data-ordo-v2] .ordo-siren-banner{display:none}',
     // Le SIREN a sa propre carte : sa cellule d'origine ne s'affiche plus dans le formulaire pro.
     '[data-ordo-v2] .ordo-siren-host{display:none!important}',
+    '[data-ordo-v2] .ordo-rpps{grid-column:1/-1;flex-basis:100%;margin:0;max-width:none}',
     // Module TOTP : même langage visuel que les cartes.
     '[data-ordo-v2] .ot-totp__card{background:transparent;border:0;border-radius:0;padding:16px 0 0;margin:0;box-shadow:none}',
     '[data-ordo-v2] .ot-totp__title{font-size:16px;line-height:1.5;font-weight:600;margin:0 0 4px}',
@@ -696,10 +705,13 @@
       if (profil && profil.parentNode) profil.parentNode.classList.add('ordo-v2-host');
       if (securite && securite.parentNode) securite.parentNode.classList.add('ordo-v2-host');
       placeSirenFinder();
+      placeRppsFinder();
       placeDelete();
       placeGoogle();
       placeTotp();
       listenEdits();
+      // Un autre script a enregistré un champ du membre (vérification du RPPS) : la lecture suit.
+      document.addEventListener('ordo:member-updated', function() { render(); });
       document.documentElement.classList.add(HTML_CLASS);
       track('view', '', 'shown');
       console.log(PREFIX, 'Shown');
