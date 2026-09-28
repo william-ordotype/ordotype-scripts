@@ -164,7 +164,7 @@ ordotype-scripts/
 | `status-selectors.js` | Shows/hides form fields based on user status |
 | `siren-finder.js` | SIREN/SIRET self-service for e-invoicing: replaces the free-text `#SIRET` input with a SIRENE finder (search by name + department, number check, suggestion to confirm). Reads via `webhooks.ordotype.fr/siren-search`, writes only via `siren-select` (member cookie as Bearer). Hidden for `statut = Interne`. Console prefix `[SirenFinder]`. Hidden for internes with the server's rule (statut « Interne » case-insensitive, or an active plan of `OrdoMemberstack.ALLOWED_INTERN_PLAN_IDS`). **Progressive rollout in `loader.js` (`GATES`)**: per host, a percentage of members (bucket = stable FNV-1a hash of the Memberstack member id from the `_ms-mem` snapshot, so a member enrolled at 10 % stays enrolled at 30 % and 100 %); a host absent from the table is a hard skip. Today: 100 everywhere (`www.ordotype.fr` went 10 → 100 on 2026-09-07 after 13 days without an incident). **Runbook**: (1) pause the Make scenario « Backfill SIRET » (2080526) before the first prod write, it would copy a 9-digit SIREN as a SIRET; (2) merge, bump the pinned embed on the prod page, publish to `ordotype.webflow.io` only and verify there with the override (0 % = no member exposed); (3) publish to `www.ordotype.fr`; (4) ramp 10 → 30 → 100 by editing the number (merge, pin bump, publish). Kill switch = remove the host entry or repoint the embed to a pre-rollout commit, then publish (a pin bump ships every account script at that commit, so ramp from the current main). Override for testers, only on a listed host: `localStorage.setItem('ordo_rollout', 'siren-finder.js:on')` (`:off`, `removeItem` to go back to the bucket). `window.OrdoRollout['siren-finder.js']` exposes `{ enabled, bucket, percent, reason }`; every evaluated member (control included) pushes a `siren_rollout` dataLayer event and the widget stamps `rollout_percent` / `rollout_bucket` / `rollout_reason` on its own events, relayed to GA4 by GTM since 2026-08-26 (container version 208, tags `GA4 - SIREN - *`). |
 | `delete-account.js` | Account deletion flow |
-| `billing-portal.js` | Stripe billing portal access |
+| `billing-portal.js` | Stripe billing portal access (member cookie as Bearer when available, test: `node test/billing-portal.js`) |
 | `phone-input.js` | International phone formatting |
 
 ### Usage in Webflow
@@ -455,9 +455,13 @@ payment on it is pending. `shared/stripe-checkout.js`, `pricing/` and
 `/membership/compte` labelled « Mon offre actuelle » (or « Régulariser mon
 paiement »), keep the Memberstack fallback button hidden and drop any held click:
 falling back to the Memberstack button there would start a second subscription.
-Any other error keeps the usual fallback. `failure_reason` is
-`already_subscribed` or `payment_pending`. Test:
+Any other error keeps the usual fallback; on `pricing/` and `pricing-v2/` that
+includes a 409 with any other `error` (`failure_reason` `api_409`).
+`failure_reason` is `already_subscribed` or `payment_pending`. Test:
 `node test/stripe-checkout-already-subscribed.js`.
+
+`pricing/` and `pricing-v2/` send the member cookie as Bearer when available,
+and `v: 2` in the body. Test: `node test/pricing-stripe-checkout-jeton.js`.
 
 Each emitter also reports to Sentry through `OrdoErrorReporter` when it is
 loaded on the page; the dataLayer event is what makes the failure *rate*
@@ -1197,13 +1201,13 @@ The page needs two buttons with specific IDs:
 
 ## Moyen de Paiement Ajoute Page (`/membership/moyen-de-paiement-ajoute`)
 
-Success page after payment method is added. Creates billing portal session and redirects user.
+Success page after payment method is added. Counts down and redirects to the homepage.
 
 ### Files
 
 | File | Purpose |
 |------|---------|
-| `success.js` | Handles success page, creates billing portal session, sends tracking webhook |
+| `success.js` | Handles success page: grace-period flag, countdown, redirect to `/` |
 
 ### Usage in Webflow
 
@@ -1221,9 +1225,7 @@ Success page after payment method is added. Creates billing portal session and r
 ### Features
 
 - Sets `justPaidTs` in localStorage for 2-minute grace period
-- Creates Stripe billing portal session
-- Sends tracking webhook to Make with setup session details
-- Countdown redirect to billing portal (or homepage on error)
+- Countdown redirect to the homepage, with no network request (test: `node test/moyen-de-paiement-ajoute-success.js`)
 
 ### Console Prefixes
 
@@ -2064,6 +2066,8 @@ https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/homepage/me
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pathology/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/loader.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing/stripe-checkout.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/pricing-v2/stripe-checkout.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/ordonnances/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/conseils-patients/loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/signup-rempla/loader.js

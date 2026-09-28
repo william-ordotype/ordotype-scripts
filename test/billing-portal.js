@@ -11,7 +11,10 @@
  *   - a second open() while the portal is opening creates no second session;
  *   - a failure (no answer, or an answer without a portal address) opens nothing, is reported,
  *     and a later click can try again;
- *   - back from the portal, a page restored from the browser cache can open it again.
+ *   - back from the portal, a page restored from the browser cache can open it again;
+ *   - with a Memberstack token the request carries `Authorization: Bearer`, without one it goes out
+ *     as before (no header, same body), both with `v: 2`; the prefetch waits for the token;
+ *   - a 401 opens nothing and is reported.
  *
  * Usage: node test/billing-portal.js
  */
@@ -28,20 +31,35 @@ const PORTAL = 'https://billing.stripe.com/p/session/live_abc';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let passed = 0;
 
-// Each answer: { status, body } or { transport } (network failure), optional delay
-function page({ button = true, customer = 'cus_test', answers = [] } = {}) {
+// Each answer: { status, body } or { transport } (network failure), optional delay.
+// token: what getMemberCookie() gives; cookie: 'throws' makes it throw; memberstackAfter: ms before
+// window.$memberstackDom appears (null = present from the start).
+function page({ button = true, customer = 'cus_test', answers = [], token = 'jeton-de-test', cookie = null, memberstackAfter = null } = {}) {
   const html = '<!doctype html><html><body>' +
     (button ? '<a id="viewInvoicesBtn" href="#" data-ms-action="customer-portal">Voir mes factures</a>' : '') +
     '</body></html>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://www.ordotype.fr/membership/compte', virtualConsole: new VirtualConsole() });
   const w = dom.window;
   w.OrdoAccount = { member: { id: 'mem_test', stripeCustomerId: customer, auth: { email: 'dr@example.fr' } } };
+  const events = [];
+  const memberstack = {
+    getMemberCookie: () => {
+      events.push('token');
+      if (cookie === 'throws') throw new Error('cookie unavailable');
+      return Promise.resolve(token);
+    },
+  };
+  if (memberstackAfter === null) w.$memberstackDom = memberstack;
+  else setTimeout(() => { w.$memberstackDom = memberstack; }, memberstackAfter);
   const portalCalls = [];
+  const portalRequests = [];
   const hooks = [];
   const queue = answers.slice();
   w.fetch = (url, opts) => {
     if (/notify-webhook/.test(url)) { hooks.push(JSON.parse(opts.body)); return Promise.resolve({ ok: true, status: 200 }); }
+    events.push('portal');
     portalCalls.push(url);
+    portalRequests.push({ headers: Object.assign({}, opts.headers), body: JSON.parse(opts.body) });
     const a = queue.shift() || { status: 200, body: { url: PORTAL, id: 'bps_1' } };
     return wait(a.delay || 0).then(() => {
       if (a.transport) throw new TypeError(a.transport);
@@ -56,8 +74,10 @@ function page({ button = true, customer = 'cus_test', answers = [] } = {}) {
     reportNetwork: (ctx, err) => reports.push({ kind: 'network', ctx, err }),
   };
   w.eval(SCRIPT);
-  return { w, portalCalls, hooks, navigations, reports, btn: () => w.document.getElementById('viewInvoicesBtn') };
+  return { w, events, portalCalls, portalRequests, hooks, navigations, reports, btn: () => w.document.getElementById('viewInvoicesBtn') };
 }
+
+const BODY_BEFORE = { stripeCustomerId: 'cus_test', returnUrl: 'https://www.ordotype.fr/membership/compte' };
 
 async function check(name, fn) {
   await fn();
@@ -176,6 +196,57 @@ async function check(name, fn) {
     assert.strictEqual(p.navigations.length, 2, 'not stuck on the first opening');
     pageshow(false);
     assert.strictEqual(btn.textContent, 'Patientez...', 'a normal load changes nothing');
+  });
+
+  await check('with a member token: prefetch and fallback carry Authorization: Bearer, and v: 2', async () => {
+    const p = page({ button: false, answers: [{ status: 500, body: { error: 'boom' } }] });
+    await wait(20);
+    p.w.OrdoBillingPortal.open();
+    await wait(20);
+    assert.strictEqual(p.portalRequests.length, 2, 'the prefetch, then the fallback');
+    for (const r of p.portalRequests) {
+      assert.strictEqual(r.headers.Authorization, 'Bearer jeton-de-test');
+      assert.strictEqual(r.headers['Content-Type'], 'application/json');
+      assert.deepStrictEqual(r.body, Object.assign({ v: 2 }, BODY_BEFORE), 'the customer id stays in the body');
+    }
+    assert.deepStrictEqual(p.navigations, [PORTAL]);
+  });
+
+  await check('without a member token: no header, the same body as before plus v: 2', async () => {
+    for (const opts of [{ token: null }, { token: '' }, { cookie: 'throws' }]) {
+      const p = page(Object.assign({ button: false }, opts));
+      await wait(20);
+      assert.strictEqual(p.portalRequests.length, 1, JSON.stringify(opts) + ': the prefetch still goes out');
+      const r = p.portalRequests[0];
+      assert.deepStrictEqual(Object.keys(r.headers), ['Content-Type'], JSON.stringify(opts));
+      assert.deepStrictEqual(r.body, Object.assign({ v: 2 }, BODY_BEFORE), JSON.stringify(opts));
+      p.w.OrdoBillingPortal.open();
+      await wait(20);
+      assert.deepStrictEqual(p.navigations, [PORTAL], JSON.stringify(opts));
+    }
+  });
+
+  await check('the prefetch waits for the member token', async () => {
+    const p = page({ button: false, memberstackAfter: 150 });
+    await wait(100);
+    assert.strictEqual(p.portalRequests.length, 0, 'no request before Memberstack is there');
+    await wait(400);
+    assert.strictEqual(p.portalRequests.length, 1);
+    assert.strictEqual(p.portalRequests[0].headers.Authorization, 'Bearer jeton-de-test');
+    assert.deepStrictEqual(p.events, ['token', 'portal'], 'the token is read before the request');
+  });
+
+  await check('a 401 opens nothing, is reported with its status, the label comes back', async () => {
+    const refused = { status: 401, body: { error: 'unauthorized' } };
+    const p = page({ answers: [refused, refused] });
+    await wait(20);
+    const btn = p.btn();
+    btn.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
+    await wait(20);
+    assert.deepStrictEqual(p.navigations, []);
+    assert.strictEqual(p.reports.length, 1);
+    assert.strictEqual(p.reports[0].err.status, 401);
+    assert.strictEqual(btn.textContent, 'Voir mes factures');
   });
 
   console.log('\n' + passed + ' checks pass');

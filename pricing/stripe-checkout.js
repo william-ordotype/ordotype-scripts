@@ -57,6 +57,24 @@
     });
   }
 
+  var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
+
+  function memberToken() {
+    return new Promise(function(resolve) {
+      var attempts = 0;
+      (function poll() {
+        if (window.$memberstackDom) return resolve(window.$memberstackDom);
+        if (++attempts > MS_MAX_ATTEMPTS) return resolve(null);
+        setTimeout(poll, 200);
+      })();
+    }).then(function(ms) {
+      if (!ms || typeof ms.getMemberCookie !== 'function') return '';
+      return Promise.resolve(ms.getMemberCookie()).then(function(t) {
+        return t ? String(t) : '';
+      });
+    });
+  }
+
   function init() {
     console.log('[StripeCheckout] Init');
 
@@ -123,8 +141,9 @@
     // HTTP 409 from the checkout function: the member already has a subscription
     // to this offer's family, or a payment on it is pending. The Stripe buttons
     // become links to the account page; the fallback buttons stay hidden, since
-    // they would start a second subscription.
+    // they would start a second subscription. Any other 409 is a plain error.
     var ACCOUNT_URL = '/membership/compte';
+    var CURRENT_OFFER_REASONS = ['already-subscribed', 'payment-pending'];
     function labelOf(btn) {
       var node = btn;
       while (node.children && node.children.length === 1) node = node.children[0];
@@ -168,11 +187,15 @@
       var sessionId1, url1, sessionId2, url2;
 
       try {
+        // Without a member token the request goes out without the header.
+        var token = await memberToken().catch(function() { return ''; });
+        var headers = { 'Content-Type': 'application/json' };
+        if (token) headers.Authorization = 'Bearer ' + token;
         var resp = await fetchWithRetry(
           'https://pricing.ordotype.fr/.netlify/functions/create-checkout-session',
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headers,
             body: JSON.stringify({
               stripeCustomerId: stripeCustomerId,
               pageCurrency: pageCurrency,
@@ -183,7 +206,8 @@
               successUrl: successUrl,
               cancelUrl1: cancelUrl1,
               cancelUrl2: cancelUrl2,
-              payment_method_types: paymentMethods
+              payment_method_types: paymentMethods,
+              v: 2
             })
           },
           2, 1000
@@ -191,8 +215,10 @@
         if (resp.status === 409) {
           var refusal = {};
           try { refusal = (await resp.json()) || {}; } catch (ignored) {}
-          showCurrentOffer(refusal.error);
-          return;
+          if (CURRENT_OFFER_REASONS.indexOf(refusal.error) !== -1) {
+            showCurrentOffer(refusal.error);
+            return;
+          }
         }
 
         // fetchWithRetry only retries network errors, so a 4xx/5xx arrives here

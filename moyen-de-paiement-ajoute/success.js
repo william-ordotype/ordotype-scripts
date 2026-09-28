@@ -1,7 +1,7 @@
 /**
  * Ordotype - Payment Method Added Success
  * Handles success page after payment method is added.
- * Creates billing portal session and redirects user.
+ * Counts down, then redirects to the homepage.
  *
  * Page: /membership/moyen-de-paiement-ajoute
  *
@@ -17,8 +17,7 @@
 
   const PREFIX = '[PaymentSuccess]';
   const COUNTDOWN_SECONDS = 2;
-  const BILLING_PORTAL_URL = 'https://billing.ordotype.fr/.netlify/functions/create-billing-portal';
-  const WEBHOOK_URL = 'https://billing.ordotype.fr/.netlify/functions/notify-webhook';
+  const REDIRECT_URL = '/';
 
   /**
    * Initialize on DOM ready
@@ -30,97 +29,7 @@
 
     console.log(PREFIX, 'Payment method added successfully');
 
-    // Get member data (from shared utility)
-    const ms = window.OrdoMemberstack || {};
-    const stripeCustomerId = ms.stripeCustomerId;
-    const setupSessionId = new URLSearchParams(window.location.search).get('session_id');
-
-    if (!stripeCustomerId) {
-      console.error(PREFIX, 'No Stripe customer ID found');
-      startCountdown(COUNTDOWN_SECONDS, '/');
-      return;
-    }
-
-    // Create billing portal and redirect
-    createBillingPortalAndRedirect(stripeCustomerId, setupSessionId, ms);
-  }
-
-  /**
-   * Create billing portal session and redirect
-   */
-  async function createBillingPortalAndRedirect(stripeCustomerId, setupSessionId, ms) {
-    const returnUrl = window.location.origin;
-
-    try {
-      const response = await fetch(BILLING_PORTAL_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stripeCustomerId: stripeCustomerId,
-          returnUrl: returnUrl
-        })
-      });
-
-      const data = await response.json();
-      console.log(PREFIX, 'Billing portal session created');
-
-      if (!data.url) {
-        throw new Error('No portal URL received');
-      }
-
-      // Extract portal session ID
-      const portalSessionId = data.id || extractSessionIdFromUrl(data.url);
-
-      // Send success tracking webhook
-      sendTrackingWebhook(stripeCustomerId, setupSessionId, portalSessionId, ms);
-
-      // Start countdown and redirect to billing portal
-      startCountdown(COUNTDOWN_SECONDS, data.url);
-
-    } catch (error) {
-      console.error(PREFIX, 'Error:', error);
-      // Fallback: redirect to homepage
-      startCountdown(COUNTDOWN_SECONDS, '/');
-    }
-  }
-
-  /**
-   * Send tracking webhook to Make
-   */
-  function sendTrackingWebhook(stripeCustomerId, setupSessionId, portalSessionId, ms) {
-    const payload = {
-      type: 'setup-tracking',
-      checkoutSessionId: setupSessionId || portalSessionId,
-      stripeCustomerId: stripeCustomerId,
-      memberstackUserId: ms.memberId,
-      memberstackEmail: ms.email,
-      option: 'success_redirect',
-      paymentMethods: ['setup_complete'],
-      originPage: window.location.href
-    };
-
-    console.log(PREFIX, 'Sending tracking webhook');
-
-    fetch(WEBHOOK_URL, {
-      method: 'POST',
-      keepalive: true,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    .then(() => console.log(PREFIX, 'Webhook sent'))
-    .catch(err => console.error(PREFIX, 'Webhook error:', err));
-  }
-
-  /**
-   * Extract session ID from billing portal URL
-   */
-  function extractSessionIdFromUrl(url) {
-    const patterns = [/\/p\/session\/([^?#]+)/, /\/session\/([^?#]+)/];
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match && match[1]) return match[1];
-    }
-    return null;
+    startCountdown(COUNTDOWN_SECONDS, REDIRECT_URL);
   }
 
   /**
