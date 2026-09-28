@@ -16,13 +16,25 @@
   // Same delay as the page head rule that brings the page's own blocks back: past it, the
   // member already sees those blocks, so the list is recorded as timed out instead of silent.
   var LIST_TIMEOUT_MS = 8000;
+  // An unanswered list request is sent a second time, without cancelling the first: the first answer wins.
+  var HEDGE_MS = 4000;
+  var SLOW_MS = 3000;
   var EXPECTED = [401, 409, 429];
+  // Labels, logos and order of the cards, for the members whose list can be shown without waiting.
+  var PLANS_URL = 'https://webhooks.ordotype.fr/.netlify/functions/abonnements-affiches';
+  var PLANS_KEY = 'ordo_subs_plans';
+  var PLANS_TIMEOUT_MS = 2500;
+  var PLANS_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+  var JUST_PAID_MS = 24 * 3600 * 1000;
+  var DEFAULT_ORDER = 50;
 
   var member = window.OrdoAccount && window.OrdoAccount.member;
   if (!member || !member.id) return;
 
   var anchor = null;
   var skeletonTimer = null;
+  var slowTimer = null;
+  var startedAt = Date.now();
 
   var MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
     'septembre', 'octobre', 'novembre', 'décembre'];
@@ -129,6 +141,7 @@
     '@media (max-width:767px){.ordo-inv-head{display:none}.ordo-inv-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"date amount" "label status" "label action"}.ordo-inv-date{grid-area:date}.ordo-inv-amount{grid-area:amount}.ordo-inv-label{grid-area:label;color:var(--neutral-500,#47505c)}.ordo-inv-status{grid-area:status;text-align:right}.ordo-inv-action{grid-area:action}.ordo-help-row{flex-direction:column;align-items:center}}',
     '.ordo-subs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
     '.ordo-subs-skel{height:132px;border-radius:.25rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
+    '.ordo-subs-skels{display:flex;flex-direction:column;gap:1rem}',
     '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
     '@media (prefers-reduced-motion:reduce){.ordo-subs-skel{animation:none}}',
     '@media (max-width:767px){.ordo-addr-grid{grid-template-columns:minmax(0,1fr)}.ordo-addr-field.is-short{flex:1 1 12rem}}',
@@ -1011,18 +1024,36 @@
     if (w) w.style.display = '';
   }
 
+  // As many placeholders as the member has plans that are not cancelled, between one and three.
+  function skeletonCount() {
+    var conns = Array.isArray(member.planConnections) ? member.planConnections : [];
+    var n = 0;
+    for (var i = 0; i < conns.length; i++) {
+      if (conns[i] && conns[i].status && conns[i].status !== 'CANCELED') n++;
+    }
+    return Math.max(1, Math.min(3, n));
+  }
+
   function showSkeleton() {
     injectStyle();
     clear();
     var root = el('div', 'ordo-subs');
     root.setAttribute('aria-busy', 'true');
     root.appendChild(intro());
-    var skel = el('div', 'ordo-subs-skel');
-    skel.setAttribute('aria-hidden', 'true');
-    root.appendChild(skel);
+    var skels = el('div', 'ordo-subs-skels');
+    skels.setAttribute('aria-hidden', 'true');
+    for (var i = skeletonCount(); i > 0; i--) skels.appendChild(el('div', 'ordo-subs-skel'));
+    root.appendChild(skels);
     root.appendChild(el('span', 'ordo-subs-sr', 'Chargement de vos abonnements…'));
     anchor.appendChild(root);
     show();
+    clearTimeout(slowTimer);
+    slowTimer = setTimeout(function() {
+      if (!anchor.contains(root)) return;
+      var slow = el('p', 'ordo-subs-empty', 'Le chargement prend plus de temps que d’habitude…');
+      slow.setAttribute('role', 'status');
+      root.appendChild(slow);
+    }, Math.max(0, SLOW_MS - (Date.now() - startedAt)));
   }
 
   var MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -1369,13 +1400,179 @@
     });
   }
 
+  // At most two requests, both over by LIST_TIMEOUT_MS. The second starts when the first has no answer
+  // after HEDGE_MS, or shortly after the first fails without a status (network). The first answer wins,
+  // and an HTTP error is an answer. `hedged` says the second request gave it.
   function load() {
-    return request('GET', null, LIST_TIMEOUT_MS).catch(function(err) {
-      if (err && err.status) throw err;
-      return new Promise(function(resolve) {
-        setTimeout(resolve, RETRY_DELAY_MS);
-      }).then(function() { return request('GET', null, LIST_TIMEOUT_MS); });
+    return new Promise(function(resolve, reject) {
+      var sentAt = Date.now();
+      var done = false;
+      var pending = 0;
+      var second = false;
+      var lastErr = null;
+      var hedgeTimer = null;
+      function end() {
+        done = true;
+        clearTimeout(hedgeTimer);
+      }
+      function send(isSecond) {
+        pending++;
+        var budget = isSecond ? Math.max(1, LIST_TIMEOUT_MS - (Date.now() - sentAt)) : LIST_TIMEOUT_MS;
+        request('GET', null, budget).then(function(data) {
+          pending--;
+          if (done) return;
+          end();
+          data.hedged = isSecond;
+          resolve(data);
+        }, function(err) {
+          pending--;
+          if (done) return;
+          if (err && err.status && err.status !== 'timeout') {
+            end();
+            reject(err);
+            return;
+          }
+          lastErr = err;
+          if (!second && !(err && err.status)) {
+            clearTimeout(hedgeTimer);
+            hedgeTimer = setTimeout(startSecond, RETRY_DELAY_MS);
+            return;
+          }
+          if (!pending) {
+            end();
+            reject(lastErr);
+          }
+        });
+      }
+      function startSecond() {
+        if (done || second) return;
+        second = true;
+        send(true);
+      }
+      send(false);
+      hedgeTimer = setTimeout(startSecond, HEDGE_MS);
     });
+  }
+
+  // --- Members who only have free plans: their list is known without waiting for it.
+  function readStorage(key) {
+    try { return window.localStorage.getItem(key); } catch (e) { return null; }
+  }
+
+  function recentlyPaid() {
+    var ts = parseInt(readStorage('justPaidTs') || '0', 10);
+    return ts > 0 && Date.now() - ts < JUST_PAID_MS;
+  }
+
+  // The active free plans, or null as soon as anything else is there: a paid plan (cancelled ones
+  // included), a connection without a type, no active free plan, a pause, or a payment just made.
+  function freeOnlyPlans() {
+    var conns = Array.isArray(member.planConnections) ? member.planConnections : [];
+    var free = [];
+    for (var i = 0; i < conns.length; i++) {
+      var c = conns[i];
+      if (!c || c.type !== 'FREE') return null;
+      if (c.status === 'ACTIVE' && typeof c.planId === 'string' && c.planId) free.push(c.planId);
+    }
+    if (!free.length) return null;
+    var meta = member.metaData || {};
+    if (meta['pause-end-date'] || meta['paused-group-key']) return null;
+    if (recentlyPaid()) return null;
+    return free;
+  }
+
+  function validPlans(plans) {
+    return plans && typeof plans === 'object' && !Array.isArray(plans) ? plans : null;
+  }
+
+  function storedPlans() {
+    try {
+      var saved = JSON.parse(readStorage(PLANS_KEY) || 'null');
+      if (saved && typeof saved.at === 'number' && Date.now() - saved.at < PLANS_MAX_AGE_MS) return validPlans(saved.plans);
+    } catch (e) { /* no copy */ }
+    return null;
+  }
+
+  function storePlans(plans) {
+    try { window.localStorage.setItem(PLANS_KEY, JSON.stringify({ at: Date.now(), plans: plans })); } catch (e) { /* no-op */ }
+  }
+
+  // No credentials and no custom header: a simple request, cached by the browser and the CDN.
+  function fetchPlans() {
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function() { controller.abort(); }, PLANS_TIMEOUT_MS) : null;
+    var opts = { method: 'GET', credentials: 'omit' };
+    if (controller) opts.signal = controller.signal;
+    return fetch(PLANS_URL, opts).then(function(res) {
+      return res.json().catch(function() { return null; }).then(function(body) {
+        var plans = res.ok ? validPlans(body && body.plans) : null;
+        if (!plans) {
+          var err = new Error('abonnements-affiches ' + res.status + ': no plans');
+          err.status = res.status;
+          throw err;
+        }
+        return plans;
+      });
+    }).then(function(plans) {
+      clearTimeout(timer);
+      storePlans(plans);
+      return plans;
+    }, function(err) {
+      clearTimeout(timer);
+      // Unavailable or rate limited: the list is simply awaited, as before.
+      if (err && err.status && err.status !== 429 && err.status !== 503) reportProblem('SubscriptionsPlansUnavailable', err.message);
+      return null;
+    });
+  }
+
+  // The same cards the list gives for free plans: visible plans only, one card per label, a plan that
+  // marks an ended access only when nothing else is shown, sorted by order then label. Null when a plan
+  // needs the member's own data (the free trial end date): the list is awaited then.
+  function freeCards(planIds, plans) {
+    var shown = [];
+    var ended = [];
+    var labels = {};
+    for (var i = 0; i < planIds.length; i++) {
+      var p = plans[planIds[i]];
+      if (!p || typeof p.label !== 'string' || !p.label) continue;
+      if (p.trial) return null;
+      if (labels[p.label]) continue;
+      labels[p.label] = true;
+      var status = p.ended ? 'ended' : 'free';
+      var entry = {
+        order: typeof p.order === 'number' ? p.order : DEFAULT_ORDER,
+        card: {
+          label: p.label,
+          icon: typeof p.icon === 'string' ? p.icon : null,
+          status: status,
+          price: null,
+          discount: null,
+          offeredUntil: null,
+          next: null,
+          endsOn: null,
+          resumesOn: null,
+          action: p.action && typeof p.action === 'object' ? p.action : null,
+          note: typeof p.note === 'string' ? p.note : null,
+          reactivation: null
+        }
+      };
+      (p.ended ? ended : shown).push(entry);
+    }
+    if (!shown.length) shown = ended;
+    shown.sort(function(a, b) {
+      return (a.order - b.order) || String(a.card.label).localeCompare(String(b.card.label), 'fr');
+    });
+    var cards = [];
+    for (var j = 0; j < shown.length; j++) cards.push(shown[j].card);
+    return cards;
+  }
+
+  // Only a paid card is a real difference: labels may lag behind a stored copy, and the list fixes them.
+  function paidIn(list) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].status !== 'free' && list[i].status !== 'ended') return true;
+    }
+    return false;
   }
 
   function reportIfActionable(err) {
@@ -1431,31 +1628,75 @@
     // The list is requested with the page, not when its tab opens: it is usually ready (and rendered,
     // replacing the page's own blocks) before the member gets there. The skeleton only shows if not.
     var settled = false;
-    load().then(function(data) {
+    var instant = null;
+    var seen = false;
+    var hidden = document.visibilityState === 'hidden';
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') hidden = true;
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    function stopWaiting() {
       settled = true;
       clearTimeout(skeletonTimer);
+      clearTimeout(slowTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    }
+
+    // Free plans only: their cards are shown at once, and the list, still requested, replaces them.
+    var freePlans = freeOnlyPlans();
+    function showInstant(plans) {
+      if (settled || instant || !plans) return;
+      var cards = freeCards(freePlans, plans);
+      if (!cards) return;
+      instant = cards;
+      clearTimeout(skeletonTimer);
+      clearTimeout(slowTimer);
+      render(cards, null, [], [], [], null);
+      track('subscriptions_list', { subs_outcome: 'instant', subs_status: statusesOf(cards) });
+      console.log(PREFIX + ' Shown before the list: ' + cards.length + ' free plan(s)');
+    }
+    if (freePlans) {
+      showInstant(storedPlans());
+      fetchPlans().then(showInstant);
+    }
+
+    load().then(function(data) {
+      stopWaiting();
       render(data.list, null, data.pms, data.invoices, data.others, data.address);
-      track('subscriptions_list', { subs_outcome: 'shown', subs_status: statusesOf(data.list) });
+      if (!instant) {
+        track('subscriptions_list', { subs_outcome: data.hedged ? 'shown-retry' : 'shown', subs_status: statusesOf(data.list) });
+      } else if (paidIn(data.list)) {
+        reportProblem('SubscriptionsInstantMismatch', 'free plans only in the member data, list: ' + statusesOf(data.list));
+      }
       console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
     }).catch(function(err) {
-      settled = true;
+      stopWaiting();
+      var timedOut = Boolean(err && err.status === 'timeout');
+      if (instant) {
+        // The free plans stay shown: only the check is missing.
+        console.error(PREFIX + ' Load error after the free plans were shown:', err && err.message);
+        if (!timedOut) reportIfActionable(err);
+        return;
+      }
+      // A wait the member did not see (tab in the background, section never on screen) is not a failure.
+      var unseen = timedOut && (hidden || !seen);
       // `timeout` goes in subs_outcome, the dimension registered in GA4: subs_status is sent but
       // not registered, so a value placed there alone would never be readable.
       track('subscriptions_list', {
-        subs_outcome: err && err.status === 'timeout' ? 'timeout' : 'failed',
+        subs_outcome: timedOut ? (unseen ? 'timeout-unseen' : 'timeout') : 'failed',
         subs_status: err && err.status ? String(err.status) : 'network'
       });
-      clearTimeout(skeletonTimer);
       clear();
       hide();
       fallbackToPageBlocks();
       console.error(PREFIX + ' Load error:', err && err.message);
-      reportIfActionable(err);
+      if (!unseen) reportIfActionable(err);
     });
     whenVisible(function() {
-      if (settled) return;
+      seen = true;
+      if (settled || instant) return;
       skeletonTimer = setTimeout(function() {
-        if (!settled) showSkeleton();
+        if (!settled && !instant) showSkeleton();
       }, SKELETON_DELAY_MS);
     });
   }

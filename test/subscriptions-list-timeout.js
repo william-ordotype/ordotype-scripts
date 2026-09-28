@@ -5,16 +5,22 @@
  * Before this test, a list request that never answered produced no event at all: neither
  * `shown` nor `failed`. The failure rate was therefore underestimated, and a hung function
  * looked exactly like a member who left the page. What must hold:
- *   - a list request with no answer is cut at LIST_TIMEOUT_MS and recorded as `timeout`,
- *     in subs_outcome (the dimension GA4 actually reads), without being retried;
+ *   - a list request with no answer is sent a second time after HEDGE_MS, without cancelling
+ *     the first; both are cut by LIST_TIMEOUT_MS, and the page records ONE `timeout`, in
+ *     subs_outcome (the dimension GA4 actually reads);
+ *   - the first answer wins: a second request that answers is recorded as `shown-retry`, and an
+ *     answer before HEDGE_MS sends no second request;
+ *   - an HTTP error is an answer: no second request;
+ *   - a timeout the member did not see (tab in the background) is `timeout-unseen`, and is not
+ *     reported: the page's own blocks still come back;
  *   - a page without the anchor is recorded as `no-anchor`;
  *   - a normal answer is still `shown`, and no late `timeout` follows it;
  *   - an HTTP error is still `failed`, never `timeout`;
  *   - actions (PDF, payment, reactivation) are never subject to the delay;
  *   - without AbortController, the request keeps its previous, unbounded behaviour.
  *
- * The real file is loaded in jsdom. Only LIST_TIMEOUT_MS is shortened, in the test's copy,
- * so each case runs in milliseconds instead of eight seconds.
+ * The real file is loaded in jsdom. Only LIST_TIMEOUT_MS and HEDGE_MS are shortened, in the
+ * test's copy, so each case runs in milliseconds instead of eight seconds.
  *
  * Usage: node test/subscriptions-list-timeout.js
  */
@@ -26,13 +32,16 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const FILE = path.resolve(__dirname, '..', 'account/subscriptions-overview.js');
 const REAL = fs.readFileSync(FILE, 'utf8');
 const SHORT_MS = 60;
-const SOURCE = REAL.replace('var LIST_TIMEOUT_MS = 8000;', 'var LIST_TIMEOUT_MS = ' + SHORT_MS + ';');
-assert.notStrictEqual(SOURCE, REAL, 'LIST_TIMEOUT_MS = 8000 not found: the test would not shorten the delay');
+const HEDGE_SHORT_MS = 30;
+const SHORTENED = REAL.replace('var LIST_TIMEOUT_MS = 8000;', 'var LIST_TIMEOUT_MS = ' + SHORT_MS + ';');
+assert.notStrictEqual(SHORTENED, REAL, 'LIST_TIMEOUT_MS = 8000 not found: the test would not shorten the delay');
+const SOURCE = SHORTENED.replace('var HEDGE_MS = 4000;', 'var HEDGE_MS = ' + HEDGE_SHORT_MS + ';');
+assert.notStrictEqual(SOURCE, SHORTENED, 'HEDGE_MS = 4000 not found: the test would not shorten the delay');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let passed = 0;
 
-function page({ anchor = true, fetch, withAbort = true } = {}) {
+function page({ anchor = true, fetch, withAbort = true, hidden = false } = {}) {
   const html = '<!doctype html><html><body>' + (anchor ? '<div id="ordotype-subscriptions"></div>' : '') + '</body></html>';
   const dom = new JSDOM(html, {
     runScripts: 'outside-only',
@@ -48,6 +57,7 @@ function page({ anchor = true, fetch, withAbort = true } = {}) {
   const reports = [];
   w.OrdoErrorReporter = { report: (ctx, err) => reports.push({ ctx, err }), reportNetwork: (ctx, err) => reports.push({ ctx, err }) };
   if (!withAbort) delete w.AbortController;
+  if (hidden) Object.defineProperty(w.document, 'visibilityState', { configurable: true, get: () => 'hidden' });
   w.eval(SOURCE);
   const events = () => w.dataLayer.filter((e) => e.event === 'subscriptions_list');
   return { w, calls, reports, events, fallback: () => w.document.documentElement.classList.contains('ordo-subs-fallback') };
@@ -69,16 +79,64 @@ async function check(name, fn) {
 }
 
 (async () => {
-  await check('no answer: recorded as `timeout` in subs_outcome, page blocks back, not retried', async () => {
+  await check('no answer: a second request after HEDGE_MS, both cut by LIST_TIMEOUT_MS, ONE `timeout`', async () => {
     const p = page({ fetch: hang });
+    await wait(HEDGE_SHORT_MS / 2);
+    assert.strictEqual(p.calls.length, 1, 'no second request before HEDGE_MS');
     await wait(SHORT_MS * 5);
     const ev = p.events();
     assert.strictEqual(ev.length, 1, 'exactly one list event');
     assert.strictEqual(ev[0].subs_outcome, 'timeout');
     assert.strictEqual(ev[0].subs_status, 'timeout');
-    assert.strictEqual(p.calls.length, 1, 'a timeout must not be retried: it would double the wait');
+    assert.strictEqual(p.calls.length, 2, 'the unanswered request is sent a second time, and only once');
+    assert.ok(p.calls.every((c) => c.opts.signal && c.opts.signal.aborted), 'both requests are cut');
     assert.ok(p.fallback(), 'the page\'s own blocks come back');
     assert.strictEqual(p.reports.length, 1, 'a hung function is reported, so it shows in Sentry');
+  });
+
+  await check('the total wait does not grow: both requests are over by LIST_TIMEOUT_MS', async () => {
+    const p = page({ fetch: hang });
+    const t0 = Date.now();
+    while (!p.events().length && Date.now() - t0 < SHORT_MS * 10) await wait(5);
+    assert.ok(p.events().length === 1 && Date.now() - t0 < SHORT_MS * 2, 'recorded well before twice the delay');
+  });
+
+  await check('first request hangs, the second answers: `shown-retry`, nothing reported', async () => {
+    let n = 0;
+    const p = page({ fetch: (w, opts) => (++n === 1 ? hang(w, opts) : answer(200, EMPTY)()) });
+    await wait(SHORT_MS * 3);
+    assert.deepStrictEqual(p.events().map((e) => e.subs_outcome), ['shown-retry']);
+    assert.strictEqual(p.calls.length, 2);
+    assert.ok(!p.fallback());
+    assert.strictEqual(p.reports.length, 0);
+  });
+
+  await check('first request hangs, the second gets an HTTP error: `failed` at once, not a later `timeout`', async () => {
+    let n = 0;
+    const p = page({ fetch: (w, opts) => (++n === 1 ? hang(w, opts) : answer(503, { error: 'unavailable' })()) });
+    await wait(HEDGE_SHORT_MS + 10);
+    const ev = p.events();
+    assert.strictEqual(ev.length, 1, 'recorded before the first request is cut');
+    assert.strictEqual(ev[0].subs_outcome, 'failed');
+    assert.strictEqual(ev[0].subs_status, '503');
+    await wait(SHORT_MS * 2);
+    assert.strictEqual(p.events().length, 1, 'no late event when the first request is cut');
+  });
+
+  await check('an answer before HEDGE_MS: no second request', async () => {
+    const slow = (ms) => () => new Promise((r) => setTimeout(() => r({ ok: true, status: 200, json: () => Promise.resolve(EMPTY) }), ms));
+    const p = page({ fetch: slow(HEDGE_SHORT_MS / 3) });
+    await wait(SHORT_MS * 3);
+    assert.deepStrictEqual(p.events().map((e) => e.subs_outcome), ['shown']);
+    assert.strictEqual(p.calls.length, 1);
+  });
+
+  await check('tab in the background during the wait: `timeout-unseen`, not reported, blocks back', async () => {
+    const p = page({ fetch: hang, hidden: true });
+    await wait(SHORT_MS * 5);
+    assert.deepStrictEqual(p.events().map((e) => e.subs_outcome), ['timeout-unseen']);
+    assert.ok(p.fallback(), 'the page\'s own blocks still come back');
+    assert.strictEqual(p.reports.length, 0, 'a wait nobody saw is not a failure');
   });
 
   await check('no anchor: recorded as `no-anchor`, no request, page blocks back', async () => {
@@ -107,6 +165,7 @@ async function check(name, fn) {
     assert.strictEqual(ev.length, 1);
     assert.strictEqual(ev[0].subs_outcome, 'failed');
     assert.strictEqual(ev[0].subs_status, '503');
+    assert.strictEqual(p.calls.length, 1, 'an HTTP error is an answer: no second request');
   });
 
   await check('the list request carries an abort signal', async () => {
@@ -119,12 +178,13 @@ async function check(name, fn) {
     const p = page({ fetch: hang, withAbort: false });
     await wait(SHORT_MS * 5);
     assert.strictEqual(p.events().length, 0, 'still pending, exactly as before the change');
-    assert.strictEqual(p.calls[0].opts.signal, undefined);
+    assert.ok(p.calls.every((c) => c.opts.signal === undefined));
   });
 
   await check('actions are never subject to the delay (source check)', async () => {
-    // Only the list passes LIST_TIMEOUT_MS: once defined, twice in load(), nowhere else.
-    assert.strictEqual((REAL.match(/LIST_TIMEOUT_MS/g) || []).length, 3);
+    // Only the list passes LIST_TIMEOUT_MS: once defined, twice in load(), nowhere else (comments aside).
+    const code = REAL.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+    assert.strictEqual((code.match(/LIST_TIMEOUT_MS/g) || []).length, 3);
     const posts = REAL.match(/(?:call|request)\('POST',[^)]*\)/g) || [];
     assert.ok(posts.length >= 3, 'the action calls were found');
     for (const c of posts) {
