@@ -1309,6 +1309,418 @@ async function main() {
     assert.strictEqual(section(t.w).querySelector('img'), null);
   }
 
+  // Carte « Adresse de facturation » : seulement quand quelque chose est ou a été facturé
+  {
+    const ADRESSE = { name: 'Dr Claire Martin', line1: '12 rue de la République', line2: '', postalCode: '69002', city: 'Lyon', country: 'FR' };
+    const VIDE = { name: '', line1: '', line2: '', postalCode: '', city: '', country: '' };
+    const INV = [{ ref: 'aaaaaaaaaaaaaaaaaaaa', date: '2026-09-14', label: 'Médecine Générale', amount: 1500, currency: 'eur', status: 'paid', pdf: true }];
+    const GRATUIT = { subscriptions: [CARDS[3]], paymentMethods: [], otherPaymentMethods: [], invoices: [], billingAddress: VIDE, taxId: null, taxIdAllowed: true };
+    const section = (w) => w.document.querySelector('.ordo-addr');
+    async function ouvrir(body) {
+      const t = page();
+      installFetch(t.w, [{ status: 200, body }]);
+      t.w.eval(SCRIPT);
+      await wait(60);
+      return t;
+    }
+    // Plans gratuits seuls, accès terminé seul, aucun plan : pas de carte
+    for (const subscriptions of [[CARDS[3]], [CARDS[12]], [CARDS[3], CARDS[13]], []]) {
+      const t = await ouvrir({ ...GRATUIT, subscriptions });
+      assert.strictEqual(section(t.w), null, subscriptions.map((c) => c.status).join('+') || 'aucun');
+      assert.strictEqual(cards(t.w).length, subscriptions.length, 'la liste reste affichée');
+      t.dom.window.close();
+    }
+    // Un seul signe de facturation suffit
+    const SIGNES = {
+      'adresse remplie': { billingAddress: ADRESSE },
+      'moyen de paiement': { paymentMethods: [VISA] },
+      'moyen enregistré non utilisé': { otherPaymentMethods: [{ type: 'card', brand: 'visa', last4: '4444', expMonth: 7, expYear: 2028 }] },
+      'factures illisibles (null)': { invoices: null },
+      'factures absentes de la réponse': { invoices: undefined },
+      'une facture': { invoices: INV },
+      'numéro de TVA': { taxId: { value: 'FR12345678901', status: 'verified' } },
+      'active': { subscriptions: [CARDS[3], CARDS[0]] },
+      'past_due': { subscriptions: [CARDS[3], CARDS[5]] },
+      'pending': { subscriptions: [CARDS[3], CARDS[9]] },
+      'canceling': { subscriptions: [CARDS[3], CARDS[4]] },
+      'pause_scheduled': { subscriptions: [CARDS[3], CARDS[7]] },
+      'paused': { subscriptions: [CARDS[3], CARDS[6]] },
+    };
+    for (const [nom, extra] of Object.entries(SIGNES)) {
+      const t = await ouvrir({ ...GRATUIT, ...extra });
+      assert.ok(section(t.w), nom);
+      assert.deepStrictEqual(t.erreurs, [], nom);
+      t.dom.window.close();
+    }
+    // Sans adresse dans la réponse (pas de client Stripe) : jamais de carte, même avec des signes
+    {
+      const t = await ouvrir({ ...GRATUIT, billingAddress: null, paymentMethods: [VISA], invoices: INV, taxId: { value: 'FR12345678901', status: '' } });
+      assert.strictEqual(section(t.w), null);
+      t.dom.window.close();
+    }
+  }
+
+  // Numéro de TVA intracommunautaire, sous l'adresse
+  {
+    const ADRESSE = { name: 'Dr Claire Martin', line1: '12 rue de la République', line2: '', postalCode: '69002', city: 'Lyon', country: 'FR' };
+    const VIDE = { name: '', line1: '', line2: '', postalCode: '', city: '', country: '' };
+    const NUMERO = { value: 'FR12345678901', status: 'pending' };
+    const LIGNE = 'Numéro de TVA intracommunautaire FR12345678901';
+    const LIEN = 'Vous avez un numéro de TVA intracommunautaire ? L’ajouter';
+    const corps = (extra = {}) => ({ subscriptions: CARDS.slice(0, 1), paymentMethods: [VISA], invoices: [], billingAddress: ADRESSE, ...extra });
+    const section = (w) => w.document.querySelector('.ordo-addr');
+    const tva = (w) => w.document.querySelector('.ordo-addr-tva');
+    const tvaVisible = (w) => !!tva(w) && !tva(w).hidden && !!tva(w).firstChild;
+    const boutons = (node) => [...node.querySelectorAll('button')].map((b) => b.textContent);
+    const bouton = (node, label) => [...node.querySelectorAll('button')].find((b) => b.textContent === label);
+    const envoyer = (w, form) => form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    const mesures = (w) => w.dataLayer.filter((e) => e.event === 'subscriptions_action' && /^tva_/.test(e.subs_action))
+      .map((e) => [e.subs_action, e.subs_outcome]);
+    async function ouvrir(body, outcomes = []) {
+      const t = page();
+      t.w.dataLayer = [];
+      const calls = installFetch(t.w, [{ status: 200, body }].concat(outcomes));
+      t.w.eval(SCRIPT);
+      await wait(60);
+      return { t, calls };
+    }
+
+    // Ajout permis, aucun numéro : un lien discret, sans champ ni « Non renseigné »
+    {
+      const { t } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }));
+      assert.ok(tvaVisible(t.w));
+      assert.strictEqual(text(tva(t.w)), LIEN);
+      assert.strictEqual(tva(t.w).querySelector('input'), null, 'pas de champ');
+      assert.ok(!text(section(t.w)).includes('Non renseigné'), 'pas de « Non renseigné »');
+      assert.deepStrictEqual([...tva(t.w).querySelectorAll('button, a')].map((b) => b.textContent), ['L’ajouter'], 'seul « L’ajouter » est cliquable');
+      assert.ok(tva(t.w).querySelector('button.ordo-subs-link'), 'lien, pas bouton');
+      assert.strictEqual(section(t.w).lastElementChild, tva(t.w), 'sous l\'adresse');
+      assert.deepStrictEqual(t.erreurs, []);
+      t.dom.window.close();
+    }
+
+    // Ajout non permis sans numéro, serveur plus ancien (champs absents), valeurs inattendues : rien
+    for (const extra of [{ taxId: null, taxIdAllowed: false }, {}, { taxId: { value: '' }, taxIdAllowed: 'true' }, { taxId: 'FR12345678901' }]) {
+      const { t } = await ouvrir(corps(extra));
+      assert.ok(section(t.w), 'carte adresse affichée');
+      assert.ok(!tvaVisible(t.w), JSON.stringify(extra));
+      assert.ok(!text(section(t.w)).includes('TVA'), JSON.stringify(extra));
+      assert.deepStrictEqual(t.erreurs, []);
+      t.dom.window.close();
+    }
+
+    // Ajout : champ, focus, champ vide refusé sans appel, puis saisie envoyée telle quelle
+    {
+      const { t, calls } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [
+        { status: 200, body: { ok: true, taxId: NUMERO }, delay: 40 },
+      ]);
+      tva(t.w).querySelector('button.ordo-subs-link').click();
+      const form = tva(t.w).querySelector('form');
+      const input = form.querySelector('input');
+      assert.strictEqual(text(form.querySelector('label')), 'Numéro de TVA intracommunautaire');
+      assert.strictEqual(form.querySelector('label').getAttribute('for'), input.id);
+      assert.strictEqual(input.type, 'text');
+      assert.strictEqual(input.getAttribute('placeholder'), 'FR12345678901');
+      assert.strictEqual(input.maxLength, 20);
+      assert.strictEqual(input.getAttribute('autocomplete'), 'off');
+      assert.strictEqual(input.getAttribute('spellcheck'), 'false');
+      assert.strictEqual(input.value, '');
+      assert.strictEqual(t.w.document.activeElement, input, 'focus dans le champ');
+      assert.ok(text(form).includes('Il figurera sur vos prochaines factures. Les factures déjà émises ne changent pas.'));
+      assert.deepStrictEqual(boutons(form), ['Annuler', 'Enregistrer']);
+      input.value = '   ';
+      envoyer(t.w, form);
+      const erreur = form.querySelector('.ordo-addr-error');
+      assert.strictEqual(erreur.getAttribute('role'), 'alert');
+      assert.ok(!erreur.hidden);
+      assert.strictEqual(erreur.textContent, 'Saisissez votre numéro de TVA.');
+      assert.strictEqual(calls.length, 1, 'pas d\'appel');
+      input.value = ' FR 12 345 678 901 ';
+      bouton(form, 'Enregistrer').click();
+      await wait(10);
+      assert.ok(erreur.hidden, 'message effacé à l\'envoi');
+      assert.ok(bouton(form, 'Enregistrement…').disabled, 'bouton occupé');
+      assert.ok(bouton(form, 'Annuler').disabled);
+      await wait(80);
+      assert.strictEqual(calls.length, 2);
+      assert.strictEqual(calls[1].options.method, 'POST');
+      assert.strictEqual(calls[1].options.headers.Authorization, 'Bearer jeton-de-test');
+      assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'tax_id_update', value: 'FR 12 345 678 901' });
+      assert.strictEqual(text(tva(t.w)), 'Numéro de TVA enregistré. ' + LIGNE + ' Modifier Retirer');
+      assert.strictEqual(tva(t.w).querySelector('.ordo-subs-flash').getAttribute('role'), 'status');
+      assert.strictEqual(tva(t.w).querySelector('.ordo-subs-btn.is-primary'), null, 'boutons secondaires');
+      assert.strictEqual(t.w.document.activeElement, bouton(tva(t.w), 'Modifier'), 'focus rendu à « Modifier »');
+      assert.deepStrictEqual(mesures(t.w), [['tva_ajouter', 'click'], ['tva_enregistrer', 'click'], ['tva_enregistrer', 'ok']]);
+      // Aucun paramètre de mesure nouveau
+      for (const e of t.w.dataLayer.filter((x) => x.event === 'subscriptions_action')) {
+        assert.deepStrictEqual(Object.keys(e).sort(), ['event', 'subs_action', 'subs_outcome', 'subs_status']);
+        assert.strictEqual(e.subs_status, '');
+      }
+      assert.strictEqual(t.reported.length + t.network.length, 0);
+      t.dom.window.close();
+    }
+
+    // Modifier : champ prérempli ; Annuler revient à la lecture, focus sur « Modifier »
+    {
+      const { t, calls } = await ouvrir(corps({ taxId: NUMERO, taxIdAllowed: true }));
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer');
+      assert.ok(!text(tva(t.w)).includes('L’ajouter'));
+      bouton(tva(t.w), 'Modifier').click();
+      const input = tva(t.w).querySelector('input');
+      assert.strictEqual(input.value, 'FR12345678901');
+      assert.strictEqual(t.w.document.activeElement, input);
+      input.value = 'FR00';
+      bouton(tva(t.w), 'Annuler').click();
+      assert.strictEqual(tva(t.w).querySelector('form'), null);
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer', 'saisie abandonnée');
+      assert.strictEqual(t.w.document.activeElement, bouton(tva(t.w), 'Modifier'));
+      assert.strictEqual(calls.length, 1);
+      assert.deepStrictEqual(mesures(t.w), [['tva_modifier', 'click'], ['tva_annuler', 'click']]);
+      t.dom.window.close();
+    }
+
+    // Refus et pannes : message dans la saisie, gardée, boutons rendus ; seules les pannes sont signalées
+    const GENERIQUE = 'Le numéro n’a pas pu être enregistré. Réessayez dans un instant.';
+    for (const [reponse, message, signale] of [
+      [{ status: 400, body: { error: 'invalid_body' } }, 'Ce numéro n’est pas un numéro de TVA français valide (FR suivi de 11 chiffres).', 0],
+      [{ status: 422, body: { error: 'not_allowed' } }, 'Ce numéro ne peut pas être ajouté depuis votre compte. Écrivez-nous pour le faire.', 0],
+      [{ status: 401, body: { error: 'unauthorized' } }, 'Votre session a expiré : reconnectez-vous puis réessayez.', 0],
+      [{ status: 409, body: { error: 'no_customer' } }, GENERIQUE, 0],
+      [{ status: 502, body: { error: 'upstream_error' } }, GENERIQUE, 1],
+      [{ status: 503, body: { error: 'not_configured' } }, GENERIQUE, 1],
+      [{ status: 200, body: { ok: true } }, GENERIQUE, 1],
+      [{ transport: 'Failed to fetch' }, GENERIQUE, 1],
+    ]) {
+      const cas = String(reponse.status || reponse.transport);
+      const { t } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [reponse]);
+      tva(t.w).querySelector('button.ordo-subs-link').click();
+      const form = tva(t.w).querySelector('form');
+      const input = form.querySelector('input');
+      input.value = 'FR00';
+      envoyer(t.w, form);
+      await wait(60);
+      const erreur = form.querySelector('.ordo-addr-error');
+      assert.ok(!erreur.hidden, cas);
+      assert.strictEqual(erreur.textContent, message, cas);
+      assert.ok(tva(t.w).contains(form), 'saisie gardée ' + cas);
+      assert.strictEqual(input.value, 'FR00');
+      assert.ok(!bouton(form, 'Enregistrer').disabled && !bouton(form, 'Annuler').disabled, cas);
+      assert.strictEqual(t.reported.length + t.network.length, signale, 'signalement ' + cas);
+      assert.deepStrictEqual(mesures(t.w).slice(-1), [['tva_enregistrer', 'failed']], cas);
+      if (reponse.status === 400) {
+        assert.strictEqual(input.getAttribute('aria-invalid'), 'true');
+        assert.strictEqual(t.w.document.activeElement, input, 'focus sur le champ à corriger');
+      }
+      t.dom.window.close();
+    }
+
+    // Retirer : confirmation dans la carte, Annuler n'appelle rien, puis retrait et lien de nouveau là
+    {
+      const { t, calls } = await ouvrir(corps({ taxId: NUMERO, taxIdAllowed: true }), [{ status: 200, body: { ok: true, taxId: null } }]);
+      bouton(tva(t.w), 'Retirer').click();
+      assert.strictEqual(calls.length, 1, 'pas d\'appel avant confirmation');
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Retirer ce numéro de vos prochaines factures ? Annuler Retirer');
+      assert.strictEqual(t.w.document.activeElement, bouton(tva(t.w), 'Annuler'));
+      bouton(tva(t.w), 'Annuler').click();
+      assert.strictEqual(calls.length, 1);
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer');
+      assert.strictEqual(t.w.document.activeElement, bouton(tva(t.w), 'Retirer'), 'focus rendu à « Retirer »');
+      bouton(tva(t.w), 'Retirer').click();
+      bouton(tva(t.w), 'Retirer').click();
+      await wait(60);
+      assert.strictEqual(calls.length, 2);
+      assert.strictEqual(calls[1].options.method, 'POST');
+      assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'tax_id_remove' });
+      assert.strictEqual(text(tva(t.w)), 'Numéro de TVA retiré. ' + LIEN);
+      assert.strictEqual(tva(t.w).querySelector('.ordo-subs-flash').getAttribute('role'), 'status');
+      assert.strictEqual(t.w.document.activeElement, tva(t.w).querySelector('button.ordo-subs-link'));
+      assert.deepStrictEqual(mesures(t.w), [
+        ['tva_retirer', 'click'], ['tva_annuler', 'click'], ['tva_retirer', 'click'], ['tva_retirer', 'click'], ['tva_retirer', 'ok'],
+      ]);
+      t.dom.window.close();
+    }
+
+    // Retrait en échec : message, numéro toujours là, boutons rendus
+    for (const [reponse, message, signale] of [
+      [{ status: 502, body: { error: 'upstream_error' } }, 'Le numéro n’a pas pu être retiré. Réessayez dans un instant.', 1],
+      [{ status: 401, body: { error: 'unauthorized' } }, 'Votre session a expiré : reconnectez-vous puis réessayez.', 0],
+    ]) {
+      const { t } = await ouvrir(corps({ taxId: NUMERO, taxIdAllowed: true }), [reponse]);
+      bouton(tva(t.w), 'Retirer').click();
+      bouton(tva(t.w), 'Retirer').click();
+      await wait(60);
+      const erreur = tva(t.w).querySelector('.ordo-addr-error');
+      assert.strictEqual(erreur.getAttribute('role'), 'alert');
+      assert.strictEqual(erreur.textContent, message);
+      assert.ok(text(tva(t.w)).includes('FR12345678901'));
+      assert.ok(!bouton(tva(t.w), 'Retirer').disabled && !bouton(tva(t.w), 'Annuler').disabled);
+      assert.strictEqual(t.reported.length + t.network.length, signale);
+      t.dom.window.close();
+    }
+
+    // Numéro enregistré mais ajout non permis (ou champ absent) : affiché, « Retirer » seulement
+    for (const extra of [{ taxId: NUMERO, taxIdAllowed: false }, { taxId: NUMERO }]) {
+      const { t } = await ouvrir(corps(extra), [{ status: 200, body: { ok: true, taxId: null } }]);
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Retirer');
+      assert.deepStrictEqual(boutons(tva(t.w)), ['Retirer']);
+      bouton(tva(t.w), 'Retirer').click();
+      bouton(tva(t.w), 'Retirer').click();
+      await wait(60);
+      assert.strictEqual(text(tva(t.w)), 'Numéro de TVA retiré.', 'pas de lien ensuite');
+      assert.strictEqual(tva(t.w).querySelector('button'), null);
+      t.dom.window.close();
+    }
+
+    // Adresse et numéro se modifient chacun sans toucher à l'autre
+    {
+      const { t } = await ouvrir(corps({ taxId: NUMERO, taxIdAllowed: true }), [
+        { status: 200, body: { ok: true, billingAddress: { ...ADRESSE, line1: '3 place Bellecour' } } },
+      ]);
+      bouton(tva(t.w), 'Modifier').click();
+      tva(t.w).querySelector('input').value = 'FR98765432109';
+      section(t.w).querySelector('.ordo-subs-btn').click();
+      const formAdresse = section(t.w).querySelector('form');
+      assert.ok(formAdresse.elements.line1, 'saisie de l\'adresse ouverte');
+      assert.ok(!tva(t.w).contains(formAdresse));
+      assert.strictEqual(tva(t.w).querySelector('input').value, 'FR98765432109', 'saisie TVA intacte');
+      formAdresse.elements.line1.value = '3 place Bellecour';
+      envoyer(t.w, formAdresse);
+      await wait(60);
+      assert.ok(text(section(t.w)).includes('Adresse enregistrée.'));
+      assert.ok(text(section(t.w)).includes('3 place Bellecour'));
+      assert.strictEqual(tva(t.w).querySelector('input').value, 'FR98765432109', 'saisie TVA toujours ouverte');
+      bouton(tva(t.w), 'Annuler').click();
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer', 'réponse sans les champs TVA : état gardé');
+      assert.ok(text(section(t.w)).includes('3 place Bellecour'));
+      t.dom.window.close();
+    }
+    {
+      const { t } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [{ status: 200, body: { ok: true, taxId: NUMERO } }]);
+      section(t.w).querySelector('.ordo-subs-btn').click();
+      const formAdresse = section(t.w).querySelector('form');
+      formAdresse.elements.city.value = 'Villeurbanne';
+      tva(t.w).querySelector('button.ordo-subs-link').click();
+      const formTva = tva(t.w).querySelector('form');
+      formTva.querySelector('input').value = 'FR12345678901';
+      envoyer(t.w, formTva);
+      await wait(60);
+      assert.ok(text(tva(t.w)).startsWith('Numéro de TVA enregistré.'));
+      assert.ok(section(t.w).contains(formAdresse), 'saisie de l\'adresse toujours ouverte');
+      assert.strictEqual(formAdresse.elements.city.value, 'Villeurbanne');
+      t.dom.window.close();
+    }
+    {
+      // Une adresse en lecture enregistrée : la ligne du numéro reste là
+      const { t } = await ouvrir(corps({ taxId: NUMERO, taxIdAllowed: true }), [
+        { status: 200, body: { ok: true, billingAddress: ADRESSE, taxId: NUMERO, taxIdAllowed: true } },
+      ]);
+      section(t.w).querySelector('.ordo-subs-btn').click();
+      envoyer(t.w, section(t.w).querySelector('form'));
+      await wait(60);
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer');
+      assert.strictEqual(t.w.document.activeElement, section(t.w).querySelector('.ordo-subs-btn'), 'focus sur l\'adresse');
+      t.dom.window.close();
+    }
+
+    // L'enregistrement de l'adresse renvoie l'état du numéro : appliqué sans rechargement
+    async function apresAdresse(depart, reponse) {
+      const { t } = await ouvrir(corps({ billingAddress: VIDE, ...depart }), [{ status: 200, body: { ok: true, billingAddress: ADRESSE, ...reponse } }]);
+      const avant = tvaVisible(t.w) ? text(tva(t.w)) : '';
+      section(t.w).querySelector('.ordo-subs-btn').click();
+      const form = section(t.w).querySelector('form');
+      form.elements.line1.value = ADRESSE.line1;
+      form.elements.postalCode.value = ADRESSE.postalCode;
+      form.elements.city.value = ADRESSE.city;
+      form.elements.country.value = 'FR';
+      envoyer(t.w, form);
+      await wait(60);
+      assert.ok(text(section(t.w)).includes('Adresse enregistrée.'));
+      return { t, avant, apres: tvaVisible(t.w) ? text(tva(t.w)) : '' };
+    }
+    {
+      // Première adresse : le lien apparaît
+      const r = await apresAdresse({ taxId: null, taxIdAllowed: false }, { taxId: null, taxIdAllowed: true });
+      assert.strictEqual(r.avant, '');
+      assert.strictEqual(r.apres, LIEN);
+      r.t.dom.window.close();
+    }
+    {
+      // Le nouveau pays ne le permet plus : le lien disparaît
+      const r = await apresAdresse({ taxId: null, taxIdAllowed: true }, { taxId: null, taxIdAllowed: false });
+      assert.strictEqual(r.avant, LIEN);
+      assert.strictEqual(r.apres, '');
+      assert.ok(!text(section(r.t.w)).includes('TVA'));
+      r.t.dom.window.close();
+    }
+    {
+      // Un numéro enregistré reste affiché, avec « Retirer » seulement
+      const r = await apresAdresse({ taxId: NUMERO, taxIdAllowed: true }, { taxId: NUMERO, taxIdAllowed: false });
+      assert.strictEqual(r.avant, LIGNE + ' Modifier Retirer');
+      assert.strictEqual(r.apres, LIGNE + ' Retirer');
+      r.t.dom.window.close();
+    }
+    {
+      // Serveur plus ancien : réponse sans les champs, état précédent gardé
+      const r = await apresAdresse({ taxId: null, taxIdAllowed: true }, {});
+      assert.strictEqual(r.apres, LIEN);
+      r.t.dom.window.close();
+    }
+    {
+      // Saisie du numéro en cours : gardée, le nouvel état s'applique à la sortie de la saisie
+      const { t } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [
+        { status: 200, body: { ok: true, billingAddress: { ...ADRESSE, country: 'BE' }, taxId: null, taxIdAllowed: false } },
+      ]);
+      tva(t.w).querySelector('button.ordo-subs-link').click();
+      tva(t.w).querySelector('input').value = 'FR12345678901';
+      section(t.w).querySelector('.ordo-subs-btn').click();
+      const form = section(t.w).querySelector('form');
+      form.elements.country.value = 'BE';
+      envoyer(t.w, form);
+      await wait(60);
+      assert.strictEqual(tva(t.w).querySelector('input').value, 'FR12345678901', 'saisie gardée');
+      bouton(tva(t.w), 'Annuler').click();
+      assert.ok(!tvaVisible(t.w), 'plus de lien');
+      t.dom.window.close();
+    }
+
+    // Réabonnement : tout est redessiné, le numéro avec
+    {
+      const canceling = Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' });
+      const after = Object.assign({}, canceling, { status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } });
+      const { t } = await ouvrir(corps({ subscriptions: [canceling], taxId: NUMERO, taxIdAllowed: true }), [
+        { status: 200, body: { ok: true, subscriptions: [after], paymentMethods: [VISA], invoices: [], billingAddress: ADRESSE, taxId: NUMERO, taxIdAllowed: true } },
+      ]);
+      cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
+      await wait(60);
+      assert.ok(text(anchor(t.w)).includes('C’est fait'));
+      assert.strictEqual(t.w.document.querySelectorAll('.ordo-addr-tva').length, 1);
+      assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer');
+      t.dom.window.close();
+    }
+
+    // Tous les boutons sont nommés pour la mesure ; le numéro est du texte
+    {
+      const { t } = await ouvrir(corps({ taxId: { value: '<img src=x onerror=alert(1)>', status: '' }, taxIdAllowed: true }));
+      assert.strictEqual(tva(t.w).querySelector('img'), null);
+      assert.ok(text(tva(t.w)).includes('<img src=x onerror=alert(1)>'));
+      const noms = new Set();
+      const releve = () => {
+        for (const b of tva(t.w).querySelectorAll('button, a')) {
+          assert.ok(b.hasAttribute('data-subs-action'), b.textContent);
+          noms.add(b.getAttribute('data-subs-action'));
+        }
+      };
+      releve();
+      bouton(tva(t.w), 'Modifier').click();
+      releve();
+      bouton(tva(t.w), 'Annuler').click();
+      bouton(tva(t.w), 'Retirer').click();
+      releve();
+      assert.deepStrictEqual([...noms].sort(), ['tva_annuler', 'tva_enregistrer', 'tva_modifier', 'tva_retirer']);
+      t.dom.window.close();
+    }
+  }
+
   console.log('subscriptions-overview: OK');
 }
 

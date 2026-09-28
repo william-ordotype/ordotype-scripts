@@ -107,6 +107,12 @@
     '.ordo-addr-input:focus{outline:2px solid var(--primary-500,#3454f6);outline-offset:1px}',
     'select.ordo-addr-input{-webkit-appearance:none;appearance:none;padding-right:2.75rem;background:#fff url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%230c0e16\' stroke-width=\'1.8\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E") no-repeat right .875rem center}',
     '.ordo-addr-error{margin:0;font-size:.875rem;line-height:1.5;color:var(--error-700,#ba1b1b)}',
+    '.ordo-addr-tva{display:flex;flex-direction:column;gap:.75rem;border-top:1px solid var(--base-100,#0c0e161a);padding-top:1rem}',
+    '.ordo-addr-tva[hidden]{display:none}',
+    '.ordo-addr-tva p{margin:0}',
+    '.ordo-addr-tva .ordo-addr-field{flex:none;max-width:20rem}',
+    '.ordo-addr-main{flex:1 1 16rem;min-width:0}',
+    '.ordo-addr-ask{font-size:.875rem;line-height:1.5;font-weight:600}',
     '.ordo-pm-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:48px;height:32px;box-sizing:border-box;border:1px solid var(--base-200,#0c0e1633);border-radius:.25rem;color:var(--base-900,#0c0e16)}',
     '.ordo-pm-icon.is-alert{border-color:var(--error-300,#fca6a6);color:var(--error-700,#ba1b1b)}',
     '.ordo-pm-text{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:2px}',
@@ -145,7 +151,7 @@
     '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
     '@media (prefers-reduced-motion:reduce){.ordo-subs-skel{animation:none}}',
     '@media (max-width:767px){.ordo-addr-grid{grid-template-columns:minmax(0,1fr)}.ordo-addr-field.is-short{flex:1 1 12rem}}',
-    '@media (max-width:479px){.ordo-subs-card{padding:1rem}.ordo-subs-amount{font-size:1.125rem}.ordo-subs-foot{flex-direction:column}.ordo-subs-btn{width:100%}.ordo-subs-msg{text-align:left}}'
+    '@media (max-width:479px){.ordo-subs-card{padding:1rem}.ordo-subs-amount{font-size:1.125rem}.ordo-subs-foot{flex-direction:column}.ordo-subs-btn{width:100%}.ordo-subs-msg{text-align:left}.ordo-addr-row>.ordo-subs-actions{flex:1 1 100%}}'
   ].join('');
 
   function injectStyle() {
@@ -528,7 +534,7 @@
       msg.textContent = 'Traitement en cours…';
       request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(data) {
         trackOutcome('reabonner', c.status, 'ok');
-        render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices, data.others, data.address);
+        render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices, data.others, data.address, data.taxId, data.taxIdAllowed);
       }).catch(function(err) {
         btn.disabled = false;
         if (err && err.status === 409) msg.textContent = 'Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.';
@@ -891,12 +897,237 @@
     return field;
   }
 
-  function addressSection(addr) {
+  // La carte s'affiche dès qu'un élément de facturation existe : adresse remplie, moyen de paiement,
+  // factures (ou factures illisibles), abonnement facturé ou numéro de TVA.
+  function billingCardWanted(list, pms, invoices, others, addr, taxId) {
+    if (addressFilled(addr) || pms.length || others.length || taxIdOf(taxId)) return true;
+    if (!Array.isArray(invoices) || invoices.length) return true;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && BILLED.indexOf(list[i].status) !== -1) return true;
+    }
+    return false;
+  }
+
+  // --- Numéro de TVA intracommunautaire ------------------------------------------------------
+
+  var TAX_LABEL = 'Numéro de TVA intracommunautaire';
+  var SESSION_EXPIRED = 'Votre session a expiré : reconnectez-vous puis réessayez.';
+
+  function taxIdOf(t) {
+    return t && typeof t === 'object' && typeof t.value === 'string' && t.value ? t : null;
+  }
+
+  function taxSaveError(err) {
+    var status = err && err.status;
+    if (status === 400) return 'Ce numéro n’est pas un numéro de TVA français valide (FR suivi de 11 chiffres).';
+    if (status === 422) return 'Ce numéro ne peut pas être ajouté depuis votre compte. Écrivez-nous pour le faire.';
+    if (status === 401) return SESSION_EXPIRED;
+    return 'Le numéro n’a pas pu être enregistré. Réessayez dans un instant.';
+  }
+
+  function errorLine() {
+    var error = el('p', 'ordo-addr-error');
+    error.setAttribute('role', 'alert');
+    error.hidden = true;
+    return error;
+  }
+
+  // Sous l'adresse, dans son propre conteneur : l'adresse et le numéro se modifient chacun sans
+  // toucher à l'autre. Sans numéro, un simple lien quand l'ajout est permis, rien sinon ; un numéro
+  // enregistré reste affiché, avec « Retirer » seulement quand l'ajout n'est pas permis.
+  // `update` applique l'état renvoyé par un enregistrement de l'adresse, sans fermer une saisie en cours.
+  function taxIdBlock(taxId, allowed) {
+    taxId = taxIdOf(taxId);
+    allowed = allowed === true;
+    var mode = 'read';
+    var box = el('div', 'ordo-addr-tva');
+
+    function reset(flash) {
+      box.textContent = '';
+      box.hidden = false;
+      if (flash) {
+        var ok = el('p', 'ordo-subs-flash', flash);
+        ok.setAttribute('role', 'status');
+        box.appendChild(ok);
+      }
+    }
+
+    function valueRow() {
+      var row = el('div', 'ordo-addr-row');
+      var value = addressValue(TAX_LABEL, [taxId.value]);
+      value.className = 'ordo-addr-main';
+      row.appendChild(value);
+      return row;
+    }
+
+    // `focus` : 'edit' rend le focus au bouton qui ouvre la saisie, 'remove' à « Retirer ».
+    function showRead(flash, focus) {
+      mode = 'read';
+      reset(flash);
+      var target = null;
+      if (taxId) {
+        var row = valueRow();
+        var actions = el('div', 'ordo-subs-actions');
+        var edit = null;
+        if (allowed) {
+          edit = mark(button('Modifier', false), 'tva_modifier');
+          edit.addEventListener('click', function() { showEdit(); });
+          actions.appendChild(edit);
+        }
+        var remove = mark(button('Retirer', false), 'tva_retirer');
+        remove.addEventListener('click', function() { showConfirm(); });
+        actions.appendChild(remove);
+        row.appendChild(actions);
+        box.appendChild(row);
+        target = focus === 'remove' ? remove : (edit || remove);
+      } else if (allowed) {
+        var line = el('p', 'ordo-subs-muted', 'Vous avez un numéro de TVA intracommunautaire ? ');
+        var add = mark(el('button', 'ordo-subs-link', 'L’ajouter'), 'tva_ajouter');
+        add.type = 'button';
+        add.addEventListener('click', function() { showEdit(); });
+        line.appendChild(add);
+        box.appendChild(line);
+        target = add;
+      }
+      box.hidden = !box.firstChild;
+      if (focus && target && typeof target.focus === 'function') target.focus();
+    }
+
+    function showEdit() {
+      mode = 'edit';
+      reset();
+      var form = el('form', 'ordo-addr-form');
+      form.noValidate = true;
+      var field = addressField('taxId', TAX_LABEL, taxId ? taxId.value : '', { placeholder: 'FR12345678901', autocomplete: 'off', max: 20 });
+      form.appendChild(field);
+      var input = field.querySelector('input');
+      input.setAttribute('spellcheck', 'false');
+      var hint = el('p', 'ordo-subs-muted', 'Il figurera sur vos prochaines factures. Les factures déjà émises ne changent pas.');
+      hint.id = 'ordo-addr-taxId-hint';
+      input.setAttribute('aria-describedby', hint.id);
+      form.appendChild(hint);
+      var error = errorLine();
+      form.appendChild(error);
+      var actions = el('div', 'ordo-subs-actions');
+      var cancel = mark(button('Annuler', false), 'tva_annuler');
+      cancel.addEventListener('click', function() { showRead(null, 'edit'); });
+      var save = mark(button('Enregistrer', true), 'tva_enregistrer');
+      save.type = 'submit';
+      actions.appendChild(cancel);
+      actions.appendChild(save);
+      form.appendChild(actions);
+
+      function fail(message, invalid) {
+        error.textContent = message;
+        error.hidden = false;
+        if (!invalid) return;
+        input.setAttribute('aria-invalid', 'true');
+        if (typeof input.focus === 'function') input.focus();
+      }
+
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var value = String(input.value || '').trim();
+        if (!value) {
+          fail('Saisissez votre numéro de TVA.', true);
+          return;
+        }
+        error.hidden = true;
+        input.removeAttribute('aria-invalid');
+        save.disabled = true;
+        cancel.disabled = true;
+        save.textContent = 'Enregistrement…';
+        call('POST', { action: 'tax_id_update', value: value }).then(function(payload) {
+          var saved = taxIdOf(payload && payload.taxId);
+          if (!saved) {
+            var bad = new Error('account-subscriptions: unexpected tax id body');
+            bad.status = 200;
+            throw bad;
+          }
+          taxId = saved;
+          trackOutcome('tva_enregistrer', '', 'ok');
+          showRead('Numéro de TVA enregistré.', 'edit');
+        }).catch(function(err) {
+          trackOutcome('tva_enregistrer', '', 'failed');
+          // Un numéro refusé (format, compte) est une réponse attendue : seul le reste est signalé.
+          if (!err || (err.status !== 400 && err.status !== 422)) reportIfActionable(err);
+          save.disabled = false;
+          cancel.disabled = false;
+          save.textContent = 'Enregistrer';
+          fail(taxSaveError(err), Boolean(err && err.status === 400));
+        });
+      });
+      box.appendChild(form);
+      if (typeof input.focus === 'function') input.focus();
+    }
+
+    function showConfirm() {
+      mode = 'confirm';
+      reset();
+      box.appendChild(valueRow());
+      var ask = el('p', 'ordo-addr-ask', 'Retirer ce numéro de vos prochaines factures ?');
+      ask.id = 'ordo-addr-tva-ask';
+      box.appendChild(ask);
+      var error = errorLine();
+      box.appendChild(error);
+      var actions = el('div', 'ordo-subs-actions');
+      var cancel = mark(button('Annuler', false), 'tva_annuler');
+      var confirm = mark(button('Retirer', true), 'tva_retirer');
+      cancel.setAttribute('aria-describedby', ask.id);
+      confirm.setAttribute('aria-describedby', ask.id);
+      cancel.addEventListener('click', function() { showRead(null, 'remove'); });
+      confirm.addEventListener('click', function() {
+        error.hidden = true;
+        confirm.disabled = true;
+        cancel.disabled = true;
+        confirm.textContent = 'Retrait…';
+        call('POST', { action: 'tax_id_remove' }).then(function(payload) {
+          if (!payload || payload.ok !== true) {
+            var bad = new Error('account-subscriptions: unexpected tax id body');
+            bad.status = 200;
+            throw bad;
+          }
+          taxId = null;
+          trackOutcome('tva_retirer', '', 'ok');
+          showRead('Numéro de TVA retiré.', 'edit');
+        }).catch(function(err) {
+          trackOutcome('tva_retirer', '', 'failed');
+          reportIfActionable(err);
+          error.textContent = err && err.status === 401
+            ? SESSION_EXPIRED
+            : 'Le numéro n’a pas pu être retiré. Réessayez dans un instant.';
+          error.hidden = false;
+          confirm.disabled = false;
+          cancel.disabled = false;
+          confirm.textContent = 'Retirer';
+        });
+      });
+      actions.appendChild(cancel);
+      actions.appendChild(confirm);
+      box.appendChild(actions);
+      if (typeof cancel.focus === 'function') cancel.focus();
+    }
+
+    showRead();
+    return {
+      root: box,
+      // Champ absent de la réponse (`undefined`) : valeur précédente gardée.
+      update: function(nextTaxId, nextAllowed) {
+        if (nextTaxId !== undefined) taxId = taxIdOf(nextTaxId);
+        if (nextAllowed !== undefined) allowed = nextAllowed === true;
+        if (mode === 'read') showRead();
+      }
+    };
+  }
+
+  function addressSection(addr, taxId, taxAllowed) {
     var root = el('div', 'ordo-subs ordo-addr');
     root.appendChild(el('h3', 'ordo-subs-title', 'Adresse de facturation'));
     root.appendChild(el('p', 'ordo-addr-sub', 'Elle figure sur vos factures.'));
     var body = el('div');
     root.appendChild(body);
+    var tax = taxIdBlock(taxId, taxAllowed);
+    root.appendChild(tax.root);
 
     function showRead(flash, focus) {
       body.textContent = '';
@@ -937,9 +1168,7 @@
       }));
       form.appendChild(l3);
       form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
-      var error = el('p', 'ordo-addr-error');
-      error.setAttribute('role', 'alert');
-      error.hidden = true;
+      var error = errorLine();
       form.appendChild(error);
       var actions = el('div', 'ordo-subs-actions');
       var cancel = mark(button('Annuler', false), 'adresse_annuler');
@@ -976,11 +1205,13 @@
           addr = payload.billingAddress;
           trackOutcome('adresse_enregistrer', '', 'ok');
           showRead('Adresse enregistrée.', true);
+          // La réponse porte aussi l'état du numéro de TVA, appliqué au bloc qui l'affiche.
+          tax.update(payload.taxId, payload.taxIdAllowed);
         }).catch(function(err) {
           trackOutcome('adresse_enregistrer', '', 'failed');
           reportIfActionable(err);
           error.textContent = err && err.status === 401
-            ? 'Votre session a expiré : reconnectez-vous puis réessayez.'
+            ? SESSION_EXPIRED
             : (err && err.status === 400
               ? 'Vérifiez les champs de l’adresse.'
               : 'L’adresse n’a pas pu être enregistrée. Réessayez dans un instant.');
@@ -1279,7 +1510,7 @@
     keepBlock(block, false);
   }
 
-  function render(list, flash, pms, invoices, others, address) {
+  function render(list, flash, pms, invoices, others, address, taxId, taxIdAllowed) {
     pms = Array.isArray(pms) ? pms : [];
     others = Array.isArray(others) ? others : [];
     injectStyle();
@@ -1301,7 +1532,9 @@
     }
     anchor.appendChild(root);
     if (pms.length) anchor.appendChild(paymentSection(list, pms, others));
-    if (address) anchor.appendChild(addressSection(address));
+    if (address && billingCardWanted(list, pms, invoices, others, address, taxId)) {
+      anchor.appendChild(addressSection(address, taxId, taxIdAllowed));
+    }
     placeInvoices(invoices);
     show();
     hideOldSection();
@@ -1395,7 +1628,10 @@
         pms: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [],
         others: Array.isArray(payload.otherPaymentMethods) ? payload.otherPaymentMethods : [],
         invoices: Array.isArray(payload.invoices) ? payload.invoices : null,
-        address: payload.billingAddress && typeof payload.billingAddress === 'object' ? payload.billingAddress : null
+        address: payload.billingAddress && typeof payload.billingAddress === 'object' ? payload.billingAddress : null,
+        // Absents d'une réponse plus ancienne : aucun numéro, ajout non permis.
+        taxId: taxIdOf(payload.taxId),
+        taxIdAllowed: payload.taxIdAllowed === true
       };
     });
   }
@@ -1662,7 +1898,7 @@
 
     load().then(function(data) {
       stopWaiting();
-      render(data.list, null, data.pms, data.invoices, data.others, data.address);
+      render(data.list, null, data.pms, data.invoices, data.others, data.address, data.taxId, data.taxIdAllowed);
       if (!instant) {
         track('subscriptions_list', { subs_outcome: data.hedged ? 'shown-retry' : 'shown', subs_status: statusesOf(data.list) });
       } else if (paidIn(data.list)) {

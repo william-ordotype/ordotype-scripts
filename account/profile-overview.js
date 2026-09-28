@@ -232,7 +232,14 @@
       }
       var interne = profil.querySelectorAll('[data-ordo-si-pas-interne]');
       for (var j = 0; j < interne.length; j++) show(interne[j], !isInterne());
+      show(vatRow(), false);
     }
+  }
+
+  /** Ligne « Numéro de TVA » de la carte : masquée pour tous, le numéro se modifie dans l'onglet facturation. */
+  function vatRow() {
+    var champ = profil.querySelector('[data-ordo-champ="vat-id"]');
+    return champ ? (champ.closest('.compte-v2_field') || champ) : null;
   }
 
   /** Numéro RPPS sous le résumé de l'en-tête, s'il est renseigné. */
@@ -295,19 +302,14 @@
     }
   }
 
-  /** La TVA suit la même règle que le reste de la carte : masquée aux internes. */
-  function applyInterneToForm(block) {
+  /**
+   * Le numéro de TVA ne se modifie plus ici : sa cellule reste dans le formulaire, masquée, pour
+   * que l'envoi porte toujours la valeur enregistrée.
+   */
+  function hideVatCell(block) {
     var tva = block.querySelector('[data-ms-member="vat-id"]');
     var cell = tva && (tva.closest('.form-field-wrapper') || tva.parentNode);
-    var statut = block.querySelector('select[data-ms-member="statut"]');
-    function apply(value) {
-      show(cell, text(value).toLowerCase() !== 'interne');
-    }
-    apply(statut ? statut.value : fields().statut);
-    if (statut && !statut.getAttribute('data-ordo-tva-bound')) {
-      statut.setAttribute('data-ordo-tva-bound', '1');
-      statut.addEventListener('change', function(e) { apply(e.target.value); });
-    }
+    show(cell, false);
   }
 
   /** Même règle que .ordo-siren-host, pour le cas où le finder n'a pas tourné. */
@@ -354,7 +356,7 @@
       refill(blocks[i]);
       keepUnlistedValues(blocks[i]);
       if (section === 'pro') {
-        applyInterneToForm(blocks[i]);
+        hideVatCell(blocks[i]);
         hideSiretCell(blocks[i]);
       }
       bindForm(blocks[i], section);
@@ -384,7 +386,7 @@
     show(c.button, true);
     var blocks = c.slot.querySelectorAll('.w-form, form');
     for (var i = 0; i < blocks.length; i++) refill(blocks[i]);
-    // Statut remis à sa valeur : les scripts qui en dépendent (mode d'exercice, finder SIREN, TVA) doivent le savoir.
+    // Statut remis à sa valeur : les scripts qui en dépendent (mode d'exercice, finder SIREN) doivent le savoir.
     var statut = c.slot.querySelector('select[data-ms-member="statut"]');
     if (statut) statut.dispatchEvent(new Event('change', { bubbles: true }));
   }
