@@ -84,7 +84,7 @@ async function test(name, fn) {
     assert.strictEqual(champ(d, 'mode-dexercice'), 'Libéral');
     assert.strictEqual(champ(d, 'phone'), '+33 6 12 34 56 78');
     assert.strictEqual(champ(d, 'email'), 'claire.martin@exemple.fr');
-    assert.strictEqual(champ(d, 'vat-id'), 'Non renseigné');
+    assert.ok(!visible(w, d.querySelector('[data-ordo-champ="vat-id"]').closest('.compte-v2_field')), 'pas de ligne TVA');
     assert.strictEqual(txt(d, '[data-ordo-initiales]'), 'CM');
     assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Dr Claire Martin');
     assert.strictEqual(txt(d, '[data-ordo-rpps-entete]'), 'N° RPPS 10000668540');
@@ -123,7 +123,26 @@ async function test(name, fn) {
     const statut = d.querySelector('[data-ordo-form-slot="pro"] select[data-ms-member="statut"]');
     statut.value = 'Medecin';
     statut.dispatchEvent(new w.Event('change'));
-    assert.ok(visible(w, tva.closest('.form-field-wrapper') || tva.parentNode), 'TVA revient pour un médecin');
+    assert.ok(!visible(w, tva.closest('.form-field-wrapper') || tva.parentNode), 'TVA toujours masquée pour un médecin');
+  });
+
+  await test('TVA masquée pour tous, lecture et formulaire ; la valeur enregistrée part avec le formulaire', async () => {
+    const m = clone(MEDECIN);
+    m.customFields['vat-id'] = 'FR12345678901';
+    const { w, d } = await page({ member: m });
+    const ligne = d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="vat-id"]').closest('.compte-v2_field');
+    assert.ok(!visible(w, ligne), 'pas de ligne TVA pour un médecin');
+    // Les autres lignes réservées aux non-internes restent affichées.
+    const autres = [...d.querySelectorAll('[data-ordo-v2="profil"] [data-ordo-si-pas-interne]')].filter((el) => el !== ligne);
+    assert.strictEqual(autres.length, 2);
+    for (const el of autres) assert.ok(visible(w, el));
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    const tva = d.querySelector('[data-ordo-form-slot="pro"] [data-ms-member="vat-id"]');
+    assert.ok(tva, 'champ toujours dans le formulaire');
+    assert.ok(!visible(w, tva.closest('.form-field-wrapper') || tva.parentNode), 'cellule masquée');
+    assert.strictEqual(tva.value, 'FR12345678901', 'valeur enregistrée remise, envoyée telle quelle');
+    await tick(10);
+    assert.ok(!visible(w, ligne), 'toujours masquée après relecture du membre');
   });
 
   await test('en-tête : « Dr » aussi pour « Médecin » accentué ; pas de ligne RPPS sans numéro, et une seule après relecture', async () => {
