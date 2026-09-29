@@ -458,6 +458,8 @@
     var t = text(v);
     if (key === 'phone') return t.replace(/[\s().-]/g, '');
     if (key === 'email') return t.toLowerCase();
+    // Prénom et nom : leur casse peut être corrigée juste après l'envoi.
+    if (key === 'prnom' || key === 'nom') return t.replace(/\s+/g, ' ').toLowerCase();
     return t;
   }
 

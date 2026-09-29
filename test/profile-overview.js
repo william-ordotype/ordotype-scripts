@@ -264,6 +264,24 @@ async function test(name, fn) {
     assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="perso"]')));
   });
 
+  await test('prénom et nom saisis en minuscules, relus avec la casse corrigée : enregistrement constaté', async () => {
+    const fresh = clone(MEDECIN);
+    fresh.customFields.prnom = 'Clara';
+    fresh.customFields.nom = 'Le Bihan';
+    const { w, d, pushed, reports } = await page({ fresh, fastPoll: true });
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    const form = d.querySelector('[data-ordo-form-slot="perso"] form');
+    form.querySelector('#first-name').value = 'clara';
+    const nom = form.querySelector('[data-ms-member="nom"]');
+    if (nom) nom.value = 'le  bihan';
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await tick(200);
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:saved'), 'la carte se referme');
+    assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="perso"]')));
+    assert.strictEqual(champ(d, 'prnom'), 'Clara', 'la lecture affiche la valeur corrigée');
+    assert.deepStrictEqual(reports, []);
+  });
+
   await test('enregistrement non constaté : la carte reste ouverte, la saisie aussi, Sentry prévenu', async () => {
     const { w, d, pushed, reports } = await page();
     d.querySelector('[data-ordo-edit="perso"]').click();
