@@ -16,6 +16,10 @@
  *   - a list that fails after an instant render leaves the cards (no page blocks), and only an HTTP
  *     error is reported, not a timeout;
  *   - the plans endpoint unavailable: the list is awaited; only an unexpected status is reported;
+ *   - past PLANS_TIMEOUT_MS the list is awaited, but the plans request is not cut: a later answer is
+ *     not shown, it is stored for the next visit;
+ *   - only a real answer that cannot be used is reported: an error status, a body that is not JSON,
+ *     or JSON without plans. A request or a body cut off on the way (page left, connection lost) is not;
  *   - the skeleton has one placeholder per plan that is not cancelled (1 to 3) and says when the
  *     wait is long; a timeout on a section never on screen is `timeout-unseen`, not reported.
  *
@@ -36,6 +40,8 @@ let SOURCE = shorten(REAL, 'var LIST_TIMEOUT_MS = 8000;', 'var LIST_TIMEOUT_MS =
 SOURCE = shorten(SOURCE, 'var HEDGE_MS = 4000;', 'var HEDGE_MS = 80;');
 SOURCE = shorten(SOURCE, 'var SLOW_MS = 3000;', 'var SLOW_MS = 40;');
 SOURCE = shorten(SOURCE, 'var SKELETON_DELAY_MS = 200;', 'var SKELETON_DELAY_MS = 5;');
+const PLANS_SHORT_MS = 50;
+SOURCE = shorten(SOURCE, 'var PLANS_TIMEOUT_MS = 2500;', 'var PLANS_TIMEOUT_MS = ' + PLANS_SHORT_MS + ';');
 
 const API = 'https://webhooks.ordotype.fr/.netlify/functions/account-subscriptions';
 const PLANS = 'https://webhooks.ordotype.fr/.netlify/functions/abonnements-affiches';
@@ -64,6 +70,14 @@ const hang = (w, opts) => new Promise((resolve, reject) => {
   if (opts && opts.signal) opts.signal.addEventListener('abort', () => reject(new w.DOMException('aborted', 'AbortError')));
 });
 const reply = (status, body, delay = 0) => () => new Promise((r) => setTimeout(() => r({ ok: status < 400, status, json: () => Promise.resolve(body) }), delay));
+// Answers after `delay` like a real fetch: an abort before that rejects it.
+const late = (status, body, delay) => (w, opts) => new Promise((resolve, reject) => {
+  const t = setTimeout(() => resolve({ ok: status < 400, status, json: () => Promise.resolve(body) }), delay);
+  if (opts && opts.signal) opts.signal.addEventListener('abort', () => { clearTimeout(t); reject(new w.DOMException('aborted', 'AbortError')); });
+});
+// Headers received, then the body cannot be read.
+const brokenBody = (status, error) => (w) => Promise.resolve({ ok: status < 400, status, json: () => Promise.reject(error(w)) });
+const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 
 function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(200, LIST_FREE, 30), plansReply = reply(200, { plans: PUBLIC }, 10), visible = true } = {}) {
   const dom = new JSDOM(
@@ -266,11 +280,84 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.strictEqual(p.reports.length, 0);
   });
 
-  await check('plans endpoint hangs: cut, and the list is shown', async () => {
+  await check('plans endpoint hangs: the list is shown, the plans request is not cut', async () => {
     const p = await open({ plans: [free('pln_interne')], plansReply: hang, list: reply(200, LIST_FREE, 20) });
     await wait(60);
     assert.deepStrictEqual(p.events(), ['shown']);
-    assert.ok(p.calls.plans[0].opts.signal, 'the plans request is bounded');
+    assert.ok(!p.calls.plans[0].opts.signal, 'no abort signal on the plans request');
+    assert.strictEqual(p.reports.length, 0);
+  });
+
+  await check('plans answer after the delay: not shown, stored for the next visit', async () => {
+    const d = deferred();
+    const p = await open({ plans: [free('pln_interne')], plansReply: late(200, { plans: PUBLIC }, PLANS_SHORT_MS + 40),
+      list: () => d.promise.then(() => ({ ok: true, status: 200, json: () => Promise.resolve(LIST_FREE) })) });
+    await wait(PLANS_SHORT_MS + 60);
+    assert.deepStrictEqual(p.labels(), [], 'the late answer is not rendered while the list is awaited');
+    assert.deepStrictEqual(p.events(), []);
+    const saved = JSON.parse(p.w.localStorage.getItem('ordo_subs_plans'));
+    assert.ok(saved && typeof saved.at === 'number' && saved.plans.pln_interne.label === 'Interne MG', 'the late answer is stored');
+    d.resolve();
+    await wait(20);
+    assert.deepStrictEqual(p.events(), ['shown'], 'the list, as before');
+    assert.deepStrictEqual(p.labels(), ['Interne MG']);
+    assert.strictEqual(p.reports.length, 0);
+    const next = await open({ plans: [free('pln_interne')], stored: saved, list: hang, plansReply: hang });
+    assert.deepStrictEqual(next.events(), ['instant'], 'the next visit shows the free cards at once');
+    assert.deepStrictEqual(next.labels(), ['Interne MG']);
+  });
+
+  await check('plans answer after the delay when the list is already shown: stored, nothing else', async () => {
+    const p = await open({ plans: [free('pln_interne')], plansReply: late(200, { plans: PUBLIC }, PLANS_SHORT_MS + 40), list: reply(200, LIST_FREE, 10) });
+    await wait(PLANS_SHORT_MS + 70);
+    assert.deepStrictEqual(p.events(), ['shown']);
+    assert.ok(p.w.localStorage.getItem('ordo_subs_plans'), 'stored');
+    assert.strictEqual(p.reports.length, 0);
+  });
+
+  await check('plans request aborted by the browser: not reported, nothing stored', async () => {
+    const p = await open({ plans: [free('pln_interne')], plansReply: (w) => Promise.reject(new w.DOMException('aborted', 'AbortError')) });
+    await wait(80);
+    assert.deepStrictEqual(p.events(), ['shown']);
+    assert.strictEqual(p.reports.length, 0);
+    assert.strictEqual(p.w.localStorage.getItem('ordo_subs_plans'), null);
+  });
+
+  for (const [what, error] of [
+    ['aborted', (w) => new w.DOMException('aborted', 'AbortError')],
+    ['connection lost', () => new TypeError('network error')],
+  ]) {
+    await check(`200 whose body cannot be read (${what}): not reported, nothing stored`, async () => {
+      const p = await open({ plans: [free('pln_interne')], plansReply: brokenBody(200, error) });
+      await wait(80);
+      assert.deepStrictEqual(p.events(), ['shown']);
+      assert.strictEqual(p.reports.length, 0, 'a body cut off on the way is not an unusable answer');
+      assert.strictEqual(p.w.localStorage.getItem('ordo_subs_plans'), null);
+    });
+  }
+
+  await check('200 without plans: reported', async () => {
+    const p = await open({ plans: [free('pln_interne')], plansReply: reply(200, { fetchedAt: null }) });
+    await wait(80);
+    assert.deepStrictEqual(p.events(), ['shown']);
+    const r = p.reports.filter((x) => x.name === 'SubscriptionsPlansUnavailable');
+    assert.strictEqual(r.length, 1);
+    assert.strictEqual(r[0].message, 'abonnements-affiches 200: no plans');
+    assert.strictEqual(p.w.localStorage.getItem('ordo_subs_plans'), null);
+  });
+
+  await check('200 whose body is not JSON: reported', async () => {
+    const p = await open({ plans: [free('pln_interne')], plansReply: brokenBody(200, () => new SyntaxError('Unexpected token <')) });
+    await wait(80);
+    assert.strictEqual(p.reports.filter((x) => x.name === 'SubscriptionsPlansUnavailable').length, 1);
+  });
+
+  await check('404 whose body cannot be read: still reported (the status is the answer)', async () => {
+    const p = await open({ plans: [free('pln_interne')], plansReply: brokenBody(404, () => new TypeError('network error')) });
+    await wait(80);
+    const r = p.reports.filter((x) => x.name === 'SubscriptionsPlansUnavailable');
+    assert.strictEqual(r.length, 1);
+    assert.strictEqual(r[0].message, 'abonnements-affiches 404: no plans');
   });
 
   await check('skeleton: one placeholder per plan that is not cancelled (1 to 3), then a long-wait line', async () => {

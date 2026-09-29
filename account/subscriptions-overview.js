@@ -1734,30 +1734,35 @@
   }
 
   // No credentials and no custom header: a simple request, cached by the browser and the CDN.
+  // Past PLANS_TIMEOUT_MS the list is awaited, and a later answer is only stored for the next visit.
   function fetchPlans() {
-    var controller = typeof AbortController === 'function' ? new AbortController() : null;
-    var timer = controller ? setTimeout(function() { controller.abort(); }, PLANS_TIMEOUT_MS) : null;
-    var opts = { method: 'GET', credentials: 'omit' };
-    if (controller) opts.signal = controller.signal;
-    return fetch(PLANS_URL, opts).then(function(res) {
-      return res.json().catch(function() { return null; }).then(function(body) {
-        var plans = res.ok ? validPlans(body && body.plans) : null;
-        if (!plans) {
-          var err = new Error('abonnements-affiches ' + res.status + ': no plans');
-          err.status = res.status;
-          throw err;
-        }
+    return new Promise(function(resolve) {
+      var timer = setTimeout(function() { resolve(null); }, PLANS_TIMEOUT_MS);
+      fetch(PLANS_URL, { method: 'GET', credentials: 'omit' }).then(function(res) {
+        return res.json().then(null, function(e) {
+          // A body that could not be read (page left, connection lost) is not an answer.
+          if (res.ok && !(e && e.name === 'SyntaxError')) throw e;
+          return null;
+        }).then(function(body) {
+          var plans = res.ok ? validPlans(body && body.plans) : null;
+          if (!plans) {
+            var err = new Error('abonnements-affiches ' + res.status + ': no plans');
+            err.status = res.status;
+            throw err;
+          }
+          return plans;
+        });
+      }).then(function(plans) {
+        storePlans(plans);
         return plans;
+      }, function(err) {
+        // Unavailable or rate limited: the list is simply awaited, as before.
+        if (err && err.status && err.status !== 429 && err.status !== 503) reportProblem('SubscriptionsPlansUnavailable', err.message);
+        return null;
+      }).then(function(plans) {
+        clearTimeout(timer);
+        resolve(plans);
       });
-    }).then(function(plans) {
-      clearTimeout(timer);
-      storePlans(plans);
-      return plans;
-    }, function(err) {
-      clearTimeout(timer);
-      // Unavailable or rate limited: the list is simply awaited, as before.
-      if (err && err.status && err.status !== 429 && err.status !== 503) reportProblem('SubscriptionsPlansUnavailable', err.message);
-      return null;
     });
   }
 
