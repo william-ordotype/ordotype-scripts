@@ -38,6 +38,7 @@ async function page({ member = MEDECIN, fixture = FIXTURE, reporter = true, fres
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
   // Règles de la feuille Webflow publiée dont dépend l'affichage (le reste du CSS du site est sans effet ici).
   const SITE_CSS = '.compte-v2_wrap{display:none}.compte-v2_wrap.is-on{display:flex}.inner-block-wraper.is-secours{display:none}'
+    + '.compte-v2_field.is-cache{display:none}'
     + '.compte-v2_edit{display:none}.compte-v2_edit.is-open{display:block}'
     + '.compte-v2_card.is-liste.is-2fa{display:none}.w-form-done,.w-form-fail{display:none}';
   const dom = new JSDOM(`<!doctype html><html><head><style>${SITE_CSS}</style><style>${HEAD_STYLE}</style></head><body><div class="w-tabs">${fixture}</div></body></html>`,
@@ -201,7 +202,7 @@ async function test(name, fn) {
   await test('formulaire pro : la rangée SIRET + TVA, vide, est masquée (pas d\'écart en trop avant les boutons)', async () => {
     const { w, d } = await page();
     const row = d.getElementById('SIRET').closest('.form-field-wrapper').parentNode;
-    assert.ok(visible(w, row), 'rangée affichée avant l\'ouverture');
+    assert.strictEqual(row.style.display, '', 'rangée intacte avant l\'ouverture');
     d.querySelector('[data-ordo-edit="pro"]').click();
     assert.ok(!visible(w, row), 'rangée vide masquée');
     assert.ok(visible(w, d.querySelector('[data-ordo-form-slot="pro"] [data-ms-member="n-rpps"]').closest('.form-field-wrapper')), 'les autres champs restent');
@@ -476,11 +477,12 @@ async function test(name, fn) {
 
   await test('secours : sans bloc V2, les anciens blocs reviennent tout de suite', async () => {
     const sans = FIXTURE.replace(/data-ordo-v2="[a-z]+"/g, 'data-ancien="1"');
-    const { w, d, pushed } = await page({ fixture: sans });
+    const { w, d, pushed, reports } = await page({ fixture: sans });
     assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
     assert.ok(d.documentElement.classList.contains('ordo-profil-fallback'));
     assert.ok(visible(w, d.querySelector('[data-w-tab="information"] .inner-block-wraper.is-secours')));
     assert.strictEqual(pushed.length, 0);
+    assert.deepStrictEqual(reports.map((r) => r.name), ['ProfileOverviewNoV2Block'], 'blocs retirés du Designer : signalé');
   });
 
   await test('secours : une erreur au rendu rend l\'ancienne présentation tout de suite et la signale', async () => {
@@ -510,6 +512,18 @@ async function test(name, fn) {
     assert.ok(!d.querySelector('[data-ordo-v2] .ordo-siren'), 'finder revenu dans l\'ancien formulaire');
     assert.ok(!d.querySelector('[data-ordo-v2] #ordotype-totp-section'), 'module TOTP revenu');
     assert.ok(!d.querySelector('[data-ordo-v2] [data-ms-auth="manage-providers"]'), 'Google revenu');
+  });
+
+  await test('arrivé après le secours de l\'en-tête (8 s) : rien n\'est rendu ni déplacé, arrivée tardive mesurée', async () => {
+    const { w, d, pushed, reports } = await page({ before: (win) => { win.document.documentElement.classList.add('ordo-profil-fallback'); } });
+    assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
+    for (const el of d.querySelectorAll('[data-ordo-v2]')) assert.ok(!visible(w, el), 'nouvelle présentation cachée');
+    for (const b of d.querySelectorAll('[data-w-tab="information"] .compte_form > .inner-block-wraper')) assert.ok(visible(w, b), 'anciens blocs laissés au membre');
+    assert.ok(!d.querySelector('[data-ordo-v2] #ordotype-totp-section'), 'module TOTP non déplacé');
+    assert.ok(!d.querySelector('[data-ordo-v2] [data-ms-auth="manage-providers"]'), 'Google non déplacé');
+    assert.strictEqual(champ(d, 'prnom'), 'Prénom', 'rien de rempli');
+    assert.deepStrictEqual(pushed.map((p) => p.profile_step), ['view:-:late']);
+    assert.deepStrictEqual(reports, []);
   });
 
   await test('membre absent : anciens blocs tout de suite, rien d\'autre', async () => {

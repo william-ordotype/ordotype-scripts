@@ -15,7 +15,8 @@
  * Secours : rendu réussi = classe `ordo-profil-v2` sur <html>. Sinon (erreur, pas de
  * membre, pas de nouvelle présentation) ce script pose `ordo-profil-fallback`, et
  * l'en-tête réaffiche les anciens blocs. L'en-tête le fait aussi seul si ce script
- * est coupé par le chargeur ou n'a rien rendu au bout de 8 s.
+ * est coupé par le chargeur, ne se télécharge pas ou n'a rien rendu au bout de 8 s ;
+ * arrivé après ce secours, le script ne rend rien (mesuré `view:-:late`).
  *
  * Depends on: core.js (window.OrdoAccount), Memberstack DOM SDK.
  */
@@ -45,8 +46,10 @@
   var profil = document.querySelector('[data-ordo-v2="profil"]');
   var securite = document.querySelector('[data-ordo-v2="securite"]');
   if (!profil && !securite) {
+    // Blocs retirés ou renommés dans le Designer : tout le site repasse à l'ancienne présentation.
     console.log(PREFIX, 'No V2 block on this page');
     fallback();
+    report('ProfileOverviewNoV2Block', 'No [data-ordo-v2] block on the page');
     return;
   }
 
@@ -730,6 +733,12 @@
   }
 
   function init() {
+    // Arrivé après les 8 s de l'en-tête : le membre a déjà les anciens blocs sous les yeux, peut-être
+    // en train d'y écrire. On ne les lui retire pas ; la page suivante aura la nouvelle présentation.
+    if (document.documentElement.classList.contains(FALLBACK_CLASS)) {
+      track('view', '', 'late');
+      return;
+    }
     try {
       injectStyles();
       render();

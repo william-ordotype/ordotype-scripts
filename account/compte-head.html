@@ -2,7 +2,8 @@
      (copie de référence de ce bloc du code d'en-tête de la page /membership/compte, testée par test/compte-head.js).
      Le Designer montre la nouvelle présentation telle qu'un membre la voit, anciens blocs masqués (combo « is-secours »).
      Le Designer n'exécute pas ce code ; le site, si : rien pendant le chargement, la nouvelle présentation quand son
-     script l'a rendue, les anciens blocs si le script est coupé par le chargeur, échoue, ou n'a rien rendu en 8 s. -->
+     script l'a rendue, les anciens blocs dès que le script est coupé par le chargeur, ne se télécharge pas, échoue,
+     ou n'a rien rendu en 8 s. Chaque secours est mesuré (GA4) ; un chargeur absent part aussi dans Sentry. -->
 <script>
 (function () {
   var h = document.documentElement;
@@ -11,7 +12,64 @@
     { fichier: 'profile-overview.js', classe: 'ordo-profil', rendu: function () { return h.classList.contains('ordo-profil-v2'); } },
     { fichier: 'subscriptions-overview.js', classe: 'ordo-subs', rendu: function () { return !!document.querySelector('#ordotype-subscriptions .ordo-subs'); } }
   ];
+
+  function alerter(nom, message) {
+    try {
+      var err = new Error(message);
+      err.name = nom;
+      window.dispatchEvent(new ErrorEvent('error', { message: nom + ': ' + message, error: err }));
+    } catch (e) {
+      if (window.console) console.error('[Mon compte]', nom, message, e);
+    }
+  }
+
+  function mesurer(payload) {
+    try {
+      var r = window.OrdoErrorReporter;
+      if (r && typeof r.track === 'function') return r.track(payload);
+      (window.dataLayer = window.dataLayer || []).push(payload);
+    } catch (e) {
+      alerter('CompteMesureImpossible', (e && e.message) || 'dataLayer');
+    }
+  }
+
+  // raison : coupe (décision du chargeur, voulue : ni mesure ni alerte), delai, script, chargeur.
+  function secours(s, raison) {
+    if (h.classList.contains(s.classe + '-fallback') || s.rendu()) return;
+    h.classList.add(s.classe + '-fallback');
+    if (raison === 'coupe') return;
+    if (s.classe === 'ordo-profil') {
+      mesurer({ event: 'profile_action', profile_action: 'view', profile_section: '', profile_outcome: 'fallback-' + raison, profile_step: 'view:-:fallback-' + raison });
+    } else if (raison !== 'delai') {
+      // Délai de la liste : subscriptions-overview.js le mesure et le signale lui-même.
+      mesurer({ event: 'subscriptions_list', subs_outcome: 'fallback-' + raison });
+    }
+  }
+
+
+  // Marqueurs d'attente (cités par subscriptions-overview.js) ; aucune règle ne les lit.
   for (var i = 0; i < SUIVIS.length; i++) h.classList.add(SUIVIS[i].classe + '-pending');
+
+  // Un script de la liste qui ne se télécharge pas : secours tout de suite (le chargeur le signale à Sentry).
+  window.addEventListener('error', function (e) {
+    var t = e && e.target;
+    if (!t || t.tagName !== 'SCRIPT') return;
+    var src = t.src || '';
+    for (var i = 0; i < SUIVIS.length; i++) {
+      if (src.indexOf('/account/' + SUIVIS[i].fichier) !== -1) secours(SUIVIS[i], 'script');
+    }
+  }, true);
+
+  // Le chargeur est « defer » : à DOMContentLoaded, il a tourné, ou il ne tournera pas (échec de
+  // téléchargement compris). Personne d'autre ne peut signaler son absence.
+  document.addEventListener('DOMContentLoaded', function () {
+    var present = true;
+    try { present = !!window.OrdoRollout; } catch (e) { /* illisible : on attend les 8 s */ }
+    if (present) return;
+    for (var i = 0; i < SUIVIS.length; i++) secours(SUIVIS[i], 'chargeur');
+    alerter('CompteChargeurAbsent', 'account/loader.js absent : anciens blocs affichés');
+  });
+
   (function verifier() {
     var restants = 0;
     for (var i = 0; i < SUIVIS.length; i++) {
@@ -19,7 +77,8 @@
       if (h.classList.contains(s.classe + '-fallback') || s.rendu()) continue;
       var d = null;
       try { d = window.OrdoRollout && window.OrdoRollout[s.fichier]; } catch (e) { /* décision illisible : on attend les 8 s */ }
-      if ((d && d.enabled === false) || Date.now() - debut >= 8000) h.classList.add(s.classe + '-fallback');
+      if (d && d.enabled === false) secours(s, 'coupe');
+      else if (Date.now() - debut >= 8000) secours(s, 'delai');
       else restants += 1;
     }
     if (restants) setTimeout(verifier, 100);
