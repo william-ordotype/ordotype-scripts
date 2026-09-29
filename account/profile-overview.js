@@ -2,16 +2,20 @@
  * Ordotype Account - Mon profil / Connexion et Sécurité (nouvelle présentation)
  *
  * Les deux onglets ont une nouvelle présentation construite dans le Designer :
- * [data-ordo-v2="profil"] et [data-ordo-v2="securite"], masqués par leur classe.
- * Ce script les remplit, les affiche, puis masque les anciens blocs.
+ * [data-ordo-v2="profil"] et [data-ordo-v2="securite"]. Le Designer la montre telle
+ * qu'un membre la voit (combo `is-on`) ; les anciens blocs y sont masqués (combo
+ * `is-secours`). Sur le site, le code d'en-tête de la page (account/compte-head.html)
+ * garde la nouvelle présentation cachée jusqu'à ce que ce script l'ait remplie.
  *
  * La lecture est native (cartes Webflow). La modification réutilise les
  * formulaires déjà en place : « Modifier » déplace le formulaire existant dans
  * la carte. Les identifiants et les scripts qui s'y accrochent (finder SIREN,
  * statut, téléphone, suppression, module TOTP) restent donc inchangés.
  *
- * Secours : tant que le rendu n'a pas réussi, rien n'est masqué. Une erreur
- * laisse l'ancienne présentation telle quelle.
+ * Secours : rendu réussi = classe `ordo-profil-v2` sur <html>. Sinon (erreur, pas de
+ * membre, pas de nouvelle présentation) ce script pose `ordo-profil-fallback`, et
+ * l'en-tête réaffiche les anciens blocs. L'en-tête le fait aussi seul si ce script
+ * est coupé par le chargeur ou n'a rien rendu au bout de 8 s.
  *
  * Depends on: core.js (window.OrdoAccount), Memberstack DOM SDK.
  */
@@ -20,19 +24,29 @@
 
   var PREFIX = '[ProfileOverview]';
   var HTML_CLASS = 'ordo-profil-v2';
+  var FALLBACK_CLASS = 'ordo-profil-fallback';
   var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
   var SAVE_POLL_MS = 1500;
   var SAVE_POLL_TRIES = 6; // ~9 s pour voir l'enregistrement arriver chez Memberstack
   var VIDE = 'Non renseigné';
 
+  /** Les anciens blocs reviennent tout de suite, sans attendre les 8 s de l'en-tête. */
+  function fallback() {
+    document.documentElement.classList.add(FALLBACK_CLASS);
+  }
+
   var account = window.OrdoAccount;
   var member = account && account.member;
-  if (!member || !member.id) return;
+  if (!member || !member.id) {
+    fallback();
+    return;
+  }
 
   var profil = document.querySelector('[data-ordo-v2="profil"]');
   var securite = document.querySelector('[data-ordo-v2="securite"]');
   if (!profil && !securite) {
     console.log(PREFIX, 'No V2 block on this page');
+    fallback();
     return;
   }
 
@@ -310,6 +324,7 @@
     var tva = block.querySelector('[data-ms-member="vat-id"]');
     var cell = tva && (tva.closest('.form-field-wrapper') || tva.parentNode);
     show(cell, false);
+    hideEmptyRow(cell);
   }
 
   /** Même règle que .ordo-siren-host, pour le cas où le finder n'a pas tourné. */
@@ -317,6 +332,20 @@
     var siret = block.querySelector('#SIRET');
     var cell = siret && (siret.closest('.form-field-wrapper') || siret.parentNode);
     show(cell, false);
+    hideEmptyRow(cell);
+  }
+
+  /**
+   * SIRET et TVA partagent une rangée : toutes ses cellules masquées, la rangée vide gardait
+   * l'écart de la colonne de champs et décalait les boutons de 11 px.
+   */
+  function hideEmptyRow(cell) {
+    var row = cell && cell.parentNode;
+    if (!row || !row.children || !row.children.length) return;
+    for (var i = 0; i < row.children.length; i++) {
+      if (window.getComputedStyle(row.children[i]).display !== 'none') return;
+    }
+    show(row, false);
   }
 
   function card(section) {
@@ -720,6 +749,7 @@
     } catch (err) {
       document.documentElement.classList.remove(HTML_CLASS);
       restoreMoved();
+      fallback();
       track('view', '', 'failed');
       report('ProfileOverviewInit', err);
       return;

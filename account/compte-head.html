@@ -1,0 +1,45 @@
+<!-- Mon compte : nouvelle présentation et secours. Source : ordotype-scripts, account/compte-head.html
+     (copie de référence de ce bloc du code d'en-tête de la page /membership/compte, testée par test/compte-head.js).
+     Le Designer montre la nouvelle présentation telle qu'un membre la voit, anciens blocs masqués (combo « is-secours »).
+     Le Designer n'exécute pas ce code ; le site, si : rien pendant le chargement, la nouvelle présentation quand son
+     script l'a rendue, les anciens blocs si le script est coupé par le chargeur, échoue, ou n'a rien rendu en 8 s. -->
+<script>
+(function () {
+  var h = document.documentElement;
+  var debut = Date.now();
+  var SUIVIS = [
+    { fichier: 'profile-overview.js', classe: 'ordo-profil', rendu: function () { return h.classList.contains('ordo-profil-v2'); } },
+    { fichier: 'subscriptions-overview.js', classe: 'ordo-subs', rendu: function () { return !!document.querySelector('#ordotype-subscriptions .ordo-subs'); } }
+  ];
+  for (var i = 0; i < SUIVIS.length; i++) h.classList.add(SUIVIS[i].classe + '-pending');
+  (function verifier() {
+    var restants = 0;
+    for (var i = 0; i < SUIVIS.length; i++) {
+      var s = SUIVIS[i];
+      if (h.classList.contains(s.classe + '-fallback') || s.rendu()) continue;
+      var d = null;
+      try { d = window.OrdoRollout && window.OrdoRollout[s.fichier]; } catch (e) { /* décision illisible : on attend les 8 s */ }
+      if ((d && d.enabled === false) || Date.now() - debut >= 8000) h.classList.add(s.classe + '-fallback');
+      else restants += 1;
+    }
+    if (restants) setTimeout(verifier, 100);
+  })();
+})();
+</script>
+<style>
+/* Nouvelle présentation cachée tant que son script ne l'a pas remplie (le Designer, lui, la montre). */
+html:not(.ordo-profil-v2) [data-ordo-v2] { display: none !important; }
+/* Anciens blocs en secours. Sans !important : un bloc que Memberstack masque (!paid-plans, has-password) le reste. */
+html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="information"] .inner-block-wraper.is-secours,
+html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="security"] .inner-block-wraper.is-secours,
+html.ordo-subs-fallback [data-w-tab="billing"] .inner-block-wraper.is-secours,
+.inner-block-wraper.is-secours.ordo-keep { display: block; }
+@media screen and (max-width: 479px) {
+  html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="information"] .inner-block-wraper.is-secours,
+  html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="security"] .inner-block-wraper.is-secours,
+  html.ordo-subs-fallback [data-w-tab="billing"] .inner-block-wraper.is-secours,
+  .inner-block-wraper.is-secours.ordo-keep { display: flex; }
+}
+/* Encart visible seulement dans le Designer. */
+.compte-v2_designer { display: none !important; }
+</style>

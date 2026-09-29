@@ -168,6 +168,7 @@ ordotype-scripts/
 | `delete-account.js` | Account deletion flow |
 | `billing-portal.js` | Stripe billing portal access (member cookie as Bearer when available, test: `node test/billing-portal.js`) |
 | `phone-input.js` | International phone formatting |
+| `compte-head.html` | **Not loaded by the loader**: reference copy of the block pasted in the page head code (`/membership/compte`, page settings). The Designer shows the new « Mon profil » / « Connexion et Sécurité » (combo `is-on`) and hides the old blocks (combo `is-secours`); the Designer does not run head code, the site does: nothing while loading, the new layout once `profile-overview.js` set `ordo-profil-v2`, the old blocks when the script is cut by the loader (`OrdoRollout[file].enabled === false`), fails (`ordo-profil-fallback`) or rendered nothing in 8 s. Same contract for the billing tab (`subscriptions-overview.js`, `ordo-subs-fallback`, `ordo-keep`). Fallback rules never use `!important`, so a block Memberstack hides stays hidden. Edit here first, then paste into Webflow. Test: `node test/compte-head.js` |
 
 ### Usage in Webflow
 
