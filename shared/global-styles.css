@@ -32,6 +32,16 @@ form#wf-form-mutateDocument {
     cursor: pointer;
 }
 
+/* Webflow's .button is a column flexbox (flex-direction: column;
+ * justify-content: center). WebKit (Safari, every iOS browser) does not center
+ * the label of an <input type="submit"> that way: "Vérifier" on the 2FA page
+ * sat at the top of its 40px button on iPhone, while Chrome centered it. In a
+ * row flexbox, align-items: center centers the label in both engines. An input
+ * has no children, so the direction changes nothing else. */
+input.button {
+    flex-direction: row;
+}
+
 /* View Styles */
 .drawer_view,
 .modal_view {
