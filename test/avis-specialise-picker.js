@@ -76,6 +76,27 @@ verifier('mesure : vue de page et clic',
   r.evenements.some((e) => e.event === 'omnidoc_page_view')
   && r.evenements.some((e) => e.event === 'omnidoc_continue_click' && e.omnidoc_specialite === 'pneumo' && e.omnidoc_fiche === 'asthme'),
   r.evenements);
+verifier('mesure : présélection gardée',
+  r.evenements.some((e) => e.event === 'omnidoc_continue_click' && e.omnidoc_preselection === 'gardée'), r.evenements);
+
+// Le médecin change la spécialité présélectionnée avant de continuer.
+r = jouer('?specialites=pneumo,allergo&fiche=asthme');
+radios = r.d.querySelectorAll('#omd-options input[type=radio]');
+radios[1].checked = true;
+radios[1].dispatchEvent(new r.w.Event('change'));
+r.d.getElementById('omd-continue').dispatchEvent(new r.w.MouseEvent('click', { cancelable: true }));
+verifier('mesure : présélection changée',
+  r.evenements.some((e) => e.event === 'omnidoc_continue_click' && e.omnidoc_specialite === 'allergo' && e.omnidoc_preselection === 'changée'),
+  r.evenements);
+
+// Sans spécialité proposée, il n'y a rien à garder ni à changer.
+r = jouer('');
+select = r.d.getElementById('omd-other');
+select.value = 'derm_venero';
+select.dispatchEvent(new r.w.Event('change'));
+r.d.getElementById('omd-continue').dispatchEvent(new r.w.MouseEvent('click', { cancelable: true }));
+verifier('mesure : liste libre, pas de présélection',
+  r.evenements.some((e) => e.event === 'omnidoc_continue_click' && e.omnidoc_preselection === 'aucune'), r.evenements);
 
 // Une seule spécialité : elle est affichée, « Changer » ouvre la liste.
 r = jouer('?specialites=gastro_h%C3%A9pato&fiche=cirrhose');

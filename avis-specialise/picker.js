@@ -174,7 +174,9 @@
       other.focus();
       return;
     }
-    track({ event: 'omnidoc_continue_click', omnidoc_specialite: picked, omnidoc_fiche: fiche || '(inconnue)', omnidoc_mode: mode });
+    // Présélection gardée ou changée : dit si la première spécialité proposée par la fiche est la bonne.
+    var preselection = mode === 'libre' ? 'aucune' : (picked === wanted[0] ? 'gardée' : 'changée');
+    track({ event: 'omnidoc_continue_click', omnidoc_specialite: picked, omnidoc_fiche: fiche || '(inconnue)', omnidoc_mode: mode, omnidoc_preselection: preselection });
   });
 
   refresh();
