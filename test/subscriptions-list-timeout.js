@@ -16,6 +16,9 @@
  *   - a page without the anchor is recorded as `no-anchor`;
  *   - a normal answer is still `shown`, and no late `timeout` follows it;
  *   - an HTTP error is still `failed`, never `timeout`;
+ *   - a body cut while it is read (page left, connection lost) is a network failure: sent a
+ *     second time, reported through reportNetwork, never as `unexpected body`; a 200 whose body
+ *     is not JSON still is one, and an HTTP error with a cut body is still that HTTP error;
  *   - actions (PDF, payment, reactivation) are never subject to the delay;
  *   - without AbortController, the request keeps its previous, unbounded behaviour.
  *
@@ -55,7 +58,10 @@ function page({ anchor = true, fetch, withAbort = true, hidden = false } = {}) {
   const calls = [];
   w.fetch = (url, opts) => { calls.push({ url, opts }); return fetch(w, opts); };
   const reports = [];
-  w.OrdoErrorReporter = { report: (ctx, err) => reports.push({ ctx, err }), reportNetwork: (ctx, err) => reports.push({ ctx, err }) };
+  w.OrdoErrorReporter = {
+    report: (ctx, err) => reports.push({ ctx, err, via: 'report' }),
+    reportNetwork: (ctx, err) => reports.push({ ctx, err, via: 'network' }),
+  };
   if (!withAbort) delete w.AbortController;
   if (hidden) Object.defineProperty(w.document, 'visibilityState', { configurable: true, get: () => 'hidden' });
   w.eval(SOURCE);
@@ -70,7 +76,16 @@ const hang = (w, opts) => new Promise((resolve, reject) => {
   }
 });
 const answer = (status, body) => () => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
+// Headers arrived, then reading the body fails: what a browser does when the page is left mid-read.
+const cutBody = (status) => (w) => Promise.resolve({
+  ok: status < 400,
+  status,
+  json: () => Promise.reject(new w.TypeError('NetworkError when attempting to fetch resource.')),
+});
+const notJson = (w) => Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new w.SyntaxError('JSON.parse: unexpected character')) });
 const EMPTY = { subscriptions: [], paymentMethods: [], invoices: [] };
+// A status-less failure is sent again after RETRY_DELAY_MS, which the test keeps real.
+const RETRY_WAIT_MS = 600;
 
 async function check(name, fn) {
   await fn();
@@ -166,6 +181,51 @@ async function check(name, fn) {
     assert.strictEqual(ev[0].subs_outcome, 'failed');
     assert.strictEqual(ev[0].subs_status, '503');
     assert.strictEqual(p.calls.length, 1, 'an HTTP error is an answer: no second request');
+  });
+
+  await check('body cut once: sent a second time, `shown-retry`, nothing reported', async () => {
+    let n = 0;
+    const p = page({ fetch: (w, opts) => (++n === 1 ? cutBody(200)(w) : answer(200, EMPTY)()) });
+    await wait(RETRY_WAIT_MS);
+    assert.deepStrictEqual(p.events().map((e) => e.subs_outcome), ['shown-retry']);
+    assert.strictEqual(p.calls.length, 2);
+    assert.strictEqual(p.reports.length, 0);
+  });
+
+  await check('body cut on both requests: a network failure, never `unexpected body`', async () => {
+    const p = page({ fetch: cutBody(200) });
+    await wait(RETRY_WAIT_MS);
+    const ev = p.events();
+    assert.strictEqual(ev.length, 1);
+    assert.strictEqual(ev[0].subs_outcome, 'failed');
+    assert.strictEqual(ev[0].subs_status, 'network');
+    assert.strictEqual(p.calls.length, 2, 'sent a second time, like any network failure');
+    assert.strictEqual(p.reports.length, 1);
+    assert.strictEqual(p.reports[0].via, 'network', 'dropped by the reporter once the page is gone');
+    assert.ok(!/unexpected body/.test(p.reports[0].err.message), p.reports[0].err.message);
+  });
+
+  await check('a 200 whose body is not JSON: still `unexpected body`, reported, no second request', async () => {
+    const p = page({ fetch: notJson });
+    await wait(RETRY_WAIT_MS);
+    const ev = p.events();
+    assert.strictEqual(ev.length, 1);
+    assert.strictEqual(ev[0].subs_outcome, 'failed');
+    assert.strictEqual(ev[0].subs_status, '200');
+    assert.strictEqual(p.calls.length, 1);
+    assert.strictEqual(p.reports.length, 1);
+    assert.strictEqual(p.reports[0].via, 'report');
+    assert.ok(/unexpected body/.test(p.reports[0].err.message), p.reports[0].err.message);
+  });
+
+  await check('an HTTP error with a cut body: still that HTTP error, no second request', async () => {
+    const p = page({ fetch: cutBody(503) });
+    await wait(RETRY_WAIT_MS);
+    const ev = p.events();
+    assert.strictEqual(ev.length, 1);
+    assert.strictEqual(ev[0].subs_outcome, 'failed');
+    assert.strictEqual(ev[0].subs_status, '503');
+    assert.strictEqual(p.calls.length, 1);
   });
 
   await check('the list request carries an abort signal', async () => {

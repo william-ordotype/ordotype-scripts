@@ -1594,6 +1594,8 @@
       return res.json().catch(function(e) {
         // A body that stalls past the delay is a timeout, not an empty answer.
         if (aborted()) throw e;
+        // A body that could not be read (page left, connection lost) is not an answer.
+        if (res.ok && !(e && e.name === 'SyntaxError')) throw e;
         return {};
       }).then(function(payload) {
         stop();
