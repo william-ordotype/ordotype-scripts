@@ -25,31 +25,41 @@
     }
   }
 
-  // Items rendered without the hidden .iframe-meta embed (older template
-  // markup) still carry the slugs on the item itself. Rebuild the embed from
-  // them so the handlers below see a single shape. Must run before the paywall
-  // block in init(), which strips those attributes from the item.
+  var SANDBOX_HOST = 'sandbox-ordotype.webflow.io';
+
+  // Items rendered without the hidden .iframe-meta embed still carry the slugs
+  // on the item itself. As of this change, the sandbox site's Pathologies
+  // template renders its rows this way; once every template has the embed,
+  // the console warning in init() stops and this function can go.
+  // Rebuild the embed from the item attributes so the handlers below see a
+  // single shape. Must run before the paywall block in init(), which strips
+  // those attributes from the item. An item with only one of the two
+  // attributes gets an embed too, so a click reports the missing attribute
+  // instead of a missing embed. Returns the fully rebuilt items.
   function addMissingIframeMeta() {
+    var rebuilt = [];
     var items = document.querySelectorAll('.pathologies_tab .content-item[data-iframe-id]');
     Array.prototype.forEach.call(items, function(item) {
       if (item.querySelector('.iframe-meta')) return;
       var slug = item.getAttribute('data-iframe-slug');
       var collection = item.getAttribute('data-collection-slug');
-      if (!slug || !collection) return;
+      if (!slug && !collection) return;
       var meta = document.createElement('div');
       meta.className = 'iframe-meta';
       meta.style.display = 'none';
-      meta.setAttribute('data-iframe-slug', slug);
-      meta.setAttribute('data-collection-slug', collection);
+      meta.setAttribute('data-iframe-slug', slug || '');
+      meta.setAttribute('data-collection-slug', collection || '');
       item.insertBefore(meta, item.firstChild);
+      if (slug && collection) rebuilt.push(item);
     });
+    return rebuilt;
   }
 
   function init() {
     var paywallElem = $('.rappels-cliniques-content .rc_hidden_warning_wrapper');
     var spinnerSafetyTimeout = null;
 
-    addMissingIframeMeta();
+    var rebuiltItems = addMissingIframeMeta();
 
     // Handle paywall visibility
     if ($(paywallElem).css('display') === 'block') {
@@ -73,6 +83,24 @@
       if (!reportedBrokenItem && window.OrdoErrorReporter) {
         reportedBrokenItem = true;
         window.OrdoErrorReporter.report('IframeHandler', reason + ' (plain click fell back to link navigation)');
+      }
+    }
+
+    // A rebuilt item works, but its template lost the embed (and usually the
+    // <a href> too): report it once per page load, on the first click, like a
+    // broken item. Not on the sandbox site, whose template is known to render
+    // its rows this way.
+    if (rebuiltItems.length) {
+      console.warn('[IframeHandler] ' + rebuiltItems.length + ' item(s) without .iframe-meta, rebuilt from the item attributes');
+      if (window.location.hostname !== SANDBOX_HOST) {
+        var reportedRebuiltItem = false;
+        rebuiltItems.forEach(function(item) {
+          item.addEventListener('click', function() {
+            if (reportedRebuiltItem || !window.OrdoErrorReporter) return;
+            reportedRebuiltItem = true;
+            window.OrdoErrorReporter.report('IframeHandler', '.iframe-meta missing, rebuilt from the item attributes');
+          });
+        });
       }
     }
 
