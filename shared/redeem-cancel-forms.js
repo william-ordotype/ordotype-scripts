@@ -13,6 +13,11 @@
  * - Messages: #waiting-message-redeem, #success-message-redeem, #error-message-redeem
  * - Messages: #waiting-message-cancel, #success-message-cancel, #error-message-cancel
  *
+ * A form that carries data-ordo-action="<action>" is sent to the member-forms endpoint instead of its
+ * own action: the request carries the member's session token and the form's own fields, never the
+ * member's identity, which the server reads from the session. Forms without the attribute keep the
+ * original behaviour.
+ *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
  */
@@ -25,6 +30,9 @@
   const SELF_PATH = 'shared/redeem-cancel-forms.js';
   const REPORTER_PATH = 'shared/error-reporter.js';
   const CDN_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/';
+  const MEMBER_FORMS_URL = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
+  // Identity fields stay in the page: the server reads the member from the session.
+  const IDENTITY_FIELDS = ['email', 'MSuserId', 'memberId', 'stripeCustomerId', 'stripeCustomerIdCancel', 'stripeCustomerIdPause'];
 
   /**
    * Pages that load this script through a page loader already have the reporter.
@@ -162,7 +170,8 @@
       hideElement(error);
 
       // Submit the form
-      const response = await submitForm(form);
+      const action = form.getAttribute('data-ordo-action');
+      const response = action ? await submitToServer(form, action) : await submitForm(form);
 
       // Hide waiting
       hideElement(waiting);
@@ -208,6 +217,37 @@
       data.append('pageUrl', window.location.href);
       xhr.send(data);
     });
+  }
+
+  /**
+   * Send a form to the member-forms endpoint with the member's session token.
+   * Resolves with the same shape as submitForm.
+   */
+  async function submitToServer(form, action) {
+    const token = await Promise.resolve(window.$memberstackDom.getMemberCookie()).catch(() => '');
+    if (!token) throw new Error('No member session token');
+
+    const fields = {};
+    new FormData(form).forEach((value, name) => {
+      if (typeof value === 'string' && IDENTITY_FIELDS.indexOf(name) === -1) fields[name] = value;
+    });
+
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT) : null;
+    try {
+      const response = await fetch(MEMBER_FORMS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + String(token) },
+        body: JSON.stringify({ action: action, fields: fields }),
+        signal: controller ? controller.signal : undefined
+      });
+      const body = await response.text().catch(() => '');
+      return { ok: response.status === 200, status: response.status, body: body };
+    } catch (err) {
+      throw new Error(err && err.name === 'AbortError' ? 'Request timeout' : 'Network error');
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /**

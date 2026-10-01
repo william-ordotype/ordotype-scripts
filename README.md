@@ -1699,7 +1699,7 @@ These pages all use the shared `redeem-cancel-forms.js` script:
 
 | File | Purpose |
 |------|---------|
-| `shared/redeem-cancel-forms.js` | Handles redeem and cancel form submissions with Stripe Customer ID injection. Reports every failure branch (init without Memberstack, form not found, network, timeout, non-200) and injects `shared/error-reporter.js` itself when the page has no loader. |
+| `shared/redeem-cancel-forms.js` | Handles redeem and cancel form submissions with Stripe Customer ID injection. Reports every failure branch (init without Memberstack, form not found, network, timeout, non-200) and injects `shared/error-reporter.js` itself when the page has no loader. A form carrying `data-ordo-action="<action>"` is sent instead to `webhooks.ordotype.fr/.netlify/functions/member-forms` with the member session token (`Authorization: Bearer`) and its own non-identity fields; the server reads the member from the session. Forms without the attribute are posted to their own action as before. Test: `node test/redeem-cancel-forms.js` |
 | `offre-annulation/cancel-reason-modal.js` | Exit-reason popup, `/membership/offre-annulation` only. Builds its own markup and CSS, so there is nothing to add in Webflow. |
 
 ### Usage in Webflow
