@@ -87,7 +87,8 @@
     `${BASE}/clipboard.js`,
     `${BASE}/core.js`,
     `${BASE}/date-french.js`,
-    `${BASE}/sources-list.js`
+    `${BASE}/sources-list.js`,
+    `${BASE}/prefetch.js`
   ];
   const TIER2_JQUERY = [
     `${BASE}/iframe-handler.js`,
