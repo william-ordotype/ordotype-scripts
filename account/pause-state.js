@@ -15,15 +15,17 @@
  *   - #pause-resume-date (text: formatted date)
  *   - #resume-btn (button)
  *   - #cancel-definitive-btn (button)
- *   - #pause-member-id (hidden input)
  *   - #pause-action-waiting, #pause-action-success, #pause-action-error (messages)
+ *
+ * Resume and definitive cancel are sent to the member-forms endpoint (actions `resume-pause` and
+ * `cancel-pause`) with the member's session token and no other data: the server reads the member
+ * from the session.
  */
 (function() {
     'use strict';
 
     var PREFIX = '[PauseState]';
-    var RESUME_WEBHOOK = 'https://hook.eu1.make.com/2y3halxc530pmbgju3les5b6gk1kwydc';
-    var CANCEL_DEFINITIVE_WEBHOOK = 'https://hook.eu1.make.com/greskl1wedbnhktd5cne0i88mq4qg7wr';
+    var MEMBER_FORMS_URL = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
     var REDIRECT_DELAY = 3000;
     var REQUEST_TIMEOUT = 10000;
 
@@ -44,50 +46,84 @@
         }
     }
 
-    // Same two calls for the subscriptions list; onResult(true) on HTTP 200.
-    function send(webhookUrl, actionName, onResult) {
+    // Resolves with the member's session token, or '' when there is none.
+    function sessionToken() {
+        try {
+            var ms = window.$memberstackDom;
+            if (!ms || typeof ms.getMemberCookie !== 'function') return Promise.resolve('');
+            return Promise.resolve(ms.getMemberCookie()).then(function(t) {
+                return t ? String(t) : '';
+            }, function() { return ''; });
+        } catch (e) {
+            return Promise.resolve('');
+        }
+    }
+
+    // One call for the subscriptions list and the card: onResult(true) only on
+    // HTTP 200, and onResult is called exactly once.
+    function send(action, actionName, onResult) {
         var done = false;
         function finish(ok) {
             if (done) return;
             done = true;
             if (typeof onResult === 'function') onResult(ok);
         }
-        var ms = window.OrdoMemberstack;
-        var account = window.OrdoAccount && window.OrdoAccount.member;
-        var memberId = (ms && ms.memberId) || (account && account.id) || '';
-        if (!memberId) {
-            report(actionName, 'PauseStateMissingMemberId', 'member id unavailable');
-            return finish(false);
-        }
-        var xhr = new XMLHttpRequest();
-        xhr.onload = function() {
-            if (xhr.status === 200) return finish(true);
-            var body = xhr.responseText ? ' — ' + String(xhr.responseText).slice(0, 200) : '';
-            report(actionName, 'PauseStateActionFailed', 'HTTP ' + xhr.status + body);
-            finish(false);
-        };
-        xhr.onerror = function() {
-            report(actionName, 'PauseStateNetworkError', 'network error');
-            finish(false);
-        };
-        xhr.ontimeout = function() {
-            report(actionName, 'PauseStateTimeout', 'timeout after ' + REQUEST_TIMEOUT + 'ms');
-            finish(false);
-        };
-        try {
-            xhr.open('POST', webhookUrl);
-            xhr.timeout = REQUEST_TIMEOUT;
-            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            xhr.send('memberId=' + encodeURIComponent(memberId) + '&pageUrl=' + encodeURIComponent(window.location.href));
-        } catch (err) {
+        sessionToken().then(function(token) {
+            if (!token) {
+                report(actionName, 'PauseStateNoSession', 'no member session token');
+                return finish(false);
+            }
+            var controller = typeof AbortController === 'function' ? new AbortController() : null;
+            var timer = controller ? setTimeout(function() { controller.abort(); }, REQUEST_TIMEOUT) : null;
+            function stop() {
+                if (timer) clearTimeout(timer);
+                timer = null;
+            }
+            var request;
+            // fetch can throw synchronously behind a CSP rule or a privacy
+            // extension: without this the caller would wait forever.
+            try {
+                request = fetch(MEMBER_FORMS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                    body: JSON.stringify({ action: action, fields: {} }),
+                    signal: controller ? controller.signal : undefined
+                });
+            } catch (err) {
+                stop();
+                report(actionName, 'PauseStateSendFailed', (err && err.message) || String(err));
+                return finish(false);
+            }
+            return Promise.resolve(request).then(function(response) {
+                stop();
+                if (response.status === 200) return finish(true);
+                return Promise.resolve()
+                    .then(function() { return response.text(); })
+                    .catch(function() { return ''; })
+                    .then(function(text) {
+                        var body = text ? ' — ' + String(text).slice(0, 200) : '';
+                        report(actionName, 'PauseStateActionFailed', 'HTTP ' + response.status + body);
+                        finish(false);
+                    });
+            }, function(err) {
+                stop();
+                if (err && err.name === 'AbortError') {
+                    report(actionName, 'PauseStateTimeout', 'timeout after ' + REQUEST_TIMEOUT + 'ms');
+                } else {
+                    report(actionName, 'PauseStateNetworkError', 'network error');
+                }
+                finish(false);
+            });
+        }).catch(function(err) {
+            if (done) return;
             report(actionName, 'PauseStateSendFailed', (err && err.message) || String(err));
             finish(false);
-        }
+        });
     }
 
     window.OrdoPause = {
-        resume: function(onResult) { send(RESUME_WEBHOOK, 'resume', onResult); },
-        cancelDefinitive: function(onResult) { send(CANCEL_DEFINITIVE_WEBHOOK, 'cancel-definitive', onResult); },
+        resume: function(onResult) { send('resume-pause', 'resume', onResult); },
+        cancelDefinitive: function(onResult) { send('cancel-pause', 'cancel-definitive', onResult); },
         resumedUrl: '/membership/abonnement-repris',
         redirectDelay: REDIRECT_DELAY
     };
@@ -182,13 +218,11 @@
         });
 
         var planLabel = GROUP_LABELS[pausedGroupKey] || 'Abonnement';
-        var memberId = ms.memberId || '';
 
         // Populate and show the card
         var card = document.getElementById('pause-state-card');
         var labelEl = document.getElementById('pause-plan-label');
         var dateEl = document.getElementById('pause-resume-date');
-        var memberIdInput = document.getElementById('pause-member-id');
 
         if (!card) {
             console.warn(PREFIX, 'No #pause-state-card found in DOM');
@@ -197,7 +231,6 @@
 
         if (labelEl) labelEl.textContent = planLabel;
         if (dateEl) dateEl.textContent = 'Reprise automatique le ' + formattedDate;
-        if (memberIdInput) memberIdInput.value = memberId;
 
         card.classList.remove('hidden');
         card.style.display = '';
@@ -217,7 +250,7 @@
         if (resumeBtn) {
             resumeBtn.addEventListener('click', function(e) {
                 e.preventDefault();
-                handleAction(RESUME_WEBHOOK, 'Votre abonnement a été réactivé !', '/membership/abonnement-repris', 'resume');
+                handleAction('resume-pause', 'Votre abonnement a été réactivé !', '/membership/abonnement-repris', 'resume');
             });
         }
 
@@ -225,25 +258,18 @@
             cancelBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 if (confirm('Êtes-vous sûr de vouloir annuler définitivement votre abonnement ?')) {
-                    handleAction(CANCEL_DEFINITIVE_WEBHOOK, 'Votre abonnement a été annulé.', null, 'cancel-definitive');
+                    handleAction('cancel-pause', 'Votre abonnement a été annulé.', null, 'cancel-definitive');
                 }
             });
         }
     }
 
-    function handleAction(webhookUrl, successMessage, redirectUrl, actionName) {
+    function handleAction(action, successMessage, redirectUrl, actionName) {
         var resumeBtn = document.getElementById('resume-btn');
         var cancelBtn = document.getElementById('cancel-definitive-btn');
         var waiting = document.getElementById('pause-action-waiting');
         var success = document.getElementById('pause-action-success');
         var error = document.getElementById('pause-action-error');
-        // init() treats this input as optional, so dereferencing it here would
-        // throw before the spinner, the error message and the report.
-        var memberIdInput = document.getElementById('pause-member-id');
-        var memberId = memberIdInput ? memberIdInput.value : '';
-        if (!memberId) {
-            report(actionName, 'PauseStateMissingMemberId', '#pause-member-id absent ou vide');
-        }
 
         // Hide buttons, show waiting
         if (resumeBtn) resumeBtn.style.display = 'none';
@@ -251,17 +277,9 @@
         if (waiting) waiting.style.display = 'block';
         if (error) error.style.display = 'none';
 
-        var payload = 'memberId=' + encodeURIComponent(memberId) + '&pageUrl=' + encodeURIComponent(window.location.href);
-        console.log(PREFIX, 'Calling webhook:', webhookUrl);
-        console.log(PREFIX, 'Payload:', payload);
-
-        var xhr = new XMLHttpRequest();
-
-        xhr.onload = function() {
-            console.log(PREFIX, 'Response status:', xhr.status);
-            console.log(PREFIX, 'Response body:', xhr.responseText);
+        send(action, actionName, function(ok) {
             if (waiting) waiting.style.display = 'none';
-            if (xhr.status === 200) {
+            if (ok) {
                 if (success) {
                     success.textContent = successMessage;
                     success.style.display = 'block';
@@ -273,47 +291,12 @@
                         window.location.reload();
                     }
                 }, REDIRECT_DELAY);
-            } else {
-                var body = xhr.responseText ? ' — ' + String(xhr.responseText).slice(0, 200) : '';
-                report(actionName, 'PauseStateActionFailed', 'HTTP ' + xhr.status + body);
-                showError();
+                return;
             }
-        };
-
-        xhr.onerror = function() {
-            console.error(PREFIX, 'XHR error (network)');
-            report(actionName, 'PauseStateNetworkError', 'network error');
-            if (waiting) waiting.style.display = 'none';
-            showError();
-        };
-
-        xhr.ontimeout = function() {
-            console.error(PREFIX, 'XHR timeout after', REQUEST_TIMEOUT, 'ms');
-            report(actionName, 'PauseStateTimeout', 'timeout after ' + REQUEST_TIMEOUT + 'ms');
-            if (waiting) waiting.style.display = 'none';
-            showError();
-        };
-
-        function showError() {
             if (error) error.style.display = 'block';
             if (resumeBtn) resumeBtn.style.display = '';
             if (cancelBtn) cancelBtn.style.display = '';
-        }
-
-        // open/setRequestHeader/send can throw synchronously behind a CSP rule
-        // or a privacy extension. Without this, none of the handlers above ever
-        // runs and the member is left on a spinner with both buttons hidden.
-        try {
-            xhr.open('POST', webhookUrl);
-            xhr.timeout = REQUEST_TIMEOUT;
-            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            xhr.send(payload);
-        } catch (err) {
-            console.error(PREFIX, 'XHR send failed:', err);
-            report(actionName, 'PauseStateSendFailed', (err && err.message) || String(err));
-            if (waiting) waiting.style.display = 'none';
-            showError();
-        }
+        });
     }
 
     // Init after DOM ready
