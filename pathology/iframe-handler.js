@@ -25,9 +25,31 @@
     }
   }
 
+  // Items rendered without the hidden .iframe-meta embed (older template
+  // markup) still carry the slugs on the item itself. Rebuild the embed from
+  // them so the handlers below see a single shape. Must run before the paywall
+  // block in init(), which strips those attributes from the item.
+  function addMissingIframeMeta() {
+    var items = document.querySelectorAll('.pathologies_tab .content-item[data-iframe-id]');
+    Array.prototype.forEach.call(items, function(item) {
+      if (item.querySelector('.iframe-meta')) return;
+      var slug = item.getAttribute('data-iframe-slug');
+      var collection = item.getAttribute('data-collection-slug');
+      if (!slug || !collection) return;
+      var meta = document.createElement('div');
+      meta.className = 'iframe-meta';
+      meta.style.display = 'none';
+      meta.setAttribute('data-iframe-slug', slug);
+      meta.setAttribute('data-collection-slug', collection);
+      item.insertBefore(meta, item.firstChild);
+    });
+  }
+
   function init() {
     var paywallElem = $('.rappels-cliniques-content .rc_hidden_warning_wrapper');
     var spinnerSafetyTimeout = null;
+
+    addMissingIframeMeta();
 
     // Handle paywall visibility
     if ($(paywallElem).css('display') === 'block') {
