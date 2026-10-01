@@ -1,12 +1,17 @@
 /**
  * Ordotype - Pause Subscription Form
  * Handles the "Mettre en pause" button on the cancellation page.
- * Posts to a Make webhook which:
+ * The pause request:
  *   1. Cancels the Stripe subscription (with metadata cancellation_comment=pause_by_customer)
  *   2. Writes pause-end-date + paused-group-key to Memberstack metaData
  *   3. Writes a comment to Memberstack custom field "comment" for CS
  *   4. Adds an entry to the "Paused Subscriptions" Data Store
  *   5. Sends Brevo confirmation email (template #806)
+ *
+ * A form that carries data-ordo-action="<action>" is sent to the member-forms endpoint instead of
+ * its own action: the request carries the member's session token and the form's own non-identity
+ * fields; the server reads the member from the session. A form without the attribute is posted to
+ * its own action as before.
  *
  * Requires: window.OrdoMemberstack (memberstack-utils.js loaded first)
  *
@@ -21,6 +26,12 @@
     var PREFIX = '[PauseForm]';
     var REDIRECT_DELAY = 3000;
     var REQUEST_TIMEOUT = 10000;
+    var MEMBER_FORMS_URL = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
+    var PREFILLED_IDS = ['stripeCustomerIdPause', 'memberIdPause', 'stripeSubscriptionIdPause'];
+    // Identity fields stay in the page: the server reads the member from the session.
+    var IDENTITY_FIELDS = ['email', 'MSuserId', 'memberId', 'memberIdPause', 'stripeCustomerId',
+        'stripeCustomerIdCancel', 'stripeCustomerIdPause', 'stripeSubscriptionId', 'stripeSubscriptionIdPause'];
+    var submitting = false;
 
     // Reporter when it is there, ErrorEvent channel when it is not: the pages
     // where a pause fails are also the ones where the CDN can be blocked.
@@ -56,13 +67,15 @@
         var ms = window.OrdoMemberstack;
         if (!ms || !ms.memberId) {
             console.warn(PREFIX, 'OrdoMemberstack not available');
+            // A marked form only needs the session token: keep it bound.
+            if (form.getAttribute('data-ordo-action')) form.addEventListener('submit', handleSubmit);
             return;
         }
 
         // Pre-fill hidden inputs from localStorage data (no async call needed)
-        var stripeInput = document.getElementById('stripeCustomerIdPause');
-        var memberIdInput = document.getElementById('memberIdPause');
-        var subIdInput = document.getElementById('stripeSubscriptionIdPause');
+        var stripeInput = document.getElementById(PREFILLED_IDS[0]);
+        var memberIdInput = document.getElementById(PREFILLED_IDS[1]);
+        var subIdInput = document.getElementById(PREFILLED_IDS[2]);
 
         if (stripeInput) stripeInput.value = ms.stripeCustomerId || '';
         if (memberIdInput) memberIdInput.value = ms.memberId || '';
@@ -89,6 +102,9 @@
 
     function handleSubmit(event) {
         event.preventDefault();
+        // A second submit while the first is pending would pause twice.
+        if (submitting) return;
+        submitting = true;
 
         var form = document.getElementById('pause-form');
         var waiting = document.getElementById('waiting-message-pause');
@@ -99,7 +115,8 @@
         hideElement(form);
         hideElement(error);
 
-        submitForm(form)
+        var action = form.getAttribute('data-ordo-action');
+        (action ? submitToServer(form, action) : submitForm(form))
             .then(function(response) {
                 hideElement(waiting);
                 if (response.ok) {
@@ -119,6 +136,7 @@
                 hideElement(waiting);
                 showElement(form);
                 showElement(error);
+                submitting = false;
             });
     }
 
@@ -135,6 +153,72 @@
             var data = new FormData(form);
             data.append('pageUrl', window.location.href);
             xhr.send(data);
+        });
+    }
+
+    function sessionToken() {
+        try {
+            var ms = window.$memberstackDom;
+            if (!ms || typeof ms.getMemberCookie !== 'function') return Promise.resolve('');
+            return Promise.resolve(ms.getMemberCookie()).then(function(t) {
+                return t ? String(t) : '';
+            }, function() { return ''; });
+        } catch (e) {
+            return Promise.resolve('');
+        }
+    }
+
+    // The prefilled inputs are left out whatever their name in the Designer.
+    function excludedFields() {
+        var names = IDENTITY_FIELDS.slice();
+        PREFILLED_IDS.forEach(function(id) {
+            var input = document.getElementById(id);
+            if (input && input.name) names.push(input.name);
+        });
+        return names;
+    }
+
+    /**
+     * Send the form to the member-forms endpoint with the member's session token.
+     * Resolves with the same shape as submitForm.
+     */
+    function submitToServer(form, action) {
+        return sessionToken().then(function(token) {
+            if (!token) throw new Error('No member session token');
+
+            var excluded = excludedFields();
+            var fields = {};
+            new FormData(form).forEach(function(value, name) {
+                if (typeof value === 'string' && excluded.indexOf(name) === -1) fields[name] = value;
+            });
+
+            var controller = typeof AbortController === 'function' ? new AbortController() : null;
+            var timer = controller ? setTimeout(function() { controller.abort(); }, REQUEST_TIMEOUT) : null;
+            function stop() {
+                if (timer) clearTimeout(timer);
+                timer = null;
+            }
+            return Promise.resolve()
+                .then(function() {
+                    return fetch(MEMBER_FORMS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ action: action, fields: fields }),
+                        signal: controller ? controller.signal : undefined
+                    });
+                })
+                .then(function(response) {
+                    return Promise.resolve()
+                        .then(function() { return response.text(); })
+                        .catch(function() { return ''; })
+                        .then(function(body) {
+                            stop();
+                            return { ok: response.status === 200, status: response.status, body: body };
+                        });
+                }, function(err) {
+                    stop();
+                    throw new Error(err && err.name === 'AbortError' ? 'Request timeout' : 'Network error');
+                });
         });
     }
 
