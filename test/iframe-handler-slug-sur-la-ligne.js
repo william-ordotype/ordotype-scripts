@@ -73,7 +73,11 @@ function fabriquerJQuery(w) {
             length: els.length,
             find(sel) { return envelopper(els.flatMap((el) => Array.from(el.querySelectorAll(sel)))); },
             first() { return envelopper(els.slice(0, 1)); },
-            text() { return els.map((el) => el.textContent).join(''); },
+            text(val) {
+                if (val === undefined) return els.map((el) => el.textContent).join('');
+                els.forEach((el) => { el.textContent = val; });
+                return api;
+            },
             hide() { els.forEach((el) => { el.style.display = 'none'; }); return api; },
             show() { els.forEach((el) => { el.style.display = ''; }); return api; },
             css(prop, val) {
@@ -111,6 +115,11 @@ function fabriquerJQuery(w) {
         return api;
     }
     return (x) => {
+        if (typeof x === 'string' && x.trim().startsWith('<')) {
+            const boite = w.document.createElement('div');
+            boite.innerHTML = x.trim();
+            return envelopper(Array.from(boite.children));
+        }
         if (typeof x === 'string') return envelopper(Array.from(w.document.querySelectorAll(x)));
         if (x && typeof x.find === 'function') return x;
         return envelopper(x ? [x] : []);
