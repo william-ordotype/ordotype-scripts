@@ -168,7 +168,9 @@
         if ($(paywallElem).css('display') === 'block') {
           // Users are not premium
           $('#' + currentIframeId).parent().find('.job-post-title-ordo-display').remove();
-          $('#' + currentIframeId).next().show().prepend('<h3 class="job-post-title-ordo-display">' + target.find('.content-item_name').first().text() + '</h3>');
+          // The item name goes in with .text(): concatenated into an HTML
+          // string, a name containing markup would be parsed as HTML.
+          $('#' + currentIframeId).next().show().prepend($('<h3 class="job-post-title-ordo-display">').text(target.find('.content-item_name').first().text()));
           target.find('.tab_right-icon').show();
           $('.pathologies_tab .loading-spinner').hide();
           return;
@@ -207,7 +209,8 @@
           // desktop init clone does — opacity-reveal.js races a 50ms timeout.
           var paywallMobile = $(paywallElem).clone().css('opacity', '1');
           target.after(
-            paywallMobile.prepend('<h3 class="job-post-title-ordo-display">' + target.find(".content-item_name").first().text() + '</h3>')
+            // Name inserted as text, as on desktop.
+            paywallMobile.prepend($('<h3 class="job-post-title-ordo-display">').text(target.find(".content-item_name").first().text()))
           );
           $(".pathologies_tab .loading-spinner").hide();
           return;
