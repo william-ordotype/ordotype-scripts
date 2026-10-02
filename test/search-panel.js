@@ -8,7 +8,8 @@
  *
  * Ce qui doit tenir :
  *   - ordinateur : rien ne change, aucun tirage ;
- *   - moitié témoin, coupe-circuit (POURCENT = 0), stockage refusé, moteur de
+ *   - à 100 %, tout tirage ouvre le panneau ; témoin quand POURCENT < 100,
+ *     coupe-circuit (POURCENT = 0), stockage refusé, moteur de
  *     recherche absent : la loupe garde son lien ;
  *   - moitié panneau : panneau construit au premier appui seulement ; la loupe
  *     l'ouvre sans changer de page ; le champ y est déplacé puis remis ;
@@ -31,6 +32,11 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'entete-fiche.html'), 'utf8');
 const SRC = fs.readFileSync(path.join(ROOT, 'shared', 'search-panel.js'), 'utf8');
+function withPercent(n) {
+    const out = SRC.replace(/var POURCENT = \d+;/, 'var POURCENT = ' + n + ';');
+    if (out === SRC && !SRC.includes('var POURCENT = ' + n + ';')) throw new Error('POURCENT introuvable dans search-panel.js');
+    return out;
+}
 const KEYS = ['event', 'element', 'rollout_bucket', 'rollout_percent', 'rollout_reason',
     'reason', 'reason_codes', 'failure_reason', 'time_on_page_sec'];
 const ARROW = { left: 16, top: 16, width: 55, height: 44, right: 71, bottom: 60 };
@@ -132,9 +138,17 @@ async function main() {
         check('aucun tirage stocké', win.localStorage.getItem('ot_search_bucket') === null, win.localStorage.getItem('ot_search_bucket'));
     }
 
-    console.log('moitié témoin (tirage 90)');
+    console.log('100 % : le tirage le plus haut ouvre aussi le panneau (tirage 99)');
     {
-        const { win, doc, pushed } = await load({ bucket: '90' });
+        const { win, doc, pushed } = await load({ bucket: '99' });
+        check('panneau ouvert sans changer de page', tapLoupe(win, doc) === true && panelOpen(doc), 'loupe suivie');
+        const open = events(pushed, 'search_panel_open')[0];
+        check('ouverture comptée, moitié panneau', open && open.rollout_bucket === 'panneau' && open.rollout_percent === '100', JSON.stringify(open));
+    }
+
+    console.log('témoin si POURCENT = 50 (tirage 90)');
+    {
+        const { win, doc, pushed } = await load({ bucket: '90', src: withPercent(50) });
         check('la loupe garde son lien', !tapLoupe(win, doc), 'navigation empêchée');
         check('aucun panneau', !doc.querySelector('.ot-search-panel'), 'panneau créé');
         const open = events(pushed, 'search_panel_open')[0];
@@ -145,7 +159,7 @@ async function main() {
 
     console.log('coupe-circuit POURCENT = 0 (tirage 10)');
     {
-        const { win, doc } = await load({ src: SRC.replace('var POURCENT = 50;', 'var POURCENT = 0;') });
+        const { win, doc } = await load({ src: withPercent(0) });
         check('la loupe garde son lien', !tapLoupe(win, doc), 'navigation empêchée');
         check('aucun panneau', !doc.querySelector('.ot-search-panel'), 'panneau créé');
     }
