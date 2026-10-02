@@ -2,7 +2,7 @@
 // sans changer de page. Le champ de l'entête y est déplacé, la recherche garde donc
 // son fonctionnement. Sans ce script, la loupe mène à /search-result.
 (function () {
-  var POURCENT = 50;
+  var POURCENT = 100;
   var PORTRAIT = "(max-width: 479px)";
 
   var CSS =
