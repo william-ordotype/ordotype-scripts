@@ -203,7 +203,6 @@
     'siren-finder.js',   // SIREN/SIRET self-service (facturation électronique), replaces the free-text #SIRET input. Gated by GATES.
     'rpps-finder.js',    // RPPS check in the Annuaire santé, before profile-overview.js which places it. Gated by GATES.
     'subscriptions.js',
-    'session-stats-prefetch.js',
     'pause-state.js',
     'tab-hash.js',
     'status-selectors.js',
