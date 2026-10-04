@@ -80,10 +80,32 @@
     // Grace period check for payment redirect prevention (24 hours)
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
+    // Bandeau « abonnement en pause » : il doit apparaître même pendant le délai
+    // de grâce. Sans ça, un membre qui vient de mettre son abonnement en pause ne
+    // le voyait pas pendant 24 h (justPaidTs coupait tout ce qui suit).
+    function showPauseBanner($) {
+        const member = ms.member;
+        if (!$ || !member || !member.id) return false;
+        const pauseEndDate = ms.metaData && ms.metaData['pause-end-date'];
+        if (!pauseEndDate) return false;
+        const endDate = new Date(pauseEndDate);
+        if (isNaN(endDate.getTime()) || endDate <= new Date()) return false;
+        const formattedDate = endDate.toLocaleDateString('fr-FR', {
+            day: 'numeric', month: 'long', year: 'numeric'
+        });
+        const dateSpan = document.getElementById('banner-to-hide-paused-date');
+        if (dateSpan) dateSpan.textContent = formattedDate;
+        $('#banner-to-hide-paused').css({ display: 'flex' });
+        $('#banner-to-hide-canceled, #banner-to-hide-essai-expire, #banner-to-hide-essai-expire-rempla').css({ display: 'none' });
+        console.log(PREFIX, 'Paused — showing pause banner, resume date:', formattedDate);
+        return true;
+    }
+
     if (justPaidTs && (Date.now() - justPaidTs) < GRACE_PERIOD) {
         console.log(PREFIX, 'Within grace period, skipping redirect logic');
         if (typeof jQuery !== 'undefined') {
             jQuery('#banner-to-hide-payment-failed').css({ display: 'none' });
+            showPauseBanner(jQuery);
         }
         return;
     }
@@ -146,21 +168,7 @@
         }
 
         // Paused subscription — show dedicated pause banner, skip all other banner logic
-        const pauseEndDate = ms.metaData && ms.metaData['pause-end-date'];
-        if (pauseEndDate) {
-            const endDate = new Date(pauseEndDate);
-            if (!isNaN(endDate.getTime()) && endDate > new Date()) {
-                const formattedDate = endDate.toLocaleDateString('fr-FR', {
-                    day: 'numeric', month: 'long', year: 'numeric'
-                });
-                const dateSpan = document.getElementById('banner-to-hide-paused-date');
-                if (dateSpan) dateSpan.textContent = formattedDate;
-                $('#banner-to-hide-paused').css({ display: 'flex' });
-                $('#banner-to-hide-canceled, #banner-to-hide-essai-expire, #banner-to-hide-essai-expire-rempla').css({ display: 'none' });
-                console.log(PREFIX, 'Paused — showing pause banner, resume date:', formattedDate);
-                return;
-            }
-        }
+        if (showPauseBanner($)) return;
         const SUBSCRIPTION = 'SUBSCRIPTION';
         const ACTIVE = 'ACTIVE';
         const TRIALING = 'TRIALING';

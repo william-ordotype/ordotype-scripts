@@ -33,7 +33,7 @@ const CHARGEURS = {
     compte: {
         fichier: 'account/loader.js',
         balise: `${REPO}abc1234/account/loader.js`,
-        ordre: ['shared/memberstack-utils.js', 'shared/error-reporter.js', 'account/styles.js', 'account/core.js', 'account/subscriptions.js', 'account/session-stats-prefetch.js', 'account/pause-state.js', 'account/tab-hash.js', 'account/status-selectors.js', 'account/delete-account.js', 'account/billing-portal.js'],
+        ordre: ['shared/memberstack-utils.js', 'shared/error-reporter.js', 'account/styles.js', 'account/core.js', 'account/subscriptions.js', 'account/pause-state.js', 'account/tab-hash.js', 'account/status-selectors.js', 'account/delete-account.js', 'account/billing-portal.js'],
         telephone: 'account/phone-input.js',
     },
     'mes-informations': {
