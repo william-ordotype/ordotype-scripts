@@ -12,6 +12,10 @@
  *   - pendant le délai de grâce, le bandeau « paiement échoué » reste masqué ;
  *   - pause terminée (date passée) ou date illisible : pas de bandeau ;
  *   - pas de membre connecté : pas de bandeau.
+ *   - 🔴 PENDANT le délai de grâce, la logique de redirection ne tourne JAMAIS (pause
+ *     ou pas) : c'est ce délai qui évite les boucles infinies « paiement échoué →
+ *     page de mise à jour de la carte → retour → paiement encore échoué ». Mesuré
+ *     par les appels à ms.safeDate, que seule cette logique fait.
  *
  * Usage : node test/member-redirects-pause.js
  */
@@ -39,14 +43,16 @@ function load({ pauseEnd, justPaidAgo, member = { id: 'mem_test', createdAt: '20
         const els = typeof sel === 'string' ? Array.from(doc.querySelectorAll(sel)) : [];
         return { css(o) { els.forEach((el) => Object.assign(el.style, o)); return this; } };
     };
+    const appels = { redirections: 0 };
     win.OrdoMemberstack = {
         member,
         metaData: pauseEnd === undefined ? {} : { 'pause-end-date': pauseEnd },
-        safeDate: () => null,
-        safeDateFromValue: () => null,
+        // Seule la logique de redirection lit ces dates : chaque appel prouve qu'elle a tourné.
+        safeDate: () => { appels.redirections++; return null; },
+        safeDateFromValue: () => { appels.redirections++; return null; },
     };
     try { win.eval(SRC); } catch (e) { /* la suite du script (hors pause) n'est pas l'objet de ce test */ }
-    return { doc };
+    return { doc, appels };
 }
 
 const shown = (doc, id) => doc.getElementById(id).style.display;
@@ -96,6 +102,16 @@ console.log('pas de membre connecté');
 {
     const { doc } = load({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000, member: null });
     check('pas de bandeau pause', shown(doc, 'banner-to-hide-paused') === 'none', shown(doc, 'banner-to-hide-paused'));
+}
+
+console.log('délai de grâce = aucune redirection (anti-boucle paiement échoué)');
+{
+    const pasPause = load({ justPaidAgo: 60 * 60 * 1000 });
+    check('pas en pause : logique de redirection non exécutée', pasPause.appels.redirections === 0, pasPause.appels.redirections + ' appel(s)');
+    const enPause = load({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000 });
+    check('en pause : logique de redirection non exécutée', enPause.appels.redirections === 0, enPause.appels.redirections + ' appel(s)');
+    const expiree = load({ justPaidAgo: 25 * 60 * 60 * 1000 });
+    check('témoin : grâce expirée (25 h), la logique tourne', expiree.appels.redirections > 0, 'jamais appelée : le témoin ne mesure rien');
 }
 
 if (fail) { console.log(fail + ' échec(s)'); process.exit(1); }
