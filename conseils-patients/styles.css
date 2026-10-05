@@ -21,6 +21,37 @@ p:not(table p) {
     margin-bottom: 0 !important;
 }
 
+/* Copy toast: bottom-center instead of over the logo and title.
+   The Webflow component is fixed to the top and its message is absolute;
+   make the message relative so the wrapper takes its size. */
+.toast_component.centered {
+    top: auto;
+    bottom: calc(1.5rem + env(safe-area-inset-bottom));
+    left: 0;
+    right: 0;
+    pointer-events: none;
+}
+
+/* In the pathology iframe (600px, stuck 70px below the top of the screen),
+   the bottom of the iframe falls below the fold on short laptop screens. */
+html.is-embed .toast_component.centered {
+    bottom: 5rem;
+}
+
+.toast_component.centered .toast-message-copy {
+    position: relative;
+}
+
+/* copy-handler.js fades the toast in; slide it up as it appears. */
+.toast_component.centered [x-ordo-utils="toast-component-common"] {
+    animation: copy-toast-slide-up 0.2s ease;
+}
+
+@keyframes copy-toast-slide-up {
+    from { transform: translateY(1rem); }
+    to { transform: none; }
+}
+
 /* Arabic text direction */
 .rich-text-ar {
     direction: rtl;
