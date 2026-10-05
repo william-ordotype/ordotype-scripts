@@ -19,6 +19,9 @@
  *   - retour sur l'entrée du panneau : rouvert seulement si le moteur est branché ;
  *   - un appui sur le bord du champ ou un appui annulé ne sont PAS des pannes ;
  *     flèche recouverte et fermeture sans effet le sont ;
+ *   - un point sans élément (page pas encore affichée, restaurée par Safari
+ *     depuis l'historique) n'est PAS un recouvrement : remesuré, puis noté
+ *     « controle_impossible » à la fermeture, sans alerte ;
  *   - le panneau se ferme même si l'entête a changé entre-temps ;
  *   - chaque envoi porte toutes les clés ; une mesure en panne ne casse rien ;
  *     le rapporteur commun est utilisé quand il est là.
@@ -44,7 +47,8 @@ const FIELD = { left: 48, top: 12, width: 343, height: 52, right: 391, bottom: 6
 
 async function load(opts) {
     const o = Object.assign({ mobile: true, bucket: '10', engine: true, covered: false, storageBroken: false,
-        pushBroken: false, random: 0.5, src: SRC, state: null, reporter: false, variantWriteBroken: false }, opts);
+        pushBroken: false, random: 0.5, src: SRC, state: null, reporter: false, variantWriteBroken: false,
+        nullPoints: 0 }, opts);
     const dom = new JSDOM(html, {
         url: 'https://www.ordotype.fr/pathologies/exemple',
         runScripts: 'outside-only',
@@ -87,7 +91,9 @@ async function load(opts) {
         if (this.id === 'search-bar-nav') return FIELD;
         return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
     };
+    let nulls = o.nullPoints; // nombre de points mesurés hors de l'écran affiché
     doc.elementFromPoint = (x) => {
+        if (nulls > 0) { nulls--; return null; }
         if (o.covered) return doc.querySelector('.navbar2_container');
         return x < 48 ? doc.querySelector('.ot-search-back img') : doc.getElementById('search-bar-nav');
     };
@@ -113,6 +119,8 @@ function tapLoupe(win, doc) {
 }
 function click(win, el) { el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true })); }
 function pointer(win, el, x, y) { el.dispatchEvent(new win.MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y })); }
+// Bouton retour du téléphone sur une page rouverte depuis l'historique (pas d'entrée avant elle ici).
+function phoneBack(win) { win.history.replaceState(null, ''); win.dispatchEvent(new win.PopStateEvent('popstate', { state: null })); }
 function type(win, input, value) { input.value = value; input.dispatchEvent(new win.Event('input', { bubbles: true })); }
 function results(doc, n) {
     const list = doc.createElement('div');
@@ -337,6 +345,39 @@ async function main() {
         const pb = events(pushed, 'search_panel_problem').map((p) => p.failure_reason);
         check('détectée à l’ouverture', pb.some((r) => /^fleche_recouverte:div\.navbar2_container/.test(r)), JSON.stringify(pb));
         check('alerte bloquante', blocking(reported).some((r) => /fleche_recouverte/.test(r.message)), JSON.stringify(reported));
+    }
+
+    console.log('page restaurée par Safari : point hors écran, puis affichée');
+    {
+        const { win, doc, pushed, reported } = await load({ state: { otSearch: 1 }, nullPoints: 2 });
+        check('rouvert par le retour', panelOpen(doc), 'fermé');
+        await wait(600);
+        check('pas de recouvrement signalé', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
+        check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
+        phoneBack(win);
+        const close = events(pushed, 'search_panel_close')[0];
+        check('remesuré avec succès : pas de controle_impossible', close && !/controle_impossible/.test(close.reason_codes), JSON.stringify(close));
+    }
+
+    console.log('point hors écran tout le temps');
+    {
+        const { win, doc, pushed, reported } = await load({ state: { otSearch: 1 }, nullPoints: Infinity });
+        await wait(1500);
+        check('pas de recouvrement signalé', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
+        check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
+        phoneBack(win);
+        const close = events(pushed, 'search_panel_close')[0];
+        check('noté controle_impossible à la fermeture', close && /controle_impossible/.test(close.reason_codes), JSON.stringify(close));
+    }
+
+    console.log('page cachée à l’ouverture, flèche recouverte une fois affichée');
+    {
+        const t = await load({ covered: true, state: { otSearch: 1 }, src: 'Object.defineProperty(document, "visibilityState", { configurable: true, get: function () { return window.__vis || "hidden"; } });\n' + SRC });
+        await frames(t.win);
+        check('rien signalé tant que la page est cachée', blocking(t.reported).length === 0, JSON.stringify(t.reported));
+        t.win.__vis = 'visible';
+        await wait(500);
+        check('signalé une fois affichée', blocking(t.reported).some((r) => /fleche_recouverte/.test(r.message)), JSON.stringify(t.reported));
     }
 
     console.log('bloqué : appui sur la flèche qui tombe sur l’entête');

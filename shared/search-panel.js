@@ -155,7 +155,7 @@
       S = { t0: Date.now(), origin: origin, typed: false, results: 0, taps: [], refocus: false, arrowTaps: 0,
             reopen: origin === "loupe" && Date.now() - lastEmptyClose < 30000, problems: {} };
       track("search_panel_open", { reason: origin, reason_codes: S.reopen ? "reouverture" : "" });
-      requestAnimationFrame(function () { requestAnimationFrame(selfCheck); });
+      requestAnimationFrame(function () { requestAnimationFrame(function () { selfCheck(0); }); });
     }
     function problem(kind, detail, blocking) {
       if (!S || S.problems[kind]) return;
@@ -179,22 +179,34 @@
       if (s.refocus) codes.push("champ_retouche");
       if (s.arrowTaps > 1) codes.push("fleche_x" + s.arrowTaps);
       for (var k in s.problems) codes.push(k);
+      if (s.unchecked) codes.push("controle_impossible");
       track("search_panel_close", { reason: outcome, reason_codes: codes.join(",") || "aucun",
                                     time_on_page_sec: String(Math.round((Date.now() - s.t0) / 1000)) });
       if (outcome === "fleche" || outcome === "retour_telephone" || outcome === "echap") lastEmptyClose = Date.now();
       else if (outcome === "resultat" || outcome === "page_resultats") lastEmptyClose = 0;
     }
     // La flèche et le champ sont-ils vraiment touchables, sur l'écran réel ?
-    function selfCheck() {
+    // Aucun élément sous le point (ou page cachée) : la page n'est pas encore
+    // affichée, par exemple restaurée par Safari depuis l'historique. Ce n'est
+    // pas un recouvrement : on remesure, puis on le note sans alerte.
+    function selfCheck(attempt) {
       if (!open || !S) return;
+      var s = S;
+      attempt = attempt || 0;
       safely(function () {
         var b = back.getBoundingClientRect();
         var hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-        if (!hit || !back.contains(hit)) problem("fleche_recouverte", describe(hit), true);
         var r = input.getBoundingClientRect();
-        if (r.width < 1 || r.height < 1) return problem("champ_invisible", "", true);
-        var hit2 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        if (!hit2 || !form.contains(hit2)) problem("champ_recouvert", describe(hit2), true);
+        var invisible = r.width < 1 || r.height < 1;
+        var hit2 = invisible ? null : document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!hit || (!invisible && !hit2) || document.visibilityState === "hidden") {
+          if (attempt < 3) return setTimeout(function () { if (open && S === s) selfCheck(attempt + 1); }, 400);
+          s.unchecked = true;
+          return;
+        }
+        if (!back.contains(hit)) problem("fleche_recouverte", describe(hit), true);
+        if (invisible) return problem("champ_invisible", "", true);
+        if (!form.contains(hit2)) problem("champ_recouvert", describe(hit2), true);
       });
     }
 
