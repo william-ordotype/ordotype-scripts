@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Formulaire d'invitation de la page 2FA : envoi, confirmation, erreur, retour au formulaire et aperçu restreint.
+ * Formulaire d'invitation de la page 2FA : envoi, confirmation, erreur, retour au formulaire, aperçu restreint
+ * et variante « bloqué » (délai sans validation du code, clic sur un renvoi du code).
  *
  * Usage : node test/connexion-2fa-referral.js
  */
@@ -14,11 +15,22 @@ const SCRIPT = fs.readFileSync(path.join(ROOT, 'connexion-2fa/referral.js'), 'ut
 const ENDPOINT = 'https://hook.example.test/referral';
 const session = () => JSON.stringify({ data: { memberId: 'mem_parrain', email: 'pa****in@example.test' } });
 
-function page({ action = ENDPOINT, endpointAttr = null, sessionValue = session(), loginEmail = 'parrain@example.test', invitationHidden = false, preview = null, comboRule = true, gated = false } = {}) {
+const STUCK = {
+  badge: '3 mois à -50 % sur votre propre compte',
+  titre: 'Ce compte n’est pas le vôtre ?',
+  champ: 'votre@email.fr',
+  bouton: 'Recevoir',
+  confirmation: 'Offre envoyée !',
+  barre: 'Ce compte n’est pas le vôtre ? Créez le vôtre à -50 %',
+};
+
+function page({ action = ENDPOINT, endpointAttr = null, sessionValue = session(), loginEmail = 'parrain@example.test', invitationHidden = false, preview = null, comboRule = true, gated = false, stuck = false, stuckAfter = null } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
   const previewAttr = preview === null ? '' : ` data-referral-preview="${preview}"`;
+  const st = (name, value) => (stuck ? ` data-referral-stuck-${name}="${value}"` : '');
+  const blocAttrs = (stuckAfter === null ? '' : ` data-referral-stuck-after="${stuckAfter}"`) + st('bar', STUCK.barre);
   const dom = new JSDOM(
     `<!doctype html><html><head><style>
       .hidden { background-color: transparent; padding: 0; display: none; }
@@ -27,17 +39,22 @@ function page({ action = ENDPOINT, endpointAttr = null, sessionValue = session()
       .sign_window.is-gated { display: none; }
     </style></head><body>
       <form id="code-form"><input name="code" value="123456"><input type="submit" value="Valider"></form>
-      <div id="referral-invitation" class="sign_window${invitationHidden ? ' hidden' : ''}${gated ? ' is-gated' : ''}"${gated ? ' style="display:flex"' : ''}${previewAttr}>
+      <a id="resend-otp-by-email" href="#"><span>Renvoyez le code</span></a>
+      <a id="send-otp-by-sms" href="#">Recevoir un code par SMS</a>
+      <div id="referral-invitation" class="sign_window${invitationHidden ? ' hidden' : ''}${gated ? ' is-gated' : ''}"${gated ? ' style="display:flex"' : ''}${previewAttr}${blocAttrs}>
+        <div class="badge"${st('text', STUCK.badge)}>3 mois à -50% pour vous deux</div>
+        <div class="titre"${st('text', STUCK.titre)}>Invitez un confrère à créer<br>son propre compte</div>
         <div class="w-form">
           <form id="wf-form-form-invite" name="form-invite" method="get"${action ? ` action="${action}"` : ''}${endpointAttr === null ? '' : ` data-referral-endpoint="${endpointAttr}"`}>
-            <input type="email" name="parrainage" id="parrainage" required>
-            <input type="submit" data-wait="Envoi en cours" value="Inviter">
+            <input type="email" name="parrainage" id="parrainage" placeholder="email@confrere.fr" required${st('placeholder', STUCK.champ)}>
+            <input type="submit" data-wait="Envoi en cours" value="Inviter"${st('value', STUCK.bouton)}>
           </form>
           <div class="w-form-done" style="display:none">Merci</div>
           <div class="w-form-fail" style="display:none">Erreur</div>
         </div>
       </div>
       <div id="referral-confirmation" class="sign_window hidden">
+        <div class="confirmation-titre"${st('text', STUCK.confirmation)}>Invitation envoyée !</div>
         <div>Nous avons envoyé une invitation à <span data-referral-email>email@confrere.fr</span></div>
         <a href="#" class="autre-lien">autre lien</a>
         <div><a id="go-back-link" class="text-style-link" href="#"><span>Inviter un autre confrère</span></a></div>
@@ -101,6 +118,7 @@ test("envoi réussi : adresse transmise, confirmation affichée avec l'adresse",
     invitee_email: 'confrere@example.test',
     referrer_member_id: 'mem_parrain',
     referrer_email: 'parrain@example.test',
+    variant: 'default',
   });
   assert.ok(!calls[0].options.body.includes('*'), "l'e-mail masqué de la session ne part jamais");
   assertHidden(w, 'referral-invitation');
@@ -222,7 +240,7 @@ test('mesure et signalement : envoi réussi mesuré, chaque échec mesuré avec 
   const succes = () => Promise.resolve({ ok: true, status: 200 });
 
   let r = await lancer({}, succes);
-  assert.deepStrictEqual(r.evenements, [{ event: 'referral_invite_sent' }]);
+  assert.deepStrictEqual(r.evenements, [{ event: 'referral_invite_sent', option: 'default' }]);
   assert.deepStrictEqual(r.signalements, [], 'rien à signaler sur un succès');
 
   const echecs = [
@@ -236,7 +254,7 @@ test('mesure et signalement : envoi réussi mesuré, chaque échec mesuré avec 
   ];
   for (const [raison, options, repondre] of echecs) {
     r = await lancer(options, repondre);
-    assert.deepStrictEqual(r.evenements, [{ event: 'referral_invite_failed', failure_reason: raison }], raison);
+    assert.deepStrictEqual(r.evenements, [{ event: 'referral_invite_failed', failure_reason: raison, option: 'default' }], raison);
     assert.deepStrictEqual(r.signalements, ['Referral invite failed: ' + raison], raison);
     assert.ok(!r.signalements.some((m) => /Failed to fetch/.test(m)), 'le signalement ne doit pas passer pour une coupure réseau');
   }
@@ -343,6 +361,143 @@ test('aperçu : le formulaire masqué ne s\'affiche que pour les adresses listé
   w.eval(SCRIPT);
   await tick();
   assertHidden(w, 'referral-invitation');
+});
+
+const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
+const evenements = (w) => JSON.parse(JSON.stringify(w.dataLayer || []));
+const cliquer = (w, selecteur) => {
+  const clic = new w.MouseEvent('click', { bubbles: true, cancelable: true });
+  w.document.querySelector(selecteur).dispatchEvent(clic);
+  return clic;
+};
+const titre = (w) => w.document.querySelector('#referral-invitation .titre').textContent;
+const barre = (w) => w.document.querySelector('.referral-stuck-bar');
+
+test('bloqué après le délai : textes du Designer partout, état posé, barre vers le bloc, mesure', async () => {
+  const { w, erreurs } = page({ stuck: true, stuckAfter: '0.02' });
+  w.eval(SCRIPT);
+  assert.strictEqual(titre(w), 'Invitez un confrère à créer' + 'son propre compte');
+  assert.strictEqual(barre(w), null);
+  await attendre(60);
+
+  const d = w.document;
+  assert.strictEqual(titre(w), STUCK.titre);
+  assert.strictEqual(d.querySelector('#referral-invitation .badge').textContent, STUCK.badge);
+  assert.strictEqual(d.querySelector('#referral-invitation input[type="email"]').placeholder, STUCK.champ);
+  assert.strictEqual(d.querySelector('#referral-invitation [type="submit"]').value, STUCK.bouton);
+  assert.strictEqual(d.querySelector('#referral-confirmation .confirmation-titre').textContent, STUCK.confirmation);
+  assert.strictEqual(el(w, 'referral-invitation').getAttribute('data-referral-state'), 'stuck');
+  assert.strictEqual(el(w, 'referral-confirmation').getAttribute('data-referral-state'), 'stuck');
+  assert.deepStrictEqual(evenements(w), [{ event: 'referral_stuck_shown', option: 'timer' }]);
+
+  assert.ok(barre(w), 'la barre apparaît quand le bloc est hors de l’écran');
+  assert.strictEqual(barre(w).textContent, STUCK.barre);
+  assert.strictEqual(barre(w).getAttribute('href'), '#referral-invitation');
+  const clic = cliquer(w, '.referral-stuck-bar');
+  assert.strictEqual(clic.defaultPrevented, true);
+  assert.strictEqual(barre(w), null, 'la barre disparaît au toucher');
+  assert.deepStrictEqual(erreurs, []);
+});
+
+test('clic sur un renvoi du code : bascule immédiate, mesurée une seule fois avec son déclencheur', async () => {
+  let { w } = page({ stuck: true });
+  w.eval(SCRIPT);
+  cliquer(w, '#resend-otp-by-email span');
+  assert.strictEqual(titre(w), STUCK.titre);
+  cliquer(w, '#send-otp-by-sms');
+  cliquer(w, '#resend-otp-by-email');
+  assert.deepStrictEqual(evenements(w), [{ event: 'referral_stuck_shown', option: 'resend_email' }]);
+  assert.strictEqual(w.document.querySelectorAll('.referral-stuck-bar').length, 1);
+
+  ({ w } = page({ stuck: true }));
+  w.eval(SCRIPT);
+  cliquer(w, '#send-otp-by-sms');
+  assert.deepStrictEqual(evenements(w), [{ event: 'referral_stuck_shown', option: 'resend_sms' }]);
+});
+
+test('aucune bascule : code validé, adresse en cours de saisie ou champ actif, invitation déjà envoyée, bloc masqué', async () => {
+  const inchangé = (w, cas) => {
+    assert.strictEqual(titre(w), 'Invitez un confrère à créer' + 'son propre compte', cas);
+    assert.strictEqual(el(w, 'referral-invitation').hasAttribute('data-referral-state'), false, cas);
+    assert.ok(!evenements(w).some((e) => e.event === 'referral_stuck_shown'), cas);
+    assert.strictEqual(barre(w), null, cas);
+  };
+
+  let { w } = page({ stuck: true, stuckAfter: '0.02' });
+  w.dataLayer = [{ event: '2fa_otp_success' }];
+  w.eval(SCRIPT);
+  cliquer(w, '#resend-otp-by-email');
+  await attendre(60);
+  inchangé(w, 'code validé');
+
+  ({ w } = page({ stuck: true }));
+  w.eval(SCRIPT);
+  w.document.querySelector('#referral-invitation input[type="email"]').value = 'confrere@exa';
+  cliquer(w, '#resend-otp-by-email');
+  inchangé(w, 'adresse en cours de saisie');
+
+  ({ w } = page({ stuck: true }));
+  w.eval(SCRIPT);
+  w.document.querySelector('#referral-invitation input[type="email"]').focus();
+  cliquer(w, '#resend-otp-by-email');
+  inchangé(w, 'champ actif');
+
+  ({ w } = page({ stuck: true }));
+  installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+  w.eval(SCRIPT);
+  submitInvite(w, 'confrere@example.test');
+  await tick();
+  cliquer(w, '#resend-otp-by-email');
+  assert.strictEqual(w.document.querySelector('#referral-confirmation .confirmation-titre').textContent, 'Invitation envoyée !');
+  inchangé(w, 'invitation déjà envoyée');
+
+  ({ w } = page({ stuck: true, invitationHidden: true }));
+  w.eval(SCRIPT);
+  cliquer(w, '#resend-otp-by-email');
+  inchangé(w, 'bloc masqué');
+});
+
+test('sans textes de la variante dans le Designer : délai et clics sans effet', async () => {
+  const { w, erreurs } = page({ stuckAfter: '0.02' });
+  w.eval(SCRIPT);
+  cliquer(w, '#resend-otp-by-email');
+  cliquer(w, '#send-otp-by-sms');
+  await attendre(60);
+  assert.strictEqual(el(w, 'referral-invitation').hasAttribute('data-referral-state'), false);
+  assert.deepStrictEqual(evenements(w), []);
+  assert.strictEqual(barre(w), null);
+  assert.deepStrictEqual(erreurs, []);
+});
+
+test('envoi depuis la variante : variante transmise et mesurée, confirmation de la variante, barre retirée', async () => {
+  const { w } = page({ stuck: true });
+  const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+  w.eval(SCRIPT);
+  cliquer(w, '#resend-otp-by-email');
+  assert.ok(barre(w));
+  const form = submitInvite(w, 'emprunteur@example.test');
+  assert.strictEqual(form.querySelector('[type="submit"]').value, 'Envoi en cours');
+  await tick();
+
+  assert.strictEqual(JSON.parse(calls[0].options.body).variant, 'stuck');
+  assert.deepStrictEqual(evenements(w), [
+    { event: 'referral_stuck_shown', option: 'resend_email' },
+    { event: 'referral_invite_sent', option: 'stuck' },
+  ]);
+  assertShown(w, 'referral-confirmation');
+  assert.strictEqual(w.document.querySelector('#referral-confirmation .confirmation-titre').textContent, STUCK.confirmation);
+  assert.strictEqual(w.document.querySelector('[data-referral-email]').textContent, 'emprunteur@example.test');
+  assert.strictEqual(form.querySelector('[type="submit"]').value, STUCK.bouton);
+  assert.strictEqual(barre(w), null);
+});
+
+test('bloc déjà visible à l’écran : textes basculés, pas de barre', async () => {
+  const { w } = page({ stuck: true });
+  w.eval(SCRIPT);
+  el(w, 'referral-invitation').getBoundingClientRect = () => ({ top: 160, bottom: 489, height: 329, left: 0, right: 488, width: 488 });
+  cliquer(w, '#resend-otp-by-email');
+  assert.strictEqual(titre(w), STUCK.titre);
+  assert.strictEqual(barre(w), null);
 });
 
 (async () => {

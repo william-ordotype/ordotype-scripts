@@ -1,17 +1,26 @@
 // Invitation d'un confrère depuis la page 2FA : envoie l'adresse saisie puis affiche la confirmation.
+// Variante « bloqué » : si le code n'est pas validé après data-referral-stuck-after secondes, ou dès
+// un clic sur un renvoi du code, le bloc prend les textes posés dans le Designer
+// (data-referral-stuck-text, -placeholder, -value) et une barre y mène s'il est hors de l'écran.
 (function () {
   var SESSION_KEY = "_ms-2fa-session";
   var EMAIL_KEY = "ms_email";
   var EMAIL_PATTERN = /^[^\s@*]+@[^\s@*]+\.[^\s@*]+$/;
   var HIDDEN_CLASS = "hidden";
   var TIMEOUT_MS = 10000;
+  var RESEND_SELECTOR = "#resend-otp-by-email, #send-otp-by-sms";
+  var BAR_CLASS = "referral-stuck-bar";
   var pending = false;
+  var sent = false;
+  var variant = "default";
 
   // Mesure dans le dataLayer et signalement des échecs au suivi d'erreurs de la page.
-  function track(event, failureReason) {
+  function track(event, params) {
     try {
       var payload = { event: event };
-      if (failureReason) payload.failure_reason = failureReason;
+      for (var key in params) {
+        if (Object.prototype.hasOwnProperty.call(params, key) && params[key]) payload[key] = params[key];
+      }
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push(payload);
     } catch (e) {}
@@ -70,6 +79,90 @@
   function applyPreview() {
     var invitation = document.getElementById("referral-invitation");
     if (invitation && previewAllowed(invitation, getReferrer())) setVisible(invitation, true);
+  }
+
+  // Le code validé, la page part : rien ne doit plus changer sous les yeux du membre.
+  function codeValidated() {
+    var layer = window.dataLayer || [];
+    for (var i = 0; i < layer.length; i++) {
+      if (layer[i] && layer[i].event === "2fa_otp_success") return true;
+    }
+    return false;
+  }
+
+  // Un membre déjà occupé à inviter garde les textes qu'il est en train de lire.
+  function inviting(invitation) {
+    var input = invitation.querySelector('input[type="email"]');
+    return sent || pending || (input && (input.value !== "" || document.activeElement === input));
+  }
+
+  function useStuckTexts(root) {
+    if (!root) return;
+    var i;
+    var texts = root.querySelectorAll("[data-referral-stuck-text]");
+    for (i = 0; i < texts.length; i++) texts[i].textContent = texts[i].getAttribute("data-referral-stuck-text");
+    var fields = root.querySelectorAll("[data-referral-stuck-placeholder]");
+    for (i = 0; i < fields.length; i++) fields[i].setAttribute("placeholder", fields[i].getAttribute("data-referral-stuck-placeholder"));
+    var buttons = root.querySelectorAll("[data-referral-stuck-value]");
+    for (i = 0; i < buttons.length; i++) buttons[i].value = buttons[i].getAttribute("data-referral-stuck-value");
+    root.setAttribute("data-referral-state", "stuck");
+  }
+
+  function inView(el) {
+    var rect = el.getBoundingClientRect();
+    return rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight * 0.75;
+  }
+
+  function removeBar() {
+    var bars = document.querySelectorAll("." + BAR_CLASS);
+    for (var i = 0; i < bars.length; i++) bars[i].parentNode.removeChild(bars[i]);
+  }
+
+  function showBar(invitation) {
+    var text = invitation.getAttribute("data-referral-stuck-bar");
+    if (!text || inView(invitation)) return;
+    var bar = document.createElement("a");
+    bar.className = BAR_CLASS;
+    bar.href = "#referral-invitation";
+    bar.textContent = text;
+    bar.addEventListener("click", function (event) {
+      event.preventDefault();
+      removeBar();
+      if (invitation.scrollIntoView) invitation.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    document.body.appendChild(bar);
+    if (typeof IntersectionObserver === "function") {
+      var observer = new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i].isIntersecting) {
+            removeBar();
+            observer.disconnect();
+            return;
+          }
+        }
+      }, { threshold: 0.5 });
+      observer.observe(invitation);
+    }
+  }
+
+  function enterStuck(trigger) {
+    if (variant === "stuck") return;
+    var invitation = document.getElementById("referral-invitation");
+    // Sans textes posés dans le Designer, la variante n'existe pas.
+    if (!invitation || !invitation.querySelector("[data-referral-stuck-text]")) return;
+    if (getComputedStyle(invitation).display === "none") return;
+    if (codeValidated() || inviting(invitation)) return;
+    variant = "stuck";
+    useStuckTexts(invitation);
+    useStuckTexts(document.getElementById("referral-confirmation"));
+    showBar(invitation);
+    track("referral_stuck_shown", { option: trigger });
+  }
+
+  function startStuckTimer() {
+    var invitation = document.getElementById("referral-invitation");
+    var seconds = invitation ? parseFloat(invitation.getAttribute("data-referral-stuck-after")) : NaN;
+    if (seconds > 0) setTimeout(function () { enterStuck("timer"); }, seconds * 1000);
   }
 
   function showFail(form, visible) {
@@ -139,7 +232,7 @@
     var blocked = !referrer ? "no_referrer" : endpoint.indexOf("https://") !== 0 ? "no_endpoint" : "";
     if (blocked) {
       showFail(form, true);
-      track("referral_invite_failed", blocked);
+      track("referral_invite_failed", { failure_reason: blocked, option: variant });
       report(blocked);
       return;
     }
@@ -150,24 +243,34 @@
       invitee_email: invitee,
       referrer_member_id: referrer.memberId,
       referrer_email: referrer.email,
+      variant: variant,
     }).then(function () {
       pending = false;
+      sent = true;
       setBusy(form, false);
       form.reset();
+      removeBar();
       showConfirmation(invitee);
-      track("referral_invite_sent");
+      track("referral_invite_sent", { option: variant });
     }, function (error) {
       pending = false;
       setBusy(form, false);
       showFail(form, true);
       var reason = failureReason(error);
-      track("referral_invite_failed", reason);
+      track("referral_invite_failed", { failure_reason: reason, option: variant });
       report(reason);
     });
   }, true);
 
   document.addEventListener("click", function (event) {
-    var link = event.target && event.target.closest && event.target.closest("#go-back-link");
+    var target = event.target;
+    if (!target || !target.closest) return;
+    var resend = target.closest(RESEND_SELECTOR);
+    if (resend) {
+      enterStuck(resend.id === "send-otp-by-sms" ? "resend_sms" : "resend_email");
+      return;
+    }
+    var link = target.closest("#go-back-link");
     if (!link) return;
     event.preventDefault();
     setVisible(document.getElementById("referral-confirmation"), false);
@@ -176,6 +279,11 @@
     if (input) input.focus();
   });
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", applyPreview);
-  else applyPreview();
+  function init() {
+    applyPreview();
+    startStuckTimer();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
 })();
