@@ -5,6 +5,9 @@
  * au prix par défaut sans coupon, le paiement signale la perte et renvoie, une seule
  * fois, à la page d'offre d'où vient l'inscription. Les parcours qui ont leurs clés,
  * même un prix vide, ne changent pas.
+ * Sans page d’offre, la perte n’est signalée qu’une fois la session au prix par défaut
+ * créée : un membre déjà abonné renvoyé ici par sa connexion (refus 409 du serveur)
+ * part vers « Mon compte » sans alerte.
  *
  * Usage : node test/inscription-en-cours-offre-perdue.js
  */
@@ -29,7 +32,11 @@ const CLES_OFFRE = {
   'signup-payment-methods': 'sepa_debit',
 };
 
-function page({ referrer = PAGE_OFFRE, cles = {}, cms = {}, reporter = true, query = '' } = {}) {
+const REFUS = (corps) => () => ({ ok: false, status: 409, json: () => Promise.resolve(corps), text: () => Promise.resolve(JSON.stringify(corps)) });
+const LOGIN = ORIGIN + '/membership/login-ms';
+const COMPTE = ORIGIN + '/membership/compte';
+
+function page({ referrer = PAGE_OFFRE, cles = {}, cms = {}, reporter = true, query = '', reponse = SESSION_OK } = {}) {
   const navigations = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => { if (/navigation/i.test(e.message)) navigations.push(e.message); });
@@ -54,7 +61,7 @@ function page({ referrer = PAGE_OFFRE, cles = {}, cms = {}, reporter = true, que
   const calls = [];
   w.fetch = (url, options) => {
     calls.push({ url, body: JSON.parse(options.body) });
-    return Promise.resolve(SESSION_OK());
+    return Promise.resolve(reponse());
   };
   // La destination se lit sur les URL construites par le script : jsdom ne laisse
   // ni lire ni intercepter la navigation elle-même.
@@ -102,6 +109,42 @@ test('clés absentes sans page d’offre en provenance (autre page, autre site, 
     await tick();
     assert.strictEqual(calls.length, 1, String(referrer));
     assert.strictEqual(pertes().length, 1, String(referrer));
+  }
+});
+
+test('connexion d’un membre déjà abonné (login-ms, clés absentes), refus 409 : aucune perte, direction Mon compte, mesuré', async () => {
+  for (const [raison, mesure] of [['already-subscribed', 'already_subscribed'], ['payment-pending', 'payment_pending']]) {
+    const { w, calls, events, pertes, urls, navigations } = page({ referrer: LOGIN, reponse: REFUS({ error: raison, eligible: false, reason: raison }) });
+    w.eval(SCRIPT);
+    await tick();
+    assert.strictEqual(calls.length, 1, raison);
+    assert.strictEqual(pertes().length, 0, `rien de perdu, ${raison}`);
+    assert.ok(urls.includes(COMPTE), `${raison} : ${urls.join(' | ')}`);
+    assert.strictEqual(navigations.length, 1, `une seule navigation, ${raison}`);
+    assert.ok(events().some((e) => e.event === 'checkout_failed' && e.failure_reason === mesure), `${raison} : ${JSON.stringify(events())}`);
+    assert.strictEqual(w.document.getElementById('checkoutStripe').style.display, 'none', `bouton mort masqué, ${raison}`);
+  }
+});
+
+test('témoin : même provenance login-ms, session créée au prix par défaut : perte signalée, après la session', async () => {
+  const { w, calls, pertes, urls } = page({ referrer: LOGIN });
+  w.eval(SCRIPT);
+  await tick();
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(pertes().length, 1);
+  assert.ok(/pas de page d’offre à rejoindre \(\/membership\/login-ms\), session créée au prix par défaut/.test(pertes()[0].message), pertes()[0].message);
+  assert.ok(!urls.includes(COMPTE));
+});
+
+test('autre 409 (raison inconnue) ou autre erreur serveur, sans page d’offre : erreur ordinaire, bouton de repli, pas de perte', async () => {
+  for (const reponse of [REFUS({ error: 'autre-chose' }), () => ({ ok: false, status: 500, json: () => Promise.resolve({}), text: () => Promise.resolve('boom') })]) {
+    const { w, events, pertes, urls } = page({ referrer: LOGIN, reponse });
+    w.eval(SCRIPT);
+    await tick();
+    assert.strictEqual(pertes().length, 0, 'aucune session créée : rien de perdu');
+    assert.ok(!urls.includes(COMPTE), 'pas de renvoi vers Mon compte');
+    assert.ok(events().some((e) => e.event === 'checkout_failed' && /^api_(409|500)$/.test(e.failure_reason)), JSON.stringify(events()));
+    assert.strictEqual(w.document.getElementById('checkoutStripe').style.display, 'flex', 'bouton de repli rendu');
   }
 });
 

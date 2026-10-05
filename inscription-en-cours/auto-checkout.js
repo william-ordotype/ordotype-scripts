@@ -272,19 +272,25 @@
     // inscription partie d'une page qui promettait une remise. Retour à la page
     // de l'offre, une seule fois : elle porte l'offre dans sa propre configuration
     // et la fait valoir pour le membre, désormais connecté.
-    if (keysLost && !fromUrl && !serverOffer) {
-        var offerPage = urlOffer ? markedOfferPage(urlOffer.page) : offerPageFromReferrer();
-        var lost = new Error('Offre perdue avant le paiement, ' + (offerPage
-            ? 'retour à ' + new URL(offerPage).pathname
-            : 'pas de page d’offre à rejoindre (' + (referrerPath() || 'sans provenance') + '), paiement au prix par défaut'));
+    function reportLostOffer(detail) {
+        var lost = new Error('Offre perdue avant le paiement, ' + detail);
         lost.name = 'OfferLostBeforeCheckout';
         console.error(PREFIX, lost.message);
         reportSideEffect(lost);
+    }
+    // Sans page d'offre, la perte n'est signalée qu'une fois la session au prix
+    // par défaut réellement créée : un membre déjà abonné renvoyé ici par sa
+    // connexion est refusé par le serveur (409), il n'a rien perdu.
+    var lostWithoutOfferPage = null;
+    if (keysLost && !fromUrl && !serverOffer) {
+        var offerPage = urlOffer ? markedOfferPage(urlOffer.page) : offerPageFromReferrer();
         if (offerPage) {
+            reportLostOffer('retour à ' + new URL(offerPage).pathname);
             trackCheckoutFailure('offer_lost');
             backToOffer(offerPage);
             return;
         }
+        lostWithoutOfferPage = 'pas de page d’offre à rejoindre (' + (referrerPath() || 'sans provenance') + ')';
     }
 
     // Sans client Stripe après l'attente, l'inscription ne peut pas partir, sauf
@@ -373,6 +379,22 @@
             return;
         }
 
+        // Membre déjà abonné à cette famille d'offres, ou paiement en attente : le
+        // serveur refuse un second abonnement. Rien à payer ici : direction
+        // « Mon compte », comme les pages d'offre, sans laisser cette page dans
+        // l'historique. Le bouton de repli ne mène nulle part. Tout autre 409
+        // reste une erreur ordinaire.
+        if (resp.status === 409) {
+            var refusal = null;
+            try { refusal = await resp.json(); } catch (e) { /* corps illisible : erreur ordinaire */ }
+            var refusalReason = refusal && refusal.error;
+            if (refusalReason === 'already-subscribed' || refusalReason === 'payment-pending') {
+                trackCheckoutFailure(refusalReason === 'payment-pending' ? 'payment_pending' : 'already_subscribed');
+                window.location.replace(new URL('/membership/compte', window.location.origin).toString());
+                return;
+            }
+        }
+
         if (!resp.ok) {
             const text = await resp.text().catch(() => '(no body)');
             console.error(PREFIX, `Session API error (${resp.status}):`, text);
@@ -392,6 +414,7 @@
         var resolvedPriceId = data.priceId || priceId;
         var resolvedCouponId = data.couponId || couponId;
         console.log(PREFIX, 'Checkout session ready');
+        if (lostWithoutOfferPage) reportLostOffer(lostWithoutOfferPage + ', session créée au prix par défaut');
 
     } catch (err) {
         console.error(PREFIX, 'Error creating session:', err);
