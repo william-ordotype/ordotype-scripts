@@ -1,8 +1,10 @@
 /**
  * Ordotype - Copy Toast Position (Shared)
  * Place le message « copiée » au milieu de la partie visible du cadre copié,
- * sur les ordonnances et les conseils patients. Sans ce script, la feuille de
- * style de la page le laisse en bas de l'écran.
+ * sur les ordonnances et les conseils patients, et adapte son texte au cadre :
+ * sur une ordonnance, le bouton des conseils patients affiche « Conseil patient
+ * copié ». Sans ce script, la feuille de style de la page le laisse en bas de
+ * l'écran.
  *
  * Usage in Webflow:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/copy-toast-position.js"></script>
@@ -43,6 +45,15 @@
     return { top: top, bottom: bottom };
   }
 
+  // Le composant n'a qu'un texte, celui de la page (« Ordonnance copiée » sur
+  // une ordonnance). Il est gardé de côté pour le rétablir au clic suivant.
+  function label(trigger) {
+    var text = document.querySelector('.toast_component.centered .toast-message-copy p');
+    if (!text) return;
+    if (!text.hasAttribute('data-default-label')) text.setAttribute('data-default-label', text.textContent);
+    text.textContent = trigger.id === 'copy-button-fcp' ? 'Conseil patient copié' : text.getAttribute('data-default-label');
+  }
+
   function place(trigger) {
     var container = document.querySelector('.toast_component.centered');
     var box = boxFor(trigger);
@@ -63,12 +74,13 @@
     s.transform = 'translateY(-50%)';
   }
 
-  // Phase de capture : la position est posée avant que copy-handler.js
+  // Phase de capture : texte et position sont posés avant que copy-handler.js
   // n'affiche le message.
   document.addEventListener('click', function(e) {
     var trigger = e.target && e.target.closest && e.target.closest(TRIGGERS);
     if (!trigger) return;
     try {
+      label(trigger);
       place(trigger);
     } catch (err) {
       // Le message reste en bas de l'écran ; la copie n'est pas touchée.
