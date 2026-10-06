@@ -331,11 +331,10 @@
         + '<button type="button" class="compte-v2_lien ordo-prefs__all-off" data-ordo-all-off' + off + '>Ne plus recevoir aucun e-mail marketing</button>'
         + '</div>'
         + '<div class="compte-v2_help is-colonne">'
-        + '<div class="compte-v2_help-text"><strong>Pourquoi ces e-mails restent actifs ?</strong> Comme votre banque ou votre assurance, '
-        + 'nous devons pouvoir vous informer sur votre compte. Le RGPD le permet, car ces envois sont '
-        + 'nécessaires à votre abonnement. Les messages commerciaux, eux, sont toujours à votre choix, ci-dessus. '
-        + 'Vous souhaitez plus de précisions ? Nous sommes disponibles pour en parler : '
-        + '<a class="compte-v2_lien" href="mailto:rgpd@ordotype.fr">rgpd@ordotype.fr</a>.</div>'
+        + '<div class="compte-v2_help-text"><strong>Pourquoi ces e-mails restent actifs ?</strong> Ils ne sont jamais commerciaux '
+        + 'et servent uniquement au bon fonctionnement de votre compte, comme le prévoit le RGPD. '
+        + 'Vous gardez la main sur tout le reste, ci-dessus. Une question ? '
+        + '<a class="compte-v2_lien" href="mailto:rgpd@ordotype.fr">rgpd@ordotype.fr</a></div>'
         + '</div>'
     });
     if (loading) return;
