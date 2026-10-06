@@ -38,7 +38,7 @@ const fenetres = [];
  * rollout : décisions publiées par le chargeur ; loader:false = chargeur jamais arrivé.
  * reporter : un OrdoErrorReporter factice (track) ; push : remplace dataLayer.push.
  */
-function page({ head = true, memberstack = false, rollout = {}, loader = true, before = null, reporter = false, push = null } = {}) {
+function page({ head = true, memberstack = false, rollout = {}, loader = true, before = null, reporter = false, push = null, url = undefined, apres = '' } = {}) {
   const styles = `<style>${SITE_CSS}</style>` + (head ? `<style>${HEAD_STYLE}</style><script>${HEAD_SCRIPT}</script>` : '')
     + (memberstack ? `<style id="dynamic-css">${MS_CSS}</style>` : '');
   const chargeur = loader
@@ -49,7 +49,8 @@ function page({ head = true, memberstack = false, rollout = {}, loader = true, b
   const tracked = [];
   const alertes = [];
   const virtualConsole = new VirtualConsole(); // erreurs voulues (décision illisible) : pas de bruit
-  const dom = new JSDOM(`<!doctype html><html><head>${styles}</head><body><div class="w-tabs">${FIXTURE}</div>${chargeur}</body></html>`, {
+  const dom = new JSDOM(`<!doctype html><html><head>${styles}</head><body><div class="w-tabs">${FIXTURE}</div>${apres}${chargeur}</body></html>`, {
+    url,
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     virtualConsole,
@@ -311,6 +312,22 @@ async function test(name, fn) {
     h.classList.add('ordo-subs-fallback'); // fallbackToPageBlocks()
     for (const b of anciens(d, 'billing')) assert.ok(visible(w, b));
     for (const b of anciens(d, 'information')) assert.ok(!visible(w, b), 'le profil n\'est pas concerné');
+  });
+
+  await test('non connecté : « Se connecter » garde l\'onglet visé, sinon le lien du Designer reste tel quel', async () => {
+    const LIEN = '<a data-ordo-connexion-retour="1" href="/membership/login-ms?returnTo=%2Fmembership%2Fcompte">Se connecter</a>';
+    let r = page({ url: 'https://www.ordotype.fr/membership/compte?utm_source=postmark#abonnements', apres: LIEN });
+    await tick(0);
+    assert.strictEqual(r.d.querySelector('[data-ordo-connexion-retour]').getAttribute('href'),
+      '/membership/login-ms?returnTo=%2Fmembership%2Fcompte%23abonnements', 'onglet gardé, UTM laissés de côté');
+
+    r = page({ url: 'https://www.ordotype.fr/membership/compte?utm_source=postmark', apres: LIEN });
+    await tick(0);
+    assert.strictEqual(r.d.querySelector('[data-ordo-connexion-retour]').getAttribute('href'),
+      '/membership/login-ms?returnTo=%2Fmembership%2Fcompte', 'sans onglet : lien du Designer inchangé');
+
+    r = page({ url: 'https://www.ordotype.fr/membership/compte#abonnements' });
+    await tick(0); // page sans le lien (membre connecté, ancien Designer) : rien ne casse
   });
 
   for (const w of fenetres) w.close();

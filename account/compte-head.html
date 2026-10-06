@@ -84,6 +84,13 @@
     if (restants) setTimeout(verifier, 100);
   })();
 })();
+
+// Visiteur non connecté : « Se connecter » le ramène sur Mon compte après la connexion, onglet compris
+// (#abonnements…). Le lien du Designer porte déjà le retour sans onglet ; on n'y touche que s'il y a un onglet.
+document.addEventListener('DOMContentLoaded', function () {
+  var lien = document.querySelector('[data-ordo-connexion-retour]');
+  if (lien && location.hash) lien.href = '/membership/login-ms?returnTo=' + encodeURIComponent(location.pathname + location.hash);
+});
 </script>
 <style>
 /* Nouvelle présentation cachée tant que son script ne l'a pas remplie (le Designer, lui, la montre). */
