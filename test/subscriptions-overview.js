@@ -107,6 +107,15 @@ function installFetch(w, outcomes) {
 }
 
 const wait = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+// Every call to the function is a CORS simple request: POST, text/plain, no Authorization header,
+// the member token in the body next to the action (the list is `action: 'list'`).
+function assertSimple(options, fields) {
+  assert.strictEqual(options.method, 'POST');
+  assert.strictEqual(options.credentials, 'omit');
+  assert.deepStrictEqual(Object.keys(options.headers || {}), ['Content-Type']);
+  assert.strictEqual(options.headers['Content-Type'], 'text/plain;charset=UTF-8');
+  assert.deepStrictEqual(JSON.parse(options.body), Object.assign({ token: 'jeton-de-test' }, fields));
+}
 function text(node) {
   const walker = node.ownerDocument.createTreeWalker(node, 4);
   const parts = [];
@@ -125,9 +134,7 @@ async function main() {
     t.w.eval(SCRIPT);
     await wait(60);
     assert.strictEqual(calls.length, 1);
-    assert.strictEqual(calls[0].options.headers.Authorization, 'Bearer jeton-de-test');
-    assert.strictEqual(calls[0].options.credentials, 'omit');
-    assert.strictEqual(calls[0].options.method, 'GET');
+    assertSimple(calls[0].options, { action: 'list' });
     assert.strictEqual(anchor(t.w).style.display, '');
     assert.strictEqual(anchor(t.w).parentElement.style.display, '');
     assert.ok(text(anchor(t.w)).startsWith('Mes abonnements'));
@@ -624,8 +631,7 @@ async function main() {
     invSection(t.w).querySelector('button.ordo-inv-pdf').click();
     await wait(60);
     assert.strictEqual(calls.length, 2);
-    assert.strictEqual(calls[1].options.method, 'POST');
-    assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'invoice_pdf', ref: 'aaaaaaaaaaaaaaaaaaaa' });
+    assertSimple(calls[1].options, { action: 'invoice_pdf', ref: 'aaaaaaaaaaaaaaaaaaaa' });
     assert.strictEqual(blobs.length, 1);
     assert.strictEqual(blobs[0].type, 'application/pdf');
     assert.strictEqual(Buffer.from(await blobs[0].arrayBuffer()).toString('latin1'), '%PDF-1.4 facture');
@@ -670,7 +676,7 @@ async function main() {
     btn.click();
     assert.strictEqual(btn.textContent, 'Patientez…');
     await wait(60);
-    assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'invoice_pay', ref: 'dddddddddddddddddddd' });
+    assertSimple(calls[1].options, { action: 'invoice_pay', ref: 'dddddddddddddddddddd' });
     assert.deepStrictEqual(navs, [page]);
     t.dom.window.close();
   }
@@ -848,10 +854,7 @@ async function main() {
     btn.click();
     await wait(60);
     assert.strictEqual(calls.length, 2);
-    assert.strictEqual(calls[1].options.method, 'POST');
-    assert.strictEqual(calls[1].options.headers['Content-Type'], 'application/json');
-    assert.strictEqual(calls[1].options.headers.Authorization, 'Bearer jeton-de-test');
-    assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'reactivate', ref: REF });
+    assertSimple(calls[1].options, { action: 'reactivate', ref: REF });
     assert.ok(text(anchor(t.w)).includes('C’est fait : votre abonnement continue.'));
     assert.ok(cardText(t.w, 0).startsWith('Stockage Actif'));
     assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions'), null);
@@ -1251,10 +1254,10 @@ async function main() {
     form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
     await wait(60);
     assert.strictEqual(calls.length, 2);
-    assert.strictEqual(calls[1].options.method, 'POST');
-    const envoye = JSON.parse(calls[1].options.body);
-    assert.strictEqual(envoye.action, 'address_update');
-    assert.deepStrictEqual(envoye.address, { name: 'Dr Claire Martin', line1: '3 place Bellecour', line2: 'Bât. B', postalCode: '69002', city: 'Lyon', country: 'FR' });
+    assertSimple(calls[1].options, {
+      action: 'address_update',
+      address: { name: 'Dr Claire Martin', line1: '3 place Bellecour', line2: 'Bât. B', postalCode: '69002', city: 'Lyon', country: 'FR' }
+    });
     assert.ok(text(section(t.w)).includes('Adresse enregistrée.'));
     assert.ok(text(section(t.w)).includes('3 place Bellecour'));
 
@@ -1443,9 +1446,7 @@ async function main() {
       assert.ok(bouton(form, 'Annuler').disabled);
       await wait(80);
       assert.strictEqual(calls.length, 2);
-      assert.strictEqual(calls[1].options.method, 'POST');
-      assert.strictEqual(calls[1].options.headers.Authorization, 'Bearer jeton-de-test');
-      assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'tax_id_update', value: 'FR 12 345 678 901' });
+      assertSimple(calls[1].options, { action: 'tax_id_update', value: 'FR 12 345 678 901' });
       assert.strictEqual(text(tva(t.w)), 'Numéro de TVA enregistré. ' + LIGNE + ' Modifier Retirer');
       assert.strictEqual(tva(t.w).querySelector('.ordo-subs-flash').getAttribute('role'), 'status');
       assert.strictEqual(tva(t.w).querySelector('.ordo-subs-btn.is-primary'), null, 'boutons secondaires');
@@ -1529,8 +1530,7 @@ async function main() {
       bouton(tva(t.w), 'Retirer').click();
       await wait(60);
       assert.strictEqual(calls.length, 2);
-      assert.strictEqual(calls[1].options.method, 'POST');
-      assert.deepStrictEqual(JSON.parse(calls[1].options.body), { action: 'tax_id_remove' });
+      assertSimple(calls[1].options, { action: 'tax_id_remove' });
       assert.strictEqual(text(tva(t.w)), 'Numéro de TVA retiré. ' + LIEN);
       assert.strictEqual(tva(t.w).querySelector('.ordo-subs-flash').getAttribute('role'), 'status');
       assert.strictEqual(t.w.document.activeElement, tva(t.w).querySelector('button.ordo-subs-link'));

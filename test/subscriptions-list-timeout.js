@@ -245,8 +245,8 @@ async function check(name, fn) {
     // Only the list passes LIST_TIMEOUT_MS: once defined, twice in load(), nowhere else (comments aside).
     const code = REAL.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
     assert.strictEqual((code.match(/LIST_TIMEOUT_MS/g) || []).length, 3);
-    const posts = REAL.match(/(?:call|request)\('POST',[^)]*\)/g) || [];
-    assert.ok(posts.length >= 3, 'the action calls were found');
+    const posts = REAL.match(/(?:call|request)\(\{ action: '[a-z_]+'[^)]*\)/g) || [];
+    assert.ok(posts.length >= 6, 'the action calls were found');
     for (const c of posts) {
       assert.ok(!/LIST_TIMEOUT_MS/.test(c), 'an action must not be bounded: ' + c);
     }
