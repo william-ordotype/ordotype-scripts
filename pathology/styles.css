@@ -400,12 +400,14 @@ ul {
     /* Tableaux à la largeur de l'écran. Avant, ils pouvaient faire 150 % de la
        largeur : tout le bloc des rappels défilait de côté, texte coupé en pleine
        phrase et rien pour le signaler. 93 % des tableaux n'ont qu'une ou deux
-       colonnes et tiennent à l'écran, le texte passant à la ligne. */
+       colonnes et tiennent à l'écran, le texte passant à la ligne.
+       1px de marge de chaque côté : le cadre (box-shadow 1px, dessiné hors de la
+       boîte) tombe alors sur l'alignement du bloc Sommaire. */
     .rc-html table {
-        width: 100%;
-        max-width: 100%;
-        margin-left: 0;
-        margin-right: 0;
+        width: calc(100% - 2px);
+        max-width: calc(100% - 2px);
+        margin-left: 1px;
+        margin-right: 1px;
     }
 
     /* break-word et pas anywhere : anywhere laisse le navigateur réduire une
@@ -422,11 +424,15 @@ ul {
        Sans :has() (iOS < 15.4), ces tableaux restent à la largeur de l'écran.
        width: 0 + min-width: 100% : le tableau prend toute la largeur sans que
        son contenu n'élargisse la colonne de la fiche (sinon la page entière
-       dépasse l'écran de quelques pixels et bouge de côté). */
+       dépasse l'écran de quelques pixels et bouge de côté). Pas de marge : sans
+       cadre, leur bordure de cellule est déjà sur l'alignement du Sommaire. */
     .rc-html table:has(tr > :nth-child(3)) {
         display: block;
         width: 0;
         min-width: 100%;
+        max-width: 100%;
+        margin-left: 0;
+        margin-right: 0;
         overflow-x: auto;
         box-shadow: none;
         background:
