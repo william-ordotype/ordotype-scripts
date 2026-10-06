@@ -94,6 +94,13 @@
       'ordotype.webflow.io': 100,
       'www.ordotype.fr': 100
     },
+    // Carte « E-mails » de Mon profil, bouton vers /preferences-email. Aucun appel serveur.
+    // 100 % depuis le 2026-10-06, publiée avec la page /preferences-email.
+    'email-preferences-card.js': {
+      'sandbox-ordotype.webflow.io': 100,
+      'ordotype.webflow.io': 100,
+      'www.ordotype.fr': 100
+    },
     // Vérification du RPPS dans l'Annuaire santé, depuis « Mon profil ».
     'rpps-finder.js': {
       'sandbox-ordotype.webflow.io': 100,
@@ -211,6 +218,7 @@
     'subscriptions-overview.js', // « Mes abonnements » list. Gated by GATES.
     'invoice-emails.js', // Opt-in « recevoir mes factures par e-mail ». Gated by GATES.
     'profile-overview.js', // Mon profil + Connexion et Sécurité, après les scripts dont il déplace les blocs. Gated by GATES.
+    'email-preferences-card.js', // Carte « E-mails » sous Contact, vers /preferences-email. Gated by GATES.
     'phone-input.js'
   ];
 
