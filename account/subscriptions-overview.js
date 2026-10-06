@@ -532,7 +532,7 @@
       if (!window.confirm(question)) return;
       btn.disabled = true;
       msg.textContent = 'Traitement en cours…';
-      request('POST', { action: 'reactivate', ref: c.reactivation }).then(function(data) {
+      request({ action: 'reactivate', ref: c.reactivation }).then(function(data) {
         trackOutcome('reabonner', c.status, 'ok');
         render(data.list, 'C’est fait : votre abonnement continue.', data.pms, data.invoices, data.others, data.address, data.taxId, data.taxIdAllowed);
       }).catch(function(err) {
@@ -1037,7 +1037,7 @@
         save.disabled = true;
         cancel.disabled = true;
         save.textContent = 'Enregistrement…';
-        call('POST', { action: 'tax_id_update', value: value }).then(function(payload) {
+        call({ action: 'tax_id_update', value: value }).then(function(payload) {
           var saved = taxIdOf(payload && payload.taxId);
           if (!saved) {
             var bad = new Error('account-subscriptions: unexpected tax id body');
@@ -1081,7 +1081,7 @@
         confirm.disabled = true;
         cancel.disabled = true;
         confirm.textContent = 'Retrait…';
-        call('POST', { action: 'tax_id_remove' }).then(function(payload) {
+        call({ action: 'tax_id_remove' }).then(function(payload) {
           if (!payload || payload.ok !== true) {
             var bad = new Error('account-subscriptions: unexpected tax id body');
             bad.status = 200;
@@ -1196,7 +1196,7 @@
         save.disabled = true;
         cancel.disabled = true;
         save.textContent = 'Enregistrement…';
-        call('POST', { action: 'address_update', address: values }).then(function(payload) {
+        call({ action: 'address_update', address: values }).then(function(payload) {
           if (!payload || !payload.billingAddress) {
             var bad = new Error('account-subscriptions: unexpected address body');
             bad.status = 200;
@@ -1308,7 +1308,7 @@
     if (btn.disabled) return;
     btn.disabled = true;
     btn.setAttribute('aria-busy', 'true');
-    call('POST', { action: 'invoice_pdf', ref: inv.ref }).then(function(payload) {
+    call({ action: 'invoice_pdf', ref: inv.ref }).then(function(payload) {
       if (!payload || typeof payload.pdf !== 'string' || !payload.pdf) {
         var bad = new Error('account-subscriptions: invoice pdf missing');
         bad.status = 200;
@@ -1348,7 +1348,7 @@
     btn.disabled = true;
     btn.setAttribute('aria-busy', 'true');
     btn.textContent = 'Patientez…';
-    call('POST', { action: 'invoice_pay', ref: inv.ref }).then(function(payload) {
+    call({ action: 'invoice_pay', ref: inv.ref }).then(function(payload) {
       if (!payload || typeof payload.url !== 'string' || !INVOICE_PAGE.test(payload.url)) {
         var bad = new Error('account-subscriptions: invoice payment page missing');
         bad.status = 200;
@@ -1557,9 +1557,9 @@
     });
   }
 
-  // `timeoutMs` is only passed for the list: actions (PDF, payment, reactivation) can
-  // legitimately take longer and must never be cut short.
-  function call(method, body, timeoutMs) {
+  // `body` is an action (`{ action, … }`), or null for the list. `timeoutMs` is only passed for the
+  // list: actions (PDF, payment, reactivation) can legitimately take longer and must never be cut short.
+  function call(body, timeoutMs) {
     var controller = null;
     var timer = null;
     function stop() {
@@ -1574,15 +1574,18 @@
         e.status = 401;
         throw e;
       }
-      var opts = {
-        method: method || 'GET',
-        credentials: 'omit',
-        headers: { Authorization: 'Bearer ' + token }
-      };
-      if (body) {
-        opts.headers['Content-Type'] = 'application/json';
-        opts.body = JSON.stringify(body);
+      var payload = { token: token };
+      var fields = body || { action: 'list' };
+      for (var k in fields) {
+        if (Object.prototype.hasOwnProperty.call(fields, k)) payload[k] = fields[k];
       }
+      // A CORS simple request (POST, text/plain, no Authorization header): no preflight.
+      var opts = {
+        method: 'POST',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload)
+      };
       // Without AbortController (very old browsers) the request keeps its previous behaviour.
       if (timeoutMs && typeof AbortController === 'function') {
         controller = new AbortController();
@@ -1618,8 +1621,8 @@
     });
   }
 
-  function request(method, body, timeoutMs) {
-    return call(method, body, timeoutMs).then(function(payload) {
+  function request(body, timeoutMs) {
+    return call(body, timeoutMs).then(function(payload) {
       if (!payload || !Array.isArray(payload.subscriptions)) {
         var bad = new Error('account-subscriptions: unexpected body');
         bad.status = 200;
@@ -1656,7 +1659,7 @@
       function send(isSecond) {
         pending++;
         var budget = isSecond ? Math.max(1, LIST_TIMEOUT_MS - (Date.now() - sentAt)) : LIST_TIMEOUT_MS;
-        request('GET', null, budget).then(function(data) {
+        request(null, budget).then(function(data) {
           pending--;
           if (done) return;
           end();
