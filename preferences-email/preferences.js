@@ -87,6 +87,8 @@
     '.ordo-prefs__all-off{background:none;border:0;padding:0;font-family:inherit;font-size:14px;cursor:pointer}',
     '.ordo-prefs__all-off:disabled{opacity:.5;cursor:default}',
     '.ordo-prefs .button:disabled{opacity:.6;cursor:default}',
+    '.ordo-prefs .compte-v2_help-text{font-size:14px;line-height:1.5}',
+    '.ordo-prefs .compte-v2_help-link{font-size:14px}',
     '.ordo-prefs__banner{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:4px;border:1px solid var(--base-200,#0c0e1633);background:var(--primary-50,#f0f3ff)}',
     '.ordo-prefs__status{display:flex;align-items:center;gap:8px}',
     '.ordo-prefs__status--ok{color:var(--primary-600,#263fd3);font-weight:600}',
