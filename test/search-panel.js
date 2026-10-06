@@ -15,14 +15,20 @@
  *     recherche absent : la loupe garde son lien ;
  *   - moitié panneau : panneau construit au premier appui seulement ; la loupe
  *     l'ouvre sans changer de page ; le champ y est déplacé puis remis ;
- *   - en-tête : champ puis « Annuler », croix masquée tant que le champ est
- *     vide, pas de loupe à droite, aucune classe du site sur le champ ouvert ;
+ *   - en-tête : champ puis « Annuler » (nom accessible = texte visible), croix
+ *     masquée tant que le champ est vide, pas de loupe à droite, aucune classe
+ *     du site sur le champ ouvert, tout le champ gris donne le focus, touche
+ *     « Rechercher » du clavier ; une réponse tardive du moteur ne réaffiche
+ *     rien sous un champ effacé ;
+ *   - Entrée : traitée avant le moteur (requête encodée), sauf résultat choisi
+ *     au clavier ; champ vide : rien ;
  *   - sorties : Annuler, bouton retour, Échap, passage en paysage (texte gardé),
  *     Entrée, résultat choisi ; appli quittée puis reprise ;
  *   - la recherche abandonnée reste visible du moteur (focus perdu avant vidage) ;
  *   - retour sur l'entrée du panneau : rouvert seulement si le moteur est branché ;
- *   - un appui sur le champ près d'Annuler ou un appui annulé ne sont PAS des
- *     pannes ; Annuler recouvert et fermeture sans effet le sont ;
+ *   - un appui dans le panneau près d'Annuler (marge, espace, croix) ou un appui
+ *     annulé ne sont PAS des pannes ; Annuler recouvert et fermeture sans effet
+ *     le sont ;
  *   - un point sans élément (page pas encore affichée, restaurée par Safari
  *     depuis l'historique) n'est PAS un recouvrement : remesuré, puis noté
  *     « controle_impossible » à la fermeture, sans alerte ;
@@ -225,16 +231,23 @@ async function main() {
         check('champ sélectionné', doc.activeElement === input, doc.activeElement && doc.activeElement.tagName);
         check('entrée d’historique ajoutée', win.history.state && win.history.state.otSearch === 1, JSON.stringify(win.history.state));
         const css = [...doc.querySelectorAll('style')].map((s) => s.textContent).join('');
-        check('styles sans « inset » et avec repli vh', !/inset:/.test(css) && css.indexOf('100vh') >= 0 && css.indexOf('100vh') < css.indexOf('100dvh'), 'styles non compatibles');
+        check('styles sans « inset » ni « gap », avec repli vh', !/inset:/.test(css) && !/[{;]gap:/.test(css) && css.indexOf('100vh') >= 0 && css.indexOf('100vh') < css.indexOf('100dvh'), 'styles non compatibles');
+        check('sans dvh, la marge sous la liste reste celle d’avant', css.includes('max-height:calc(100vh - 11rem)'), 'repli vh réduit');
         const open = events(pushed, 'search_panel_open')[0];
         check('ouverture : moitié panneau, loupe', open && open.rollout_bucket === 'panneau' && open.reason === 'loupe', JSON.stringify(open));
         check('toutes les clés présentes', open && KEYS.every((k) => k in open), open && KEYS.filter((k) => !(k in open)));
         await frames(win);
         check('contrôle à l’ouverture : rien de recouvert', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
         type(win, input, 'angine');
-        pointer(win, input, ARROW.left + 2, 30); // appui sur le champ, au bord de la zone d'Annuler
+        const head = doc.querySelector('.ot-search-head');
+        // espacés : trois appuis rapprochés en moins de 800 ms seraient des « appuis rageurs »
+        pointer(win, head, ARROW.left + 2, 30); // marge de l'en-tête, dans la zone d'Annuler
+        await wait(850);
+        pointer(win, head, FIELD.right + 6, 30); // espace entre le champ et Annuler
+        await wait(850);
+        pointer(win, doc.querySelector('.ot-search-clear'), FIELD.right - 10, 30); // croix
         await wait(1700);
-        check('appui sur le champ près d’Annuler : pas de panne', events(pushed, 'search_panel_problem').length === 0 && blocking(reported).length === 0,
+        check('appuis dans le panneau près d’Annuler : pas de panne', events(pushed, 'search_panel_problem').length === 0 && blocking(reported).length === 0,
             JSON.stringify(events(pushed, 'search_panel_problem')));
         const back = doc.querySelector('.ot-search-back');
         pointer(win, back, ...TAP_BACK);
@@ -254,7 +267,7 @@ async function main() {
 
     console.log('en-tête : champ puis Annuler, croix seulement avec du texte');
     {
-        const { win, doc } = await load({});
+        const { win, doc, clarity } = await load({});
         const input = doc.getElementById('search-bar-nav');
         const navClasses = input.className;
         tapLoupe(win, doc);
@@ -263,14 +276,21 @@ async function main() {
         const field = doc.querySelector('.ot-search-field');
         check('Annuler, à droite du champ', back && back.textContent === 'Annuler' && field && back.parentNode === head &&
             !!(field.compareDocumentPosition(back) & win.Node.DOCUMENT_POSITION_FOLLOWING), back && back.outerHTML);
-        check('fermeture nommée pour les lecteurs d’écran', back && back.getAttribute('aria-label') === 'Fermer la recherche', back && back.outerHTML);
+        const label = back && back.getAttribute('aria-label');
+        check('nom accessible = texte visible « Annuler »', back && (label === null || /^Annuler/.test(label)), back && back.outerHTML);
         check('pas de loupe à droite', !doc.querySelector('.ot-search-panel .ot-search-go, .ot-search-panel .seaparator-nav'), 'loupe de droite présente');
         check('loupe dans le champ', !!doc.querySelector('.ot-search-field > img.ot-search-icon'), 'loupe absente');
         const clear = doc.querySelector('.ot-search-clear');
         check('champ juste avant la croix (règle :placeholder-shown)', input.nextElementSibling === clear && input.placeholder === 'Chercher',
             input.nextElementSibling && input.nextElementSibling.outerHTML);
-        const css = [...doc.querySelectorAll('style')].map((s) => s.textContent).join('');
-        check('croix masquée tant que le champ est vide', css.includes('.ot-search-input:placeholder-shown+.ot-search-clear{display:none}'), 'règle absente');
+        // jsdom n'évalue pas :placeholder-shown selon la valeur : on vérifie qu'une règle
+        // « display:none » conditionnée par :placeholder-shown vise bien la croix,
+        // champ vide. L'affichage avec du texte est vérifié en navigateur.
+        const hides = [...doc.styleSheets].flatMap((sh) => [...sh.cssRules])
+            .filter((r) => r.style && r.style.display === 'none' && /:placeholder-shown/.test(r.selectorText));
+        check('croix masquée tant que le champ est vide', input.value === '' && hides.some((r) => clear.matches(r.selectorText)),
+            hides.map((r) => r.selectorText).join(' | ') || 'aucune règle');
+        check('touche « Rechercher » du clavier', input.getAttribute('enterkeyhint') === 'search', input.getAttribute('enterkeyhint'));
         check('aucune classe du site sur le champ ouvert', input.className === 'ot-search-input', input.className);
         check('aucune classe du site dans l’en-tête', ![...head.querySelectorAll('*')].some((e) => [...e.classList].some((c) => !c.startsWith('ot-search-'))),
             [...head.querySelectorAll('*')].map((e) => e.className).join(' | '));
@@ -278,9 +298,31 @@ async function main() {
         clear.focus(); // sur un vrai appareil, le bouton prend le focus
         click(win, clear);
         check('la croix vide le champ et le garde sélectionné', input.value === '' && doc.activeElement === input, input.value);
+        results(doc, 3); // réponse du moteur arrivée après l'effacement
+        await settle();
+        check('réponse tardive : rien sous le champ effacé', !doc.getElementById('search-results'), 'résultats réaffichés');
+        type(win, input, 'hta');
+        results(doc, 3);
+        await settle();
+        check('avec du texte, les résultats restent', !!doc.getElementById('search-results'), 'résultats retirés');
+        doc.getElementById('search-results').remove();
+        for (const sel of ['.ot-search-icon', '.ot-search-form']) {
+            clear.focus();
+            click(win, doc.querySelector(sel));
+            check('appui sur ' + sel + ' : le champ prend le focus', doc.activeElement === input, doc.activeElement && doc.activeElement.className);
+        }
+        clear.focus();
+        click(win, clear);
+        check('appui sur la croix : pas détourné', input.value === '', input.value);
         click(win, back);
         await settle();
         check('classes de l’entête rendues au champ', input.className === navClasses, input.className);
+        check('touche du clavier rendue', !input.hasAttribute('enterkeyhint'), input.getAttribute('enterkeyhint'));
+        await wait(20);
+        results(doc, 2); // panneau fermé : la garde ne touche plus à rien
+        await settle();
+        check('panneau fermé : la garde ne retire rien', !!doc.getElementById('search-results'), 'retiré');
+        check('repère « Annuler » pour les enregistrements', clarity.some((c) => c[0] === 'set' && c[1] === 'recherche_entete' && c[2] === 'annuler'), JSON.stringify(clarity));
     }
 
     console.log('panneau : bouton retour, Échap, Entrée');
@@ -298,10 +340,31 @@ async function main() {
         check('Échap : echap', !panelOpen(t.doc) && (events(t.pushed, 'search_panel_close')[0] || {}).reason === 'echap', JSON.stringify(t.pushed));
         t = await load({});
         tapLoupe(t.win, t.doc);
-        const input = t.doc.getElementById('search-bar-nav');
-        type(t.win, input, 'hta');
-        input.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        let input = t.doc.getElementById('search-bar-nav');
+        let engineSaw = 0; // le moteur écoute Entrée sur le champ
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') engineSaw++; });
+        type(t.win, input, 'hta & grossesse');
+        let ev = new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        input.dispatchEvent(ev);
         check('Entrée : page_resultats', (events(t.pushed, 'search_panel_close')[0] || {}).reason === 'page_resultats', JSON.stringify(t.pushed));
+        check('Entrée : traitée avant le moteur (requête encodée par le panneau)', engineSaw === 0 && ev.defaultPrevented, 'moteur atteint : ' + engineSaw);
+        t = await load({});
+        tapLoupe(t.win, t.doc);
+        input = t.doc.getElementById('search-bar-nav');
+        engineSaw = 0;
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') engineSaw++; });
+        ev = new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        input.dispatchEvent(ev);
+        check('Entrée champ vide : rien, panneau ouvert', engineSaw === 0 && ev.defaultPrevented && panelOpen(t.doc) && events(t.pushed, 'search_panel_close').length === 0, JSON.stringify(t.pushed));
+        type(t.win, input, 'hta');
+        const list = results(t.doc, 3);
+        list.querySelector('a').classList.add('autocomplete-active'); // résultat choisi aux flèches
+        input.dispatchEvent(new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        check('Entrée sur un résultat choisi au clavier : laissée au moteur', engineSaw === 1 && events(t.pushed, 'search_panel_close').length === 0, 'moteur : ' + engineSaw);
+        ev = new t.win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true });
+        list.querySelector('a').classList.remove('autocomplete-active');
+        input.dispatchEvent(ev);
+        check('Entrée pendant une saisie composée : ignorée', engineSaw === 2 && panelOpen(t.doc), 'moteur : ' + engineSaw);
     }
 
     console.log('panneau : résultat choisi tôt');
