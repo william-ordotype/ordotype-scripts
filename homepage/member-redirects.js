@@ -338,10 +338,10 @@
         ) {
             $('#banner-to-hide-rpps-interne').css({ display: 'flex' });
         }
-        /*
         else if (
+            ms.isFinInternatBannerPeriod() &&
             isInterne &&
-            semestre >= ms.getRequiredSemester(specialite) &&
+            ms.isInFinalSemester(semestreValue, specialite) &&
             !planConnections.some(plan =>
                 plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
                 plan.status !== 'CANCELED'
@@ -349,7 +349,6 @@
         ) {
             $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
-        */
         // SAU signup prompt for all emergency-medicine members (snooze-gated).
         // Low priority: any billing/profile banner above wins.
         else if (

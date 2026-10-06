@@ -36,8 +36,8 @@
     }
     const deadline = addDays(switchDate, 30);
     const newDeadline = addDays(switchDate, 15);
-    // Fixed deadline for the fin-internat banner (end of May 4th, Paris time)
-    const finInternatDeadline = new Date('2026-05-05T00:00:00+02:00');
+    // Fixed deadline for the fin-internat banner (end of November 2nd, Paris time)
+    const finInternatDeadline = new Date('2026-11-03T00:00:00+01:00');
 
     // Pad numbers using padStart for clarity
     const pad = (num, size) => String(num).padStart(size, '0');
