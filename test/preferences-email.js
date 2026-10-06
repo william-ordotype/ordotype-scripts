@@ -23,6 +23,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SOURCE = fs.readFileSync(path.join(ROOT, 'preferences-email/preferences.js'), 'utf8');
 const PAGE = '<!doctype html><html><head></head><body><main><div id="ordotype-email-preferences"></div></main></body></html>';
 const CLE = 'Ab3dEf6hIj9kLm2nOp5qRs';
+const AUTRE = 'Zz9yXx8wWv7uUt6sSr5qQp';
 
 let echecs = 0;
 function verifier(nom, ok, detail) {
@@ -36,9 +37,12 @@ const attendre = (ms = 30) => new Promise((r) => setTimeout(r, ms));
  * `serveur(body)` rend { status, body } pour chaque appel.
  * `jeton` : ce que rend getMemberCookie (null = pas connecté).
  */
-function jouer({ hash = '', serveur, jeton = null, session = null }) {
+function jouer({ hash = '', serveur, jeton = null, session = null, msDom = true, cookie = null, local = null, prefetch = null }) {
   const dom = new JSDOM(PAGE, { url: 'https://www.ordotype.fr/preferences-email' + hash, runScripts: 'outside-only' });
   const w = dom.window;
+  if (cookie) w.document.cookie = '_ms-mid=' + cookie;
+  if (local) w.localStorage.setItem('_ms-mid', local);
+  if (prefetch) w.__ordoPrefsPrefetch = prefetch;
   const appels = [];
   const evenements = [];
   if (session) w.sessionStorage.setItem('ordo-email-prefs-key', session);
@@ -47,7 +51,7 @@ function jouer({ hash = '', serveur, jeton = null, session = null }) {
     report: (a, b) => evenements.push({ report: a, msg: String(b && b.message || b) }),
     reportNetwork: (a, b) => evenements.push({ reportNetwork: a, msg: String(b && b.message || b) }),
   };
-  w.$memberstackDom = { getMemberCookie: () => Promise.resolve(jeton) };
+  if (msDom) w.$memberstackDom = { getMemberCookie: () => Promise.resolve(jeton) };
   w.console = { log() {}, warn() {}, error() {} };
   w.fetch = (url, opts) => {
     const corps = JSON.parse(opts.body);
@@ -181,6 +185,33 @@ const texte = (r) => r.d.getElementById('ordotype-email-preferences').textConten
   r = jouer({ hash: '#c=' + CLE, serveur: () => ({ status: 200, body: { email: '<img src=x onerror=alert(1)>@x.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
   await attendre();
   verifier('adresse échappée', !r.d.querySelector('#ordotype-email-preferences img') && texte(r).includes('<img src=x'));
+
+  // --- vitesse : session lue sans attendre Memberstack
+  r = jouer({ msDom: false, cookie: encodeURIComponent('tok_cookie=='), serveur: () => ({ status: 200, body: { email: 'c.martin@exemple.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
+  await attendre();
+  verifier('session lue dans le cookie _ms-mid (décodé), sans Memberstack chargé', r.appels.length === 1 && r.appels[0].corps.token === 'tok_cookie==', r.appels[0] && r.appels[0].corps);
+  r = jouer({ msDom: false, local: 'tok_local', cookie: 'tok_cookie', serveur: () => ({ status: 200, body: { email: 'c.martin@exemple.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
+  await attendre();
+  verifier('localStorage _ms-mid prioritaire sur le cookie (comme getMemberCookie)', r.appels.length === 1 && r.appels[0].corps.token === 'tok_local');
+  r = jouer({ msDom: false, serveur: () => ({ status: 500, body: {} }) });
+  await attendre(5);
+  verifier('ni session ni Memberstack : invitation à se connecter tout de suite', texte(r).includes('Gérez vos e-mails Ordotype') && r.appels.length === 0);
+
+  // --- vitesse : lecture lancée par le script de tête
+  const lu = { email: 'c•••n@exemple.fr', prefs: { newsletter: false, onboarding: true, offers: true }, unsubscribedAll: false };
+  r = jouer({ hash: '#c=' + CLE, prefetch: { body: { key: CLE }, promise: Promise.resolve({ status: 200, payload: lu }) }, serveur: () => ({ status: 500, body: {} }) });
+  await attendre();
+  verifier('lecture anticipée reprise : aucun nouvel appel, cases affichées', r.appels.length === 0 && etat(r) === 'false,true,true', etat(r));
+  verifier('lecture anticipée consommée une seule fois', r.w.__ordoPrefsPrefetch === null);
+  r = jouer({ hash: '#c=' + CLE, prefetch: { body: { key: AUTRE }, promise: Promise.resolve({ status: 200, payload: lu }) }, serveur: () => ({ status: 200, body: { email: 'x•••@y.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
+  await attendre();
+  verifier('lecture anticipée pour une autre clé : ignorée, appel normal', r.appels.length === 1 && etat(r) === 'true,true,true');
+  r = jouer({ hash: '#c=' + CLE, prefetch: { body: { key: CLE }, promise: Promise.reject(new TypeError('Failed to fetch')) }, serveur: () => ({ status: 200, body: { email: 'x•••@y.fr', prefs: { newsletter: true, onboarding: false, offers: true }, unsubscribedAll: false } }) });
+  await attendre();
+  verifier('lecture anticipée en panne réseau : appel normal en secours', r.appels.length === 1 && etat(r) === 'true,false,true' && !r.evenements.some((e) => e.report));
+  r = jouer({ hash: '#c=' + CLE, prefetch: { body: { key: CLE }, promise: Promise.resolve({ status: 404, payload: { error: 'unknown_key' } }) }, serveur: () => ({ status: 500, body: {} }) });
+  await attendre();
+  verifier('lecture anticipée en 404 : clé inconnue traitée (pas de nouvel appel avec la clé)', texte(r).includes('Ce lien n’est plus valide') && r.appels.length === 0);
 
   console.log(echecs ? `\n${echecs} échec(s)` : '\npreferences-email : tout passe');
   process.exit(echecs ? 1 : 0);

@@ -552,6 +552,7 @@ node test/phone-input-utils.js         # le champ tél. survit à des aides abse
 node test/loader-resilience.js         # un chargeur survit à une dépendance tierce absente
 node test/geo-redirect-reveal.js       # la page de tarifs ne reste jamais invisible
 node test/preferences-email.js         # préférences e-mail : clé, requête simple, échappement
+node test/preferences-email-head.js    # préférences e-mail : en-tête, lecture anticipée
 node test/email-preferences-card.js    # carte « E-mails » de Mon compte, sans appel réseau
 ```
 
@@ -654,23 +655,24 @@ header: a CORS « simple request », so the browser sends no preflight.
 | File             | Purpose                                                  |
 |------------------|----------------------------------------------------------|
 | `preferences.js` | Reads the key or token, renders the switches, saves them |
+| `head.html`      | Reference copy of the page head code (not loaded by a script) |
 
 ### Usage in Webflow
 
 **Body:** an Embed with `<div id="ordotype-email-preferences"></div>`.
 
-**Head (page settings), before anything else reads the address:**
-```html
-<script>(function(){try{var m=/(?:^#|&)c=([A-Za-z0-9]{22})(?:&|$)/.exec(location.hash);if(m){sessionStorage.setItem('ordo-email-prefs-key',m[1]);history.replaceState(history.state,'',location.pathname+location.search);}}catch(e){}})();</script>
-```
+**Head (page settings):** paste `preferences-email/head.html` (reference copy, tested by
+`test/preferences-email-head.js`; edit there first). It sets `noindex`, preconnects to the functions
+server, moves the link key from the fragment to `sessionStorage`, and **starts the preferences read
+right away** (link key, else the Memberstack session read like `getMemberCookie`: `localStorage`
+`_ms-mid`, then the cookie). `preferences.js` takes that read over (`window.__ordoPrefsPrefetch`)
+instead of making a second one, so the function's latency overlaps the site's own loading.
 
 **Before `</body>`:**
 ```html
 <script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/shared/error-reporter.js"></script>
 <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/preferences-email/preferences.js"></script>
 ```
-
-The page should be `noindex` (Page settings → SEO).
 
 ### Console Prefixes
 

@@ -1,0 +1,10 @@
+<!-- Préférences e-mail : code d'en-tête de la page /preferences-email (Webflow, réglages de la page).
+     Copie de référence, testée par test/preferences-email-head.js : modifier ici d'abord, puis coller dans Webflow.
+     1. noindex : la page n'a rien à faire dans les moteurs de recherche.
+     2. Préconnexion au serveur des fonctions : la connexion s'ouvre pendant que le site charge.
+     3. La clé du lien (#c=) passe en sessionStorage et quitte la barre d'adresse avant les outils de mesure.
+     4. La lecture des préférences part tout de suite (clé du lien, sinon session Memberstack lue comme
+        getMemberCookie), et preferences.js la reprend (window.__ordoPrefsPrefetch) au lieu d'en refaire une. -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://webhooks.ordotype.fr" crossorigin>
+<script>(function(){try{var k='',b=null,m=/(?:^#|&)c=([A-Za-z0-9]{22})(?:&|$)/.exec(location.hash);if(m){k=m[1];try{sessionStorage.setItem('ordo-email-prefs-key',k);}catch(e){}try{history.replaceState(history.state,'',location.pathname+location.search);}catch(e){}}else{try{k=sessionStorage.getItem('ordo-email-prefs-key')||'';}catch(e){}}if(/^[A-Za-z0-9]{22}$/.test(k)){b={key:k};}else{var t='';try{t=localStorage.getItem('_ms-mid')||'';}catch(e){}if(!t){var c=/(?:^|;\s*)_ms-mid=([^;]*)/.exec(document.cookie||'');if(c&&c[1]){try{t=decodeURIComponent(c[1]);}catch(e){t=c[1];}}}if(t)b={token:t};}if(b&&window.fetch){window.__ordoPrefsPrefetch={body:b,promise:fetch('https://webhooks.ordotype.fr/.netlify/functions/email-preferences',{method:'POST',credentials:'omit',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return{};}).then(function(p){return{status:r.status,payload:p};});})};}}catch(e){}})();</script>

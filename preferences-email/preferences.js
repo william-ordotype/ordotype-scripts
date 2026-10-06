@@ -14,8 +14,14 @@
  *
  * 🔴 La clé ne reste pas dans la barre d'adresse : elle est rangée dans
  * sessionStorage (un rechargement la retrouve) et le fragment est effacé. Le
- * petit script en tête de page (voir README) fait la même chose plus tôt,
- * avant le chargement des outils de mesure ; ce fichier le refait au cas où.
+ * script de tête de la page (preferences-email/head.html) fait la même chose
+ * plus tôt, avant le chargement des outils de mesure ; ce fichier le refait au
+ * cas où.
+ *
+ * Vitesse : le script de tête lance aussi la lecture des préférences pendant que
+ * le site charge (`window.__ordoPrefsPrefetch`), et ce fichier la reprend au lieu
+ * d'en refaire une. La session du membre est lue directement dans le stockage de
+ * Memberstack (même lecture que getMemberCookie), sans attendre son chargement.
  *
  * 🔴 Requête « simple » : corps JSON envoyé en `text/plain`, sans en-tête
  * Authorization. Le navigateur n'envoie donc pas de requête préalable CORS, et
@@ -35,7 +41,8 @@
   var STORAGE_KEY = 'ordo-email-prefs-key';
   var KEY_RE = /^[A-Za-z0-9]{22}$/;
   var LOGIN_URL = '/membership/login-ms';
-  var MS_MAX_ATTEMPTS = 25; // 25 x 200 ms = 5 s
+  // Clé de la session dans memberstack.js v2 : localStorage d'abord, sinon cookie.
+  var MS_TOKEN_KEY = '_ms-mid';
   var EXPECTED = [400, 401, 404, 409, 429, 503];
 
   var CATEGORIES = [
@@ -158,20 +165,24 @@
     try { window.sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* rien */ }
   }
 
+  /** Même lecture que $memberstackDom.getMemberCookie() (memberstack.js v2), sans attendre son chargement. */
+  function storedMemberToken() {
+    var t = '';
+    try { t = window.localStorage.getItem(MS_TOKEN_KEY) || ''; } catch (e) { t = ''; }
+    if (t) return t;
+    var m = new RegExp('(?:^|;\\s*)' + MS_TOKEN_KEY + '=([^;]*)').exec(document.cookie || '');
+    if (!m || !m[1]) return '';
+    try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+  }
+
   function memberToken() {
-    return new Promise(function(resolve) {
-      var attempts = 0;
-      (function poll() {
-        if (window.$memberstackDom) return resolve(window.$memberstackDom);
-        if (++attempts > MS_MAX_ATTEMPTS) return resolve(null);
-        setTimeout(poll, 200);
-      })();
-    }).then(function(ms) {
-      if (!ms || typeof ms.getMemberCookie !== 'function') return '';
-      return Promise.resolve(ms.getMemberCookie()).then(function(t) {
-        return t ? String(t) : '';
-      }, function() { return ''; });
-    });
+    var direct = storedMemberToken();
+    if (direct) return Promise.resolve(direct);
+    var ms = window.$memberstackDom;
+    if (!ms || typeof ms.getMemberCookie !== 'function') return Promise.resolve('');
+    return Promise.resolve(ms.getMemberCookie()).then(function(t) {
+      return t ? String(t) : '';
+    }, function() { return ''; });
   }
 
   function request(body) {
@@ -190,6 +201,31 @@
         }
         return payload;
       });
+    });
+  }
+
+  /**
+   * La lecture lancée par le script de tête, si elle porte les mêmes identifiants.
+   * Utilisée une seule fois. Une panne réseau (aucun statut) retombe sur une
+   * lecture normale ; une réponse du serveur, même en erreur, fait foi.
+   */
+  function takePrefetch(body) {
+    var p = window.__ordoPrefsPrefetch;
+    window.__ordoPrefsPrefetch = null;
+    if (!p || !p.promise || !p.body || p.body.key !== body.key || p.body.token !== body.token) return null;
+    return Promise.resolve(p.promise).then(function(r) {
+      if (!r || typeof r.status !== 'number') throw new Error('prefetch sans réponse');
+      if (r.status < 200 || r.status >= 300) {
+        var payload = r.payload || {};
+        var err = new Error('email-preferences ' + r.status + ' ' + (payload.error || ''));
+        err.status = r.status;
+        err.code = payload.error;
+        throw err;
+      }
+      return r.payload || {};
+    }).catch(function(err) {
+      if (err && err.status) throw err;
+      return request(body);
     });
   }
 
@@ -398,7 +434,8 @@
 
   function load(credentials) {
     auth = credentials;
-    return request(withAuth({})).then(function(payload) {
+    var body = withAuth({});
+    return (takePrefetch(body) || request(body)).then(function(payload) {
       state = { email: payload.email, prefs: payload.prefs, unsubscribedAll: Boolean(payload.unsubscribedAll) };
       renderForm();
       track({ event: 'email_preferences_view', email_prefs_via: auth.key ? 'key' : 'member' });
