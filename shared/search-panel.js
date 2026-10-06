@@ -5,17 +5,25 @@
   var POURCENT = 100;
   var PORTRAIT = "(max-width: 479px)";
 
+  // En-tête du panneau : champ gris avec la loupe dedans, « Annuler » à droite.
+  // Classes propres au panneau : aucune règle du site ne s'y applique. La croix
+  // n'apparaît que s'il y a du texte (:placeholder-shown).
   var CSS =
     ".ot-search-panel{display:none}" +
     ".ot-search-panel.is-open{display:block;position:fixed;top:0;right:0;bottom:0;left:0;background:#fff;z-index:10001;overscroll-behavior:contain}" +
-    ".ot-search-panel .search-block.search-block-results{display:block}" +
-    ".ot-search-panel .search-form-wrapper{width:100%}" +
-    ".ot-search-panel .main-reset-button{display:flex;align-items:center;padding:0;border:0;color:#9e9fa2}" +
-    "html.ot-search-open #search-results{z-index:10002!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 11rem);overflow-y:auto;overscroll-behavior:contain}" +
+    ".ot-search-head{display:flex;align-items:center;gap:6px;padding:8px 8px 8px 16px}" +
+    ".ot-search-field{position:relative;flex:1 1 0;min-width:0}" +
+    ".ot-search-icon{position:absolute;left:13px;top:50%;width:18px;height:18px;margin-top:-9px;opacity:.5;pointer-events:none}" +
+    ".ot-search-form{display:flex;align-items:center;height:48px;margin:0;padding:0 6px 0 40px;border-radius:14px;background:#f2f3f6}" +
+    ".ot-search-panel .ot-search-input{flex:1 1 0;min-width:0;width:auto;height:48px;margin:0;padding:0;border:0;border-radius:0;outline:0;background:transparent;box-shadow:none;-webkit-appearance:none;appearance:none;font:inherit;font-size:17px;font-weight:400;color:#0c0e16}" +
+    ".ot-search-clear{display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin:0;border:0;background:none;color:#9e9fa2;cursor:pointer}" +
+    ".ot-search-clear svg{width:20px;height:20px}" +
+    ".ot-search-input:placeholder-shown+.ot-search-clear{display:none}" +
+    ".ot-search-panel .ot-search-back{display:flex;align-items:center;flex:none;height:44px;padding:0 8px;color:#3454f6;font-size:16px;font-weight:500;line-height:1;text-decoration:none}" +
+    "html.ot-search-open #search-results{z-index:10002!important;margin-top:1.25rem;max-height:calc(100vh - 6.5rem);max-height:calc(100dvh - 6.5rem);overflow-y:auto;overscroll-behavior:contain}" +
     "html.ot-search-open #search-results .srt-menu{padding-left:.5rem}" +
     "html.ot-search-open #search-results .srt-content{border-top:0}" +
     "html.ot-search-open #search-results .search-result{padding:1rem 0 1rem .5rem!important;font-size:1rem!important;line-height:1.5}";
-  var CHEVRON = "https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/66254ffbec583eef92580c8b_chevron-left.svg";
   var LOUPE = "https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/6464fa4d45e5736b95f15198_search.svg";
   var CLEAR = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M14 8L8 14M8 8L14 14M21 11C21 16.5228 16.5228 21 11 21C5.47715 21 1 16.5228 1 11C1 5.47715 5.47715 1 11 1C16.5228 1 21 5.47715 21 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -91,7 +99,7 @@
     }
 
     var home = input.parentNode, next = input.nextSibling, navClasses = input.className, navPlaceholder = input.placeholder;
-    var panel = null, form = null, nav = null, back = null;
+    var panel = null, form = null, clear = null, back = null;
     var open = false, leaving = false;
 
     // Construit au premier besoin seulement.
@@ -106,31 +114,23 @@
       panel.setAttribute("aria-modal", "true");
       panel.setAttribute("aria-label", "Recherche");
       panel.innerHTML =
-        '<div class="padding-global"><div class="container-large relative"><div class="padding-section-xsmall smaller-search">' +
-        '<div class="search-block search-block-results">' +
-        '<a href="#" class="search-back-button search-back-button-components w-inline-block ot-search-back" aria-label="Fermer la recherche"><img src="' + CHEVRON + '" alt=""></a>' +
-        '<div class="search-form margin-left margin-xxlarge"><img src="' + LOUPE + '" alt="" class="search-icon">' +
-        '<form class="search-form-wrapper width-auto-mobile" role="search">' +
-        '<div class="search-nav"><button type="button" class="main-reset-button ot-search-clear" style="background:none" aria-label="Effacer">' + CLEAR + "</button>" +
-        '<div class="seaparator-nav"></div><a href="#" class="button is-grey is-search w-inline-block ot-search-go" aria-label="Rechercher"></a></div>' +
-        "</form></div></div></div></div></div>";
+        '<div class="ot-search-head"><div class="ot-search-field"><img src="' + LOUPE + '" alt="" class="ot-search-icon">' +
+        '<form class="ot-search-form" role="search">' +
+        '<button type="button" class="ot-search-clear" aria-label="Effacer">' + CLEAR + "</button>" +
+        "</form></div>" +
+        '<a href="#" class="ot-search-back" aria-label="Fermer la recherche">Annuler</a></div>';
       document.body.appendChild(panel);
       form = panel.querySelector("form");
-      nav = panel.querySelector(".search-nav");
+      clear = panel.querySelector(".ot-search-clear");
       back = panel.querySelector(".ot-search-back");
+      // La fermeture garde le nom « fleche » dans la mesure, pour rester comparable.
       back.addEventListener("click", function (e) { e.preventDefault(); requestClose("fleche"); });
-      panel.querySelector(".ot-search-clear").addEventListener("click", function () {
+      clear.addEventListener("click", function () {
         input.value = "";
         removeResults();
         input.focus();
       });
-      panel.querySelector(".ot-search-go").addEventListener("click", function (e) {
-        e.preventDefault();
-        var q = input.value.trim();
-        if (!q) return input.focus();
-        try { endSession("page_resultats"); }
-        finally { window.location.href = window.location.origin + "/search-result?query=" + encodeURIComponent(q) + "&page=1"; }
-      });
+      // Entrée : le moteur de recherche mène lui-même à la page de résultats.
       form.addEventListener("submit", function (e) { e.preventDefault(); });
     }
 
@@ -220,12 +220,12 @@
       if (open) return;
       build();
       try {
-        form.insertBefore(input, nav);
+        form.insertBefore(input, clear);
       } catch (err) {
         return report(err);
       }
       open = true;
-      input.className = "search-bar-main w-input";
+      input.className = "ot-search-input";
       input.placeholder = "Chercher";
       panel.classList.add("is-open");
       document.documentElement.classList.add("ot-search-open");
