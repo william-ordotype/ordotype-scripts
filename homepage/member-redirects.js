@@ -338,8 +338,8 @@
         ) {
             $('#banner-to-hide-rpps-interne').css({ display: 'flex' });
         }
-        /*
         else if (
+            ms.isFinInternatBannerPeriod() &&
             isInterne &&
             ms.isInFinalSemester(semestreValue, specialite) &&
             !planConnections.some(plan =>
@@ -349,7 +349,6 @@
         ) {
             $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
-        */
         // SAU signup prompt for all emergency-medicine members (snooze-gated).
         // Low priority: any billing/profile banner above wins.
         else if (

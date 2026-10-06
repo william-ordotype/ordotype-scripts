@@ -128,8 +128,8 @@
         window.location.replace('/membership/conserver-ses-acces');
         return;
     }
-    /*
     else if (
+        ms.isFinInternatBannerPeriod() &&
         isInterne &&
         ms.isInFinalSemester(semestreValue, specialite) &&
         !planConnections.some(plan =>
@@ -139,7 +139,6 @@
     ) {
         if ($) $('#banner-to-hide-fin-internat').css({ 'display': 'flex' });
     }
-    */
     else if (endOfInternship.redirect) {
         ms.markFinInternatSeen();
         window.location.replace("/membership/fin-internat");

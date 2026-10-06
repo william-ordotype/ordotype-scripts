@@ -219,6 +219,16 @@
         return 8;
     }
 
+    // Display window of the last-semester banner (Paris time), end excluded.
+    var FIN_INTERNAT_BANNER_FROM = '2026-10-17T00:00:00+02:00';
+    var FIN_INTERNAT_BANNER_UNTIL = '2026-11-03T00:00:00+01:00';
+
+    function isFinInternatBannerPeriod(now) {
+        var t = now == null ? Date.now() : now;
+        return t >= new Date(FIN_INTERNAT_BANNER_FROM).getTime() &&
+            t < new Date(FIN_INTERNAT_BANNER_UNTIL).getTime();
+    }
+
     /**
      * Last semester of the cursus, from the declared `semestre` value.
      * A "6 (FST)" value is a final semester, whatever the specialization.
@@ -445,6 +455,7 @@
         isFrenchTerritory: isFrenchTerritory,
         getRequiredSemester: getRequiredSemester,
         isInFinalSemester: isInFinalSemester,
+        isFinInternatBannerPeriod: isFinInternatBannerPeriod,
         getEndOfInternship: getEndOfInternship,
         markFinInternatSeen: markFinInternatSeen,
         watchFinInternatActions: watchFinInternatActions,
