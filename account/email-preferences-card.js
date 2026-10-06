@@ -31,6 +31,27 @@
     } catch (e) { /* une mesure ne casse jamais la page */ }
   }
 
+  // Même grille que la carte « Contact » : libellé (dt), valeur (dd), aide (hint).
+  function field(label, value, hint) {
+    var f = document.createElement('div');
+    f.className = 'compte-v2_field';
+    var dt = document.createElement('div');
+    dt.className = 'compte-v2_dt';
+    dt.textContent = label;
+    var dd = document.createElement('div');
+    dd.className = 'compte-v2_dd';
+    dd.textContent = value;
+    f.appendChild(dt);
+    f.appendChild(dd);
+    if (hint) {
+      var h = document.createElement('div');
+      h.className = 'compte-v2_hint';
+      h.textContent = hint;
+      f.appendChild(h);
+    }
+    return f;
+  }
+
   function build() {
     var card = document.createElement('div');
     card.className = 'compte-v2_card';
@@ -44,20 +65,21 @@
     var link = document.createElement('a');
     link.className = 'compte-v2_btn';
     link.href = PAGE_URL;
-    link.textContent = 'Gérer mes préférences';
+    link.textContent = 'Modifier';
+    link.setAttribute('aria-label', 'Modifier mes préférences d’e-mail');
     link.addEventListener('click', function() {
       track({ event: 'email_preferences_open', email_prefs_from: 'compte' });
     });
     head.appendChild(title);
     head.appendChild(link);
 
-    var text = document.createElement('div');
-    text.className = 'compte-v2_muted';
-    text.textContent = 'Les e-mails liés à votre compte (factures, abonnement, sécurité) sont toujours envoyés. '
-      + 'Choisissez les autres : newsletter et nouvelles recommandations, conseils de prise en main, offres.';
+    var list = document.createElement('div');
+    list.className = 'compte-v2_dl';
+    list.appendChild(field('E-mails liés à votre compte', 'Toujours envoyés', 'Factures, abonnement, sécurité.'));
+    list.appendChild(field('Newsletter, conseils et offres', 'Selon vos préférences'));
 
     card.appendChild(head);
-    card.appendChild(text);
+    card.appendChild(list);
     return card;
   }
 
