@@ -550,6 +550,7 @@ node test/invoice-emails-retry.js      # rejeu d'une lecture sans réponse
 node test/phone-input-utils.js         # le champ tél. survit à des aides absentes
 node test/loader-resilience.js         # un chargeur survit à une dépendance tierce absente
 node test/geo-redirect-reveal.js       # la page de tarifs ne reste jamais invisible
+node test/preferences-email.js         # préférences e-mail : clé, requête simple, échappement
 ```
 
 ✅ `tests.yml` lance **tout** `test/` à chaque push sur
@@ -626,6 +627,58 @@ window.COMEBACK_CONFIG = {
 ### Console Prefixes
 
 - `[ComebackCheckout]` - Comeback checkout
+
+---
+
+## Préférences e-mail Page (`/preferences-email`)
+
+Three switches for marketing emails (newsletter and new recommendations,
+onboarding tips, offers), plus the account emails shown locked. The markup is
+built by the script: the page only holds an empty anchor.
+
+Two ways in:
+
+- from the « Gérer mes préférences » link of an email, which carries a key in
+  the **fragment** (`/preferences-email#c=<key>`): no login needed. The key is
+  moved to `sessionStorage` and the fragment is removed from the address bar;
+- logged in (from Mon compte): the Memberstack token is enough. An unknown key
+  falls back to the logged-in account, otherwise the page offers to log in.
+
+Requests are POST with a JSON body sent as `text/plain` and no `Authorization`
+header: a CORS « simple request », so the browser sends no preflight.
+
+### Files
+
+| File             | Purpose                                                  |
+|------------------|----------------------------------------------------------|
+| `preferences.js` | Reads the key or token, renders the switches, saves them |
+
+### Usage in Webflow
+
+**Body:** an Embed with `<div id="ordotype-email-preferences"></div>`.
+
+**Head (page settings), before anything else reads the address:**
+```html
+<script>(function(){try{var m=/(?:^#|&)c=([A-Za-z0-9]{22})(?:&|$)/.exec(location.hash);if(m){sessionStorage.setItem('ordo-email-prefs-key',m[1]);history.replaceState(history.state,'',location.pathname+location.search);}}catch(e){}})();</script>
+```
+
+**Before `</body>`:**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/shared/error-reporter.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/preferences-email/preferences.js"></script>
+```
+
+The page should be `noindex` (Page settings → SEO).
+
+### Console Prefixes
+
+- `[EmailPreferences]`
+
+### Test
+
+```bash
+node test/preferences-email.js
+```
 
 ---
 
