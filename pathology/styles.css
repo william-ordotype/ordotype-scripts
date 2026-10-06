@@ -178,30 +178,27 @@ abbr:hover::after {
     z-index: 20;
 }
 
-/* Liens « avis » du rappel clinique : un badge toujours visible (mobile compris) dit
-   qu'ils mènent à la téléexpertise d'Omnidoc, pas à un complément de la fiche. Le texte
-   est porté par la feuille de style, pas par le contenu des fiches : il se change ici,
-   sans rééditer les fiches. En inline-block, le badge n'hérite pas du soulignement du
-   lien, et un clic dessus reste un clic sur le lien. */
-.rc-html a[href^="/avis-specialise"]::after {
-    content: "Téléexpertise";
-    display: inline-block;
-    margin-left: 0.35em;
-    padding: 0 0.5em;
-    border-radius: 999px;
-    background-color: #e6f1f8;
-    color: #01598f;
-    font-size: 0.72em;
-    font-weight: 600;
-    line-height: 1.6;
-    vertical-align: 0.1em;
-    white-space: nowrap;
+/* Liens « avis » du rappel clinique : même infobulle que les abréviations, pour dire
+   où ils mènent avant le clic. Le texte est porté par la feuille de style, pas par le
+   contenu des fiches : il se change ici, sans rééditer les fiches. */
+.rc-html a[href^="/avis-specialise"] {
+    position: relative;
 }
 
-@media print {
-    .rc-html a[href^="/avis-specialise"]::after {
-        content: none;
-    }
+.rc-html a[href^="/avis-specialise"]:hover::after {
+    content: "Téléexpertise d’Omnidoc";
+    position: absolute;
+    bottom: 1.5em;
+    left: 50%;
+    padding: 0.3em 0.6em;
+    transform: translateX(-50%);
+    color: white;
+    background-color: black;
+    border-radius: 0.2em;
+    font-size: 0.9em;
+    font-weight: 400;
+    white-space: nowrap;
+    z-index: 20;
 }
 
 /* Hide scrollbars */
