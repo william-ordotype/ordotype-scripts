@@ -310,7 +310,8 @@
   /** `loading` : même page, cases et boutons inactifs, en attendant la lecture. */
   function renderForm(loading) {
     var lines = line(ICONS.compte, '', 'E-mails liés à votre compte',
-      'Factures, abonnement, pause, sécurité, certificats. Toujours envoyés : ils concernent votre compte.',
+      'Factures, paiements, sécurité, certificats : uniquement des informations sur votre compte, jamais d’offre commerciale. '
+      + 'Nous devons pouvoir vous les adresser tant que votre compte est ouvert.',
       '<span class="compte-v2_badge ordo-prefs__badge">' + LOCK_SMALL + 'Toujours actifs</span>');
     for (var i = 0; i < CATEGORIES.length; i += 1) {
       lines += rowHtml(CATEGORIES[i], loading ? false : state.prefs[CATEGORIES[i].key], loading);
@@ -329,7 +330,9 @@
         + '<button type="button" class="compte-v2_lien ordo-prefs__all-off" data-ordo-all-off' + off + '>Ne plus recevoir aucun e-mail marketing</button>'
         + '</div>'
         + '<div class="compte-v2_help is-colonne">'
-        + '<div class="compte-v2_help-text">Les e-mails liés à votre compte ne peuvent pas être désactivés tant que votre compte existe. Une question ?</div>'
+        + '<div class="compte-v2_help-text"><strong>Pourquoi ces e-mails restent actifs ?</strong> Comme votre banque ou votre assurance, '
+        + 'nous devons pouvoir vous informer sur votre compte. Le RGPD le permet sans votre accord préalable, car ces envois sont '
+        + 'nécessaires à votre abonnement. Les messages commerciaux, eux, sont toujours à votre choix, ci-dessus. Une question ?</div>'
         + '<a class="compte-v2_help-link" href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>'
         + '</div>'
     });
