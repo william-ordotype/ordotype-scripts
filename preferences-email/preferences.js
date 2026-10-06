@@ -90,7 +90,8 @@
     '.ordo-prefs__banner{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:4px;border:1px solid var(--base-200,#0c0e1633);background:var(--primary-50,#f0f3ff)}',
     '.ordo-prefs__status{display:flex;align-items:center;gap:8px}',
     '.ordo-prefs__status--ok{color:var(--primary-600,#263fd3);font-weight:600}',
-    '.ordo-prefs__skeleton{height:240px;border-radius:4px;background:var(--base-50,#0c0e160d);animation:ordo-prefs-pulse 1.2s ease-in-out infinite}',
+    '.ordo-prefs__sw.is-loading{cursor:default;animation:ordo-prefs-pulse 1.2s ease-in-out infinite}',
+    '.ordo-prefs__sw.is-loading .ordo-prefs__knob{visibility:hidden}',
     '@keyframes ordo-prefs-pulse{0%,100%{opacity:1}50%{opacity:.5}}',
     '.ordo-prefs>div:empty,.ordo-prefs__inner>div:empty{display:none}'
   ].join('\n');
@@ -250,11 +251,10 @@
       + '</div></div></div></div>';
   }
 
+  // La page s'affiche tout de suite, complète : seules les positions des cases
+  // attendent la réponse du serveur (démarrage à froid possible de la fonction).
   function renderSkeleton() {
-    root.innerHTML = frame('Vos e-mails Ordotype', {
-      main: '<div class="ordo-prefs__skeleton" aria-hidden="true"></div>'
-        + '<p class="ordo-prefs__lead compte-v2_muted" role="status">Chargement de vos préférences…</p>'
-    });
+    renderForm(true);
   }
 
   /**
@@ -298,34 +298,42 @@
       + '</div>' + action + '</div></div>';
   }
 
-  function rowHtml(c, on) {
+  function rowHtml(c, on, loading) {
     var id = 'ordo-prefs-' + c.key + '-label';
     return line(ICONS[c.key], id, c.title, c.text,
-      '<button type="button" role="switch" class="ordo-prefs__sw" data-ordo-pref="' + c.key + '"'
-      + ' aria-checked="' + (on ? 'true' : 'false') + '" aria-labelledby="' + id + '">'
+      '<button type="button" role="switch" class="ordo-prefs__sw' + (loading ? ' is-loading' : '') + '" data-ordo-pref="' + c.key + '"'
+      + ' aria-checked="' + (on ? 'true' : 'false') + '" aria-labelledby="' + id + '"'
+      + (loading ? ' disabled aria-busy="true"' : '') + '>'
       + '<span class="ordo-prefs__knob"></span></button>');
   }
 
-  function renderForm() {
+  /** `loading` : même page, cases et boutons inactifs, en attendant la lecture. */
+  function renderForm(loading) {
     var lines = line(ICONS.compte, '', 'E-mails liés à votre compte',
       'Factures, abonnement, pause, sécurité, certificats. Toujours envoyés : ils concernent votre compte.',
       '<span class="compte-v2_badge ordo-prefs__badge">' + LOCK_SMALL + 'Toujours actifs</span>');
-    for (var i = 0; i < CATEGORIES.length; i += 1) lines += rowHtml(CATEGORIES[i], state.prefs[CATEGORIES[i].key]);
+    for (var i = 0; i < CATEGORIES.length; i += 1) {
+      lines += rowHtml(CATEGORIES[i], loading ? false : state.prefs[CATEGORIES[i].key], loading);
+    }
+    var off = loading ? ' disabled' : '';
     root.innerHTML = frame('Vos e-mails Ordotype', {
-      intro: '<p class="ordo-prefs__lead text-size-regular text-color-base-700">Choisissez les e-mails que vous souhaitez recevoir à l’adresse <strong>'
-        + escapeHtml(state.email) + '</strong>.</p>',
+      intro: loading
+        ? '<p class="ordo-prefs__lead text-size-regular text-color-base-700" role="status">Choisissez les e-mails que vous souhaitez recevoir. Chargement de vos préférences…</p>'
+        : '<p class="ordo-prefs__lead text-size-regular text-color-base-700">Choisissez les e-mails que vous souhaitez recevoir à l’adresse <strong>'
+          + escapeHtml(state.email) + '</strong>.</p>',
       main: '<div data-ordo-banner></div>'
         + '<section class="compte-v2_card is-liste" aria-label="Vos préférences d’e-mail">' + lines + '</section>'
         + '<div data-ordo-status aria-live="polite"></div>'
         + '<div class="ordo-prefs__actions">'
-        + '<button type="button" class="button no-full-width" data-ordo-save>Enregistrer mes choix</button>'
-        + '<button type="button" class="compte-v2_lien ordo-prefs__all-off" data-ordo-all-off>Ne plus recevoir aucun e-mail marketing</button>'
+        + '<button type="button" class="button no-full-width" data-ordo-save' + off + '>Enregistrer mes choix</button>'
+        + '<button type="button" class="compte-v2_lien ordo-prefs__all-off" data-ordo-all-off' + off + '>Ne plus recevoir aucun e-mail marketing</button>'
         + '</div>'
         + '<div class="compte-v2_help is-colonne">'
         + '<div class="compte-v2_help-text">Les e-mails liés à votre compte ne peuvent pas être désactivés tant que votre compte existe. Une question ?</div>'
         + '<a class="compte-v2_help-link" href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>'
         + '</div>'
     });
+    if (loading) return;
     renderBanner();
 
     var switches = root.querySelectorAll('[data-ordo-pref]');

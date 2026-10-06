@@ -37,7 +37,7 @@ const attendre = (ms = 30) => new Promise((r) => setTimeout(r, ms));
  * `serveur(body)` rend { status, body } pour chaque appel.
  * `jeton` : ce que rend getMemberCookie (null = pas connecté).
  */
-function jouer({ hash = '', serveur, jeton = null, session = null, msDom = true, cookie = null, local = null, prefetch = null }) {
+function jouer({ hash = '', serveur, jeton = null, session = null, msDom = true, cookie = null, local = null, prefetch = null, muet = false }) {
   const dom = new JSDOM(PAGE, { url: 'https://www.ordotype.fr/preferences-email' + hash, runScripts: 'outside-only' });
   const w = dom.window;
   if (cookie) w.document.cookie = '_ms-mid=' + cookie;
@@ -56,6 +56,7 @@ function jouer({ hash = '', serveur, jeton = null, session = null, msDom = true,
   w.fetch = (url, opts) => {
     const corps = JSON.parse(opts.body);
     appels.push({ url, opts, corps });
+    if (muet) return new Promise(() => {});
     const r = serveur(corps);
     return Promise.resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, json: () => Promise.resolve(r.body) });
   };
@@ -185,6 +186,22 @@ const texte = (r) => r.d.getElementById('ordotype-email-preferences').textConten
   r = jouer({ hash: '#c=' + CLE, serveur: () => ({ status: 200, body: { email: '<img src=x onerror=alert(1)>@x.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
   await attendre();
   verifier('adresse échappée', !r.d.querySelector('#ordotype-email-preferences img') && texte(r).includes('<img src=x'));
+
+  // --- vitesse : page complète avant toute réponse du serveur (démarrage à froid)
+  r = jouer({ hash: '#c=' + CLE, muet: true, serveur: () => ({ status: 200, body: {} }) });
+  await attendre();
+  const enCours = r.d.getElementById('ordotype-email-preferences');
+  verifier('serveur muet : les 3 catégories et les e-mails du compte déjà affichés',
+    ['Newsletter et nouvelles recommandations', 'Conseils de prise en main', 'Offres et promotions', 'Toujours actifs'].every((t) => enCours.textContent.includes(t)));
+  verifier('serveur muet : cases inactives et marquées en chargement',
+    enCours.querySelectorAll('[data-ordo-pref]').length === 3
+    && [...enCours.querySelectorAll('[data-ordo-pref]')].every((b) => b.disabled && b.getAttribute('aria-busy') === 'true'));
+  verifier('serveur muet : boutons inactifs, aucun clic possible',
+    enCours.querySelector('[data-ordo-save]').disabled && enCours.querySelector('[data-ordo-all-off]').disabled);
+  r = jouer({ hash: '#c=' + CLE, serveur: () => ({ status: 200, body: { email: 'x•••@y.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
+  await attendre();
+  verifier('après la réponse : cases actives, plus de chargement',
+    [...r.d.querySelectorAll('[data-ordo-pref]')].every((b) => !b.disabled && !b.hasAttribute('aria-busy')) && !r.d.querySelector('[data-ordo-save]').disabled);
 
   // --- vitesse : session lue sans attendre Memberstack
   r = jouer({ msDom: false, cookie: encodeURIComponent('tok_cookie=='), serveur: () => ({ status: 200, body: { email: 'c.martin@exemple.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
