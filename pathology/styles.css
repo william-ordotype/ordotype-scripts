@@ -410,6 +410,14 @@ ul {
         margin-right: 1px;
     }
 
+    /* Le bloc des rappels coupe ce qui dépasse (overflow auto) : quand le
+       dernier tableau touche le bas du bloc, la ligne du bas de son cadre
+       (dessiné hors de la boîte) disparaissait. 1px de marge intérieure la
+       garde visible. */
+    .rc-html.w-richtext {
+        padding-bottom: 1px;
+    }
+
     /* break-word et pas anywhere : anywhere laisse le navigateur réduire une
        colonne à une lettre (« Probabili / té »). */
     .rc-html td,
@@ -469,6 +477,25 @@ ul {
     .rc-html,
     .redac-and-ref.patho {
         max-width: none;
+    }
+}
+
+/* Téléphones : le bloc des rappels (.rappels-cliniques-content) est un
+   élément de grille à marges automatiques (règle Webflow « margin: auto »).
+   Il prend donc la largeur de son contenu au lieu de celle de la colonne :
+   avec des tableaux il la remplit, mais avec la carte « Accès limité » il
+   s'arrêtait à la largeur du texte de la carte (vide à droite, de plus en
+   plus grand avec l'écran). La carte se cale ensuite à 1px de chaque côté,
+   comme les tableaux et le bloc Sommaire. */
+@media only screen and (max-width: 479px) {
+    .rappels-cliniques-content {
+        width: 100%;
+    }
+
+    .paywall_card {
+        width: calc(100% - 2px);
+        margin-left: 1px;
+        margin-right: 1px;
     }
 }
 
