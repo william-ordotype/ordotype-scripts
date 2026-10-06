@@ -314,20 +314,29 @@ async function test(name, fn) {
     for (const b of anciens(d, 'information')) assert.ok(!visible(w, b), 'le profil n\'est pas concerné');
   });
 
-  await test('non connecté : « Se connecter » garde l\'onglet visé, sinon le lien du Designer reste tel quel', async () => {
-    const LIEN = '<a data-ordo-connexion-retour="1" href="/membership/login-redirect-rempla?redirect=%2Fmembership%2Fcompte">Se connecter</a>';
+  await test('retour après connexion : locat = Mon compte + onglet, sans UTM ; réécrit au clic ; stockage bloqué sans casse', async () => {
+    const LIEN = '<a data-ordo-connexion-retour="1" href="/membership/login-ms">Se connecter</a>';
     let r = page({ url: 'https://www.ordotype.fr/membership/compte?utm_source=postmark#abonnements', apres: LIEN });
     await tick(0);
-    assert.strictEqual(r.d.querySelector('[data-ordo-connexion-retour]').getAttribute('href'),
-      '/membership/login-redirect-rempla?redirect=%2Fmembership%2Fcompte%23abonnements', 'onglet gardé, UTM laissés de côté');
+    assert.strictEqual(r.w.localStorage.getItem('locat'), '/membership/compte#abonnements', 'onglet gardé, UTM laissés de côté');
+    assert.strictEqual(r.d.querySelector('[data-ordo-connexion-retour]').getAttribute('href'), '/membership/login-ms', 'lien inchangé');
 
-    r = page({ url: 'https://www.ordotype.fr/membership/compte?utm_source=postmark', apres: LIEN });
+    // Une autre page (autre onglet) a écrasé locat : le clic le remet.
+    r.w.localStorage.setItem('locat', 'https://www.ordotype.fr/maladies/autre');
+    r.d.querySelector('[data-ordo-connexion-retour]').addEventListener('click', (e) => e.preventDefault());
+    r.d.querySelector('[data-ordo-connexion-retour]').click();
+    assert.strictEqual(r.w.localStorage.getItem('locat'), '/membership/compte#abonnements', 'réécrit au clic');
+
+    r = page({ url: 'https://www.ordotype.fr/membership/compte' });
     await tick(0);
-    assert.strictEqual(r.d.querySelector('[data-ordo-connexion-retour]').getAttribute('href'),
-      '/membership/login-redirect-rempla?redirect=%2Fmembership%2Fcompte', 'sans onglet : lien du Designer inchangé');
+    assert.strictEqual(r.w.localStorage.getItem('locat'), '/membership/compte', 'sans onglet');
 
-    r = page({ url: 'https://www.ordotype.fr/membership/compte#abonnements' });
-    await tick(0); // page sans le lien (membre connecté, ancien Designer) : rien ne casse
+    // Stockage bloqué (page sans origine : localStorage lève une SecurityError) : le reste de la page vit.
+    const erreurs = [];
+    r = page({ rollout: { 'profile-overview.js': { enabled: false, reason: 'host' } }, before: (w) => w.addEventListener('error', (e) => erreurs.push(e.message)) });
+    await tick(150);
+    assert.ok(r.h.classList.contains('ordo-profil-fallback'), 'la garde tourne malgré le stockage bloqué');
+    assert.deepStrictEqual(erreurs, [], 'aucune erreur remontée (Sentry)');
   });
 
   for (const w of fenetres) w.close();
