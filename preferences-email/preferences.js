@@ -56,49 +56,50 @@
     }
   ];
 
+  // Mise en page seulement : typographie, cartes, lignes, badges et boutons sont
+  // les classes du site (charte Client-First et cartes compte-v2_* de Mon compte).
+  // L'interrupteur reprend celui des factures par e-mail de Mon compte
+  // (account/invoice-emails.js), sur les mêmes variables de couleur.
   var CSS = [
-    '.ordo-prefs{max-width:640px;margin:24px auto 64px auto;padding:0 16px;box-sizing:border-box;display:flex;flex-direction:column;gap:24px;color:#0c0e16;font-family:inherit}',
-    '.ordo-prefs *{box-sizing:border-box}',
-    '.ordo-prefs>div:empty{display:none}',
-    '.ordo-prefs h1{margin:0;font-size:32px;line-height:1.2;font-weight:700;letter-spacing:-0.02em}',
-    '.ordo-prefs__intro{display:flex;flex-direction:column;gap:8px}',
-    '.ordo-prefs__lead{margin:0;font-size:16px;line-height:1.6;color:#4b5162}',
-    '.ordo-prefs__lead strong{color:#0c0e16;overflow-wrap:anywhere}',
-    '.ordo-prefs__card{background:#fff;border:1px solid #0c0e161a;border-radius:12px;display:flex;flex-direction:column}',
-    '.ordo-prefs__row{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 24px;border-bottom:1px solid #0c0e1614}',
-    '.ordo-prefs__row:last-child{border-bottom:0}',
-    '.ordo-prefs__label{display:flex;flex-direction:column;gap:4px;min-width:0}',
-    '.ordo-prefs__title{font-size:16px;font-weight:600}',
-    '.ordo-prefs__text{font-size:14px;line-height:1.5;color:#4b5162}',
-    '.ordo-prefs__lock{display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:13px;font-weight:500;color:#4b5162}',
-    '.ordo-prefs__switch{width:52px;height:30px;flex-shrink:0;border-radius:999px;border:0;padding:3px;cursor:pointer;display:flex;align-items:center;justify-content:flex-start;background:#c9ccd6;transition:background .15s}',
-    '.ordo-prefs__switch[aria-checked="true"]{justify-content:flex-end;background:#263fd3}',
-    '.ordo-prefs__switch:focus-visible{outline:3px solid #263fd366;outline-offset:2px}',
-    '.ordo-prefs__switch:disabled{cursor:default;opacity:.6}',
-    '.ordo-prefs__knob{width:24px;height:24px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,14,22,.25);display:block}',
+    '.ordo-prefs__inner{display:flex;flex-direction:column;gap:24px}',
+    '.ordo-prefs__intro{display:flex;flex-direction:column;gap:12px}',
+    '.ordo-prefs__lead{margin:0}',
+    '.ordo-prefs__lead strong{color:var(--base-900,#0c0e16);font-weight:600;overflow-wrap:anywhere}',
+    '.ordo-prefs .compte-v2_card.is-liste{padding-top:0;padding-bottom:0}',
+    '.ordo-prefs .compte-v2_ligne-bloc:last-child{border-bottom:0}',
+    '.ordo-prefs .compte-v2_ligne{flex-wrap:nowrap}',
+    '.ordo-prefs .compte-v2_ligne-texte{flex-basis:auto}',
+    '.ordo-prefs__badge{gap:6px;flex-shrink:0}',
+    '.ordo-prefs__sw{position:relative;flex:0 0 auto;width:44px;height:26px;padding:0;border:0;border-radius:999px;background:var(--base-300,#0c0e164d);cursor:pointer;transition:background .2s ease}',
+    '.ordo-prefs__sw[aria-checked="true"]{background:var(--primary-500,#3454f6)}',
+    '.ordo-prefs__knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s ease}',
+    '.ordo-prefs__sw[aria-checked="true"] .ordo-prefs__knob{transform:translateX(18px)}',
+    '.ordo-prefs__sw:focus-visible{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}',
+    '.ordo-prefs__sw:disabled{cursor:default;opacity:.5}',
     '.ordo-prefs__actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}',
-    '.ordo-prefs__save{min-height:48px;padding:0 24px;border:0;border-radius:999px;background:#263fd3;color:#fff;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer}',
-    '.ordo-prefs__save:disabled{opacity:.6;cursor:default}',
-    '.ordo-prefs__all-off{min-height:44px;padding:0 4px;border:0;background:transparent;color:#263fd3;font-family:inherit;font-size:15px;font-weight:500;text-decoration:underline;cursor:pointer}',
-    '.ordo-prefs__status{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:10px;font-size:15px;font-weight:500}',
-    '.ordo-prefs__status--ok{background:#e9f6ee;color:#1b5e33}',
-    '.ordo-prefs__status--error{background:#fdecea;color:#8a1c12}',
-    '.ordo-prefs__banner{display:flex;align-items:flex-start;gap:12px;padding:16px 20px;border-radius:12px;background:#f0f3ff;border:1px solid #263fd333;font-size:15px;line-height:1.55}',
-    '.ordo-prefs__banner span{color:#4b5162}',
-    '.ordo-prefs__note{background:#0c0e1608;border:1px solid #0c0e161a;border-radius:12px;padding:16px 20px;font-size:14px;line-height:1.6;color:#4b5162}',
-    '.ordo-prefs__note a,.ordo-prefs__lead a{color:#263fd3}',
-    '.ordo-prefs__buttons{display:flex;gap:12px;flex-wrap:wrap}',
-    '.ordo-prefs__link-btn{min-height:48px;display:inline-flex;align-items:center;padding:0 24px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none}',
-    '.ordo-prefs__link-btn--primary{background:#263fd3;color:#fff}',
-    '.ordo-prefs__link-btn--secondary{border:1px solid #0c0e1626;background:#fff;color:#0c0e16}',
-    '.ordo-prefs__skeleton{height:280px;border-radius:12px;background:linear-gradient(90deg,#eef0f5 25%,#f7f8fb 50%,#eef0f5 75%);background-size:200% 100%;animation:ordo-prefs-wave 1.2s infinite}',
-    '@keyframes ordo-prefs-wave{0%{background-position:200% 0}100%{background-position:-200% 0}}',
-    '@media (max-width:479px){.ordo-prefs h1{font-size:26px}.ordo-prefs__row{gap:16px;padding:16px}.ordo-prefs__save{width:100%}}'
+    '.ordo-prefs__all-off{background:none;border:0;padding:0;font-family:inherit;font-size:14px;cursor:pointer}',
+    '.ordo-prefs__all-off:disabled{opacity:.5;cursor:default}',
+    '.ordo-prefs .button:disabled{opacity:.6;cursor:default}',
+    '.ordo-prefs__banner{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:4px;border:1px solid var(--base-200,#0c0e1633);background:var(--primary-50,#f0f3ff)}',
+    '.ordo-prefs__status{display:flex;align-items:center;gap:8px}',
+    '.ordo-prefs__status--ok{color:var(--primary-600,#263fd3);font-weight:600}',
+    '.ordo-prefs__skeleton{height:240px;border-radius:4px;background:var(--base-50,#0c0e160d);animation:ordo-prefs-pulse 1.2s ease-in-out infinite}',
+    '@keyframes ordo-prefs-pulse{0%,100%{opacity:1}50%{opacity:.5}}',
+    '.ordo-prefs>div:empty,.ordo-prefs__inner>div:empty{display:none}'
   ].join('\n');
 
-  var LOCK_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5162" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>';
-  var CHECK_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
-  var INFO_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#263fd3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>';
+  // Pictogrammes au trait, comme ceux des lignes de Mon compte (20 px, 1,5).
+  function icon(paths) {
+    return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
+  }
+  var ICONS = {
+    compte: icon('<rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path>'),
+    newsletter: icon('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9h10M7 13h10M7 17h6"></path>'),
+    onboarding: icon('<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l3 2"></path>'),
+    offers: icon('<path d="M3 12V4h8l10 10-8 8L3 12z"></path><circle cx="7.5" cy="7.5" r="1.5"></circle>')
+  };
+  var LOCK_SMALL = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>';
+  var CHECK_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>';
 
   var root = null;
   var auth = null; // { key } ou { token }
@@ -204,10 +205,20 @@
   // Rendu
   // ---------------------------------------------------------------------------
 
+  // Le cadre de toutes les vues : marges et largeur du site, titre de Mon compte.
+  function frame(title, body) {
+    return '<div class="padding-global"><div class="container-small"><div class="padding-section-compte">'
+      + '<div class="ordo-prefs__inner">'
+      + '<div class="ordo-prefs__intro"><h1 class="heading-h1-docs">' + title + '</h1>' + (body.intro || '') + '</div>'
+      + (body.main || '')
+      + '</div></div></div></div>';
+  }
+
   function renderSkeleton() {
-    root.innerHTML = '<div class="ordo-prefs__intro"><h1>Vos e-mails Ordotype</h1></div>'
-      + '<div class="ordo-prefs__skeleton" aria-hidden="true"></div>'
-      + '<p class="ordo-prefs__lead" role="status">Chargement de vos préférences…</p>';
+    root.innerHTML = frame('Vos e-mails Ordotype', {
+      main: '<div class="ordo-prefs__skeleton" aria-hidden="true"></div>'
+        + '<p class="ordo-prefs__lead compte-v2_muted" role="status">Chargement de vos préférences…</p>'
+    });
   }
 
   /**
@@ -224,57 +235,61 @@
 
   function renderSignIn(linkWasInvalid) {
     rememberReturn();
-    var title = linkWasInvalid ? 'Ce lien n’est plus valide' : 'Gérez vos e-mails Ordotype';
-    root.innerHTML = '<div class="ordo-prefs__intro">'
-      + '<h1>' + title + '</h1>'
-      + '<p class="ordo-prefs__lead">Connectez-vous pour gérer vos préférences d’e-mail depuis votre compte.</p>'
-      + '<p class="ordo-prefs__lead">Pour ne plus recevoir aucun e-mail marketing sans vous connecter, utilisez le lien « Se désinscrire » en bas de nos e-mails.</p>'
-      + '</div>'
-      + '<div class="ordo-prefs__buttons">'
-      + '<a class="ordo-prefs__link-btn ordo-prefs__link-btn--primary" href="' + LOGIN_URL + '">Me connecter</a>'
-      + '<a class="ordo-prefs__link-btn ordo-prefs__link-btn--secondary" href="mailto:contact@ordotype.fr">Nous écrire</a>'
-      + '</div>';
+    root.innerHTML = frame(linkWasInvalid ? 'Ce lien n’est plus valide' : 'Gérez vos e-mails Ordotype', {
+      intro: '<p class="ordo-prefs__lead text-size-regular text-color-base-700">Connectez-vous pour gérer vos préférences d’e-mail depuis votre compte.</p>'
+        + '<p class="ordo-prefs__lead text-size-regular text-color-base-700">Pour ne plus recevoir aucun e-mail marketing sans vous connecter, utilisez le lien « Se désinscrire » en bas de nos e-mails.</p>',
+      main: '<div class="ordo-prefs__actions">'
+        + '<a class="button no-full-width" href="' + LOGIN_URL + '">Me connecter</a>'
+        + '<a class="button is-secondary no-full-width" href="mailto:contact@ordotype.fr">Nous écrire</a>'
+        + '</div>'
+    });
   }
 
   function renderError(message) {
-    root.innerHTML = '<div class="ordo-prefs__intro"><h1>Vos e-mails Ordotype</h1></div>'
-      + '<div class="ordo-prefs__status ordo-prefs__status--error" role="alert">' + escapeHtml(message) + '</div>'
-      + '<div class="ordo-prefs__buttons"><button type="button" class="ordo-prefs__save" data-ordo-retry>Réessayer</button></div>';
+    root.innerHTML = frame('Vos e-mails Ordotype', {
+      main: '<div class="ordo-prefs__status text-size-small text-color-error" role="alert">' + escapeHtml(message) + '</div>'
+        + '<div class="ordo-prefs__actions"><button type="button" class="button no-full-width" data-ordo-retry>Réessayer</button></div>'
+    });
     root.querySelector('[data-ordo-retry]').addEventListener('click', start);
   }
 
+  function line(pictogram, id, title, text, action) {
+    return '<div class="compte-v2_ligne-bloc"><div class="compte-v2_ligne">'
+      + '<div class="compte-v2_picto">' + pictogram + '</div>'
+      + '<div class="compte-v2_ligne-texte"' + (id ? ' id="' + id + '"' : '') + '>'
+      + '<div class="compte-v2_ligne-titre">' + escapeHtml(title) + '</div>'
+      + '<div class="compte-v2_muted">' + escapeHtml(text) + '</div>'
+      + '</div>' + action + '</div></div>';
+  }
+
   function rowHtml(c, on) {
-    return '<div class="ordo-prefs__row">'
-      + '<div class="ordo-prefs__label" id="ordo-prefs-' + c.key + '-label">'
-      + '<div class="ordo-prefs__title">' + escapeHtml(c.title) + '</div>'
-      + '<div class="ordo-prefs__text">' + escapeHtml(c.text) + '</div>'
-      + '</div>'
-      + '<button type="button" role="switch" class="ordo-prefs__switch" data-ordo-pref="' + c.key + '"'
-      + ' aria-checked="' + (on ? 'true' : 'false') + '" aria-labelledby="ordo-prefs-' + c.key + '-label">'
-      + '<span class="ordo-prefs__knob"></span></button>'
-      + '</div>';
+    var id = 'ordo-prefs-' + c.key + '-label';
+    return line(ICONS[c.key], id, c.title, c.text,
+      '<button type="button" role="switch" class="ordo-prefs__sw" data-ordo-pref="' + c.key + '"'
+      + ' aria-checked="' + (on ? 'true' : 'false') + '" aria-labelledby="' + id + '">'
+      + '<span class="ordo-prefs__knob"></span></button>');
   }
 
   function renderForm() {
-    var html = '<div class="ordo-prefs__intro"><h1>Vos e-mails Ordotype</h1>'
-      + '<p class="ordo-prefs__lead">Choisissez les e-mails que vous souhaitez recevoir à l’adresse <strong>'
-      + escapeHtml(state.email) + '</strong>.</p></div>'
-      + '<div data-ordo-banner></div>'
-      + '<section class="ordo-prefs__card" aria-label="Vos préférences d’e-mail">'
-      + '<div class="ordo-prefs__row"><div class="ordo-prefs__label">'
-      + '<div class="ordo-prefs__title">E-mails liés à votre compte</div>'
-      + '<div class="ordo-prefs__text">Factures, abonnement, pause, sécurité, certificats. Toujours envoyés : ils concernent votre compte.</div>'
-      + '</div><div class="ordo-prefs__lock">' + LOCK_SVG + '<span>Toujours actifs</span></div></div>';
-    for (var i = 0; i < CATEGORIES.length; i += 1) html += rowHtml(CATEGORIES[i], state.prefs[CATEGORIES[i].key]);
-    html += '</section>'
-      + '<div data-ordo-status aria-live="polite"></div>'
-      + '<div class="ordo-prefs__actions">'
-      + '<button type="button" class="ordo-prefs__save" data-ordo-save>Enregistrer mes choix</button>'
-      + '<button type="button" class="ordo-prefs__all-off" data-ordo-all-off>Ne plus recevoir aucun e-mail marketing</button>'
-      + '</div>'
-      + '<div class="ordo-prefs__note">Les e-mails liés à votre compte ne peuvent pas être désactivés tant que votre compte existe. '
-      + 'Une question ? Écrivez-nous à <a href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>.</div>';
-    root.innerHTML = html;
+    var lines = line(ICONS.compte, '', 'E-mails liés à votre compte',
+      'Factures, abonnement, pause, sécurité, certificats. Toujours envoyés : ils concernent votre compte.',
+      '<span class="compte-v2_badge ordo-prefs__badge">' + LOCK_SMALL + 'Toujours actifs</span>');
+    for (var i = 0; i < CATEGORIES.length; i += 1) lines += rowHtml(CATEGORIES[i], state.prefs[CATEGORIES[i].key]);
+    root.innerHTML = frame('Vos e-mails Ordotype', {
+      intro: '<p class="ordo-prefs__lead text-size-regular text-color-base-700">Choisissez les e-mails que vous souhaitez recevoir à l’adresse <strong>'
+        + escapeHtml(state.email) + '</strong>.</p>',
+      main: '<div data-ordo-banner></div>'
+        + '<section class="compte-v2_card is-liste" aria-label="Vos préférences d’e-mail">' + lines + '</section>'
+        + '<div data-ordo-status aria-live="polite"></div>'
+        + '<div class="ordo-prefs__actions">'
+        + '<button type="button" class="button no-full-width" data-ordo-save>Enregistrer mes choix</button>'
+        + '<button type="button" class="compte-v2_lien ordo-prefs__all-off" data-ordo-all-off>Ne plus recevoir aucun e-mail marketing</button>'
+        + '</div>'
+        + '<div class="compte-v2_help is-colonne">'
+        + '<div class="compte-v2_help-text">Les e-mails liés à votre compte ne peuvent pas être désactivés tant que votre compte existe. Une question ?</div>'
+        + '<a class="compte-v2_help-link" href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>'
+        + '</div>'
+    });
     renderBanner();
 
     var switches = root.querySelectorAll('[data-ordo-pref]');
@@ -291,8 +306,10 @@
     var slot = root.querySelector('[data-ordo-banner]');
     if (!slot) return;
     slot.innerHTML = state.unsubscribedAll
-      ? '<div class="ordo-prefs__banner" role="status">' + INFO_SVG + '<div><strong>Vous ne recevez plus aucun e-mail marketing d’Ordotype.</strong><br>'
-        + '<span>Vous continuerez de recevoir les e-mails liés à votre compte. Vous pouvez réactiver une catégorie à tout moment ci-dessous.</span></div></div>'
+      ? '<div class="ordo-prefs__banner" role="status"><div class="compte-v2_ligne-texte">'
+        + '<div class="compte-v2_ligne-titre">Vous ne recevez plus aucun e-mail marketing d’Ordotype.</div>'
+        + '<div class="compte-v2_muted">Vous continuerez de recevoir les e-mails liés à votre compte. Vous pouvez réactiver une catégorie à tout moment ci-dessous.</div>'
+        + '</div></div>'
       : '';
   }
 
@@ -300,7 +317,8 @@
     var slot = root.querySelector('[data-ordo-status]');
     if (!slot) return;
     slot.innerHTML = kind
-      ? '<div class="ordo-prefs__status ordo-prefs__status--' + kind + '"' + (kind === 'error' ? ' role="alert"' : '') + '>'
+      ? '<div class="ordo-prefs__status text-size-small' + (kind === 'ok' ? ' ordo-prefs__status--ok' : ' text-color-error') + '"'
+        + (kind === 'error' ? ' role="alert"' : '') + '>'
         + (kind === 'ok' ? CHECK_SVG : '') + '<span>' + escapeHtml(message) + '</span></div>'
       : '';
   }
