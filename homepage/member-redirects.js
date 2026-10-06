@@ -341,7 +341,7 @@
         /*
         else if (
             isInterne &&
-            semestre >= ms.getRequiredSemester(specialite) &&
+            ms.isInFinalSemester(semestreValue, specialite) &&
             !planConnections.some(plan =>
                 plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
                 plan.status !== 'CANCELED'

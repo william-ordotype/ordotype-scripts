@@ -206,7 +206,7 @@
 
     /**
      * Get the required semester for a given specialization.
-     * Returns the semester duration (6, 10, or 12) or 8 as default.
+     * Returns the semester duration (8, 10, or 12) or 8 as default.
      */
     function getRequiredSemester(specialization) {
         var durations = Object.keys(SPECIALIZATION_DURATIONS);
@@ -217,6 +217,18 @@
             }
         }
         return 8;
+    }
+
+    /**
+     * Last semester of the cursus, from the declared `semestre` value.
+     * A "6 (FST)" value is a final semester, whatever the specialization.
+     */
+    function isInFinalSemester(semestreValue, specialization) {
+        var value = String(semestreValue == null ? '' : semestreValue);
+        var semester = parseInt(value, 10);
+        if (isNaN(semester)) return false;
+        if (/\((FST|SFT)\)/i.test(value)) return semester >= 6;
+        return semester >= getRequiredSemester(specialization);
     }
 
     /**
@@ -432,6 +444,7 @@
         daysUntil: daysUntil,
         isFrenchTerritory: isFrenchTerritory,
         getRequiredSemester: getRequiredSemester,
+        isInFinalSemester: isInFinalSemester,
         getEndOfInternship: getEndOfInternship,
         markFinInternatSeen: markFinInternatSeen,
         watchFinInternatActions: watchFinInternatActions,

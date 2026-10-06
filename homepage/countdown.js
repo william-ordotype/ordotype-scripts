@@ -33,8 +33,8 @@
     const newdeadline = new Date(baseDate);
     newdeadline.setDate(newdeadline.getDate() + 15);
 
-    // Fixed deadline for the fin-internat banner (end of May 4th, Paris time)
-    const finInternatDeadline = new Date("2026-05-05T00:00:00+02:00");
+    // Fixed deadline for the fin-internat banner (end of November 2nd, Paris time)
+    const finInternatDeadline = new Date("2026-11-03T00:00:00+01:00");
 
     // Calculate the number of remaining days until the given end time
     const getDaysRemaining = endTime => {
