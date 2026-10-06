@@ -5,17 +5,29 @@
   var POURCENT = 100;
   var PORTRAIT = "(max-width: 479px)";
 
+  // En-tête du panneau : champ gris avec la loupe dedans, « Annuler » à droite.
+  // Classes propres au panneau : aucune règle du site ne s'y applique. La croix
+  // n'apparaît que s'il y a du texte (:placeholder-shown). Pas de « gap » ni
+  // d'« inset » : non pris en charge par les Safari plus anciens.
+  // Sans dvh, 100vh inclut la barre du navigateur : la marge sous la liste reste
+  // celle d'avant, pour que les derniers résultats restent atteignables.
   var CSS =
     ".ot-search-panel{display:none}" +
     ".ot-search-panel.is-open{display:block;position:fixed;top:0;right:0;bottom:0;left:0;background:#fff;z-index:10001;overscroll-behavior:contain}" +
-    ".ot-search-panel .search-block.search-block-results{display:block}" +
-    ".ot-search-panel .search-form-wrapper{width:100%}" +
-    ".ot-search-panel .main-reset-button{display:flex;align-items:center;padding:0;border:0;color:#9e9fa2}" +
-    "html.ot-search-open #search-results{z-index:10002!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 11rem);overflow-y:auto;overscroll-behavior:contain}" +
+    ".ot-search-head{display:flex;align-items:center;padding:8px 8px 8px 16px}" +
+    ".ot-search-field{position:relative;flex:1 1 0;min-width:0}" +
+    ".ot-search-icon{position:absolute;left:13px;top:50%;width:18px;height:18px;margin-top:-9px;opacity:.5;pointer-events:none}" +
+    ".ot-search-form{display:flex;align-items:center;height:48px;margin:0;padding:0 6px 0 40px;border-radius:14px;background:#f2f3f6;cursor:text}" +
+    ".ot-search-panel .ot-search-input{flex:1 1 0;min-width:0;width:auto;height:48px;margin:0;padding:0;border:0;border-radius:0;outline:0;background:transparent;box-shadow:none;-webkit-appearance:none;appearance:none;font:inherit;font-size:17px;font-weight:400;color:#0c0e16}" +
+    ".ot-search-clear{display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin:0;border:0;border-radius:8px;background:none;color:#80838d;cursor:pointer}" +
+    ".ot-search-clear svg{width:20px;height:20px}" +
+    ".ot-search-input:placeholder-shown+.ot-search-clear{display:none}" +
+    ".ot-search-panel .ot-search-back{display:flex;align-items:center;flex:none;height:44px;margin-left:6px;padding:0 8px;border-radius:8px;color:#3454f6;font-size:16px;font-weight:500;line-height:1;text-decoration:none}" +
+    ".ot-search-clear:focus-visible,.ot-search-panel .ot-search-back:focus-visible{outline:2px solid #3454f6;outline-offset:2px}" +
+    "html.ot-search-open #search-results{z-index:10002!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 6.5rem);overflow-y:auto;overscroll-behavior:contain}" +
     "html.ot-search-open #search-results .srt-menu{padding-left:.5rem}" +
     "html.ot-search-open #search-results .srt-content{border-top:0}" +
     "html.ot-search-open #search-results .search-result{padding:1rem 0 1rem .5rem!important;font-size:1rem!important;line-height:1.5}";
-  var CHEVRON = "https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/66254ffbec583eef92580c8b_chevron-left.svg";
   var LOUPE = "https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/6464fa4d45e5736b95f15198_search.svg";
   var CLEAR = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M14 8L8 14M8 8L14 14M21 11C21 16.5228 16.5228 21 11 21C5.47715 21 1 16.5228 1 11C1 5.47715 5.47715 1 11 1C16.5228 1 21 5.47715 21 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -90,8 +102,12 @@
       return;
     }
 
+    // Repère pour séparer les enregistrements avant et après l'en-tête « Annuler ».
+    safely(function () { if (typeof window.clarity === "function") window.clarity("set", "recherche_entete", "annuler"); });
+
     var home = input.parentNode, next = input.nextSibling, navClasses = input.className, navPlaceholder = input.placeholder;
-    var panel = null, form = null, nav = null, back = null;
+    var navEnterHint = input.getAttribute("enterkeyhint");
+    var panel = null, form = null, clear = null, back = null, guard = null;
     var open = false, leaving = false;
 
     // Construit au premier besoin seulement.
@@ -106,32 +122,36 @@
       panel.setAttribute("aria-modal", "true");
       panel.setAttribute("aria-label", "Recherche");
       panel.innerHTML =
-        '<div class="padding-global"><div class="container-large relative"><div class="padding-section-xsmall smaller-search">' +
-        '<div class="search-block search-block-results">' +
-        '<a href="#" class="search-back-button search-back-button-components w-inline-block ot-search-back" aria-label="Fermer la recherche"><img src="' + CHEVRON + '" alt=""></a>' +
-        '<div class="search-form margin-left margin-xxlarge"><img src="' + LOUPE + '" alt="" class="search-icon">' +
-        '<form class="search-form-wrapper width-auto-mobile" role="search">' +
-        '<div class="search-nav"><button type="button" class="main-reset-button ot-search-clear" style="background:none" aria-label="Effacer">' + CLEAR + "</button>" +
-        '<div class="seaparator-nav"></div><a href="#" class="button is-grey is-search w-inline-block ot-search-go" aria-label="Rechercher"></a></div>' +
-        "</form></div></div></div></div></div>";
+        '<div class="ot-search-head"><div class="ot-search-field"><img src="' + LOUPE + '" alt="" class="ot-search-icon">' +
+        '<form class="ot-search-form" role="search">' +
+        '<button type="button" class="ot-search-clear" aria-label="Effacer">' + CLEAR + "</button>" +
+        "</form></div>" +
+        '<a href="#" class="ot-search-back">Annuler</a></div>';
       document.body.appendChild(panel);
       form = panel.querySelector("form");
-      nav = panel.querySelector(".search-nav");
+      clear = panel.querySelector(".ot-search-clear");
       back = panel.querySelector(".ot-search-back");
+      // « Annuler » remplace l'ancienne flèche de gauche. Le code et la mesure
+      // gardent ses noms (back, arrowTaps, raison « fleche », « fleche_recouverte »)
+      // pour que les chiffres restent comparables.
       back.addEventListener("click", function (e) { e.preventDefault(); requestClose("fleche"); });
-      panel.querySelector(".ot-search-clear").addEventListener("click", function () {
+      clear.addEventListener("click", function () {
         input.value = "";
         removeResults();
         input.focus();
       });
-      panel.querySelector(".ot-search-go").addEventListener("click", function (e) {
-        e.preventDefault();
-        var q = input.value.trim();
-        if (!q) return input.focus();
-        try { endSession("page_resultats"); }
-        finally { window.location.href = window.location.origin + "/search-result?query=" + encodeURIComponent(q) + "&page=1"; }
+      // Tout le champ gris est cliquable, loupe et marges comprises.
+      panel.querySelector(".ot-search-field").addEventListener("click", function (e) {
+        if (e.target !== input && !clear.contains(e.target)) input.focus();
       });
       form.addEventListener("submit", function (e) { e.preventDefault(); });
+      // Une réponse du moteur arrivée après l'effacement ne doit pas réafficher
+      // de résultats sous un champ vide.
+      if (window.MutationObserver) {
+        guard = new MutationObserver(function () {
+          if (open && !input.value.trim()) removeResults();
+        });
+      }
     }
 
     function describe(el) {
@@ -185,7 +205,7 @@
       if (outcome === "fleche" || outcome === "retour_telephone" || outcome === "echap") lastEmptyClose = Date.now();
       else if (outcome === "resultat" || outcome === "page_resultats") lastEmptyClose = 0;
     }
-    // La flèche et le champ sont-ils vraiment touchables, sur l'écran réel ?
+    // « Annuler » et le champ sont-ils vraiment touchables, sur l'écran réel ?
     // Aucun élément sous le point (ou page cachée) : la page n'est pas encore
     // affichée, par exemple restaurée par Safari depuis l'historique. Ce n'est
     // pas un recouvrement : on remesure, puis on le note sans alerte.
@@ -220,13 +240,15 @@
       if (open) return;
       build();
       try {
-        form.insertBefore(input, nav);
+        form.insertBefore(input, clear);
       } catch (err) {
         return report(err);
       }
       open = true;
-      input.className = "search-bar-main w-input";
+      input.className = "ot-search-input";
       input.placeholder = "Chercher";
+      input.setAttribute("enterkeyhint", "search"); // touche « Rechercher » du clavier
+      if (guard) guard.observe(document.body, { childList: true });
       panel.classList.add("is-open");
       document.documentElement.classList.add("ot-search-open");
       startSession(origin);
@@ -241,10 +263,13 @@
       panel.classList.remove("is-open");
       document.documentElement.classList.remove("ot-search-open");
       safely(function () { endSession(reason); });
+      if (guard) guard.disconnect();
       removeResults();
       if (reason !== "rotation") input.value = "";
       input.className = navClasses;
       input.placeholder = navPlaceholder;
+      if (navEnterHint === null) input.removeAttribute("enterkeyhint");
+      else input.setAttribute("enterkeyhint", navEnterHint);
       try {
         home.insertBefore(input, next && next.parentNode === home ? next : null);
       } catch (err) {
@@ -310,15 +335,25 @@
     document.addEventListener("click", function (e) {
       if (!open || !S || !e.target.closest) return;
       if (e.target.closest("#search-results .search-result")) return safely(function () { endSession("resultat"); });
-      // Un vrai clic sur la flèche doit fermer. Seulement pour une séance ouverte
+      // Un vrai clic sur « Annuler » doit fermer. Seulement pour une séance ouverte
       // par la loupe dans cette page : son retour d'historique est immédiat.
       if (back.contains(e.target) && S.origin === "loupe") {
         var s = S;
         setTimeout(function () { if (open && S === s && !leaving) problem("fermeture_sans_effet", "", true); }, 1500);
       }
     }, true);
-    input.addEventListener("keydown", function (e) {
-      if (open && S && e.key === "Enter" && input.value.trim()) safely(function () { endSession("page_resultats"); });
+    // Entrée : page de résultats avec la requête encodée (« & », « # », « % »).
+    // Traité avant le moteur de recherche, qui ne l'encode pas ; un résultat
+    // choisi au clavier (flèches) reste ouvert par le moteur. Champ vide : rien.
+    document.addEventListener("keydown", function (e) {
+      if (!open || e.key !== "Enter" || e.target !== input || e.isComposing) return;
+      if (document.querySelector("#search-results .autocomplete-active")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var q = input.value.trim();
+      if (!q) return;
+      safely(function () { endSession("page_resultats"); });
+      window.location.href = window.location.origin + "/search-result?query=" + encodeURIComponent(q) + "&page=1";
     }, true);
     var countTimer;
     input.addEventListener("input", function () {
