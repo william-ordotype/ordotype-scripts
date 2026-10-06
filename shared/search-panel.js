@@ -11,6 +11,9 @@
   // d'« inset » : non pris en charge par les Safari plus anciens.
   // Sans dvh, 100vh inclut la barre du navigateur : la marge sous la liste reste
   // celle d'avant, pour que les derniers résultats restent atteignables.
+  // La liste est toujours posée sous l'en-tête (8 + 48 + 5 px) : le moteur
+  // calcule sa position d'après le champ au moment où il la crée, ce qui peut
+  // tomber pendant un défilement de l'écran (clavier, retour dans Safari).
   var CSS =
     ".ot-search-panel{display:none}" +
     ".ot-search-panel.is-open{display:block;position:fixed;top:0;right:0;bottom:0;left:0;background:#fff;z-index:10001;overscroll-behavior:contain}" +
@@ -24,7 +27,7 @@
     ".ot-search-input:placeholder-shown+.ot-search-clear{display:none}" +
     ".ot-search-panel .ot-search-back{display:flex;align-items:center;flex:none;height:44px;margin-left:6px;padding:0 8px;border-radius:8px;color:#3454f6;font-size:16px;font-weight:500;line-height:1;text-decoration:none}" +
     ".ot-search-clear:focus-visible,.ot-search-panel .ot-search-back:focus-visible{outline:2px solid #3454f6;outline-offset:2px}" +
-    "html.ot-search-open #search-results{z-index:10002!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 6.5rem);overflow-y:auto;overscroll-behavior:contain}" +
+    "html.ot-search-open #search-results{z-index:10002!important;top:61px!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 6.5rem);overflow-y:auto;overscroll-behavior:contain}" +
     "html.ot-search-open #search-results .srt-menu{padding-left:.5rem}" +
     "html.ot-search-open #search-results .srt-content{border-top:0}" +
     "html.ot-search-open #search-results .search-result{padding:1rem 0 1rem .5rem!important;font-size:1rem!important;line-height:1.5}";
@@ -205,10 +208,17 @@
       if (outcome === "fleche" || outcome === "retour_telephone" || outcome === "echap") lastEmptyClose = Date.now();
       else if (outcome === "resultat" || outcome === "page_resultats") lastEmptyClose = 0;
     }
+    // Écran décalé ou zoomé (clavier qui réapparaît au retour dans Safari, zoom
+    // du doigt) : les points mesurés ne correspondent plus à ce qui est affiché.
+    function viewportShifted() {
+      var vv = window.visualViewport;
+      return !!vv && (vv.offsetTop > 1 || vv.scale > 1.01);
+    }
     // « Annuler » et le champ sont-ils vraiment touchables, sur l'écran réel ?
-    // Aucun élément sous le point (ou page cachée) : la page n'est pas encore
-    // affichée, par exemple restaurée par Safari depuis l'historique. Ce n'est
-    // pas un recouvrement : on remesure, puis on le note sans alerte.
+    // Aucun élément sous le point, page cachée ou écran décalé : la page n'est
+    // pas encore affichée ou pas encore stable, par exemple restaurée par Safari
+    // depuis l'historique ou au retour d'une autre appli. Ce n'est pas un
+    // recouvrement : on remesure, puis on le note sans alerte.
     function selfCheck(attempt) {
       if (!open || !S) return;
       var s = S;
@@ -219,7 +229,7 @@
         var r = input.getBoundingClientRect();
         var invisible = r.width < 1 || r.height < 1;
         var hit2 = invisible ? null : document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        if (!hit || (!invisible && !hit2) || document.visibilityState === "hidden") {
+        if (!hit || (!invisible && !hit2) || document.visibilityState === "hidden" || viewportShifted()) {
           if (attempt < 3) return setTimeout(function () { if (open && S === s) selfCheck(attempt + 1); }, 400);
           s.unchecked = true;
           return;
@@ -322,7 +332,7 @@
         var b = back.getBoundingClientRect();
         var inArrowBox = e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom;
         // Recouverte = l'appui tombe sur autre chose que le panneau.
-        if (inArrowBox && !panel.contains(e.target)) problem("fleche_recouverte", describe(e.target), true);
+        if (inArrowBox && !panel.contains(e.target) && !viewportShifted()) problem("fleche_recouverte", describe(e.target), true);
         if (back.contains(e.target)) S.arrowTaps++;
         if (e.target === input && !S.typed) S.refocus = true;
         var now = Date.now(), x = e.clientX, y = e.clientY;

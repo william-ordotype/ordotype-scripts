@@ -30,8 +30,11 @@
  *     annulé ne sont PAS des pannes ; Annuler recouvert et fermeture sans effet
  *     le sont ;
  *   - un point sans élément (page pas encore affichée, restaurée par Safari
- *     depuis l'historique) n'est PAS un recouvrement : remesuré, puis noté
- *     « controle_impossible » à la fermeture, sans alerte ;
+ *     depuis l'historique) ou un écran décalé/zoomé (clavier au retour dans
+ *     Safari) n'est PAS un recouvrement : remesuré, puis noté
+ *     « controle_impossible » à la fermeture, sans alerte ; un vrai
+ *     recouvrement une fois l'écran stable reste signalé ;
+ *   - la liste des résultats est toujours posée sous l'en-tête ;
  *   - le panneau se ferme même si l'entête a changé entre-temps ;
  *   - chaque envoi porte toutes les clés ; une mesure en panne ne casse rien ;
  *     le rapporteur commun est utilisé quand il est là.
@@ -59,7 +62,7 @@ const TAP_BACK = [340, 30]; // un appui au milieu d'« Annuler »
 async function load(opts) {
     const o = Object.assign({ mobile: true, bucket: '10', engine: true, covered: false, storageBroken: false,
         pushBroken: false, random: 0.5, src: SRC, state: null, reporter: false, variantWriteBroken: false,
-        nullPoints: 0 }, opts);
+        nullPoints: 0, viewport: null }, opts);
     const dom = new JSDOM(html, {
         url: 'https://www.ordotype.fr/pathologies/exemple',
         runScripts: 'outside-only',
@@ -96,6 +99,7 @@ async function load(opts) {
         Object.defineProperty(win, 'localStorage', { get() { throw new Error('stockage refusé'); } });
     }
     if (o.state) win.history.replaceState(o.state, '');
+    if (o.viewport) win.visualViewport = o.viewport; // objet modifiable par le test
     win.addEventListener('error', (e) => reported.push({ name: e.error && e.error.name, message: e.message }));
     win.HTMLElement.prototype.getBoundingClientRect = function () {
         if (this.classList.contains('ot-search-back')) return ARROW;
@@ -233,6 +237,10 @@ async function main() {
         const css = [...doc.querySelectorAll('style')].map((s) => s.textContent).join('');
         check('styles sans « inset » ni « gap », avec repli vh', !/inset:/.test(css) && !/[{;]gap:/.test(css) && css.indexOf('100vh') >= 0 && css.indexOf('100vh') < css.indexOf('100dvh'), 'styles non compatibles');
         check('sans dvh, la marge sous la liste reste celle d’avant', css.includes('max-height:calc(100vh - 11rem)'), 'repli vh réduit');
+        const pose = [...doc.styleSheets].flatMap((sh) => [...sh.cssRules])
+            .find((r) => r.selectorText === 'html.ot-search-open #search-results' && r.style.top);
+        check('liste toujours posée sous l’en-tête', pose && pose.style.top === '61px' && pose.style.getPropertyPriority('top') === 'important',
+            pose ? pose.style.cssText : 'aucune règle');
         const open = events(pushed, 'search_panel_open')[0];
         check('ouverture : moitié panneau, loupe', open && open.rollout_bucket === 'panneau' && open.reason === 'loupe', JSON.stringify(open));
         check('toutes les clés présentes', open && KEYS.every((k) => k in open), open && KEYS.filter((k) => !(k in open)));
@@ -462,6 +470,51 @@ async function main() {
         phoneBack(win);
         const close = events(pushed, 'search_panel_close')[0];
         check('noté controle_impossible à la fermeture', close && /controle_impossible/.test(close.reason_codes), JSON.stringify(close));
+    }
+
+    console.log('retour dans Safari, écran décalé (clavier) : pas d’alerte');
+    {
+        const { win, doc, pushed, reported } = await load({ covered: true, viewport: { offsetTop: 60, scale: 1 } });
+        tapLoupe(win, doc);
+        await wait(1500);
+        check('pas de recouvrement signalé', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
+        check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
+        pointer(win, doc.querySelector('.navbar2_logo-link'), ...TAP_BACK);
+        check('appui pendant le décalage : pas de panne', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
+        win.history.back();
+        await settle();
+        const close = events(pushed, 'search_panel_close')[0];
+        check('noté controle_impossible à la fermeture', close && /controle_impossible/.test(close.reason_codes), JSON.stringify(close));
+    }
+
+    console.log('écran zoomé : pas d’alerte');
+    {
+        const { win, doc, pushed, reported } = await load({ covered: true, viewport: { offsetTop: 0, scale: 1.6 } });
+        tapLoupe(win, doc);
+        await wait(1500);
+        check('aucune alerte', blocking(reported).length === 0 && events(pushed, 'search_panel_problem').length === 0, JSON.stringify(reported));
+    }
+
+    console.log('écran décalé puis stabilisé, Annuler vraiment recouvert : alerte');
+    {
+        const vv = { offsetTop: 60, scale: 1 };
+        const { win, doc, reported } = await load({ covered: true, viewport: vv });
+        tapLoupe(win, doc);
+        await frames(win);
+        check('rien tant que l’écran est décalé', blocking(reported).length === 0, JSON.stringify(reported));
+        vv.offsetTop = 0;
+        await wait(500);
+        check('signalé une fois l’écran stable', blocking(reported).some((r) => /fleche_recouverte/.test(r.message)), JSON.stringify(reported));
+    }
+
+    console.log('écran stable (offsetTop 0, échelle 1) : contrôle normal');
+    {
+        const { win, doc, pushed } = await load({ viewport: { offsetTop: 0, scale: 1 } });
+        tapLoupe(win, doc);
+        await frames(win);
+        check('rien de recouvert, rien signalé', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
+        pointer(win, doc.querySelector('.navbar2_logo-link'), ...TAP_BACK);
+        check('appui qui tombe sur l’entête : détecté', events(pushed, 'search_panel_problem').some((p) => /^fleche_recouverte:/.test(p.failure_reason)), JSON.stringify(events(pushed, 'search_panel_problem')));
     }
 
     console.log('page cachée à l’ouverture, Annuler recouvert une fois affiché');
