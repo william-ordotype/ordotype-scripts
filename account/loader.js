@@ -95,11 +95,11 @@
       'www.ordotype.fr': 100
     },
     // Carte « E-mails » de Mon profil, bouton vers /preferences-email. Aucun appel serveur.
-    // Ouverte en même temps que la page /preferences-email est publiée.
+    // 100 % depuis le 2026-10-06, publiée avec la page /preferences-email.
     'email-preferences-card.js': {
       'sandbox-ordotype.webflow.io': 100,
       'ordotype.webflow.io': 100,
-      'www.ordotype.fr': 0
+      'www.ordotype.fr': 100
     },
     // Vérification du RPPS dans l'Annuaire santé, depuis « Mon profil ».
     'rpps-finder.js': {

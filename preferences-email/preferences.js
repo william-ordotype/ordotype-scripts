@@ -10,7 +10,7 @@
  *     le fragment (`#c=<clé>`) : aucune connexion demandée ;
  *   - connecté, depuis Mon compte : le jeton Memberstack suffit.
  * Une clé inconnue retombe sur le compte connecté s'il y en a un, sinon la page
- * propose de se connecter.
+ * propose de se connecter, et y revient après la connexion (`locat`).
  *
  * 🔴 La clé ne reste pas dans la barre d'adresse : elle est rangée dans
  * sessionStorage (un rechargement la retrouve) et le fragment est effacé. Le
@@ -210,7 +210,20 @@
       + '<p class="ordo-prefs__lead" role="status">Chargement de vos préférences…</p>';
   }
 
+  /**
+   * Retour ici après la connexion : chaîne existante du site. La page de
+   * connexion envoie sur /membership/successful-login (après la 2FA aussi), qui
+   * relit `localStorage.locat`. L'adresse écrite n'a ni fragment ni paramètre :
+   * jamais la clé d'un lien.
+   */
+  function rememberReturn() {
+    try {
+      window.localStorage.setItem('locat', window.location.origin + window.location.pathname);
+    } catch (e) { /* navigation privée : le membre reviendra par Mon compte */ }
+  }
+
   function renderSignIn(linkWasInvalid) {
+    rememberReturn();
     var title = linkWasInvalid ? 'Ce lien n’est plus valide' : 'Gérez vos e-mails Ordotype';
     root.innerHTML = '<div class="ordo-prefs__intro">'
       + '<h1>' + title + '</h1>'

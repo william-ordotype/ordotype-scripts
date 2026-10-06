@@ -78,6 +78,7 @@ const texte = (r) => r.d.getElementById('ordotype-email-preferences').textConten
     /^text\/plain/.test(premier.opts.headers['Content-Type']) && !premier.opts.headers.Authorization && premier.opts.method === 'POST');
   verifier('lien : fragment effacé de l\'adresse', r.w.location.hash === '' && r.w.location.href === 'https://www.ordotype.fr/preferences-email', r.w.location.href);
   verifier('lien : clé gardée en session', r.w.sessionStorage.getItem('ordo-email-prefs-key') === CLE);
+  verifier('lien valide : locat pas touché', r.w.localStorage.getItem('locat') === null);
   verifier('lien : adresse masquée affichée', texte(r).includes('c•••n@exemple.fr'));
   verifier('lien : interrupteurs à l\'état du serveur', etat(r) === 'true,false,true', etat(r));
   verifier('lien : e-mails du compte verrouillés', texte(r).includes('Toujours actifs'));
@@ -122,6 +123,8 @@ const texte = (r) => r.d.getElementById('ordotype-email-preferences').textConten
   await attendre();
   verifier('clé inconnue sans compte : « Ce lien n\'est plus valide »', texte(r).includes('Ce lien n’est plus valide') && !!r.d.querySelector('a[href="/membership/login-ms"]'));
   verifier('clé inconnue : oubliée de la session', r.w.sessionStorage.getItem('ordo-email-prefs-key') === null);
+  verifier('clé inconnue : retour après connexion sur la page, sans la clé',
+    r.w.localStorage.getItem('locat') === 'https://www.ordotype.fr/preferences-email');
   verifier('clé inconnue : pas un incident', !r.evenements.some((e) => e.report || e.reportNetwork));
 
   // --- clé inconnue, connecté : son compte
@@ -137,6 +140,7 @@ const texte = (r) => r.d.getElementById('ordotype-email-preferences').textConten
   r = jouer({ serveur: () => ({ status: 500, body: {} }) });
   await attendre();
   verifier('sans clé ni compte : invitation à se connecter, aucun appel', r.appels.length === 0 && texte(r).includes('Gérez vos e-mails Ordotype'));
+  verifier('sans clé ni compte : retour après connexion écrit', r.w.localStorage.getItem('locat') === 'https://www.ordotype.fr/preferences-email');
   r = jouer({ jeton: 'tok_ok', serveur: () => ({ status: 200, body: { email: 'c.martin@exemple.fr', prefs: { newsletter: true, onboarding: true, offers: true }, unsubscribedAll: false } }) });
   await attendre();
   verifier('connecté : jeton dans le corps', r.appels.length === 1 && r.appels[0].corps.token === 'tok_ok' && !r.appels[0].opts.headers.Authorization);
