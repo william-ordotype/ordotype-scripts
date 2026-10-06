@@ -3,10 +3,9 @@
  * Vérifie shared/search-panel.js contre le HTML RÉEL de l'entête d'une fiche
  * (test/fixtures/entete-fiche.html).
  *
- * La géométrie simulée est celle du panneau en 390 px : le champ (x 16 à 300)
- * puis « Annuler » à sa droite (x 306 à 382). « Annuler » est le bouton de
- * fermeture ; dans le code et la mesure il garde le nom de « flèche »
- * (ot-search-back, raison « fleche »).
+ * La géométrie simulée est celle du panneau en 390 px : la flèche de
+ * fermeture à gauche (x 4 à 48), puis le champ (x 50 à 378), dont la zone de
+ * saisie commence après la loupe (x 90).
  *
  * Ce qui doit tenir :
  *   - ordinateur : rien ne change, aucun tirage ;
@@ -15,19 +14,19 @@
  *     recherche absent : la loupe garde son lien ;
  *   - moitié panneau : panneau construit au premier appui seulement ; la loupe
  *     l'ouvre sans changer de page ; le champ y est déplacé puis remis ;
- *   - en-tête : champ puis « Annuler » (nom accessible = texte visible), croix
+ *   - en-tête : flèche puis champ (flèche nommée pour les lecteurs d'écran), croix
  *     masquée tant que le champ est vide, pas de loupe à droite, aucune classe
  *     du site sur le champ ouvert, tout le champ gris donne le focus, touche
  *     « Rechercher » du clavier ; une réponse tardive du moteur ne réaffiche
  *     rien sous un champ effacé ;
  *   - Entrée : traitée avant le moteur (requête encodée), sauf résultat choisi
  *     au clavier ; champ vide : rien ;
- *   - sorties : Annuler, bouton retour, Échap, passage en paysage (texte gardé),
+ *   - sorties : flèche, bouton retour, Échap, passage en paysage (texte gardé),
  *     Entrée, résultat choisi ; appli quittée puis reprise ;
  *   - la recherche abandonnée reste visible du moteur (focus perdu avant vidage) ;
  *   - retour sur l'entrée du panneau : rouvert seulement si le moteur est branché ;
- *   - un appui dans le panneau près d'Annuler (marge, espace, croix) ou un appui
- *     annulé ne sont PAS des pannes ; Annuler recouvert et fermeture sans effet
+ *   - un appui dans le panneau près de la flèche (marge, champ, croix) ou un appui
+ *     annulé ne sont PAS des pannes ; flèche recouverte et fermeture sans effet
  *     le sont ;
  *   - un point sans élément (page pas encore affichée, restaurée par Safari
  *     depuis l'historique) ou un écran décalé/zoomé (clavier au retour dans
@@ -55,9 +54,9 @@ function withPercent(n) {
 }
 const KEYS = ['event', 'element', 'rollout_bucket', 'rollout_percent', 'rollout_reason',
     'reason', 'reason_codes', 'failure_reason', 'time_on_page_sec'];
-const ARROW = { left: 306, top: 10, width: 76, height: 44, right: 382, bottom: 54 };
-const FIELD = { left: 56, top: 8, width: 238, height: 48, right: 294, bottom: 56 };
-const TAP_BACK = [340, 30]; // un appui au milieu d'« Annuler »
+const ARROW = { left: 4, top: 10, width: 44, height: 44, right: 48, bottom: 54 };
+const FIELD = { left: 90, top: 8, width: 250, height: 48, right: 340, bottom: 56 };
+const TAP_BACK = [26, 32]; // un appui au milieu de la flèche
 
 async function load(opts) {
     const o = Object.assign({ mobile: true, bucket: '10', engine: true, covered: false, storageBroken: false,
@@ -110,7 +109,7 @@ async function load(opts) {
     doc.elementFromPoint = (x) => {
         if (nulls > 0) { nulls--; return null; }
         if (o.covered) return doc.querySelector('.navbar2_container');
-        return x >= ARROW.left ? doc.querySelector('.ot-search-back') : doc.getElementById('search-bar-nav');
+        return x < ARROW.right ? doc.querySelector('.ot-search-back img') : doc.getElementById('search-bar-nav');
     };
     if (o.engine) win.eval("var searchBar = document.getElementById('search-bar-nav');");
     win.eval(o.src);
@@ -220,7 +219,7 @@ async function main() {
         check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
     }
 
-    console.log('panneau : ouverture puis Annuler');
+    console.log('panneau : ouverture puis flèche');
     {
         const { win, doc, pushed, reported, clarity } = await load({});
         await wait(50); // une construction différée aurait eu lieu
@@ -249,13 +248,13 @@ async function main() {
         type(win, input, 'angine');
         const head = doc.querySelector('.ot-search-head');
         // espacés : trois appuis rapprochés en moins de 800 ms seraient des « appuis rageurs »
-        pointer(win, head, ARROW.left + 2, 30); // marge de l'en-tête, dans la zone d'Annuler
+        pointer(win, head, ARROW.left + 1, 30); // marge de l'en-tête, dans la zone de la flèche
         await wait(850);
-        pointer(win, head, FIELD.right + 6, 30); // espace entre le champ et Annuler
+        pointer(win, doc.querySelector('.ot-search-field'), ARROW.right + 3, 30); // bord gauche du champ, juste après la flèche
         await wait(850);
-        pointer(win, doc.querySelector('.ot-search-clear'), FIELD.right - 10, 30); // croix
+        pointer(win, doc.querySelector('.ot-search-clear'), FIELD.right + 20, 30); // croix
         await wait(1700);
-        check('appuis dans le panneau près d’Annuler : pas de panne', events(pushed, 'search_panel_problem').length === 0 && blocking(reported).length === 0,
+        check('appuis dans le panneau près de la flèche : pas de panne', events(pushed, 'search_panel_problem').length === 0 && blocking(reported).length === 0,
             JSON.stringify(events(pushed, 'search_panel_problem')));
         const back = doc.querySelector('.ot-search-back');
         pointer(win, back, ...TAP_BACK);
@@ -273,7 +272,7 @@ async function main() {
         check('séance étiquetée pour les enregistrements', clarity.some((c) => c[0] === 'event' && c[1] === 'search_panel_close_fleche'), JSON.stringify(clarity));
     }
 
-    console.log('en-tête : champ puis Annuler, croix seulement avec du texte');
+    console.log('en-tête : flèche puis champ, croix seulement avec du texte');
     {
         const { win, doc, clarity } = await load({});
         const input = doc.getElementById('search-bar-nav');
@@ -282,10 +281,10 @@ async function main() {
         const head = doc.querySelector('.ot-search-panel .ot-search-head');
         const back = doc.querySelector('.ot-search-back');
         const field = doc.querySelector('.ot-search-field');
-        check('Annuler, à droite du champ', back && back.textContent === 'Annuler' && field && back.parentNode === head &&
-            !!(field.compareDocumentPosition(back) & win.Node.DOCUMENT_POSITION_FOLLOWING), back && back.outerHTML);
-        const label = back && back.getAttribute('aria-label');
-        check('nom accessible = texte visible « Annuler »', back && (label === null || /^Annuler/.test(label)), back && back.outerHTML);
+        check('flèche, à gauche du champ', back && back.querySelector('img') && back.textContent.trim() === '' && field && back.parentNode === head &&
+            !!(field.compareDocumentPosition(back) & win.Node.DOCUMENT_POSITION_PRECEDING), back && back.outerHTML);
+        check('flèche nommée pour les lecteurs d’écran', back && back.getAttribute('aria-label') === 'Fermer la recherche' && back.querySelector('img').getAttribute('alt') === '',
+            back && back.outerHTML);
         check('pas de loupe à droite', !doc.querySelector('.ot-search-panel .ot-search-go, .ot-search-panel .seaparator-nav'), 'loupe de droite présente');
         check('loupe dans le champ', !!doc.querySelector('.ot-search-field > img.ot-search-icon'), 'loupe absente');
         const clear = doc.querySelector('.ot-search-clear');
@@ -330,7 +329,7 @@ async function main() {
         results(doc, 2); // panneau fermé : la garde ne touche plus à rien
         await settle();
         check('panneau fermé : la garde ne retire rien', !!doc.getElementById('search-results'), 'retiré');
-        check('repère « Annuler » pour les enregistrements', clarity.some((c) => c[0] === 'set' && c[1] === 'recherche_entete' && c[2] === 'annuler'), JSON.stringify(clarity));
+        check('repère de version de l’en-tête pour les enregistrements', clarity.some((c) => c[0] === 'set' && c[1] === 'recherche_entete' && c[2] === 'fleche_gauche'), JSON.stringify(clarity));
     }
 
     console.log('panneau : bouton retour, Échap, Entrée');
@@ -439,7 +438,7 @@ async function main() {
         check('moteur absent : reste fermé', !panelOpen(t.doc), 'ouvert sans moteur');
     }
 
-    console.log('bloqué : Annuler recouvert');
+    console.log('bloqué : flèche recouverte');
     {
         const { win, doc, pushed, reported } = await load({ covered: true });
         tapLoupe(win, doc);
@@ -495,7 +494,7 @@ async function main() {
         check('aucune alerte', blocking(reported).length === 0 && events(pushed, 'search_panel_problem').length === 0, JSON.stringify(reported));
     }
 
-    console.log('écran décalé puis stabilisé, Annuler vraiment recouvert : alerte');
+    console.log('écran décalé puis stabilisé, flèche vraiment recouverte : alerte');
     {
         const vv = { offsetTop: 60, scale: 1 };
         const { win, doc, reported } = await load({ covered: true, viewport: vv });
@@ -517,7 +516,7 @@ async function main() {
         check('appui qui tombe sur l’entête : détecté', events(pushed, 'search_panel_problem').some((p) => /^fleche_recouverte:/.test(p.failure_reason)), JSON.stringify(events(pushed, 'search_panel_problem')));
     }
 
-    console.log('page cachée à l’ouverture, Annuler recouvert une fois affiché');
+    console.log('page cachée à l’ouverture, flèche recouverte une fois affichée');
     {
         const t = await load({ covered: true, state: { otSearch: 1 }, src: 'Object.defineProperty(document, "visibilityState", { configurable: true, get: function () { return window.__vis || "hidden"; } });\n' + SRC });
         await frames(t.win);
@@ -527,16 +526,16 @@ async function main() {
         check('signalé une fois affichée', blocking(t.reported).some((r) => /fleche_recouverte/.test(r.message)), JSON.stringify(t.reported));
     }
 
-    console.log('bloqué : appui sur Annuler qui tombe sur l’entête');
+    console.log('bloqué : appui sur la flèche qui tombe sur l’entête');
     {
         const { win, doc, pushed } = await load({});
         tapLoupe(win, doc);
         pointer(win, doc.querySelector('.navbar2_logo-link'), ...TAP_BACK);
         const pb = events(pushed, 'search_panel_problem').map((p) => p.failure_reason);
-        check('Annuler recouvert détecté à l’appui', pb.some((r) => /^fleche_recouverte:/.test(r)), JSON.stringify(pb));
+        check('flèche recouverte détectée à l’appui', pb.some((r) => /^fleche_recouverte:/.test(r)), JSON.stringify(pb));
     }
 
-    console.log('bloqué : Annuler ne ferme plus');
+    console.log('bloqué : la flèche ne ferme plus');
     {
         const { win, doc, pushed, reported } = await load({});
         tapLoupe(win, doc);
@@ -551,7 +550,7 @@ async function main() {
         check('alerte bloquante', blocking(reported).some((r) => /fermeture_sans_effet/.test(r.message)), JSON.stringify(reported));
     }
 
-    console.log('appui annulé sur Annuler (défilement)');
+    console.log('appui annulé sur la flèche (défilement)');
     {
         const { win, doc, pushed, reported } = await load({});
         tapLoupe(win, doc);
