@@ -315,16 +315,16 @@ async function test(name, fn) {
   });
 
   await test('non connecté : « Se connecter » garde l\'onglet visé, sinon le lien du Designer reste tel quel', async () => {
-    const LIEN = '<a data-ordo-connexion-retour="1" href="/membership/login-ms?returnTo=%2Fmembership%2Fcompte">Se connecter</a>';
+    const LIEN = '<a data-ordo-connexion-retour="1" href="/membership/login-redirect-rempla?redirect=%2Fmembership%2Fcompte">Se connecter</a>';
     let r = page({ url: 'https://www.ordotype.fr/membership/compte?utm_source=postmark#abonnements', apres: LIEN });
     await tick(0);
     assert.strictEqual(r.d.querySelector('[data-ordo-connexion-retour]').getAttribute('href'),
-      '/membership/login-ms?returnTo=%2Fmembership%2Fcompte%23abonnements', 'onglet gardé, UTM laissés de côté');
+      '/membership/login-redirect-rempla?redirect=%2Fmembership%2Fcompte%23abonnements', 'onglet gardé, UTM laissés de côté');
 
     r = page({ url: 'https://www.ordotype.fr/membership/compte?utm_source=postmark', apres: LIEN });
     await tick(0);
     assert.strictEqual(r.d.querySelector('[data-ordo-connexion-retour]').getAttribute('href'),
-      '/membership/login-ms?returnTo=%2Fmembership%2Fcompte', 'sans onglet : lien du Designer inchangé');
+      '/membership/login-redirect-rempla?redirect=%2Fmembership%2Fcompte', 'sans onglet : lien du Designer inchangé');
 
     r = page({ url: 'https://www.ordotype.fr/membership/compte#abonnements' });
     await tick(0); // page sans le lien (membre connecté, ancien Designer) : rien ne casse

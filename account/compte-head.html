@@ -86,10 +86,12 @@
 })();
 
 // Visiteur non connecté : « Se connecter » le ramène sur Mon compte après la connexion, onglet compris
-// (#abonnements…). Le lien du Designer porte déjà le retour sans onglet ; on n'y touche que s'il y a un onglet.
+// (#abonnements…). Chaîne existante : la page de connexion écrit la cible dans localStorage.locat, Memberstack
+// renvoie sur /membership/successful-login après la connexion et après la 2FA, qui relit locat. Le lien du
+// Designer porte déjà le retour sans onglet ; on n'y touche que s'il y a un onglet.
 document.addEventListener('DOMContentLoaded', function () {
   var lien = document.querySelector('[data-ordo-connexion-retour]');
-  if (lien && location.hash) lien.href = '/membership/login-ms?returnTo=' + encodeURIComponent(location.pathname + location.hash);
+  if (lien && location.hash) lien.href = '/membership/login-redirect-rempla?redirect=' + encodeURIComponent(location.pathname + location.hash);
 });
 </script>
 <style>
