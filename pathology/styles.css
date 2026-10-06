@@ -472,6 +472,25 @@ ul {
     }
 }
 
+/* Téléphones : le bloc des rappels (.rappels-cliniques-content) est un
+   élément de grille à marges automatiques (règle Webflow « margin: auto »).
+   Il prend donc la largeur de son contenu au lieu de celle de la colonne :
+   avec des tableaux il la remplit, mais avec la carte « Accès limité » il
+   s'arrêtait à la largeur du texte de la carte (vide à droite, de plus en
+   plus grand avec l'écran). La carte se cale ensuite à 1px de chaque côté,
+   comme les tableaux et le bloc Sommaire. */
+@media only screen and (max-width: 479px) {
+    .rappels-cliniques-content {
+        width: 100%;
+    }
+
+    .paywall_card {
+        width: calc(100% - 2px);
+        margin-left: 1px;
+        margin-right: 1px;
+    }
+}
+
 /* Medium screens (601px - 949px) */
 @media only screen and (min-width: 601px) and (max-width: 949px) {
     table {
