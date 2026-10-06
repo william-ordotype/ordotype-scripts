@@ -410,6 +410,14 @@ ul {
         margin-right: 1px;
     }
 
+    /* Le bloc des rappels coupe ce qui dépasse (overflow auto) : quand le
+       dernier tableau touche le bas du bloc, la ligne du bas de son cadre
+       (dessiné hors de la boîte) disparaissait. 1px de marge intérieure la
+       garde visible. */
+    .rc-html.w-richtext {
+        padding-bottom: 1px;
+    }
+
     /* break-word et pas anywhere : anywhere laisse le navigateur réduire une
        colonne à une lettre (« Probabili / té »). */
     .rc-html td,
