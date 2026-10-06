@@ -460,11 +460,14 @@ ul {
 }
 
 /* Téléphones (max 479px, même palier que Webflow) : le Designer plafonne
-   .rc-html à 400px, alors que le bloc Sommaire prend toute la colonne. Au-delà
-   de ~404px d'écran (412, 430, 440…, ~22 % des pages vues mobiles des fiches),
-   les rappels s'arrêtaient avant le bord droit (jusqu'à 39px de vide). */
+   .rc-html et le bloc Sources/Auteurs (.redac-and-ref.patho) à 400px, alors
+   que le bloc Sommaire prend toute la colonne. Au-delà de ~404px d'écran
+   (412, 430, 440…, ~22 % des pages vues mobiles des fiches), ils s'arrêtaient
+   avant le bord droit (jusqu'à 39px de vide). Ce sont les deux seuls
+   plafonds Webflow à 400px de ce palier. */
 @media only screen and (max-width: 479px) {
-    .rc-html {
+    .rc-html,
+    .redac-and-ref.patho {
         max-width: none;
     }
 }
