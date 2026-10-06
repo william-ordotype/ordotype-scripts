@@ -332,7 +332,8 @@
         + '<div class="compte-v2_help is-colonne">'
         + '<div class="compte-v2_help-text"><strong>Pourquoi ces e-mails restent actifs ?</strong> Comme votre banque ou votre assurance, '
         + 'nous devons pouvoir vous informer sur votre compte. Le RGPD le permet, car ces envois sont '
-        + 'nécessaires à votre abonnement. Les messages commerciaux, eux, sont toujours à votre choix, ci-dessus. Une question ?</div>'
+        + 'nécessaires à votre abonnement. Les messages commerciaux, eux, sont toujours à votre choix, ci-dessus. '
+        + 'Vous souhaitez plus de précisions ? Nous sommes disponibles pour en parler :</div>'
         + '<a class="compte-v2_help-link" href="mailto:contact@ordotype.fr">contact@ordotype.fr</a>'
         + '</div>'
     });
