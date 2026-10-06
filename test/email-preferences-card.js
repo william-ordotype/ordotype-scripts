@@ -44,7 +44,10 @@ function jouer(body) {
   const cartes = [...r.d.querySelectorAll('[data-ordo-v2="profil"] > .compte-v2_card')].map((c) => c.getAttribute('data-ordo-section'));
   verifier('carte placée juste après Contact', JSON.stringify(cartes) === JSON.stringify(['perso', 'contact', 'emails']), cartes);
   const lien = r.d.querySelector('[data-ordo-section="emails"] a.compte-v2_btn');
-  verifier('bouton vers /preferences-email', lien && lien.getAttribute('href') === '/preferences-email' && lien.textContent === 'Gérer mes préférences');
+  verifier('bouton « Modifier » vers /preferences-email, comme les autres cartes', lien && lien.getAttribute('href') === '/preferences-email' && lien.textContent === 'Modifier');
+  const champs = [...r.d.querySelectorAll('[data-ordo-section="emails"] .compte-v2_dl .compte-v2_field')]
+    .map((f) => f.querySelector('.compte-v2_dt').textContent + ' = ' + f.querySelector('.compte-v2_dd').textContent);
+  verifier('grille libellé / valeur comme « Contact »', JSON.stringify(champs) === JSON.stringify(['E-mails liés à votre compte = Toujours envoyés', 'Newsletter, conseils et offres = Selon vos préférences']), champs);
   verifier('titre « E-mails »', r.d.querySelector('[data-ordo-section="emails"] .compte-v2_card-title').textContent === 'E-mails');
   verifier('aucun appel réseau', r.appels.length === 0);
   lien.dispatchEvent(new r.w.MouseEvent('click', { bubbles: true, cancelable: true }));
