@@ -418,6 +418,27 @@ ul {
         padding-bottom: 1px;
     }
 
+    /* Les tableaux de 3 colonnes et plus déclarent width: 0 (voir plus bas).
+       Or .rc-wrapper et .rc-html sont des flex en colonne centrés (Webflow,
+       align-items: center) : leurs enfants prennent la largeur de leur
+       contenu. Un <div> qui emboîte un tableau (48 tableaux, 32 fiches au
+       07/10) tombait donc à 0px, et .rc-html aussi quand la fiche n'a que des
+       tableaux larges (surdite) : 16 tableaux invisibles dans 12 fiches, ex.
+       gonalgies. Le bloc des rappels et la colonne des rappels (élément de
+       grille à marges automatiques) prennent donc toute la largeur jusqu'à
+       600px, comme sous 480px (voir plus bas) : width et pas align-self,
+       car Webflow donne à .rc-html une marge gauche automatique entre 480 et
+       767px, qui l'emporte sur align-self. Tout enfant qui contient un
+       tableau est étiré. */
+    .rc-wrapper > .rc-html,
+    .rappels-cliniques-content {
+        width: 100%;
+    }
+
+    .rc-html > :has(table) {
+        align-self: stretch;
+    }
+
     /* break-word et pas anywhere : anywhere laisse le navigateur réduire une
        colonne à une lettre (« Probabili / té »). */
     .rc-html td,
