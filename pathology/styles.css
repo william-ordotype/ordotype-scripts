@@ -149,6 +149,19 @@
     visibility: visible;
 }
 
+/* Infobulle d'un auteur de source (« ANSM » → « Agence nationale… ») : cachée
+   par visibility, elle gardait sa place (150px à droite du nom). Quand le nom
+   tombe près du bord droit, la page entière dépassait de l'écran et bougeait
+   de côté (108 fiches à 768px au 07/10). Retirée de la mise en page tant
+   qu'elle n'est pas survolée. */
+.tooltip .tooltiptext {
+    display: none;
+}
+
+.tooltip:hover .tooltiptext {
+    display: block;
+}
+
 /* Rich text list overflow */
 .w-richtext ol,
 .w-richtext ul {
@@ -440,10 +453,22 @@ ul {
     }
 
     /* break-word et pas anywhere : anywhere laisse le navigateur réduire une
-       colonne à une lettre (« Probabili / té »). */
+       colonne à une lettre (« Probabili / té »).
+       Mais break-word ne compte pas dans la largeur minimale d'une colonne : le
+       mot le plus long de chaque colonne (« immunodépression », « albuminurie/
+       créatininurie ») l'imposait, et à deux colonnes le tableau dépassait de
+       l'écran (bloc des rappels qui défile de côté, texte coupé à droite : 109
+       fiches à 320px, 38 à 360px, 11 à 402px au 07/10). La césure française
+       (lang="fr") coupe ces mots entre deux syllabes, avec un trait d'union,
+       et seulement les mots d'au moins 10 lettres (4 de chaque côté). */
     .rc-html td,
     .rc-html th {
         overflow-wrap: break-word;
+        -webkit-hyphens: auto;
+        hyphens: auto;
+        hyphenate-limit-chars: 10 4 4;
+        -webkit-hyphenate-limit-before: 4;
+        -webkit-hyphenate-limit-after: 4;
     }
 
     /* 3 colonnes ou plus : chaque tableau défile seul (le texte autour ne bouge
@@ -481,6 +506,8 @@ ul {
     .rc-html table:has(tr > :nth-child(3)) th {
         min-width: 8em;
         overflow-wrap: normal;
+        -webkit-hyphens: manual;
+        hyphens: manual;
     }
 
     .iframe-box {
@@ -554,6 +581,18 @@ ul {
         width: 100% !important;
         margin-left: auto;
         margin-right: auto;
+    }
+
+    /* Même césure que sur téléphone : sur tablette, les tableaux à plusieurs
+       colonnes dépassaient du bloc pour la même raison (18 fiches à 768px). */
+    .rc-html td,
+    .rc-html th {
+        overflow-wrap: break-word;
+        -webkit-hyphens: auto;
+        hyphens: auto;
+        hyphenate-limit-chars: 10 4 4;
+        -webkit-hyphenate-limit-before: 4;
+        -webkit-hyphenate-limit-after: 4;
     }
 
     .iframe-box {
