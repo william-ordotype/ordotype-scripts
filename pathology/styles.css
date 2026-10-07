@@ -520,6 +520,21 @@ ul {
     }
 }
 
+/* Téléphones (max 479px, palier Webflow) : la grille des rappels
+   (.rappels-cliniques_row.grid-auto) n'a qu'une colonne, mais Webflow y place
+   les éléments par colonne (grid-auto-flow: column) avec 1rem d'écart. Sur
+   les fiches « -orientation », un 3e élément est visible (les cartes « Fiche
+   pour la médecine générale / l'exercice spécialisé ») : il ouvre une 2e
+   colonne, après une 1re colonne vide de 0px et 1rem d'écart, et dépassait
+   de l'écran (page qui bouge de côté, cartes coupées ; 18 fiches au 07/10).
+   Sans écart entre colonnes, les cartes partent du bord, à la même hauteur.
+   Les autres fiches n'ont qu'une colonne : rien ne change pour elles. */
+@media only screen and (max-width: 479px) {
+    .rappels-cliniques_row.grid-auto {
+        column-gap: 0;
+    }
+}
+
 /* Medium screens (601px - 949px) */
 @media only screen and (min-width: 601px) and (max-width: 949px) {
     table {
