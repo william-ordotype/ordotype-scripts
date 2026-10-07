@@ -535,6 +535,19 @@ ul {
     }
 }
 
+/* Téléphones (max 479px) : un titre de fiche fait d'un mot très long
+   (« Hypergammaglobulinémie… ») ne passait pas à la ligne et dépassait de
+   l'écran à 360px (page qui bouge de côté). La page est en français
+   (lang="fr") : le navigateur coupe le mot avec un trait d'union, et
+   break-word coupe en dernier recours si la césure n'est pas disponible. */
+@media only screen and (max-width: 479px) {
+    .path_header .heading-style-h1 {
+        -webkit-hyphens: auto;
+        hyphens: auto;
+        overflow-wrap: break-word;
+    }
+}
+
 /* Medium screens (601px - 949px) */
 @media only screen and (min-width: 601px) and (max-width: 949px) {
     table {
