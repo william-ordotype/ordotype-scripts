@@ -3,10 +3,13 @@
  * Champ de recherche : même dessin partout, avec les couleurs du design system.
  *
  * Trois feuilles dessinent le champ :
- *   - shared/global-styles.css : barre de navigation sur ordinateur et tablette
- *     (classes Webflow search-bar + nav-bar-size, embed .html-reset-button-navbar) ;
+ *   - le Designer : barre de navigation sur ordinateur et tablette (combo
+ *     search-bar + nav-bar-size, embed .html-reset-button-navbar) ; global-styles.css
+ *     n'en garde que la croix masquée quand le champ est vide ;
  *   - shared/search-panel.js : panneau de la loupe sur téléphone (CSS en chaîne) ;
- *   - search-result/styles.css : en-tête de /search-result sur téléphone.
+ *   - le Designer : en-tête de /search-result sur téléphone ; search-result/styles.css
+ *     n'en garde que la marge de page (:has()), la croix masquée champ vide et
+ *     la taille de la flèche.
  *
  * Ce qui doit tenir dans les trois :
  *   - blanc, contour --base-200 au repos, --primary-500 pendant la saisie ;
@@ -55,24 +58,20 @@ const white = (v) => /^(#fff(fff)?|rgb\(255, 255, 255\))$/i.test(String(v).trim(
 const uses = (value, token) => new RegExp('var\\(--' + token + '\\b').test(value);
 
 // --- Barre de navigation (ordinateur, tablette)
-console.log('barre de navigation : shared/global-styles.css');
+console.log('barre de navigation : dessin dans le Designer, shared/global-styles.css garde la logique seule');
 {
+    // Le dessin du champ de la barre (combo search-bar + nav-bar-size, états Focus et
+    // Placeholder, classe html-reset-button-navbar, croix de l'embed Navbar) vit dans
+    // le Designer depuis le 08/10/2026 : le canvas doit montrer le vrai rendu. Une
+    // règle ici le surchargerait en silence (vérifié en navigateur sur le site servi).
     const css = read('shared/global-styles.css');
     const rs = rules(css);
-    const champ = '.search-bar.nav-bar-size';
-    check('contour --base-200 au repos', uses(decl(rs, champ, 'border-color'), 'base-200'), decl(rs, champ, 'border-color'));
-    check('contour --primary-500 pendant la saisie', uses(decl(rs, champ + ':focus', 'border-color'), 'primary-500'), decl(rs, champ + ':focus', 'border-color'));
-    check('fond blanc', white(decl(rs, champ, 'background-color')), decl(rs, champ, 'background-color'));
-    check('texte --base-900', uses(decl(rs, champ, 'color'), 'base-900'), decl(rs, champ, 'color'));
-    check('invite --base-500', uses(decl(rs, champ + '::placeholder', 'color'), 'base-500'), decl(rs, champ + '::placeholder', 'color'));
-    check('loupe grise du site', /6464fa4d45e5736b95f15198_search\.svg/.test(decl(rs, champ, 'background-image')), decl(rs, champ, 'background-image'));
-    check('croix masquée tant que le champ est vide',
+    check('croix masquée tant que le champ est vide (le Designer ne sait pas l’exprimer)',
         decl(rs, '#search-bar-nav:placeholder-shown + .html-reset-button-navbar', 'display') === 'none', 'règle absente');
-    check('croix centrée sur le champ', decl(rs, '.html-reset-button-navbar', 'top') === '50%' &&
-        /translateY\(-50%\)/.test(decl(rs, '.html-reset-button-navbar', 'transform')), decl(rs, '.html-reset-button-navbar', 'transform'));
-    check('croix cerclée, trait --base-500 (#0C0E16 à 50 %)', /%230C0E16' stroke-opacity='\.5'/.test(css), 'dessin de la croix');
-    const bloc = rs.filter((r) => /search-bar\.nav-bar-size|reset-button-navbar/.test(r.selectorText)).map((r) => r.cssText).join('\n');
-    check('aucune couleur en dur dans le dessin du champ', hardColors(bloc).length === 0, hardColors(bloc).join(' '));
+    const dessin = rs.filter((r) => /search-bar\.nav-bar-size|\.html-reset-button-navbar(?![^,]*:placeholder-shown)/.test(r.selectorText) &&
+        !/:placeholder-shown/.test(r.selectorText));
+    check('aucun dessin du champ ni de la croix hors Designer', dessin.length === 0, dessin.map((r) => r.selectorText).join(' | '));
+    check('pas de croix dessinée en fond (elle est dans l’embed)', !/data:image\/svg\+xml/.test(css), 'fond data-URI présent');
 }
 
 // --- Panneau de la loupe (téléphone)
@@ -99,18 +98,17 @@ console.log('panneau mobile : shared/search-panel.js');
 }
 
 // --- /search-result (téléphone)
-console.log('/search-result mobile : search-result/styles.css');
+console.log('/search-result mobile : dessin dans le Designer, search-result/styles.css garde la logique seule');
 {
     const css = read('search-result/styles.css');
     const rs = rules(css);
-    const w = '.search-block-results .search-form-wrapper';
-    check('contour --base-200 au repos', uses(decl(rs, w, 'box-shadow'), 'base-200'), decl(rs, w, 'box-shadow'));
-    check('contour --primary-500 pendant la saisie', uses(decl(rs, w + ':focus-within', 'box-shadow'), 'primary-500'), decl(rs, w + ':focus-within', 'box-shadow'));
-    check('fond blanc', white(decl(rs, w, 'background')) || white(decl(rs, w, 'background-color')), decl(rs, w, 'background'));
-    check('rayon de 4px', decl(rs, w, 'border-radius') === '4px', decl(rs, w, 'border-radius'));
-    check('texte --base-900', uses(decl(rs, '.search-block-results #search-bar-main', 'color'), 'base-900'), 'couleur du texte');
-    check('invite --base-500', uses(decl(rs, '.search-block-results #search-bar-main::placeholder', 'color'), 'base-500'), 'couleur de l’invite');
-    check('croix --base-500', uses(decl(rs, '.search-block-results .main-reset-button', 'color'), 'base-500'), 'couleur de la croix');
+    check('croix masquée tant que le champ est vide (le Designer ne sait pas l’exprimer)',
+        rs.some((r) => /#search-bar-main:placeholder-shown\s*\+\s*\.search-nav\s+\.main-reset-button/.test(r.selectorText) && r.style.display === 'none'),
+        rs.map((r) => r.selectorText).join(' | '));
+    check('flèche ramenée à 22px (image sans classe)', decl(rs, '.search-block-results .search-back-button img', 'width') === '22px', 'règle absente');
+    check('marge de page reprise par l’en-tête (:has(), absent du Designer)', rs.some((r) => /\.padding-global:has\(\.search-block-results\)/.test(r.selectorText)), 'règle absente');
+    const dessin = rs.filter((r) => !/:placeholder-shown/.test(r.selectorText) && !/search-back-button img/.test(r.selectorText) && !/:has\(/.test(r.selectorText));
+    check('aucun autre dessin de l’en-tête hors Designer', dessin.length === 0, dessin.map((r) => r.selectorText).join(' | '));
     check('aucune couleur en dur', hardColors(css).length === 0, hardColors(css).join(' '));
 }
 

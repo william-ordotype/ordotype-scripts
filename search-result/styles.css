@@ -1,158 +1,26 @@
-/* Page /search-result, téléphones (max 479px, même palier que Webflow) :
-   l'en-tête de recherche reprend celui du panneau de recherche des fiches
-   (shared/search-panel.js) : flèche de retour à gauche, champ de 48px avec la
-   loupe dedans, croix seulement quand il y a du texte, plus de loupe ni de
-   trait de séparation à droite (Entrée lance la recherche).
-   Même dessin que le champ de la barre de navigation sur ordinateur
-   (shared/global-styles.css) : blanc, contour --base-200, --primary-500 pendant
-   la saisie, rayon de 4px, couleurs du design system. Le contour est une ombre
-   intérieure : la géométrie ne bouge pas.
-
-   Les éléments sont ceux du Designer (positions absolues d'origine) : chaque
-   règle les remet dans le flux d'une ligne flex. Même géométrie que le
-   panneau : flèche x 4 à 48, champ x 50 à la marge droite de 12px.
-   - .search-icon est déjà centré par le site (top 50% + translateY) : un
-     seul décalage, sinon la loupe remonte ;
-   - la marge de page (.padding-global) est reprise par l'en-tête lui-même ;
-     sans :has() (Safari < 15.4), l'en-tête garde 16px de plus de chaque côté. */
+/* Page /search-result, téléphones (max 479px, même palier que Webflow).
+   Le dessin de l'en-tête de recherche vit dans le Designer (point de rupture
+   « Mobile portrait » des combos de la page : search-block-results,
+   search-back-button-components, smaller-search, search-form margin-xxlarge,
+   width-auto-mobile, search-bar-main-componnents, et les combos is-results de
+   search-icon, search-nav, seaparator-nav, du bouton « Rechercher » et de
+   l'embed de la croix), pour que le canvas montre le vrai rendu.
+   Restent ici les trois règles que le Designer ne sait pas exprimer :
+   - la marge de page (.padding-global) est reprise par l'en-tête lui-même :
+     il faut :has(), absent du Designer (sans :has(), Safari < 15.4, l'en-tête
+     garde 16px de plus de chaque côté) ;
+   - la croix n'apparaît que s'il y a du texte (comme le panneau des fiches) ;
+   - l'image de la flèche n'a pas de classe : elle est ramenée à 22px, comme
+     dans le panneau des fiches (24px de base). */
 @media only screen and (max-width: 479px) {
     .padding-global:has(.search-block-results) {
         padding-left: 0 !important;
         padding-right: 0 !important;
     }
 
-    .smaller-search.padding-section-xsmall {
-        padding: 8px 12px 8px 4px !important;
-    }
-
-    .search-block.search-block-results {
-        display: flex !important;
-        align-items: center;
-        height: auto !important;
-        min-height: 0 !important;
-        top: auto !important;
-        margin: 0 !important;
-    }
-
-    .search-block-results .search-back-button {
-        position: static !important;
-        flex: none;
-        width: 44px !important;
-        height: 44px !important;
-        display: flex !important;
-        align-items: center;
-        justify-content: center;
-        margin: 0 2px 0 0 !important;
-        padding: 0 !important;
-    }
-
     .search-block-results .search-back-button img {
-        width: 22px !important;
-        height: 22px !important;
-    }
-
-    .search-block-results .search-form {
-        position: relative !important;
-        flex: 1 1 0;
-        min-width: 0;
-        width: auto !important;
-        height: 48px !important;
-        margin: 0 !important;
-        left: auto !important;
-        top: auto !important;
-    }
-
-    .search-block-results .search-icon {
-        position: absolute !important;
-        left: 13px !important;
-        right: auto !important;
-        top: 50% !important;
-        margin: 0 !important;
-        transform: translateY(-50%) !important;
-        width: 18px !important;
-        height: 18px !important;
-        opacity: 1 !important;
-        z-index: 2;
-        pointer-events: none;
-    }
-
-    .search-block-results .search-form-wrapper {
-        display: flex !important;
-        align-items: center;
-        width: 100% !important;
-        height: 48px !important;
-        min-height: 0 !important;
-        padding: 0 6px 0 40px !important;
-        border: 0 !important;
-        border-radius: 4px !important;
-        background: #fff !important;
-        box-shadow: inset 0 0 0 1px var(--base-200, #0c0e1633) !important;
-    }
-
-    .search-block-results .search-form-wrapper:focus-within {
-        box-shadow: inset 0 0 0 1px var(--primary-500, #3454f6) !important;
-    }
-
-    .search-block-results #search-bar-main {
-        flex: 1 1 0;
-        min-width: 0;
-        width: auto !important;
-        height: 48px !important;
-        min-height: 0 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        border: 0 !important;
-        background: transparent !important;
-        box-shadow: none !important;
-        font-size: 17px !important;
-        font-weight: 400 !important;
-        color: var(--base-900, #0c0e16) !important;
-    }
-
-    .search-block-results #search-bar-main::placeholder {
-        color: var(--base-500, #0c0e1680) !important;
-        opacity: 1;
-    }
-
-    .search-block-results .search-nav {
-        position: static !important;
-        flex: none;
-        display: flex !important;
-        align-items: center;
-        width: auto !important;
-        height: auto !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-
-    .search-block-results .seaparator-nav,
-    .search-block-results .search-nav .is-search,
-    .search-block-results #search-btn {
-        display: none !important;
-    }
-
-    .search-block-results .search-reset-button {
-        display: flex !important;
-        align-items: center;
-        height: 48px;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-
-    .search-block-results .main-reset-button {
-        width: 32px !important;
-        height: 32px !important;
-        display: flex !important;
-        align-items: center;
-        justify-content: center;
-        margin: 0 !important;
-        padding: 0 !important;
-        color: var(--base-500, #0c0e1680) !important;
-    }
-
-    .search-block-results .main-reset-button svg {
-        width: 20px;
-        height: 20px;
+        width: 22px;
+        height: 22px;
     }
 
     .search-block-results #search-bar-main:placeholder-shown + .search-nav .main-reset-button {
