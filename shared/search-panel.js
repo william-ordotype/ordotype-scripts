@@ -203,6 +203,7 @@
       if (s.arrowTaps > 1) codes.push("fleche_x" + s.arrowTaps);
       for (var k in s.problems) codes.push(k);
       if (s.unchecked) codes.push("controle_impossible");
+      if (s.resynced) codes.push("panneau_remis");
       track("search_panel_close", { reason: outcome, reason_codes: codes.join(",") || "aucun",
                                     time_on_page_sec: String(Math.round((Date.now() - s.t0) / 1000)) });
       if (outcome === "fleche" || outcome === "retour_telephone" || outcome === "echap") lastEmptyClose = Date.now();
@@ -219,11 +220,21 @@
     // pas encore affichée ou pas encore stable, par exemple restaurée par Safari
     // depuis l'historique ou au retour d'une autre appli. Ce n'est pas un
     // recouvrement : on remesure, puis on le note sans alerte.
+    // Panneau ouvert d'après l'état mais plus à l'écran (vu au retour par
+    // l'historique sur Android, page restaurée sans « ot-search-open », champ de
+    // taille nulle) : ce n'est pas un recouvrement non plus. On le remet en place,
+    // puis on remesure.
     function selfCheck(attempt) {
       if (!open || !S) return;
       var s = S;
       attempt = attempt || 0;
       safely(function () {
+        if (!shown()) {
+          resync();
+          if (attempt < 3) return setTimeout(function () { if (open && S === s) selfCheck(attempt + 1); }, 400);
+          s.unchecked = true;
+          return;
+        }
         var b = back.getBoundingClientRect();
         var hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
         var r = input.getBoundingClientRect();
@@ -237,6 +248,28 @@
         if (!back.contains(hit)) problem("fleche_recouverte", describe(hit), true);
         if (invisible) return problem("champ_invisible", "", true);
         if (!form.contains(hit2)) problem("champ_recouvert", describe(hit2), true);
+      });
+    }
+
+    // Le panneau est-il à l'écran : classes en place, champ dedans, boîte non vide ?
+    function shown() {
+      if (!panel) return false;
+      var p = panel.getBoundingClientRect();
+      return panel.classList.contains("is-open") && document.documentElement.classList.contains("ot-search-open") &&
+        panel.parentNode === document.body && input.parentNode === form && p.width >= 1 && p.height >= 1;
+    }
+    // Remet à l'écran un panneau ouvert d'après l'état ; sans cela la loupe ne
+    // ferait plus rien (show() ne rouvre pas un panneau déjà ouvert).
+    // Noté « panneau_remis » à la fermeture seulement si quelque chose manquait.
+    function resync() {
+      safely(function () {
+        var html = document.documentElement, changed = false;
+        if (panel.parentNode !== document.body) { document.body.appendChild(panel); changed = true; }
+        if (input.parentNode !== form) { form.insertBefore(input, clear); changed = true; }
+        if (input.className !== "ot-search-input") { input.className = "ot-search-input"; changed = true; }
+        if (!panel.classList.contains("is-open")) { panel.classList.add("is-open"); changed = true; }
+        if (!html.classList.contains("ot-search-open")) { html.classList.add("ot-search-open"); changed = true; }
+        if (changed && S) S.resynced = true;
       });
     }
 
@@ -311,6 +344,11 @@
         return;
       }
       e.preventDefault();
+      // Panneau ouvert d'après l'état mais effacé de l'écran : la loupe le remet.
+      if (open && !shown()) {
+        resync();
+        if (!S) { startSession("loupe"); if (S) S.resynced = true; }
+      }
       show("loupe");
       if (!open) return;
       input.focus();
@@ -318,7 +356,12 @@
     });
     document.addEventListener("keydown", function (e) { if (open && e.key === "Escape") requestClose("echap"); });
     window.addEventListener("popstate", function () { if (ours()) restore(); else hide(); });
-    window.addEventListener("pageshow", function () { leaving = false; if (ours()) restore(); else hide(); });
+    window.addEventListener("pageshow", function () {
+      leaving = false;
+      if (!ours()) return hide();
+      restore();
+      if (open && !shown()) resync(); // page restaurée sans le panneau à l'écran
+    });
     window.addEventListener("pagehide", function () { leaving = true; });
     // Passage en paysage : le panneau n'est prévu que pour le portrait ; le champ
     // retourne dans l'entête, visible à cette largeur, avec ce qui a été tapé.

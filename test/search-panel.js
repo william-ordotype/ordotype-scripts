@@ -28,6 +28,10 @@
  *   - un appui dans le panneau près de la flèche (marge, champ, croix) ou un appui
  *     annulé ne sont PAS des pannes ; flèche recouverte et fermeture sans effet
  *     le sont ;
+ *   - panneau ouvert d'après l'état mais effacé de l'écran (retour par
+ *     l'historique sur Android, 1KM) : remis à l'écran, sans alerte, noté
+ *     « panneau_remis » ; la loupe le remet aussi ; un champ masqué dans un
+ *     panneau bien affiché reste signalé ;
  *   - un point sans élément (page pas encore affichée, restaurée par Safari
  *     depuis l'historique) ou un écran décalé/zoomé (clavier au retour dans
  *     Safari) n'est PAS un recouvrement : remesuré, puis noté
@@ -55,13 +59,14 @@ function withPercent(n) {
 const KEYS = ['event', 'element', 'rollout_bucket', 'rollout_percent', 'rollout_reason',
     'reason', 'reason_codes', 'failure_reason', 'time_on_page_sec'];
 const ARROW = { left: 4, top: 10, width: 44, height: 44, right: 48, bottom: 54 };
+const SCREEN = { left: 0, top: 0, width: 390, height: 844, right: 390, bottom: 844 };
 const FIELD = { left: 90, top: 8, width: 250, height: 48, right: 340, bottom: 56 };
 const TAP_BACK = [26, 32]; // un appui au milieu de la flèche
 
 async function load(opts) {
     const o = Object.assign({ mobile: true, bucket: '10', engine: true, covered: false, storageBroken: false,
         pushBroken: false, random: 0.5, src: SRC, state: null, reporter: false, variantWriteBroken: false,
-        nullPoints: 0, viewport: null }, opts);
+        nullPoints: 0, viewport: null, inputHidden: false, neverPainted: false }, opts);
     const dom = new JSDOM(html, {
         url: 'https://www.ordotype.fr/pathologies/exemple',
         runScripts: 'outside-only',
@@ -100,14 +105,24 @@ async function load(opts) {
     if (o.state) win.history.replaceState(o.state, '');
     if (o.viewport) win.visualViewport = o.viewport; // objet modifiable par le test
     win.addEventListener('error', (e) => reported.push({ name: e.error && e.error.name, message: e.message }));
+    // Géométrie fidèle au DOM : le panneau n'a une boîte que s'il est ouvert et
+    // dans la page ; la flèche et le champ seulement à l'intérieur de ce panneau.
+    const ZERO = { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+    const shownPanel = () => {
+        const p = doc.querySelector('.ot-search-panel.is-open');
+        return p && p.parentNode === doc.body ? p : null;
+    };
     win.HTMLElement.prototype.getBoundingClientRect = function () {
-        if (this.classList.contains('ot-search-back')) return ARROW;
-        if (this.id === 'search-bar-nav') return FIELD;
-        return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+        const p = shownPanel();
+        if (this.classList.contains('ot-search-panel')) return this === p && !o.neverPainted ? SCREEN : ZERO;
+        if (this.classList.contains('ot-search-back')) return p && p.contains(this) ? ARROW : ZERO;
+        if (this.id === 'search-bar-nav') return p && p.contains(this) && !o.inputHidden ? FIELD : ZERO;
+        return ZERO;
     };
     let nulls = o.nullPoints; // nombre de points mesurés hors de l'écran affiché
     doc.elementFromPoint = (x) => {
         if (nulls > 0) { nulls--; return null; }
+        if (!shownPanel()) return doc.documentElement; // rien de peint à cet endroit : la page
         if (o.covered) return doc.querySelector('.navbar2_container');
         return x < ARROW.right ? doc.querySelector('.ot-search-back img') : doc.getElementById('search-bar-nav');
     };
@@ -414,6 +429,83 @@ async function main() {
         const opens = events(pushed, 'search_panel_open');
         check('fermeture : quitte', closes[0] && closes[0].reason === 'quitte', JSON.stringify(closes));
         check('reprise sans marque de réouverture', opens[1] && opens[1].reason === 'reprise' && opens[1].reason_codes === '', JSON.stringify(opens));
+    }
+
+    console.log('retour par l’historique (Android, 1KM) : panneau ouvert mais effacé de l’écran');
+    {
+        const { win, doc, pushed, reported } = await load({});
+        const input = doc.getElementById('search-bar-nav');
+        tapLoupe(win, doc);
+        type(win, input, 'ulcère');
+        click(win, results(doc, 3).querySelector('a')); // résultat choisi : la fiche s'ouvre
+        let vis = 'hidden';
+        Object.defineProperty(doc, 'visibilityState', { configurable: true, get: () => vis });
+        doc.dispatchEvent(new win.Event('visibilitychange'));
+        // Constaté le 06/10 : page restaurée avec html sans « ot-search-open » et un champ de taille nulle.
+        doc.documentElement.classList.remove('ot-search-open');
+        doc.querySelector('.ot-search-panel').classList.remove('is-open');
+        vis = 'visible';
+        doc.dispatchEvent(new win.Event('visibilitychange'));
+        await wait(600);
+        check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
+        check('aucun problème compté', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
+        check('panneau remis à l’écran, champ dedans', panelOpen(doc) && doc.documentElement.classList.contains('ot-search-open') && !!input.closest('.ot-search-panel'),
+            doc.documentElement.className);
+        vis = 'hidden';
+        doc.dispatchEvent(new win.Event('visibilitychange'));
+        const close = events(pushed, 'search_panel_close').pop();
+        check('fermeture notée panneau_remis, sans faux problème', close && /panneau_remis/.test(close.reason_codes) &&
+            !/controle_impossible|champ_invisible|fleche_recouverte/.test(close.reason_codes), JSON.stringify(close));
+    }
+
+    console.log('loupe touchée sur un panneau ouvert mais effacé : elle le remet');
+    {
+        const { win, doc, pushed, reported } = await load({});
+        const input = doc.getElementById('search-bar-nav');
+        tapLoupe(win, doc);
+        click(win, results(doc, 2).querySelector('a')); // séance close par le résultat
+        doc.documentElement.classList.remove('ot-search-open');
+        doc.querySelector('.ot-search-panel').classList.remove('is-open');
+        input.blur();
+        check('la loupe reste interceptée', tapLoupe(win, doc) === true, 'lien suivi');
+        check('panneau remis, champ sélectionné', panelOpen(doc) && doc.activeElement === input, doc.activeElement && doc.activeElement.tagName);
+        const opens = events(pushed, 'search_panel_open');
+        check('nouvelle séance comptée', opens.length === 2 && opens[1].reason === 'loupe', JSON.stringify(opens));
+        await wait(600);
+        check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
+    }
+
+    console.log('page restaurée (pageshow) sans le panneau à l’écran : remis');
+    {
+        const { win, doc } = await load({});
+        tapLoupe(win, doc);
+        doc.documentElement.classList.remove('ot-search-open');
+        doc.querySelector('.ot-search-panel').classList.remove('is-open');
+        win.dispatchEvent(new win.Event('pageshow'));
+        check('panneau remis', panelOpen(doc) && doc.documentElement.classList.contains('ot-search-open'), doc.documentElement.className);
+    }
+
+    console.log('panneau à l’écran mais champ masqué : alerte');
+    {
+        const { win, doc, pushed, reported } = await load({ inputHidden: true });
+        tapLoupe(win, doc);
+        await frames(win);
+        check('champ_invisible signalé', events(pushed, 'search_panel_problem').some((p) => p.failure_reason === 'champ_invisible'),
+            JSON.stringify(events(pushed, 'search_panel_problem')));
+        check('alerte bloquante', blocking(reported).some((r) => /champ_invisible/.test(r.message)), JSON.stringify(reported));
+    }
+
+    console.log('panneau jamais peint (page pas encore affichée) : pas d’alerte');
+    {
+        const { win, doc, pushed, reported } = await load({ neverPainted: true });
+        tapLoupe(win, doc);
+        await wait(1500);
+        check('aucune alerte', blocking(reported).length === 0 && events(pushed, 'search_panel_problem').length === 0, JSON.stringify(reported));
+        win.history.back();
+        await settle();
+        const close = events(pushed, 'search_panel_close')[0];
+        check('noté controle_impossible, pas panneau_remis', close && /controle_impossible/.test(close.reason_codes) && !/panneau_remis/.test(close.reason_codes),
+            JSON.stringify(close));
     }
 
     console.log('panneau : entête modifié pendant l’ouverture');
