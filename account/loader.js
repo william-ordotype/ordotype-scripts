@@ -101,6 +101,12 @@
       'ordotype.webflow.io': 100,
       'www.ordotype.fr': 100
     },
+    // Photo de profil dans l'en-tête de « Mon profil ».
+    'profile-photo.js': {
+      'sandbox-ordotype.webflow.io': 100,
+      'ordotype.webflow.io': 100,
+      'www.ordotype.fr': 0
+    },
     // Vérification du RPPS dans l'Annuaire santé, depuis « Mon profil ».
     'rpps-finder.js': {
       'sandbox-ordotype.webflow.io': 100,
@@ -218,6 +224,7 @@
     'subscriptions-overview.js', // « Mes abonnements » list. Gated by GATES.
     'invoice-emails.js', // Opt-in « recevoir mes factures par e-mail ». Gated by GATES.
     'profile-overview.js', // Mon profil + Connexion et Sécurité, après les scripts dont il déplace les blocs. Gated by GATES.
+    'profile-photo.js',  // Photo de profil dans l'en-tête de « Mon profil ». Gated by GATES.
     'email-preferences-card.js', // Carte « E-mails » sous Contact, vers /preferences-email. Gated by GATES.
     'phone-input.js'
   ];
