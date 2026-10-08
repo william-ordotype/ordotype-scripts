@@ -2,6 +2,7 @@
 // Variante « bloqué » : si le code n'est pas validé après data-referral-stuck-after secondes, ou dès
 // un clic sur un renvoi du code, le bloc prend les textes posés dans le Designer
 // (data-referral-stuck-text, -placeholder, -value) et une barre y mène s'il est hors de l'écran.
+// Le jeton de pré-connexion de la session 2FA part avec l'invitation : le serveur en déduit le parrain.
 (function () {
   var SESSION_KEY = "_ms-2fa-session";
   var EMAIL_KEY = "ms_email";
@@ -43,10 +44,12 @@
   function getReferrer() {
     try {
       var session = JSON.parse(sessionStorage.getItem(SESSION_KEY));
-      var memberId = session && session.data && session.data.memberId;
+      var data = session && session.data;
+      var memberId = data && data.memberId;
       var email = String(sessionStorage.getItem(EMAIL_KEY) || "").trim();
+      var token = data && typeof data.preAuthToken === "string" ? data.preAuthToken : "";
       if (memberId && EMAIL_PATTERN.test(email)) {
-        return { memberId: memberId, email: email };
+        return { memberId: memberId, email: email, preAuthToken: token };
       }
     } catch (e) {}
     return null;
@@ -243,6 +246,7 @@
       invitee_email: invitee,
       referrer_member_id: referrer.memberId,
       referrer_email: referrer.email,
+      pre_auth_token: referrer.preAuthToken,
       variant: variant,
     }).then(function () {
       pending = false;
