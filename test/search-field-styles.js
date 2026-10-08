@@ -3,8 +3,9 @@
  * Champ de recherche : même dessin partout, avec les couleurs du design system.
  *
  * Trois feuilles dessinent le champ :
- *   - shared/global-styles.css : barre de navigation sur ordinateur et tablette
- *     (classes Webflow search-bar + nav-bar-size, embed .html-reset-button-navbar) ;
+ *   - le Designer : barre de navigation sur ordinateur et tablette (combo
+ *     search-bar + nav-bar-size, embed .html-reset-button-navbar) ; global-styles.css
+ *     n'en garde que la croix masquée quand le champ est vide ;
  *   - shared/search-panel.js : panneau de la loupe sur téléphone (CSS en chaîne) ;
  *   - search-result/styles.css : en-tête de /search-result sur téléphone.
  *
@@ -55,24 +56,20 @@ const white = (v) => /^(#fff(fff)?|rgb\(255, 255, 255\))$/i.test(String(v).trim(
 const uses = (value, token) => new RegExp('var\\(--' + token + '\\b').test(value);
 
 // --- Barre de navigation (ordinateur, tablette)
-console.log('barre de navigation : shared/global-styles.css');
+console.log('barre de navigation : dessin dans le Designer, shared/global-styles.css garde la logique seule');
 {
+    // Le dessin du champ de la barre (combo search-bar + nav-bar-size, états Focus et
+    // Placeholder, classe html-reset-button-navbar, croix de l'embed Navbar) vit dans
+    // le Designer depuis le 08/10/2026 : le canvas doit montrer le vrai rendu. Une
+    // règle ici le surchargerait en silence (vérifié en navigateur sur le site servi).
     const css = read('shared/global-styles.css');
     const rs = rules(css);
-    const champ = '.search-bar.nav-bar-size';
-    check('contour --base-200 au repos', uses(decl(rs, champ, 'border-color'), 'base-200'), decl(rs, champ, 'border-color'));
-    check('contour --primary-500 pendant la saisie', uses(decl(rs, champ + ':focus', 'border-color'), 'primary-500'), decl(rs, champ + ':focus', 'border-color'));
-    check('fond blanc', white(decl(rs, champ, 'background-color')), decl(rs, champ, 'background-color'));
-    check('texte --base-900', uses(decl(rs, champ, 'color'), 'base-900'), decl(rs, champ, 'color'));
-    check('invite --base-500', uses(decl(rs, champ + '::placeholder', 'color'), 'base-500'), decl(rs, champ + '::placeholder', 'color'));
-    check('loupe grise du site', /6464fa4d45e5736b95f15198_search\.svg/.test(decl(rs, champ, 'background-image')), decl(rs, champ, 'background-image'));
-    check('croix masquée tant que le champ est vide',
+    check('croix masquée tant que le champ est vide (le Designer ne sait pas l’exprimer)',
         decl(rs, '#search-bar-nav:placeholder-shown + .html-reset-button-navbar', 'display') === 'none', 'règle absente');
-    check('croix centrée sur le champ', decl(rs, '.html-reset-button-navbar', 'top') === '50%' &&
-        /translateY\(-50%\)/.test(decl(rs, '.html-reset-button-navbar', 'transform')), decl(rs, '.html-reset-button-navbar', 'transform'));
-    check('croix cerclée, trait --base-500 (#0C0E16 à 50 %)', /%230C0E16' stroke-opacity='\.5'/.test(css), 'dessin de la croix');
-    const bloc = rs.filter((r) => /search-bar\.nav-bar-size|reset-button-navbar/.test(r.selectorText)).map((r) => r.cssText).join('\n');
-    check('aucune couleur en dur dans le dessin du champ', hardColors(bloc).length === 0, hardColors(bloc).join(' '));
+    const dessin = rs.filter((r) => /search-bar\.nav-bar-size|\.html-reset-button-navbar(?![^,]*:placeholder-shown)/.test(r.selectorText) &&
+        !/:placeholder-shown/.test(r.selectorText));
+    check('aucun dessin du champ ni de la croix hors Designer', dessin.length === 0, dessin.map((r) => r.selectorText).join(' | '));
+    check('pas de croix dessinée en fond (elle est dans l’embed)', !/data:image\/svg\+xml/.test(css), 'fond data-URI présent');
 }
 
 // --- Panneau de la loupe (téléphone)
