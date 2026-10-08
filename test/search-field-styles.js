@@ -8,7 +8,8 @@
  *     n'en garde que la croix masquée quand le champ est vide ;
  *   - shared/search-panel.js : panneau de la loupe sur téléphone (CSS en chaîne) ;
  *   - le Designer : en-tête de /search-result sur téléphone ; search-result/styles.css
- *     n'en garde que la croix masquée champ vide et la taille de la flèche.
+ *     n'en garde que la marge de page (:has()), la croix masquée champ vide et
+ *     la taille de la flèche.
  *
  * Ce qui doit tenir dans les trois :
  *   - blanc, contour --base-200 au repos, --primary-500 pendant la saisie ;
@@ -105,7 +106,8 @@ console.log('/search-result mobile : dessin dans le Designer, search-result/styl
         rs.some((r) => /#search-bar-main:placeholder-shown\s*\+\s*\.search-nav\s+\.main-reset-button/.test(r.selectorText) && r.style.display === 'none'),
         rs.map((r) => r.selectorText).join(' | '));
     check('flèche ramenée à 22px (image sans classe)', decl(rs, '.search-block-results .search-back-button img', 'width') === '22px', 'règle absente');
-    const dessin = rs.filter((r) => !/:placeholder-shown/.test(r.selectorText) && !/search-back-button img/.test(r.selectorText));
+    check('marge de page reprise par l’en-tête (:has(), absent du Designer)', rs.some((r) => /\.padding-global:has\(\.search-block-results\)/.test(r.selectorText)), 'règle absente');
+    const dessin = rs.filter((r) => !/:placeholder-shown/.test(r.selectorText) && !/search-back-button img/.test(r.selectorText) && !/:has\(/.test(r.selectorText));
     check('aucun autre dessin de l’en-tête hors Designer', dessin.length === 0, dessin.map((r) => r.selectorText).join(' | '));
     check('aucune couleur en dur', hardColors(css).length === 0, hardColors(css).join(' '));
 }

@@ -5,11 +5,19 @@
    width-auto-mobile, search-bar-main-componnents, et les combos is-results de
    search-icon, search-nav, seaparator-nav, du bouton « Rechercher » et de
    l'embed de la croix), pour que le canvas montre le vrai rendu.
-   Restent ici les deux règles que le Designer ne sait pas exprimer :
+   Restent ici les trois règles que le Designer ne sait pas exprimer :
+   - la marge de page (.padding-global) est reprise par l'en-tête lui-même :
+     il faut :has(), absent du Designer (sans :has(), Safari < 15.4, l'en-tête
+     garde 16px de plus de chaque côté) ;
    - la croix n'apparaît que s'il y a du texte (comme le panneau des fiches) ;
    - l'image de la flèche n'a pas de classe : elle est ramenée à 22px, comme
      dans le panneau des fiches (24px de base). */
 @media only screen and (max-width: 479px) {
+    .padding-global:has(.search-block-results) {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
     .search-block-results .search-back-button img {
         width: 22px;
         height: 22px;
