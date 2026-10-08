@@ -73,9 +73,16 @@
     return d.length === 11 && luhnOk(d) ? d : '';
   }
 
-  // Même règle que la coche « Vérifié » de profile-overview.js.
+  function meta() {
+    if (!member.metaData) member.metaData = {};
+    return member.metaData;
+  }
+
+  // Même règle que la coche « Vérifié » de profile-overview.js : le numéro affiché est celui contrôlé.
   function isVerified() {
-    return /^[CEM]$/.test(text(fields()['statut-rpps']).toUpperCase()) && !!text(fields()['n-rpps']);
+    if (!/^[CEM]$/.test(text(fields()['statut-rpps']).toUpperCase())) return false;
+    var numero = normalizeRpps(fields()['n-rpps']);
+    return !!numero && numero === normalizeRpps(meta()['rpps-tested']);
   }
 
   function defaultScope() {
@@ -217,9 +224,21 @@
     if (code === 'unverifiable') return 'Cette fiche ne peut pas être vérifiée automatiquement. Écrivez-nous à ' + CONTACT + '.';
     if (code === 'invalid_number') return 'Numéro invalide : le RPPS compte 11 chiffres.';
     if (code === 'invalid_name') return 'Indiquez au moins 2 lettres du nom.';
-    if (status === 429 || status === 503) return 'Service momentanément indisponible, réessayez dans quelques secondes.';
+    if (status === 429) return 'Trop de recherches à la suite : patientez une minute avant de réessayer.';
+    if (status === 503) return 'L’Annuaire santé ne répond pas en ce moment. Réessayez un peu plus tard.';
     if (!status) return 'Connexion impossible. Vérifiez votre réseau puis réessayez.';
     return 'Une erreur est survenue. Réessayez dans un instant.';
+  }
+
+  /** Issue d'un échec pour GA4 : panne de l'annuaire, limite, session, réseau ou autre. */
+  function failureOutcome(err) {
+    var status = err && err.status;
+    if (status === 503) return 'unavailable';
+    if (status === 429) return 'rate-limited';
+    if (status === 401) return 'session';
+    if (status === 404) return 'unknown';
+    if (!status) return 'network';
+    return 'error';
   }
 
   function reportIfActionable(context, err) {
@@ -245,26 +264,26 @@
     '.ordo-rpps{margin:8px 0 16px;font-size:15px;line-height:1.45;max-width:48rem;text-align:left}',
     '.ordo-rpps[hidden]{display:none}',
     '.ordo-rpps-cta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}',
-    '.ordo-rpps-panel{border:1px solid #d9e2f0;border-radius:8px;padding:14px 16px}',
+    '.ordo-rpps-panel{border:1px solid var(--base-200, #0c0e1633);border-radius:4px;padding:14px 16px}',
     '.ordo-rpps-panel>strong{display:block;margin-bottom:2px}',
     '.ordo-rpps-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 8px}',
     '.ordo-rpps-row input{flex:1 1 160px;min-width:0}',
     '@media (max-width:479px){.ordo-rpps-row input{flex-basis:100%}.ordo-rpps-list li{flex-direction:column;align-items:flex-start;text-align:left}.ordo-rpps-list li>*{align-self:flex-start;margin-left:0;margin-right:0}.ordo-rpps-list li .ordo-rpps-note{text-align:left}}',
     '.ordo-rpps-btn[disabled]{opacity:.5;cursor:default}',
-    '.ordo-rpps-list{list-style:none;margin:0;padding:0;border:1px solid #d9e2f0;border-radius:8px;overflow:hidden}',
-    '.ordo-rpps-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid #e6ecf5}',
+    '.ordo-rpps-list{list-style:none;margin:0;padding:0;border:1px solid var(--base-200, #0c0e1633);border-radius:4px;overflow:hidden}',
+    '.ordo-rpps-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--base-100, #0c0e161a)}',
     '.ordo-rpps-list li:first-child{border-top:0}',
     '.ordo-rpps-list li>span:first-child{flex:1 1 auto;min-width:0}',
     '.ordo-rpps-list li .ordo-rpps-btn{flex:0 0 auto;white-space:nowrap}',
     '.ordo-rpps-list li .ordo-rpps-note{flex:0 1 auto;text-align:right}',
-    '.ordo-rpps-direct{margin-top:14px;padding-top:12px;border-top:1px solid #e6ecf5}',
-    '.ordo-rpps-muted,.ordo-rpps-note{color:#5b6b85;font-size:13px}',
-    '.ordo-rpps-error{color:#a8323a;margin-top:6px}',
-    '.ordo-rpps-warn{color:#8a5a00;margin-top:6px}',
-    '.ordo-rpps-card{border:1px solid #d9e2f0;border-radius:8px;padding:12px 14px;margin-top:8px}',
-    '.ordo-rpps-link{background:none;border:0;padding:0;color:#1f3b73;text-decoration:underline;cursor:pointer;font:inherit;text-align:left}',
+    '.ordo-rpps-direct{margin-top:14px;padding-top:12px;border-top:1px solid var(--base-100, #0c0e161a)}',
+    '.ordo-rpps-muted,.ordo-rpps-note{color:var(--neutral-500, #47505c);font-size:13px}',
+    '.ordo-rpps-error{color:var(--error-700, #ba1b1b);margin-top:6px}',
+    '.ordo-rpps-warn{color:var(--warning-800, #864e0e);margin-top:6px}',
+    '.ordo-rpps-card{border:1px solid var(--base-200, #0c0e1633);border-radius:4px;padding:12px 14px;margin-top:8px}',
+    '.ordo-rpps-link{background:none;border:0;padding:0;color:var(--primary-500, #3454f6);text-decoration:underline;cursor:pointer;font:inherit;text-align:left}',
     '.ordo-rpps-scope{margin-top:6px}',
-    '.ordo-rpps-done{background:#eef8f0;border:1px solid #bfe3c7;border-radius:8px;padding:12px 14px}'
+    '.ordo-rpps-done{background:var(--success-50, #f2fdf5);border:1px solid var(--success-200, #bbf7d0);border-radius:4px;padding:12px 14px}'
   ].join('');
 
   function injectStyles() {
@@ -371,9 +390,10 @@
     function run() {
       var f = family.value.replace(/\s+/g, ' ').trim();
       var g = given.value.replace(/\s+/g, ' ').trim();
-      setMessage(panel, '');
+      // Les messages de la recherche s'affichent sous ses champs, pas au bas du panneau.
+      setMessage(results, '');
       if (f.replace(/[^A-Za-zÀ-ÿ]/g, '').length < 2) {
-        setMessage(panel, 'Indiquez au moins 2 lettres du nom.');
+        setMessage(results, 'Indiquez au moins 2 lettres du nom.');
         return;
       }
       var seq = ++searchSeq;
@@ -387,7 +407,8 @@
       }).catch(function(err) {
         if (seq !== searchSeq) return;
         clear(results);
-        setMessage(panel, messageFor(err));
+        setMessage(results, messageFor(err));
+        track('search-' + failureOutcome(err));
         reportIfActionable('RppsFinder.search', err);
       }).then(function() {
         if (seq === searchSeq) go.disabled = false;
@@ -493,6 +514,7 @@
       }).catch(function(err) {
         clear(out);
         setMessage(container, messageFor(err));
+        track('lookup-' + failureOutcome(err));
         reportIfActionable('RppsFinder.lookup', err);
       }).then(function() {
         check.disabled = !normalizeRpps(num.value);
@@ -518,12 +540,14 @@
     setMessage(node, '');
     api({ action: 'select', rpps: c.rpps, source: source }).then(function(body) {
       var custom = { 'n-rpps': body.rpps, 'statut-rpps': body.category, 'date-check-rpps': body.verified_at };
+      var metaValues = { 'rpps-tested': body.rpps, 'date-check-RPPS': body.verified_at };
       merge(fields(), custom);
+      merge(meta(), metaValues);
       var shared = window.OrdoMemberstack && window.OrdoMemberstack.customFields;
       if (shared && shared !== fields()) merge(shared, custom);
       // Le formulaire du bloc professionnel renvoie ce champ à chaque enregistrement.
       input.value = body.rpps;
-      patchSnapshot(custom, { 'rpps-tested': body.rpps, 'date-check-RPPS': body.verified_at });
+      patchSnapshot(custom, metaValues);
       track('saved');
       console.log(PREFIX, 'Saved', 'source=' + source, 'category=' + body.category);
       renderDone(body);

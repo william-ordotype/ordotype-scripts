@@ -133,12 +133,25 @@ async function test(name, fn) {
   await test('déjà vérifié : rien de plus que la coche existante', async () => {
     const m = clone(MEMBRE);
     m.customFields['statut-rpps'] = 'E';
+    m.metaData = { 'rpps-tested': '8' + N1 };
     const { w, d, calls, pushed } = await page({ member: m });
     const root = d.querySelector('.ordo-rpps');
     assert.ok(root && !visible(w, root), 'bloc masqué');
     assert.ok(d.querySelector('[data-ordo-v2="profil"] [data-ordo-rpps-verifie]'), 'coche « Vérifié » inchangée');
     assert.strictEqual(calls.length, 0);
     assert.deepStrictEqual(steps(pushed), []);
+  });
+
+  await test('statut vérifié pour un AUTRE numéro que celui affiché : pas de coche, invitation à vérifier', async () => {
+    const m = clone(MEMBRE);
+    m.customFields['statut-rpps'] = 'C';
+    m.metaData = { 'rpps-tested': N2 };
+    const { w, d, calls } = await page({ member: m });
+    const root = d.querySelector('.ordo-rpps');
+    assert.ok(root && visible(w, root), 'invitation affichée');
+    assert.ok(byText(root, 'button', /Vérifier maintenant/));
+    assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-verifie]').length, 0, 'aucune coche');
+    assert.strictEqual(calls.length, 0);
   });
 
   await test('recherche par nom : champs préremplis, jeton, résultats, « C’est moi » seulement sur son nom', async () => {
@@ -182,6 +195,7 @@ async function test(name, fn) {
     assert.strictEqual(member.customFields['n-rpps'], N1);
     assert.strictEqual(member.customFields['statut-rpps'], 'C');
     assert.strictEqual(member.customFields['date-check-rpps'], saved.verified_at);
+    assert.strictEqual(member.metaData['rpps-tested'], N1, 'numéro contrôlé connu de la page');
     assert.strictEqual(d.getElementById('RPPS').value, N1, 'le formulaire renverra le numéro vérifié');
     const snap = JSON.parse(w.localStorage.getItem('_ms-mem'));
     assert.strictEqual(snap.customFields['statut-rpps'], 'C');
@@ -275,7 +289,21 @@ async function test(name, fn) {
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
-    assert.ok(/momentanément indisponible/.test(root.textContent));
+    assert.ok(/L’Annuaire santé ne répond pas en ce moment/.test(root.textContent));
+    assert.ok(!/quelques secondes/.test(root.textContent), 'pas de promesse de délai');
+    const msg = root.querySelector('.ordo-rpps-error');
+    const row = root.querySelector('.ordo-rpps-panel > .ordo-rpps-row');
+    assert.strictEqual(msg.parentNode, row.nextSibling, 'message juste sous les champs de recherche');
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:search-unavailable'), 'panne de l’annuaire comptée dans GA4');
+    assert.deepStrictEqual(ctx.reports, []);
+
+    ctx = await page({ server: { search: () => reply(429, { error: 'rate_limited' }) } });
+    root = ctx.d.querySelector('.ordo-rpps');
+    byText(root, 'button', /Vérifier maintenant/).click();
+    byText(root, 'button', /^Rechercher$/).click();
+    await settle();
+    assert.ok(/patientez une minute/.test(root.textContent));
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:search-rate-limited'));
     assert.deepStrictEqual(ctx.reports, []);
 
     ctx = await page({ server: {} });
@@ -284,6 +312,7 @@ async function test(name, fn) {
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
     assert.ok(/Connexion impossible/.test(root.textContent));
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:search-network'));
     assert.deepStrictEqual(ctx.reports.map((r) => r.kind), ['network'], 'requête morte signalée comme telle');
 
     ctx = await page({ server: { search: () => reply(502, { error: 'upstream_error' }) } });

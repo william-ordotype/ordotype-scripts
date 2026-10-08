@@ -318,10 +318,10 @@
     // On lui fait prendre toute la ligne ; le champ TVA passe dessous. !important
     // car la règle Webflow (.form-field-wrapper.is-short) est plus spécifique.
     '.ordo-siren-host{max-width:none!important;min-width:0!important;grid-column:1/-1}',
-    '.ordo-siren-banner{background:#f3f6fb;border:1px solid #d9e2f0;border-radius:8px;padding:12px 14px;margin-bottom:10px}',
+    '.ordo-siren-banner{background:var(--neutral-100, #f7f7fb);border:1px solid var(--base-200, #0c0e1633);border-radius:4px;padding:12px 14px;margin-bottom:10px}',
     '.ordo-siren-banner strong{display:block;margin-bottom:2px}',
     '.ordo-siren-alt{margin-top:6px}',
-    '.ordo-siren-direct{margin-top:14px;padding-top:12px;border-top:1px solid #e6ecf5}',
+    '.ordo-siren-direct{margin-top:14px;padding-top:12px;border-top:1px solid var(--base-100, #0c0e161a)}',
     '.ordo-siren-direct>.ordo-siren-muted:first-child{margin-bottom:6px}',
     '.ordo-siren-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}',
     '.ordo-siren-row input{flex:1 1 160px;min-width:0}',
@@ -330,17 +330,17 @@
     // comme les autres champs du formulaire.
     '@media (max-width:479px){.ordo-siren-row input,.ordo-siren-row .ordo-siren-cp{flex-basis:100%}}',
     '.ordo-siren-btn[disabled]{opacity:.5;cursor:default}',
-    '.ordo-siren-list{list-style:none;margin:0;padding:0;border:1px solid #d9e2f0;border-radius:8px;overflow:hidden}',
-    '.ordo-siren-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid #e6ecf5}',
+    '.ordo-siren-list{list-style:none;margin:0;padding:0;border:1px solid var(--base-200, #0c0e1633);border-radius:4px;overflow:hidden}',
+    '.ordo-siren-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--base-100, #0c0e161a)}',
     '.ordo-siren-list li .ordo-siren-btn{flex:0 0 auto;white-space:nowrap}',
     '.ordo-siren-list li:first-child{border-top:0}',
-    '.ordo-siren-list li:hover{background:#f6f8fc}',
-    '.ordo-siren-muted{color:#5b6b85;font-size:13px}',
-    '.ordo-siren-error{color:#a8323a;margin-top:6px}',
-    '.ordo-siren-warn{color:#8a5a00;margin-top:6px}',
-    '.ordo-siren-card{border:1px solid #d9e2f0;border-radius:8px;padding:12px 14px;margin-top:8px}',
-    '.ordo-siren-link{background:none;border:0;padding:0;color:#1f3b73;text-decoration:underline;cursor:pointer;font:inherit}',
-    '.ordo-siren-done{background:#eef8f0;border:1px solid #bfe3c7;border-radius:8px;padding:12px 14px}'
+    '.ordo-siren-list li:hover{background:var(--neutral-100, #f7f7fb)}',
+    '.ordo-siren-muted{color:var(--neutral-500, #47505c);font-size:13px}',
+    '.ordo-siren-error{color:var(--error-700, #ba1b1b);margin-top:6px}',
+    '.ordo-siren-warn{color:var(--warning-800, #864e0e);margin-top:6px}',
+    '.ordo-siren-card{border:1px solid var(--base-200, #0c0e1633);border-radius:4px;padding:12px 14px;margin-top:8px}',
+    '.ordo-siren-link{background:none;border:0;padding:0;color:var(--primary-500, #3454f6);text-decoration:underline;cursor:pointer;font:inherit}',
+    '.ordo-siren-done{background:var(--success-50, #f2fdf5);border:1px solid var(--success-200, #bbf7d0);border-radius:4px;padding:12px 14px}'
   ].join('');
 
   function injectStyles() {
