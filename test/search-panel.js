@@ -16,7 +16,7 @@
  *     l'ouvre sans changer de page ; le champ y est déplacé puis remis ;
  *   - en-tête : flèche puis champ (flèche nommée pour les lecteurs d'écran), croix
  *     masquée tant que le champ est vide, pas de loupe à droite, aucune classe
- *     du site sur le champ ouvert, tout le champ gris donne le focus, touche
+ *     du site sur le champ ouvert, tout le champ donne le focus, touche
  *     « Rechercher » du clavier ; une réponse tardive du moteur ne réaffiche
  *     rien sous un champ effacé ;
  *   - Entrée : traitée avant le moteur (requête encodée), sauf résultat choisi
@@ -288,7 +288,7 @@ async function main() {
         check('pas de loupe à droite', !doc.querySelector('.ot-search-panel .ot-search-go, .ot-search-panel .seaparator-nav'), 'loupe de droite présente');
         check('loupe dans le champ', !!doc.querySelector('.ot-search-field > img.ot-search-icon'), 'loupe absente');
         const clear = doc.querySelector('.ot-search-clear');
-        check('champ juste avant la croix (règle :placeholder-shown)', input.nextElementSibling === clear && input.placeholder === 'Chercher',
+        check('champ juste avant la croix (règle :placeholder-shown)', input.nextElementSibling === clear && input.placeholder === 'Rechercher',
             input.nextElementSibling && input.nextElementSibling.outerHTML);
         // jsdom n'évalue pas :placeholder-shown selon la valeur : on vérifie qu'une règle
         // « display:none » conditionnée par :placeholder-shown vise bien la croix,

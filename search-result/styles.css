@@ -1,8 +1,12 @@
 /* Page /search-result, téléphones (max 479px, même palier que Webflow) :
    l'en-tête de recherche reprend celui du panneau de recherche des fiches
-   (shared/search-panel.js) : flèche de retour à gauche, champ gris arrondi
-   de 48px avec la loupe dedans, croix seulement quand il y a du texte, plus
-   de loupe ni de trait de séparation à droite (Entrée lance la recherche).
+   (shared/search-panel.js) : flèche de retour à gauche, champ de 48px avec la
+   loupe dedans, croix seulement quand il y a du texte, plus de loupe ni de
+   trait de séparation à droite (Entrée lance la recherche).
+   Même dessin que le champ de la barre de navigation sur ordinateur
+   (shared/global-styles.css) : blanc, contour --base-200, --primary-500 pendant
+   la saisie, rayon de 4px, couleurs du design system. Le contour est une ombre
+   intérieure : la géométrie ne bouge pas.
 
    Les éléments sont ceux du Designer (positions absolues d'origine) : chaque
    règle les remet dans le flux d'une ligne flex. Même géométrie que le
@@ -67,7 +71,7 @@
         transform: translateY(-50%) !important;
         width: 18px !important;
         height: 18px !important;
-        opacity: .5;
+        opacity: 1 !important;
         z-index: 2;
         pointer-events: none;
     }
@@ -80,9 +84,13 @@
         min-height: 0 !important;
         padding: 0 6px 0 40px !important;
         border: 0 !important;
-        border-radius: 14px !important;
-        background: #f2f3f6 !important;
-        box-shadow: none !important;
+        border-radius: 4px !important;
+        background: #fff !important;
+        box-shadow: inset 0 0 0 1px var(--base-200, #0c0e1633) !important;
+    }
+
+    .search-block-results .search-form-wrapper:focus-within {
+        box-shadow: inset 0 0 0 1px var(--primary-500, #3454f6) !important;
     }
 
     .search-block-results #search-bar-main {
@@ -98,11 +106,11 @@
         box-shadow: none !important;
         font-size: 17px !important;
         font-weight: 400 !important;
-        color: #0c0e16 !important;
+        color: var(--base-900, #0c0e16) !important;
     }
 
     .search-block-results #search-bar-main::placeholder {
-        color: #a9a9a9 !important;
+        color: var(--base-500, #0c0e1680) !important;
         opacity: 1;
     }
 
@@ -139,7 +147,7 @@
         justify-content: center;
         margin: 0 !important;
         padding: 0 !important;
-        color: #80838d !important;
+        color: var(--base-500, #0c0e1680) !important;
     }
 
     .search-block-results .main-reset-button svg {

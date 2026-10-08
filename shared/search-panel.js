@@ -5,10 +5,14 @@
   var POURCENT = 100;
   var PORTRAIT = "(max-width: 479px)";
 
-  // En-tête du panneau : flèche de fermeture à gauche, champ gris avec la loupe dedans.
+  // En-tête du panneau : flèche de fermeture à gauche, champ avec la loupe dedans.
   // Classes propres au panneau : aucune règle du site ne s'y applique. La croix
   // n'apparaît que s'il y a du texte (:placeholder-shown). Pas de « gap » ni
   // d'« inset » : non pris en charge par les Safari plus anciens.
+  // Même dessin que le champ de la barre de navigation sur ordinateur
+  // (shared/global-styles.css) : blanc, contour --base-200, --primary-500 pendant
+  // la saisie, rayon de 4px, couleurs du design system. Le contour est une ombre
+  // intérieure : la géométrie du champ ne bouge pas d'un pixel.
   // Sans dvh, 100vh inclut la barre du navigateur : la marge sous la liste reste
   // celle d'avant, pour que les derniers résultats restent atteignables.
   // La liste est toujours posée sous l'en-tête (8 + 48 + 5 px) : le moteur
@@ -19,15 +23,17 @@
     ".ot-search-panel.is-open{display:block;position:fixed;top:0;right:0;bottom:0;left:0;background:#fff;z-index:10001;overscroll-behavior:contain}" +
     ".ot-search-head{display:flex;align-items:center;padding:8px 12px 8px 4px}" +
     ".ot-search-field{position:relative;flex:1 1 0;min-width:0}" +
-    ".ot-search-icon{position:absolute;left:13px;top:50%;width:18px;height:18px;margin-top:-9px;opacity:.5;pointer-events:none}" +
-    ".ot-search-form{display:flex;align-items:center;height:48px;margin:0;padding:0 6px 0 40px;border-radius:14px;background:#f2f3f6;cursor:text}" +
-    ".ot-search-panel .ot-search-input{flex:1 1 0;min-width:0;width:auto;height:48px;margin:0;padding:0;border:0;border-radius:0;outline:0;background:transparent;box-shadow:none;-webkit-appearance:none;appearance:none;font:inherit;font-size:17px;font-weight:400;color:#0c0e16}" +
-    ".ot-search-clear{display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin:0;border:0;border-radius:8px;background:none;color:#80838d;cursor:pointer}" +
+    ".ot-search-icon{position:absolute;left:13px;top:50%;width:18px;height:18px;margin-top:-9px;pointer-events:none}" +
+    ".ot-search-form{display:flex;align-items:center;height:48px;margin:0;padding:0 6px 0 40px;border-radius:4px;background:#fff;box-shadow:inset 0 0 0 1px var(--base-200,#0c0e1633);cursor:text}" +
+    ".ot-search-form:focus-within{box-shadow:inset 0 0 0 1px var(--primary-500,#3454f6)}" +
+    ".ot-search-panel .ot-search-input{flex:1 1 0;min-width:0;width:auto;height:48px;margin:0;padding:0;border:0;border-radius:0;outline:0;background:transparent;box-shadow:none;-webkit-appearance:none;appearance:none;font:inherit;font-size:17px;font-weight:400;color:var(--base-900,#0c0e16)}" +
+    ".ot-search-panel .ot-search-input::placeholder{color:var(--base-500,#0c0e1680);opacity:1}" +
+    ".ot-search-clear{display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin:0;border:0;border-radius:4px;background:none;color:var(--base-500,#0c0e1680);cursor:pointer}" +
     ".ot-search-clear svg{width:20px;height:20px}" +
     ".ot-search-input:placeholder-shown+.ot-search-clear{display:none}" +
-    ".ot-search-panel .ot-search-back{display:flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;margin-right:2px;padding:0;border-radius:8px;text-decoration:none}" +
+    ".ot-search-panel .ot-search-back{display:flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;margin-right:2px;padding:0;border-radius:4px;text-decoration:none}" +
     ".ot-search-back img{width:22px;height:22px}" +
-    ".ot-search-clear:focus-visible,.ot-search-panel .ot-search-back:focus-visible{outline:2px solid #3454f6;outline-offset:2px}" +
+    ".ot-search-clear:focus-visible,.ot-search-panel .ot-search-back:focus-visible{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}" +
     "html.ot-search-open #search-results{z-index:10002!important;top:61px!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 6.5rem);overflow-y:auto;overscroll-behavior:contain}" +
     "html.ot-search-open #search-results .srt-menu{padding-left:.5rem}" +
     "html.ot-search-open #search-results .srt-content{border-top:0}" +
@@ -143,7 +149,7 @@
         removeResults();
         input.focus();
       });
-      // Tout le champ gris est cliquable, loupe et marges comprises.
+      // Tout le champ est cliquable, loupe et marges comprises.
       panel.querySelector(".ot-search-field").addEventListener("click", function (e) {
         if (e.target !== input && !clear.contains(e.target)) input.focus();
       });
@@ -256,7 +262,7 @@
       }
       open = true;
       input.className = "ot-search-input";
-      input.placeholder = "Chercher";
+      input.placeholder = "Rechercher"; // comme sur ordinateur
       input.setAttribute("enterkeyhint", "search"); // touche « Rechercher » du clavier
       if (guard) guard.observe(document.body, { childList: true });
       panel.classList.add("is-open");

@@ -32,6 +32,59 @@ form#wf-form-mutateDocument {
     cursor: pointer;
 }
 
+/* Champ de recherche de la barre de navigation (ordinateur, tablette).
+ * Même dessin que le panneau de recherche mobile (shared/search-panel.js) et
+ * que /search-result sur téléphone (search-result/styles.css) : blanc, contour
+ * --base-200, --primary-500 pendant la saisie (au lieu du bleu par défaut de
+ * Webflow, #3898ec), loupe grise, croix cerclée seulement quand il y a du
+ * texte. Le Designer (classes search-bar + nav-bar-size, embed
+ * .html-reset-button-navbar) garde la mise en page et le rayon de 4px ; ces
+ * règles ne changent que le dessin. La loupe est l'image déjà utilisée par le
+ * site (trait --base-500) ; la croix est celle de l'accueil et du panneau
+ * mobile, dessinée en fond pour ne pas toucher à l'embed. */
+.search-bar.nav-bar-size {
+    border-color: var(--base-200, #0c0e1633);
+    background-color: #fff;
+    background-image: url("https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/6464fa4d45e5736b95f15198_search.svg");
+    background-size: 20px;
+    background-position: 14px 50%;
+    color: var(--base-900, #0c0e16);
+}
+
+.search-bar.nav-bar-size:focus {
+    border-color: var(--primary-500, #3454f6);
+}
+
+.search-bar.nav-bar-size::placeholder {
+    color: var(--base-500, #0c0e1680);
+}
+
+#search-bar-nav:placeholder-shown + .html-reset-button-navbar {
+    display: none;
+}
+
+/* Le Designer place la croix à une hauteur fixe (top 11 ou 13px selon
+ * l'écran), calée pour l'ancienne croix de 20px : centrée sur le champ, à 6px
+ * du bord droit comme dans le panneau mobile. */
+.html-reset-button-navbar {
+    top: 50%;
+    right: 6px;
+    padding-top: 0;
+    transform: translateY(-50%);
+}
+
+.html-reset-button-navbar .reset-button-navbar {
+    display: block;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22' fill='none'%3E%3Cpath d='M14 8L8 14M8 8L14 14M21 11C21 16.5228 16.5228 21 11 21C5.47715 21 1 16.5228 1 11C1 5.47715 5.47715 1 11 1C16.5228 1 21 5.47715 21 11Z' stroke='%230C0E16' stroke-opacity='.5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 20px no-repeat;
+}
+
+.html-reset-button-navbar .reset-button-navbar svg {
+    display: none;
+}
+
 /* Webflow's .button is a column flexbox (flex-direction: column;
  * justify-content: center). WebKit (Safari, every iOS browser) does not center
  * the label of an <input type="submit"> that way: "Vérifier" on the 2FA page
