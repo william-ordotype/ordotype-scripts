@@ -136,6 +136,10 @@ async function test(name, fn) {
     assert.ok(header.querySelector('.compte-v2_identity-text .ordo-photo-actions'), 'liens sous le texte de l’en-tête');
     assert.strictEqual(uploads.length, 0);
     assert.deepStrictEqual(steps(pushed), ['photo:identite:shown']);
+    // jsdom ne fait pas la mise en page : contrôle sur la règle injectée.
+    const css = header.ownerDocument.getElementById('ordo-photo-styles').textContent;
+    assert.ok(/\.ordo-photo\{[^}]*align-self:flex-start/.test(css), 'rond aligné en haut, sur le nom');
+    assert.ok(!/align-self:center/.test(css), 'jamais centré sur la hauteur du bloc');
   });
 
   await test('photo envoyée : affichée, « Changer la photo » et « Retirer »', async () => {

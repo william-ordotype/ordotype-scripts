@@ -188,7 +188,8 @@
   // ---------------------------------------------------------------------------
 
   var CSS = [
-    '.ordo-photo{position:relative;flex-shrink:0;align-self:center;display:inline-flex;margin:0;padding:0;border:0;border-radius:50%;background:none;cursor:pointer;line-height:0}',
+    // Le rond s'aligne en haut, sur le nom : l'en-tête compte jusqu'à quatre lignes.
+    '.ordo-photo{position:relative;flex-shrink:0;align-self:flex-start;display:inline-flex;margin:0;padding:0;border:0;border-radius:50%;background:none;cursor:pointer;line-height:0}',
     '.ordo-photo:focus-visible{outline:2px solid var(--primary-500, #3454f6);outline-offset:3px}',
     '.ordo-photo[disabled]{cursor:default}',
     '.ordo-photo-img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:50%}',
@@ -207,7 +208,7 @@
     '.ordo-photo-status{font-size:14px;line-height:1.5;color:var(--neutral-500, #47505c)}',
     '.ordo-photo-status:empty{display:none}',
     '.ordo-photo-status.is-error{color:var(--error-700, #ba1b1b)}',
-    '@media (max-width:767px){.ordo-photo{align-self:flex-start}.ordo-photo-badge.compte-v2_badge{width:22px;height:22px;right:-4px;bottom:-4px}.ordo-photo-link{display:inline-flex;align-items:center;min-height:44px}}'
+    '@media (max-width:767px){.ordo-photo-badge.compte-v2_badge{width:22px;height:22px;right:-4px;bottom:-4px}.ordo-photo-link{display:inline-flex;align-items:center;min-height:44px}}'
   ].join('');
 
   function injectStyles() {
