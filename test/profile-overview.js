@@ -168,6 +168,7 @@ async function test(name, fn) {
   await test('RPPS vérifié dans l\'annuaire : coche verte dans la carte et l\'en-tête ; « not found » : aucune', async () => {
     const m = clone(MEDECIN);
     m.customFields['statut-rpps'] = 'C';
+    m.metaData = { 'rpps-tested': '10000668540' };
     let r = await page({ member: m });
     assert.strictEqual(r.d.querySelectorAll('[data-ordo-rpps-verifie]').length, 2);
     assert.strictEqual(champ(r.d, 'n-rpps'), '10000668540Vérifié');
@@ -179,6 +180,24 @@ async function test(name, fn) {
     r = await page({ member: pas });
     assert.ok(!visible(r.w, r.d.querySelector('[data-ordo-rpps-entete]')), 'pas de ligne RPPS pour un texte');
     assert.strictEqual(champ(r.d, 'n-rpps'), 'Pas de RPPS');
+  });
+
+  await test('coche liée au numéro contrôlé : autre numéro, contrôle absent ou texte = pas de coche ; « 8 » initial accepté', async () => {
+    const base = clone(MEDECIN);
+    base.customFields['statut-rpps'] = 'C';
+    const badges = async (meta, numero) => {
+      const m = clone(base);
+      if (meta !== undefined) m.metaData = meta;
+      if (numero !== undefined) m.customFields['n-rpps'] = numero;
+      const r = await page({ member: m });
+      return r.d.querySelectorAll('[data-ordo-rpps-verifie]').length;
+    };
+    assert.strictEqual(await badges({ 'rpps-tested': '10000668557' }), 0, 'numéro changé depuis le contrôle');
+    assert.strictEqual(await badges(undefined), 0, 'aucun numéro contrôlé');
+    assert.strictEqual(await badges({ 'rpps-tested': '810000668540' }), 2, 'identifiant national à 12 chiffres = même numéro');
+    assert.strictEqual(await badges({ 'rpps-tested': '10000668540' }, '810000668540'), 2, 'saisi avec le « 8 » initial');
+    assert.strictEqual(await badges({ 'rpps-tested': 'Pas de RPPS' }, 'Pas de RPPS'), 0, 'texte identique des deux côtés');
+    assert.strictEqual(await badges({ 'rpps-tested': '10000668541' }, '10000668541'), 0, 'clé de contrôle fausse des deux côtés');
   });
 
   await test('valeur hors liste conservée : ajoutée comme option et sélectionnée', async () => {

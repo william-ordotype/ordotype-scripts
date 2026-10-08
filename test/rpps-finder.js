@@ -133,12 +133,25 @@ async function test(name, fn) {
   await test('déjà vérifié : rien de plus que la coche existante', async () => {
     const m = clone(MEMBRE);
     m.customFields['statut-rpps'] = 'E';
+    m.metaData = { 'rpps-tested': '8' + N1 };
     const { w, d, calls, pushed } = await page({ member: m });
     const root = d.querySelector('.ordo-rpps');
     assert.ok(root && !visible(w, root), 'bloc masqué');
     assert.ok(d.querySelector('[data-ordo-v2="profil"] [data-ordo-rpps-verifie]'), 'coche « Vérifié » inchangée');
     assert.strictEqual(calls.length, 0);
     assert.deepStrictEqual(steps(pushed), []);
+  });
+
+  await test('statut vérifié pour un AUTRE numéro que celui affiché : pas de coche, invitation à vérifier', async () => {
+    const m = clone(MEMBRE);
+    m.customFields['statut-rpps'] = 'C';
+    m.metaData = { 'rpps-tested': N2 };
+    const { w, d, calls } = await page({ member: m });
+    const root = d.querySelector('.ordo-rpps');
+    assert.ok(root && visible(w, root), 'invitation affichée');
+    assert.ok(byText(root, 'button', /Vérifier maintenant/));
+    assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-verifie]').length, 0, 'aucune coche');
+    assert.strictEqual(calls.length, 0);
   });
 
   await test('recherche par nom : champs préremplis, jeton, résultats, « C’est moi » seulement sur son nom', async () => {
@@ -182,6 +195,7 @@ async function test(name, fn) {
     assert.strictEqual(member.customFields['n-rpps'], N1);
     assert.strictEqual(member.customFields['statut-rpps'], 'C');
     assert.strictEqual(member.customFields['date-check-rpps'], saved.verified_at);
+    assert.strictEqual(member.metaData['rpps-tested'], N1, 'numéro contrôlé connu de la page');
     assert.strictEqual(d.getElementById('RPPS').value, N1, 'le formulaire renverra le numéro vérifié');
     const snap = JSON.parse(w.localStorage.getItem('_ms-mem'));
     assert.strictEqual(snap.customFields['statut-rpps'], 'C');

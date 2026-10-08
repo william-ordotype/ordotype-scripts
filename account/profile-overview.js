@@ -85,19 +85,39 @@
     return text(fields().statut).toLowerCase() === 'interne';
   }
 
+  /** 11 chiffres avec clé de Luhn, ou 12 avec le « 8 » initial de l'identifiant national ; '' sinon. */
+  function normalizeRpps(raw) {
+    var d = String(raw == null ? '' : raw).replace(/\D/g, '');
+    if (d.length === 12 && d.charAt(0) === '8') d = d.slice(1);
+    if (d.length !== 11) return '';
+    var total = 0;
+    for (var i = 0; i < 11; i++) {
+      var n = Number(d.charAt(10 - i));
+      if (i % 2 === 1) {
+        n *= 2;
+        if (n > 9) n -= 9;
+      }
+      total += n;
+    }
+    return total % 10 === 0 ? d : '';
+  }
+
   /**
    * RPPS trouvé dans l'annuaire santé : `statut-rpps` porte alors sa catégorie professionnelle
-   * (C civil, E étudiant, M militaire). Vide ou « not found » : non vérifié.
+   * (C civil, E étudiant, M militaire), et `rpps-tested` le numéro contrôlé. La coche ne vaut
+   * que pour le numéro affiché : un numéro modifié depuis le contrôle n'est plus « Vérifié ».
    */
   function rppsVerifie() {
-    return /^[CEM]$/.test(text(fields()['statut-rpps']).toUpperCase()) && !!text(fields()['n-rpps']);
+    if (!/^[CEM]$/.test(text(fields()['statut-rpps']).toUpperCase())) return false;
+    var numero = normalizeRpps(fields()['n-rpps']);
+    return !!numero && numero === normalizeRpps((member.metaData || {})['rpps-tested']);
   }
 
   /** Coche verte « Vérifié », construite élément par élément (jamais de HTML injecté). */
   function checkBadge() {
     var badge = document.createElement('span');
     badge.setAttribute('data-ordo-rpps-verifie', '1');
-    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:8px;color:#106820;font-size:13px;font-weight:600;vertical-align:middle';
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:8px;color:var(--success-700, #106820);font-size:13px;font-weight:600;vertical-align:middle';
     var NS = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('width', '16');
@@ -106,7 +126,7 @@
     svg.setAttribute('aria-hidden', 'true');
     var circle = document.createElementNS(NS, 'circle');
     circle.setAttribute('cx', '12'); circle.setAttribute('cy', '12'); circle.setAttribute('r', '11');
-    circle.setAttribute('fill', '#106820');
+    circle.setAttribute('fill', 'var(--success-700, #106820)');
     var path = document.createElementNS(NS, 'path');
     path.setAttribute('d', 'm7 12.5 3.2 3.2L17 9');
     path.setAttribute('fill', 'none'); path.setAttribute('stroke', '#ffffff'); path.setAttribute('stroke-width', '2.2');
@@ -245,7 +265,7 @@
         resume.textContent = line;
         show(resume, !!line);
         var rpps = text(f['n-rpps']);
-        renderRpps(resume, /^\d{11}$/.test(rpps) ? rpps : '');
+        renderRpps(resume, normalizeRpps(rpps) || (/^\d{11}$/.test(rpps) ? rpps : ''));
       }
       var interne = profil.querySelectorAll('[data-ordo-si-pas-interne]');
       for (var j = 0; j < interne.length; j++) show(interne[j], !isInterne());
@@ -712,6 +732,12 @@
           if (!member.auth) member.auth = {};
           for (var a in data.auth) {
             if (Object.prototype.hasOwnProperty.call(data.auth, a)) member.auth[a] = data.auth[a];
+          }
+        }
+        if (data.metaData) {
+          if (!member.metaData) member.metaData = {};
+          for (var m in data.metaData) {
+            if (Object.prototype.hasOwnProperty.call(data.metaData, m)) member.metaData[m] = data.metaData[m];
           }
         }
         render();
