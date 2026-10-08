@@ -5,42 +5,28 @@
   var POURCENT = 100;
   var PORTRAIT = "(max-width: 479px)";
 
-  // En-tête du panneau : flèche de fermeture à gauche, champ avec la loupe dedans.
-  // Classes propres au panneau : aucune règle du site ne s'y applique. La croix
-  // n'apparaît que s'il y a du texte (:placeholder-shown). Pas de « gap » ni
-  // d'« inset » : non pris en charge par les Safari plus anciens.
-  // Même dessin que le champ de la barre de navigation sur ordinateur
-  // (shared/global-styles.css) : blanc, contour --base-200, --primary-500 pendant
-  // la saisie, rayon de 4px, couleurs du design system. Le contour est une ombre
-  // intérieure : la géométrie du champ ne bouge pas d'un pixel.
-  // Sans dvh, 100vh inclut la barre du navigateur : la marge sous la liste reste
-  // celle d'avant, pour que les derniers résultats restent atteignables.
-  // La liste est toujours posée sous l'en-tête (8 + 48 + 5 px) : le moteur
-  // calcule sa position d'après le champ au moment où il la crée, ce qui peut
-  // tomber pendant un défilement de l'écran (clavier, retour dans Safari).
+  // Le panneau est un élément du Designer (composant Navbar, classes search-panel_*,
+  // caché tant qu'il n'a pas la combo is-open) : son dessin se règle dans Webflow et
+  // le canvas montre le vrai rendu. Ce script ne fait que l'ouvrir, le fermer, y
+  // déplacer le champ de l'entête et mesurer. Restent ici les règles que le Designer
+  // ne sait pas exprimer :
+  // - la croix n'apparaît que s'il y a du texte (:placeholder-shown) ;
+  // - le champ perd l'apparence native du navigateur (appearance) ;
+  // - l'anneau de focus de la croix, bouton d'un embed ;
+  // - la liste des résultats, créée par le moteur, est posée sous l'en-tête
+  //   (8 + 48 + 5 px) : il la place d'après le champ au moment où il la crée,
+  //   ce qui peut tomber pendant un défilement de l'écran (clavier, retour dans
+  //   Safari). Sans dvh, 100vh inclut la barre du navigateur : la marge sous la
+  //   liste reste celle d'avant, pour que les derniers résultats restent atteignables.
   var CSS =
-    ".ot-search-panel{display:none}" +
-    ".ot-search-panel.is-open{display:block;position:fixed;top:0;right:0;bottom:0;left:0;background:#fff;z-index:10001;overscroll-behavior:contain}" +
-    ".ot-search-head{display:flex;align-items:center;padding:8px 12px 8px 4px}" +
-    ".ot-search-field{position:relative;flex:1 1 0;min-width:0}" +
-    ".ot-search-icon{position:absolute;left:13px;top:50%;width:18px;height:18px;margin-top:-9px;pointer-events:none}" +
-    ".ot-search-form{display:flex;align-items:center;height:48px;margin:0;padding:0 6px 0 40px;border-radius:4px;background:#fff;box-shadow:inset 0 0 0 1px var(--base-200,#0c0e1633);cursor:text}" +
-    ".ot-search-form:focus-within{box-shadow:inset 0 0 0 1px var(--primary-500,#3454f6)}" +
-    ".ot-search-panel .ot-search-input{flex:1 1 0;min-width:0;width:auto;height:48px;margin:0;padding:0;border:0;border-radius:0;outline:0;background:transparent;box-shadow:none;-webkit-appearance:none;appearance:none;font:inherit;font-size:17px;font-weight:400;color:var(--base-900,#0c0e16)}" +
-    ".ot-search-panel .ot-search-input::placeholder{color:var(--base-500,#0c0e1680);opacity:1}" +
-    ".ot-search-clear{display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin:0;border:0;border-radius:4px;background:none;color:var(--base-500,#0c0e1680);cursor:pointer}" +
-    ".ot-search-clear svg{width:20px;height:20px}" +
-    ".ot-search-input:placeholder-shown+.ot-search-clear{display:none}" +
-    ".ot-search-panel .ot-search-back{display:flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;margin-right:2px;padding:0;border-radius:4px;text-decoration:none}" +
-    ".ot-search-back img{width:22px;height:22px}" +
-    ".ot-search-clear:focus-visible,.ot-search-panel .ot-search-back:focus-visible{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}" +
+    ".search-panel_input:placeholder-shown+.search-panel_clear{display:none}" +
+    ".search-panel_component .search-panel_input{-webkit-appearance:none;appearance:none}" +
+    ".search-panel_component.is-open{overscroll-behavior:contain}" +
+    ".search-panel_clear-button:focus-visible{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}" +
     "html.ot-search-open #search-results{z-index:10002!important;top:61px!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 6.5rem);overflow-y:auto;overscroll-behavior:contain}" +
     "html.ot-search-open #search-results .srt-menu{padding-left:.5rem}" +
     "html.ot-search-open #search-results .srt-content{border-top:0}" +
     "html.ot-search-open #search-results .search-result{padding:1rem 0 1rem .5rem!important;font-size:1rem!important;line-height:1.5}";
-  var CHEVRON = "https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/66254ffbec583eef92580c8b_chevron-left.svg";
-  var LOUPE = "https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/6464fa4d45e5736b95f15198_search.svg";
-  var CLEAR = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M14 8L8 14M8 8L14 14M21 11C21 16.5228 16.5228 21 11 21C5.47715 21 1 16.5228 1 11C1 5.47715 5.47715 1 11 1C16.5228 1 21 5.47715 21 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   function dispatchError(err) {
     try { window.dispatchEvent(new ErrorEvent("error", { message: err.message, error: err })); }
@@ -114,46 +100,43 @@
     }
 
     // Repère pour séparer les enregistrements selon la version de l'en-tête.
-    safely(function () { if (typeof window.clarity === "function") window.clarity("set", "recherche_entete", "fleche_gauche"); });
+    safely(function () { if (typeof window.clarity === "function") window.clarity("set", "recherche_entete", "designer"); });
 
     var home = input.parentNode, next = input.nextSibling, navClasses = input.className, navPlaceholder = input.placeholder;
     var navEnterHint = input.getAttribute("enterkeyhint");
-    var panel = null, form = null, clear = null, back = null, guard = null;
+    // Le panneau du Designer et ses pièces ; s'il manque, la loupe garde son lien.
+    var panel = document.querySelector(".search-panel_component");
+    var form = panel && panel.querySelector(".search-panel_form");
+    var clear = panel && panel.querySelector(".search-panel_clear");
+    var back = panel && panel.querySelector(".search-panel_back");
+    var field = panel && panel.querySelector(".search-panel_field");
+    var guard = null, built = false;
     var open = false, leaving = false;
+    function panelReady() { return !!(panel && form && clear && back && field && clear.parentNode === form); }
 
-    // Construit au premier besoin seulement.
+    // Préparé au premier besoin seulement : posé en fin de page (au-dessus de
+    // l'entête, z-index du Designer), aperçu de l'invite retiré, écoutes posées.
     function build() {
-      if (panel) return;
+      if (built) return;
+      built = true;
       var style = document.createElement("style");
       style.textContent = CSS;
       document.head.appendChild(style);
-      panel = document.createElement("div");
-      panel.className = "ot-search-panel";
-      panel.setAttribute("role", "dialog");
-      panel.setAttribute("aria-modal", "true");
-      panel.setAttribute("aria-label", "Recherche");
-      panel.innerHTML =
-        '<div class="ot-search-head"><a href="#" class="ot-search-back" aria-label="Fermer la recherche"><img src="' + CHEVRON + '" alt=""></a>' +
-        '<div class="ot-search-field"><img src="' + LOUPE + '" alt="" class="ot-search-icon">' +
-        '<form class="ot-search-form" role="search">' +
-        '<button type="button" class="ot-search-clear" aria-label="Effacer">' + CLEAR + "</button>" +
-        "</form></div></div>";
-      document.body.appendChild(panel);
-      form = panel.querySelector("form");
-      clear = panel.querySelector(".ot-search-clear");
-      back = panel.querySelector(".ot-search-back");
+      if (panel.parentNode !== document.body) document.body.appendChild(panel);
+      var preview = form.querySelector(".is-preview");
+      if (preview && preview.parentNode) preview.parentNode.removeChild(preview);
+      var clearButton = clear.querySelector("button") || clear;
       // La flèche ferme le panneau (raison « fleche » dans la mesure).
       back.addEventListener("click", function (e) { e.preventDefault(); requestClose("fleche"); });
-      clear.addEventListener("click", function () {
+      clearButton.addEventListener("click", function () {
         input.value = "";
         removeResults();
         input.focus();
       });
       // Tout le champ est cliquable, loupe et marges comprises.
-      panel.querySelector(".ot-search-field").addEventListener("click", function (e) {
+      field.addEventListener("click", function (e) {
         if (e.target !== input && !clear.contains(e.target)) input.focus();
       });
-      form.addEventListener("submit", function (e) { e.preventDefault(); });
       // Une réponse du moteur arrivée après l'effacement ne doit pas réafficher
       // de résultats sous un champ vide.
       if (window.MutationObserver) {
@@ -272,7 +255,7 @@
         var html = document.documentElement, changed = false;
         if (panel.parentNode !== document.body) { document.body.appendChild(panel); changed = true; }
         if (input.parentNode !== form) { form.insertBefore(input, clear); changed = true; }
-        if (input.className !== "ot-search-input") { input.className = "ot-search-input"; changed = true; }
+        if (input.className !== "search-panel_input") { input.className = "search-panel_input"; changed = true; }
         if (!panel.classList.contains("is-open")) { panel.classList.add("is-open"); changed = true; }
         if (!html.classList.contains("ot-search-open")) { html.classList.add("ot-search-open"); changed = true; }
         if (changed && S) S.resynced = true;
@@ -280,8 +263,10 @@
     }
 
     function ours() { return !!(history.state && history.state.otSearch); }
-    // Le moteur de recherche doit être branché sur ce champ.
+    // Le moteur de recherche doit être branché sur ce champ, et le panneau du
+    // Designer présent sur la page.
     function engineReady() {
+      if (!panelReady()) return false;
       try { return typeof searchBar !== "undefined" && searchBar === input; }
       catch (err) { return false; }
     }
@@ -294,7 +279,7 @@
         return report(err);
       }
       open = true;
-      input.className = "ot-search-input";
+      input.className = "search-panel_input";
       input.placeholder = "Rechercher"; // comme sur ordinateur
       input.setAttribute("enterkeyhint", "search"); // touche « Rechercher » du clavier
       if (guard) guard.observe(document.body, { childList: true });

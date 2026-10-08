@@ -12,8 +12,11 @@
  *   - à 100 %, tout tirage ouvre le panneau ; témoin quand POURCENT < 100,
  *     coupe-circuit (POURCENT = 0), stockage refusé, moteur de
  *     recherche absent : la loupe garde son lien ;
- *   - moitié panneau : panneau construit au premier appui seulement ; la loupe
- *     l'ouvre sans changer de page ; le champ y est déplacé puis remis ;
+ *   - le panneau est un élément du Designer (composant Navbar, search-panel_*),
+ *     caché dans l'entête jusqu'au premier appui ; il est alors posé en fin de
+ *     page et son aperçu d'invite retiré ; sans lui, la loupe garde son lien ;
+ *   - moitié panneau : la loupe l'ouvre sans changer de page ; le champ y est
+ *     déplacé puis remis ;
  *   - en-tête : flèche puis champ (flèche nommée pour les lecteurs d'écran), croix
  *     masquée tant que le champ est vide, pas de loupe à droite, aucune classe
  *     du site sur le champ ouvert, tout le champ donne le focus, touche
@@ -109,13 +112,13 @@ async function load(opts) {
     // dans la page ; la flèche et le champ seulement à l'intérieur de ce panneau.
     const ZERO = { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
     const shownPanel = () => {
-        const p = doc.querySelector('.ot-search-panel.is-open');
+        const p = doc.querySelector('.search-panel_component.is-open');
         return p && p.parentNode === doc.body ? p : null;
     };
     win.HTMLElement.prototype.getBoundingClientRect = function () {
         const p = shownPanel();
-        if (this.classList.contains('ot-search-panel')) return this === p && !o.neverPainted ? SCREEN : ZERO;
-        if (this.classList.contains('ot-search-back')) return p && p.contains(this) ? ARROW : ZERO;
+        if (this.classList.contains('search-panel_component')) return this === p && !o.neverPainted ? SCREEN : ZERO;
+        if (this.classList.contains('search-panel_back')) return p && p.contains(this) ? ARROW : ZERO;
         if (this.id === 'search-bar-nav') return p && p.contains(this) && !o.inputHidden ? FIELD : ZERO;
         return ZERO;
     };
@@ -124,7 +127,7 @@ async function load(opts) {
         if (nulls > 0) { nulls--; return null; }
         if (!shownPanel()) return doc.documentElement; // rien de peint à cet endroit : la page
         if (o.covered) return doc.querySelector('.navbar2_container');
-        return x < ARROW.right ? doc.querySelector('.ot-search-back img') : doc.getElementById('search-bar-nav');
+        return x < ARROW.right ? doc.querySelector('.search-panel_back img') : doc.getElementById('search-bar-nav');
     };
     if (o.engine) win.eval("var searchBar = document.getElementById('search-bar-nav');");
     win.eval(o.src);
@@ -138,7 +141,7 @@ async function load(opts) {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const frames = (win) => new Promise((r) => win.requestAnimationFrame(() => win.requestAnimationFrame(() => r())));
-const panelOpen = (doc) => !!doc.querySelector('.ot-search-panel.is-open');
+const panelOpen = (doc) => !!doc.querySelector('.search-panel_component.is-open');
 const events = (pushed, name) => pushed.filter((p) => p.event === name);
 const blocking = (reported) => reported.filter((r) => r.name === 'SearchPanelBlocked');
 function tapLoupe(win, doc) {
@@ -171,7 +174,7 @@ async function main() {
     console.log('ordinateur');
     {
         const { win, doc } = await load({ mobile: false, bucket: null });
-        check('aucun panneau', !doc.querySelector('.ot-search-panel'), 'panneau créé');
+        check('panneau resté caché dans l’entête', !panelOpen(doc) && !!doc.querySelector('.navbar_component .search-panel_component'), 'panneau ouvert ou déplacé');
         check('aucun tirage stocké', win.localStorage.getItem('ot_search_bucket') === null, win.localStorage.getItem('ot_search_bucket'));
     }
 
@@ -187,7 +190,7 @@ async function main() {
     {
         const { win, doc, pushed } = await load({ bucket: '90', src: withPercent(50) });
         check('la loupe garde son lien', !tapLoupe(win, doc), 'navigation empêchée');
-        check('aucun panneau', !doc.querySelector('.ot-search-panel'), 'panneau créé');
+        check('panneau resté caché dans l’entête', !panelOpen(doc) && !!doc.querySelector('.navbar_component .search-panel_component'), 'panneau ouvert ou déplacé');
         const open = events(pushed, 'search_panel_open')[0];
         check('ouverture comptée, moitié page', open && open.rollout_bucket === 'page' && open.reason === 'loupe', JSON.stringify(open));
         check('toutes les clés présentes', open && KEYS.every((k) => k in open), open && KEYS.filter((k) => !(k in open)));
@@ -198,7 +201,7 @@ async function main() {
     {
         const { win, doc } = await load({ src: withPercent(0) });
         check('la loupe garde son lien', !tapLoupe(win, doc), 'navigation empêchée');
-        check('aucun panneau', !doc.querySelector('.ot-search-panel'), 'panneau créé');
+        check('panneau resté caché dans l’entête', !panelOpen(doc) && !!doc.querySelector('.navbar_component .search-panel_component'), 'panneau ouvert ou déplacé');
     }
 
     console.log('tirage neuf');
@@ -234,18 +237,35 @@ async function main() {
         check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
     }
 
+    console.log('panneau du Designer absent (page ancienne, cache) : la loupe garde son lien');
+    {
+        const { win, doc, pushed, reported } = await load({ src: "document.querySelector('.search-panel_component').remove();\n" + SRC });
+        check('la loupe garde son lien', !tapLoupe(win, doc), 'navigation empêchée');
+        const open = events(pushed, 'search_panel_open')[0];
+        check('compté comme repli', open && open.reason === 'repli', JSON.stringify(pushed));
+        check('aucune alerte', blocking(reported).length === 0 && reported.length === 0, JSON.stringify(reported));
+    }
+
+    console.log('panneau du Designer incomplet (croix sortie du cadre) : la loupe garde son lien');
+    {
+        const { win, doc, pushed, reported } = await load({ src: "document.querySelector('.search-panel_field').appendChild(document.querySelector('.search-panel_clear'));\n" + SRC });
+        check('la loupe garde son lien', !tapLoupe(win, doc), 'navigation empêchée');
+        check('compté comme repli', (events(pushed, 'search_panel_open')[0] || {}).reason === 'repli', JSON.stringify(pushed));
+        check('aucune panne', reported.length === 0, JSON.stringify(reported));
+    }
+
     console.log('panneau : ouverture puis flèche');
     {
         const { win, doc, pushed, reported, clarity } = await load({});
         await wait(50); // une construction différée aurait eu lieu
-        check('panneau construit au premier appui seulement', !doc.querySelector('.ot-search-panel'), 'construit au chargement');
+        check('panneau préparé au premier appui seulement', !!doc.querySelector('.navbar_component .search-panel_component .is-preview'), 'déplacé ou aperçu retiré au chargement');
         const input = doc.getElementById('search-bar-nav');
         const home = input.parentNode;
         let blurValue = null;
         input.addEventListener('blur', () => { blurValue = input.value; });
         check('la loupe ouvre sur place', tapLoupe(win, doc) === true, 'navigation non empêchée');
         check('panneau ouvert', panelOpen(doc), 'fermé');
-        check('champ déplacé dans le panneau', !!input.closest('.ot-search-panel'), 'resté dans l’entête');
+        check('champ déplacé dans le panneau', !!input.closest('.search-panel_component'), 'resté dans l’entête');
         check('champ sélectionné', doc.activeElement === input, doc.activeElement && doc.activeElement.tagName);
         check('entrée d’historique ajoutée', win.history.state && win.history.state.otSearch === 1, JSON.stringify(win.history.state));
         const css = [...doc.querySelectorAll('style')].map((s) => s.textContent).join('');
@@ -261,17 +281,17 @@ async function main() {
         await frames(win);
         check('contrôle à l’ouverture : rien de recouvert', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
         type(win, input, 'angine');
-        const head = doc.querySelector('.ot-search-head');
+        const head = doc.querySelector('.search-panel_head');
         // espacés : trois appuis rapprochés en moins de 800 ms seraient des « appuis rageurs »
         pointer(win, head, ARROW.left + 1, 30); // marge de l'en-tête, dans la zone de la flèche
         await wait(850);
-        pointer(win, doc.querySelector('.ot-search-field'), ARROW.right + 3, 30); // bord gauche du champ, juste après la flèche
+        pointer(win, doc.querySelector('.search-panel_field'), ARROW.right + 3, 30); // bord gauche du champ, juste après la flèche
         await wait(850);
-        pointer(win, doc.querySelector('.ot-search-clear'), FIELD.right + 20, 30); // croix
+        pointer(win, doc.querySelector('.search-panel_clear-button'), FIELD.right + 20, 30); // croix
         await wait(1700);
         check('appuis dans le panneau près de la flèche : pas de panne', events(pushed, 'search_panel_problem').length === 0 && blocking(reported).length === 0,
             JSON.stringify(events(pushed, 'search_panel_problem')));
-        const back = doc.querySelector('.ot-search-back');
+        const back = doc.querySelector('.search-panel_back');
         pointer(win, back, ...TAP_BACK);
         click(win, back);
         await settle();
@@ -293,28 +313,31 @@ async function main() {
         const input = doc.getElementById('search-bar-nav');
         const navClasses = input.className;
         tapLoupe(win, doc);
-        const head = doc.querySelector('.ot-search-panel .ot-search-head');
-        const back = doc.querySelector('.ot-search-back');
-        const field = doc.querySelector('.ot-search-field');
+        const head = doc.querySelector('.search-panel_component .search-panel_head');
+        const back = doc.querySelector('.search-panel_back');
+        const field = doc.querySelector('.search-panel_field');
         check('flèche, à gauche du champ', back && back.querySelector('img') && back.textContent.trim() === '' && field && back.parentNode === head &&
             !!(field.compareDocumentPosition(back) & win.Node.DOCUMENT_POSITION_PRECEDING), back && back.outerHTML);
         check('flèche nommée pour les lecteurs d’écran', back && back.getAttribute('aria-label') === 'Fermer la recherche' && back.querySelector('img').getAttribute('alt') === '',
             back && back.outerHTML);
-        check('pas de loupe à droite', !doc.querySelector('.ot-search-panel .ot-search-go, .ot-search-panel .seaparator-nav'), 'loupe de droite présente');
-        check('loupe dans le champ', !!doc.querySelector('.ot-search-field > img.ot-search-icon'), 'loupe absente');
-        const clear = doc.querySelector('.ot-search-clear');
-        check('champ juste avant la croix (règle :placeholder-shown)', input.nextElementSibling === clear && input.placeholder === 'Rechercher',
+        check('pas de loupe à droite', !doc.querySelector('.search-panel_component .seaparator-nav, .search-panel_component .is-search'), 'loupe de droite présente');
+        check('loupe dans le champ', !!doc.querySelector('.search-panel_field > img.search-panel_icon'), 'loupe absente');
+        check('aperçu de l’invite retiré à l’ouverture', !doc.querySelector('.search-panel_component .is-preview'), 'aperçu resté');
+        check('panneau posé en fin de page (au-dessus de l’entête)', doc.querySelector('.search-panel_component').parentNode === doc.body, 'resté dans l’entête');
+        const clearWrap = doc.querySelector('.search-panel_clear');
+        const clear = doc.querySelector('.search-panel_clear-button');
+        check('champ juste avant la croix (règle :placeholder-shown)', input.nextElementSibling === clearWrap && input.placeholder === 'Rechercher',
             input.nextElementSibling && input.nextElementSibling.outerHTML);
         // jsdom n'évalue pas :placeholder-shown selon la valeur : on vérifie qu'une règle
         // « display:none » conditionnée par :placeholder-shown vise bien la croix,
         // champ vide. L'affichage avec du texte est vérifié en navigateur.
         const hides = [...doc.styleSheets].flatMap((sh) => [...sh.cssRules])
             .filter((r) => r.style && r.style.display === 'none' && /:placeholder-shown/.test(r.selectorText));
-        check('croix masquée tant que le champ est vide', input.value === '' && hides.some((r) => clear.matches(r.selectorText)),
+        check('croix masquée tant que le champ est vide', input.value === '' && hides.some((r) => clearWrap.matches(r.selectorText)),
             hides.map((r) => r.selectorText).join(' | ') || 'aucune règle');
         check('touche « Rechercher » du clavier', input.getAttribute('enterkeyhint') === 'search', input.getAttribute('enterkeyhint'));
-        check('aucune classe du site sur le champ ouvert', input.className === 'ot-search-input', input.className);
-        check('aucune classe du site dans l’en-tête', ![...head.querySelectorAll('*')].some((e) => [...e.classList].some((c) => !c.startsWith('ot-search-'))),
+        check('champ ouvert : classe du panneau seule', input.className === 'search-panel_input', input.className);
+        check('en-tête = élément du Designer (classes search-panel_*)', ![...head.querySelectorAll('*')].some((e) => [...e.classList].some((c) => !/^(search-panel_|w-inline-block$|w-embed$)/.test(c))),
             [...head.querySelectorAll('*')].map((e) => e.className).join(' | '));
         type(win, input, 'hta');
         clear.focus(); // sur un vrai appareil, le bouton prend le focus
@@ -328,7 +351,7 @@ async function main() {
         await settle();
         check('avec du texte, les résultats restent', !!doc.getElementById('search-results'), 'résultats retirés');
         doc.getElementById('search-results').remove();
-        for (const sel of ['.ot-search-icon', '.ot-search-form']) {
+        for (const sel of ['.search-panel_icon', '.search-panel_form']) {
             clear.focus();
             click(win, doc.querySelector(sel));
             check('appui sur ' + sel + ' : le champ prend le focus', doc.activeElement === input, doc.activeElement && doc.activeElement.className);
@@ -344,7 +367,7 @@ async function main() {
         results(doc, 2); // panneau fermé : la garde ne touche plus à rien
         await settle();
         check('panneau fermé : la garde ne retire rien', !!doc.getElementById('search-results'), 'retiré');
-        check('repère de version de l’en-tête pour les enregistrements', clarity.some((c) => c[0] === 'set' && c[1] === 'recherche_entete' && c[2] === 'fleche_gauche'), JSON.stringify(clarity));
+        check('repère de version de l’en-tête pour les enregistrements', clarity.some((c) => c[0] === 'set' && c[1] === 'recherche_entete' && c[2] === 'designer'), JSON.stringify(clarity));
     }
 
     console.log('panneau : bouton retour, Échap, Entrée');
@@ -443,13 +466,13 @@ async function main() {
         doc.dispatchEvent(new win.Event('visibilitychange'));
         // Constaté le 06/10 : page restaurée avec html sans « ot-search-open » et un champ de taille nulle.
         doc.documentElement.classList.remove('ot-search-open');
-        doc.querySelector('.ot-search-panel').classList.remove('is-open');
+        doc.querySelector('.search-panel_component').classList.remove('is-open');
         vis = 'visible';
         doc.dispatchEvent(new win.Event('visibilitychange'));
         await wait(600);
         check('aucune alerte', blocking(reported).length === 0, JSON.stringify(reported));
         check('aucun problème compté', events(pushed, 'search_panel_problem').length === 0, JSON.stringify(events(pushed, 'search_panel_problem')));
-        check('panneau remis à l’écran, champ dedans', panelOpen(doc) && doc.documentElement.classList.contains('ot-search-open') && !!input.closest('.ot-search-panel'),
+        check('panneau remis à l’écran, champ dedans', panelOpen(doc) && doc.documentElement.classList.contains('ot-search-open') && !!input.closest('.search-panel_component'),
             doc.documentElement.className);
         vis = 'hidden';
         doc.dispatchEvent(new win.Event('visibilitychange'));
@@ -465,7 +488,7 @@ async function main() {
         tapLoupe(win, doc);
         click(win, results(doc, 2).querySelector('a')); // séance close par le résultat
         doc.documentElement.classList.remove('ot-search-open');
-        doc.querySelector('.ot-search-panel').classList.remove('is-open');
+        doc.querySelector('.search-panel_component').classList.remove('is-open');
         input.blur();
         check('la loupe reste interceptée', tapLoupe(win, doc) === true, 'lien suivi');
         check('panneau remis, champ sélectionné', panelOpen(doc) && doc.activeElement === input, doc.activeElement && doc.activeElement.tagName);
@@ -480,7 +503,7 @@ async function main() {
         const { win, doc } = await load({});
         tapLoupe(win, doc);
         doc.documentElement.classList.remove('ot-search-open');
-        doc.querySelector('.ot-search-panel').classList.remove('is-open');
+        doc.querySelector('.search-panel_component').classList.remove('is-open');
         win.dispatchEvent(new win.Event('pageshow'));
         check('panneau remis', panelOpen(doc) && doc.documentElement.classList.contains('ot-search-open'), doc.documentElement.className);
     }
@@ -515,7 +538,7 @@ async function main() {
         tapLoupe(win, doc);
         const reset = doc.querySelector('.html-reset-button-navbar');
         reset.parentNode.removeChild(reset);
-        click(win, doc.querySelector('.ot-search-back'));
+        click(win, doc.querySelector('.search-panel_back'));
         await settle();
         check('panneau fermé quand même', !panelOpen(doc), 'resté ouvert');
         check('champ revenu dans son formulaire', !!input.closest('#wf-form-search-bar-form-mobile'), 'perdu');
@@ -631,7 +654,7 @@ async function main() {
     {
         const { win, doc, pushed, reported } = await load({});
         tapLoupe(win, doc);
-        const back = doc.querySelector('.ot-search-back');
+        const back = doc.querySelector('.search-panel_back');
         back.addEventListener('click', (e) => { e.stopImmediatePropagation(); e.preventDefault(); }, true);
         pointer(win, back, ...TAP_BACK);
         click(win, back);
@@ -646,7 +669,7 @@ async function main() {
     {
         const { win, doc, pushed, reported } = await load({});
         tapLoupe(win, doc);
-        pointer(win, doc.querySelector('.ot-search-back'), ...TAP_BACK); // pas de clic ensuite
+        pointer(win, doc.querySelector('.search-panel_back'), ...TAP_BACK); // pas de clic ensuite
         await wait(1700);
         check('pas de panne', events(pushed, 'search_panel_problem').length === 0 && blocking(reported).length === 0,
             JSON.stringify(events(pushed, 'search_panel_problem')));

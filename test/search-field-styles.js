@@ -6,7 +6,8 @@
  *   - le Designer : barre de navigation sur ordinateur et tablette (combo
  *     search-bar + nav-bar-size, embed .html-reset-button-navbar) ; global-styles.css
  *     n'en garde que la croix masquée quand le champ est vide ;
- *   - shared/search-panel.js : panneau de la loupe sur téléphone (CSS en chaîne) ;
+ *   - le Designer : panneau de la loupe sur téléphone (composant Navbar, classes
+ *     search-panel_*) ; search-panel.js n'en garde que la logique ;
  *   - le Designer : en-tête de /search-result sur téléphone ; search-result/styles.css
  *     n'en garde que la marge de page (:has()), la croix masquée champ vide et
  *     la taille de la flèche.
@@ -75,26 +76,26 @@ console.log('barre de navigation : dessin dans le Designer, shared/global-styles
 }
 
 // --- Panneau de la loupe (téléphone)
-console.log('panneau mobile : shared/search-panel.js');
+console.log('panneau mobile : dessin dans le Designer, shared/search-panel.js garde la logique seule');
 {
+    // Le panneau est un élément du Designer (composant Navbar, classes search-panel_*)
+    // depuis le 08/10/2026 : couleurs, bordure, tailles s'y règlent. La CSS injectée
+    // ne garde que ce que le Designer ne sait pas exprimer.
     const src = read('shared/search-panel.js');
     const m = src.match(/var CSS =([\s\S]*?);\n/);
     const css = m ? new Function('return (' + m[1] + ');')() : '';
     check('CSS du panneau trouvée', css.length > 0, 'var CSS introuvable');
     const rs = rules(css);
-    check('contour --base-200 au repos', uses(decl(rs, '.ot-search-form', 'box-shadow'), 'base-200'), decl(rs, '.ot-search-form', 'box-shadow'));
-    check('contour --primary-500 pendant la saisie', uses(decl(rs, '.ot-search-form:focus-within', 'box-shadow'), 'primary-500'),
-        decl(rs, '.ot-search-form:focus-within', 'box-shadow'));
-    check('fond blanc', white(decl(rs, '.ot-search-form', 'background')) || white(decl(rs, '.ot-search-form', 'background-color')),
-        decl(rs, '.ot-search-form', 'background'));
-    check('rayon de 4px', decl(rs, '.ot-search-form', 'border-radius') === '4px', decl(rs, '.ot-search-form', 'border-radius'));
-    check('texte --base-900', uses(decl(rs, '.ot-search-panel .ot-search-input', 'color'), 'base-900'), decl(rs, '.ot-search-panel .ot-search-input', 'color'));
-    check('invite --base-500', uses(decl(rs, '.ot-search-panel .ot-search-input::placeholder', 'color'), 'base-500'), 'règle absente');
-    check('croix --base-500', uses(decl(rs, '.ot-search-clear', 'color'), 'base-500'), decl(rs, '.ot-search-clear', 'color'));
-    check('loupe pleine (trait --base-500 de l’image)', !decl(rs, '.ot-search-icon', 'opacity'), decl(rs, '.ot-search-icon', 'opacity'));
+    check('croix masquée tant que le champ est vide',
+        rs.some((r) => /\.search-panel_input:placeholder-shown\s*\+\s*\.search-panel_clear/.test(r.selectorText) && r.style.display === 'none'), 'règle absente');
+    const permis = /:placeholder-shown|appearance|overscroll|focus-visible|#search-results/;
+    const dessin = rs.filter((r) => /search-panel_/.test(r.selectorText) && !permis.test(r.selectorText + r.style.cssText));
+    check('aucun dessin du panneau hors Designer', dessin.length === 0, dessin.map((r) => r.selectorText).join(' | '));
+    check('panneau pris dans le Designer, plus construit par le script', /querySelector\("\.search-panel_component"\)/.test(src) && !/createElement\("div"\)/.test(src),
+        'le script construit encore le panneau');
     check('invite « Rechercher », comme sur ordinateur', /input\.placeholder = "Rechercher"/.test(src), 'texte de l’invite');
-    const sansFond = css.replace(/\.ot-search-panel\.is-open\{[^}]*\}/, ''); // le fond blanc plein écran du panneau
-    check('aucune couleur en dur', hardColors(sansFond).length === 0, hardColors(sansFond).join(' '));
+    const sansListe = css.replace(/html\.ot-search-open #search-results[^}]*\}/g, '');
+    check('aucune couleur en dur', hardColors(sansListe).length === 0, hardColors(sansListe).join(' '));
 }
 
 // --- /search-result (téléphone)
