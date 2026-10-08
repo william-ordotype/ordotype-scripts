@@ -230,6 +230,17 @@
     return 'Une erreur est survenue. Réessayez dans un instant.';
   }
 
+  /** Issue d'un échec pour GA4 : panne de l'annuaire, limite, session, réseau ou autre. */
+  function failureOutcome(err) {
+    var status = err && err.status;
+    if (status === 503) return 'unavailable';
+    if (status === 429) return 'rate-limited';
+    if (status === 401) return 'session';
+    if (status === 404) return 'unknown';
+    if (!status) return 'network';
+    return 'error';
+  }
+
   function reportIfActionable(context, err) {
     var status = err && err.status;
     var reporter = window.OrdoErrorReporter;
@@ -397,6 +408,7 @@
         if (seq !== searchSeq) return;
         clear(results);
         setMessage(results, messageFor(err));
+        track('search-' + failureOutcome(err));
         reportIfActionable('RppsFinder.search', err);
       }).then(function() {
         if (seq === searchSeq) go.disabled = false;
@@ -502,6 +514,7 @@
       }).catch(function(err) {
         clear(out);
         setMessage(container, messageFor(err));
+        track('lookup-' + failureOutcome(err));
         reportIfActionable('RppsFinder.lookup', err);
       }).then(function() {
         check.disabled = !normalizeRpps(num.value);

@@ -294,6 +294,7 @@ async function test(name, fn) {
     const msg = root.querySelector('.ordo-rpps-error');
     const row = root.querySelector('.ordo-rpps-panel > .ordo-rpps-row');
     assert.strictEqual(msg.parentNode, row.nextSibling, 'message juste sous les champs de recherche');
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:search-unavailable'), 'panne de l’annuaire comptée dans GA4');
     assert.deepStrictEqual(ctx.reports, []);
 
     ctx = await page({ server: { search: () => reply(429, { error: 'rate_limited' }) } });
@@ -302,6 +303,7 @@ async function test(name, fn) {
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
     assert.ok(/patientez une minute/.test(root.textContent));
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:search-rate-limited'));
     assert.deepStrictEqual(ctx.reports, []);
 
     ctx = await page({ server: {} });
@@ -310,6 +312,7 @@ async function test(name, fn) {
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
     assert.ok(/Connexion impossible/.test(root.textContent));
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:search-network'));
     assert.deepStrictEqual(ctx.reports.map((r) => r.kind), ['network'], 'requête morte signalée comme telle');
 
     ctx = await page({ server: { search: () => reply(502, { error: 'upstream_error' }) } });
