@@ -224,7 +224,8 @@
     if (code === 'unverifiable') return 'Cette fiche ne peut pas être vérifiée automatiquement. Écrivez-nous à ' + CONTACT + '.';
     if (code === 'invalid_number') return 'Numéro invalide : le RPPS compte 11 chiffres.';
     if (code === 'invalid_name') return 'Indiquez au moins 2 lettres du nom.';
-    if (status === 429 || status === 503) return 'Service momentanément indisponible, réessayez dans quelques secondes.';
+    if (status === 429) return 'Trop de recherches à la suite : patientez une minute avant de réessayer.';
+    if (status === 503) return 'L’Annuaire santé ne répond pas en ce moment. Réessayez un peu plus tard.';
     if (!status) return 'Connexion impossible. Vérifiez votre réseau puis réessayez.';
     return 'Une erreur est survenue. Réessayez dans un instant.';
   }
@@ -378,9 +379,10 @@
     function run() {
       var f = family.value.replace(/\s+/g, ' ').trim();
       var g = given.value.replace(/\s+/g, ' ').trim();
-      setMessage(panel, '');
+      // Les messages de la recherche s'affichent sous ses champs, pas au bas du panneau.
+      setMessage(results, '');
       if (f.replace(/[^A-Za-zÀ-ÿ]/g, '').length < 2) {
-        setMessage(panel, 'Indiquez au moins 2 lettres du nom.');
+        setMessage(results, 'Indiquez au moins 2 lettres du nom.');
         return;
       }
       var seq = ++searchSeq;
@@ -394,7 +396,7 @@
       }).catch(function(err) {
         if (seq !== searchSeq) return;
         clear(results);
-        setMessage(panel, messageFor(err));
+        setMessage(results, messageFor(err));
         reportIfActionable('RppsFinder.search', err);
       }).then(function() {
         if (seq === searchSeq) go.disabled = false;

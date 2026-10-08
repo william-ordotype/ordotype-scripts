@@ -289,7 +289,19 @@ async function test(name, fn) {
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
-    assert.ok(/momentanément indisponible/.test(root.textContent));
+    assert.ok(/L’Annuaire santé ne répond pas en ce moment/.test(root.textContent));
+    assert.ok(!/quelques secondes/.test(root.textContent), 'pas de promesse de délai');
+    const msg = root.querySelector('.ordo-rpps-error');
+    const row = root.querySelector('.ordo-rpps-panel > .ordo-rpps-row');
+    assert.strictEqual(msg.parentNode, row.nextSibling, 'message juste sous les champs de recherche');
+    assert.deepStrictEqual(ctx.reports, []);
+
+    ctx = await page({ server: { search: () => reply(429, { error: 'rate_limited' }) } });
+    root = ctx.d.querySelector('.ordo-rpps');
+    byText(root, 'button', /Vérifier maintenant/).click();
+    byText(root, 'button', /^Rechercher$/).click();
+    await settle();
+    assert.ok(/patientez une minute/.test(root.textContent));
     assert.deepStrictEqual(ctx.reports, []);
 
     ctx = await page({ server: {} });
