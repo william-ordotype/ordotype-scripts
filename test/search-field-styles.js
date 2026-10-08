@@ -7,7 +7,8 @@
  *     search-bar + nav-bar-size, embed .html-reset-button-navbar) ; global-styles.css
  *     n'en garde que la croix masquée quand le champ est vide ;
  *   - shared/search-panel.js : panneau de la loupe sur téléphone (CSS en chaîne) ;
- *   - search-result/styles.css : en-tête de /search-result sur téléphone.
+ *   - le Designer : en-tête de /search-result sur téléphone ; search-result/styles.css
+ *     n'en garde que la croix masquée champ vide et la taille de la flèche.
  *
  * Ce qui doit tenir dans les trois :
  *   - blanc, contour --base-200 au repos, --primary-500 pendant la saisie ;
@@ -96,18 +97,16 @@ console.log('panneau mobile : shared/search-panel.js');
 }
 
 // --- /search-result (téléphone)
-console.log('/search-result mobile : search-result/styles.css');
+console.log('/search-result mobile : dessin dans le Designer, search-result/styles.css garde la logique seule');
 {
     const css = read('search-result/styles.css');
     const rs = rules(css);
-    const w = '.search-block-results .search-form-wrapper';
-    check('contour --base-200 au repos', uses(decl(rs, w, 'box-shadow'), 'base-200'), decl(rs, w, 'box-shadow'));
-    check('contour --primary-500 pendant la saisie', uses(decl(rs, w + ':focus-within', 'box-shadow'), 'primary-500'), decl(rs, w + ':focus-within', 'box-shadow'));
-    check('fond blanc', white(decl(rs, w, 'background')) || white(decl(rs, w, 'background-color')), decl(rs, w, 'background'));
-    check('rayon de 4px', decl(rs, w, 'border-radius') === '4px', decl(rs, w, 'border-radius'));
-    check('texte --base-900', uses(decl(rs, '.search-block-results #search-bar-main', 'color'), 'base-900'), 'couleur du texte');
-    check('invite --base-500', uses(decl(rs, '.search-block-results #search-bar-main::placeholder', 'color'), 'base-500'), 'couleur de l’invite');
-    check('croix --base-500', uses(decl(rs, '.search-block-results .main-reset-button', 'color'), 'base-500'), 'couleur de la croix');
+    check('croix masquée tant que le champ est vide (le Designer ne sait pas l’exprimer)',
+        rs.some((r) => /#search-bar-main:placeholder-shown\s*\+\s*\.search-nav\s+\.main-reset-button/.test(r.selectorText) && r.style.display === 'none'),
+        rs.map((r) => r.selectorText).join(' | '));
+    check('flèche ramenée à 22px (image sans classe)', decl(rs, '.search-block-results .search-back-button img', 'width') === '22px', 'règle absente');
+    const dessin = rs.filter((r) => !/:placeholder-shown/.test(r.selectorText) && !/search-back-button img/.test(r.selectorText));
+    check('aucun autre dessin de l’en-tête hors Designer', dessin.length === 0, dessin.map((r) => r.selectorText).join(' | '));
     check('aucune couleur en dur', hardColors(css).length === 0, hardColors(css).join(' '));
 }
 
