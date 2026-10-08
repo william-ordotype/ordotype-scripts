@@ -13,7 +13,8 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'connexion-2fa/referral.js'), 'utf8');
 const ENDPOINT = 'https://hook.example.test/referral';
-const session = () => JSON.stringify({ data: { memberId: 'mem_parrain', email: 'pa****in@example.test' } });
+const TOKEN = 'f0'.repeat(32);
+const session = (data = {}) => JSON.stringify({ data: { memberId: 'mem_parrain', email: 'pa****in@example.test', preAuthToken: TOKEN, ...data } });
 
 const STUCK = {
   badge: '3 mois à -50 % sur votre propre compte',
@@ -118,9 +119,11 @@ test("envoi réussi : adresse transmise, confirmation affichée avec l'adresse",
     invitee_email: 'confrere@example.test',
     referrer_member_id: 'mem_parrain',
     referrer_email: 'parrain@example.test',
+    pre_auth_token: TOKEN,
     variant: 'default',
   });
   assert.ok(!calls[0].options.body.includes('*'), "l'e-mail masqué de la session ne part jamais");
+  assert.ok(!JSON.stringify(w.dataLayer || []).includes(TOKEN), 'le jeton ne part pas dans la mesure');
   assertHidden(w, 'referral-invitation');
   assertShown(w, 'referral-confirmation');
   assert.strictEqual(w.document.querySelector('[data-referral-email]').textContent, 'confrere@example.test');
@@ -129,6 +132,18 @@ test("envoi réussi : adresse transmise, confirmation affichée avec l'adresse",
   assert.strictEqual(bouton.disabled, false);
   assert.strictEqual(w.document.querySelector('.w-form-fail').style.display, 'none');
   assert.deepStrictEqual(erreurs, []);
+});
+
+test('jeton de pré-connexion : transmis tel quel, champ vide s\'il manque ou n\'est pas une chaîne', async () => {
+  for (const [donnees, attendu] of [[{}, TOKEN], [{ preAuthToken: undefined }, ''], [{ preAuthToken: 42 }, ''], [{ preAuthToken: { a: 1 } }, '']]) {
+    const { w } = page({ sessionValue: session(donnees) });
+    const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+    w.eval(SCRIPT);
+    submitInvite(w, 'confrere@example.test');
+    await tick();
+    assert.strictEqual(calls.length, 1, JSON.stringify(donnees));
+    assert.strictEqual(JSON.parse(calls[0].options.body).pre_auth_token, attendu, JSON.stringify(donnees));
+  }
 });
 
 test('masquage fiable même si la classe hidden seule ne masque pas le bloc', async () => {
