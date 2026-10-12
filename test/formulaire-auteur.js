@@ -31,7 +31,7 @@ function verifier(nom, ok, detail) {
 const attendre = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const lien = (o) => '#d=' + Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-async function jouer({ hash = '', serveur = () => ({ status: 200, body: { ok: true } }), session = null, panne = false } = {}) {
+async function jouer({ hash = '', serveur = () => ({ status: 200, body: { ok: true } }), session = null, panne = false, sansMois = false } = {}) {
   const dom = new JSDOM(PAGE, { url: 'https://www.ordotype.fr/votre-page-auteur' + hash, runScripts: 'outside-only' });
   const w = dom.window;
   const appels = [];
@@ -49,6 +49,17 @@ async function jouer({ hash = '', serveur = () => ({ status: 200, body: { ok: tr
     const r = serveur(JSON.parse(opts.body));
     return Promise.resolve({ ok: r.status < 300, status: r.status, json: () => Promise.resolve(r.body) });
   };
+  if (sansMois) {
+    // Comme Safari sur ordinateur : un champ mois retombe en champ texte.
+    const desc = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'type');
+    Object.defineProperty(w.HTMLInputElement.prototype, 'type', {
+      configurable: true,
+      get() { return desc.get.call(this); },
+      set(v) { desc.set.call(this, v === 'month' ? 'text' : v); },
+    });
+    const setAttr = w.Element.prototype.setAttribute;
+    w.Element.prototype.setAttribute = function (n, v) { return setAttr.call(this, n, n === 'type' && v === 'month' ? 'text' : v); };
+  }
   w.eval(SCRIPT_TETE);
   w.eval(SOURCE);
   await attendre(10); // le script démarre au DOMContentLoaded
@@ -168,6 +179,18 @@ const BROUILLON = {
     && complet.bio_module === 'Zoé coordonne.' && complet.specialite_hors_liste === true, complet);
   verifier('envoi complet : « MM/AAAA » et année seule normalisés', complet && complet.experiences[1].fin === '2017-03' && complet.experiences[1].debut === '2016', complet && complet.experiences[1]);
   verifier('envoi complet : session vidée après le merci', r.w.sessionStorage.getItem('ordo-auteur-brouillon') === null && visible($(r, 'fa-merci')));
+
+  // --- navigateur sans champ mois (Safari sur ordinateur, Firefox) : dates du lien affichées « MM/AAAA »
+  r = await jouer({ hash: lien(BROUILLON), sansMois: true });
+  const exps = r.d.querySelectorAll('[data-fa-bloc="experience"]');
+  verifier('sans champ mois : date du lien affichée MM/AAAA, consigne en exemple',
+    exps[0].querySelector('[data-cle="debut"]').value === '09/2021' && exps[1].querySelector('[data-cle="fin"]').value === '05/2021'
+    && exps[0].querySelector('[data-cle="debut"]').getAttribute('placeholder') === 'MM/AAAA', exps[0] && exps[0].querySelector('[data-cle="debut"]').value);
+  $(r, 'fa-accord').checked = true;
+  envoyer(r);
+  await attendre();
+  verifier('sans champ mois : renvoyée au serveur en AAAA-MM', r.appels[0] && r.appels[0].corps.donnees.experiences[0].debut === '2021-09'
+    && r.appels[0].corps.donnees.experiences[1].fin === '2021-05', r.appels[0] && r.appels[0].corps.donnees.experiences);
 
   // --- rechargement : le brouillon vient de la session
   r = await jouer({ session: lien({ type: 'courte', prenom: 'Léa' }).slice(3) });

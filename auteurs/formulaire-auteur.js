@@ -167,7 +167,13 @@
         if (c.type === 'checkbox') c.checked = !!v;
         else c.value = v === undefined || v === null ? '' : String(v);
         if ((cle === 'debut' || cle === 'fin') && c.tagName === 'INPUT') {
-          if (champMois) c.type = 'month'; else c.setAttribute('placeholder', 'MM/AAAA');
+          if (champMois) c.type = 'month';
+          else {
+            // Champ texte : la date du lien (« 2021-09 ») s'affiche comme la consigne la demande, « 09/2021 ».
+            c.setAttribute('placeholder', 'MM/AAAA');
+            var iso = /^(\d{4})-(\d{2})$/.exec(c.value);
+            if (iso) c.value = iso[2] + '/' + iso[1];
+          }
         }
         if (cle === 'annee' && c.tagName === 'INPUT') { c.setAttribute('inputmode', 'numeric'); c.setAttribute('maxlength', '4'); }
       });
