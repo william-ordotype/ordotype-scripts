@@ -308,8 +308,81 @@
   var BTN_SECONDARY = 'button is-grey w-button ordo-siren-btn';
   var BTN_SMALL = 'button is-grey is-small w-button ordo-siren-btn';
 
-  var root = el('div', 'ordo-siren');
+  // Présentation d'origine : classes propres au script et leur feuille de style injectée.
+  var ORIGINE = {
+    'finder': 'ordo-siren',
+    'finder-bandeau': 'ordo-siren-banner',
+    'finder-titre': '',
+    'finder-note': 'ordo-siren-muted',
+    'finder-note-haut': 'ordo-siren-muted ordo-siren-alt',
+    'finder-note-bas': 'ordo-siren-muted',
+    'finder-lien': 'ordo-siren-link',
+    'finder-ligne': 'ordo-siren-row',
+    'finder-ligne-haut': 'ordo-siren-row',
+    'finder-champ': 'form-input w-input',
+    'finder-champ-cp': 'form-input w-input ordo-siren-cp',
+    'finder-bouton': BTN_PRIMARY,
+    'finder-bouton-secondaire': BTN_SECONDARY,
+    'finder-choix': BTN_SMALL,
+    'finder-confirmer': BTN_PRIMARY,
+    'finder-liste': 'ordo-siren-list',
+    'finder-item': '',
+    'finder-libelle': '',
+    'finder-direct': 'ordo-siren-direct',
+    'finder-carte': 'ordo-siren-card',
+    'finder-alerte': 'ordo-siren-warn',
+    'finder-erreur': 'ordo-siren-error',
+    'finder-fait': 'ordo-siren-done'
+  };
+  // Classe de base que Webflow pose sur ses champs et ses boutons : le gabarit (un bloc) ne l'a pas.
+  var BASE_WEBFLOW = {
+    'finder-champ': 'w-input', 'finder-champ-cp': 'w-input',
+    'finder-bouton': 'w-button', 'finder-bouton-secondaire': 'w-button', 'finder-choix': 'w-button', 'finder-confirmer': 'w-button'
+  };
+
+  /**
+   * Présentation dessinée dans le Designer : chaque morceau prend les classes de son gabarit dans le
+   * bloc « GABARITS · Recherche RPPS et SIREN » de Mon profil ([data-ordo-gabarit="finder-…"]).
+   * Changer le dessin d'un gabarit dans le Designer change celui de la recherche ; les textes restent
+   * écrits ici. Sans ce bloc (page pas encore republiée) : présentation d'origine. Bloc incomplet :
+   * présentation d'origine aussi, signalée.
+   */
+  function classesDuDesigner() {
+    var box = document.querySelector('[data-ordo-gabarits="profil"]');
+    if (!box || !box.querySelector('[data-ordo-gabarit="finder"]')) return null;
+    var out = {};
+    var manque = [];
+    Object.keys(ORIGINE).forEach(function(name) {
+      var g = box.querySelector('[data-ordo-gabarit="' + name + '"]');
+      var cls = g && typeof g.className === 'string' ? g.className.trim() : '';
+      if (!cls) {
+        manque.push(name);
+        return;
+      }
+      var base = BASE_WEBFLOW[name];
+      out[name] = base && !g.classList.contains(base) ? cls + ' ' + base : cls;
+    });
+    if (manque.length) {
+      console.warn(PREFIX, 'Gabarits incomplets, présentation d’origine :', manque.join(', '));
+      if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('SirenFinder.designer', new Error('Gabarits incomplets : ' + manque.join(', ')));
+      return null;
+    }
+    return out;
+  }
+
+  var DESSIN = classesDuDesigner();
+  var C = DESSIN || ORIGINE;
+
+  var root = el('div', C.finder);
+  root.setAttribute('data-ordo-finder', 'siren');
+  if (DESSIN) root.setAttribute('data-ordo-dessin', 'designer');
   root.setAttribute('aria-live', 'polite');
+
+  /** Montre ou cache le bloc. Sur le site, `[hidden]` ne l'emporte pas sur une classe qui fixe `display`. */
+  function showRoot(visible) {
+    root.hidden = !visible;
+    root.style.display = visible ? '' : 'none';
+  }
   var css = [
     '.ordo-siren{margin:8px 0 16px;font-size:15px;line-height:1.45;max-width:48rem}',
     '.ordo-siren[hidden]{display:none}',
@@ -355,11 +428,18 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
+  /** Message (alerte ou erreur), marqué pour être retrouvé quelle que soit la présentation. */
+  function notice(text, kind) {
+    var node = el('div', kind === 'warn' ? C['finder-alerte'] : C['finder-erreur'], text);
+    node.setAttribute('data-ordo-message', kind === 'warn' ? 'alerte' : 'erreur');
+    return node;
+  }
+
   function setError(container, message, kind) {
-    var old = container.querySelector('.ordo-siren-error, .ordo-siren-warn');
+    var old = container.querySelector('[data-ordo-message]');
     if (old) old.parentNode.removeChild(old);
     if (!message) return;
-    container.appendChild(el('div', kind === 'warn' ? 'ordo-siren-warn' : 'ordo-siren-error', message));
+    container.appendChild(notice(message, kind));
   }
 
   function messageFor(err) {
@@ -390,22 +470,22 @@
 
   function renderDone(info) {
     clear(root);
-    var box = el('div', 'ordo-siren-done');
+    var box = el('div', C['finder-fait']);
     var who = [info.name, info.commune].filter(Boolean).join(', ');
     box.appendChild(el('div', null, 'Vos factures électroniques seront adressées au SIREN ' + formatSiren(info.siren) + (who ? ' (' + who + ')' : '') + '.'));
     if (info.etat === 'C') {
-      box.appendChild(el('div', 'ordo-siren-warn', 'Cette entreprise apparaît fermée dans le répertoire SIRENE, merci de vérifier.'));
+      box.appendChild(notice('Cette entreprise apparaît fermée dans le répertoire SIRENE, merci de vérifier.', 'warn'));
     }
     if (info.siretNote) {
-      box.appendChild(el('div', 'ordo-siren-muted', 'L\'établissement saisi est introuvable ou fermé dans le répertoire SIRENE : seul le SIREN a été enregistré, ce qui suffit pour vos factures.'));
+      box.appendChild(el('div', C['finder-note'], 'L\'établissement saisi est introuvable ou fermé dans le répertoire SIRENE : seul le SIREN a été enregistré, ce qui suffit pour vos factures.'));
     }
-    var edit = el('button', 'ordo-siren-link', 'Modifier');
+    var edit = el('button', C['finder-lien'], 'Modifier');
     edit.type = 'button';
     edit.addEventListener('click', function() {
       track('siren_finder_open', { from: 'done' });
       renderEmpty();
     });
-    box.appendChild(el('div', 'ordo-siren-muted')).appendChild(edit);
+    box.appendChild(el('div', C['finder-note'])).appendChild(edit);
     root.appendChild(box);
   }
 
@@ -415,14 +495,17 @@
 
   function renderEmpty() {
     clear(root);
-    var banner = el('div', 'ordo-siren-banner');
-    banner.appendChild(el('strong', null, 'Vos factures électroniques ont besoin de votre SIREN'));
-    banner.appendChild(el('span', 'ordo-siren-muted', 'Le SIREN correspond aux 9 premiers chiffres de votre SIRET. Il sert uniquement à adresser vos factures électroniques à votre plateforme de facturation.'));
-    root.appendChild(banner);
+    var banner = el('div', C['finder-bandeau']);
+    banner.setAttribute('data-ordo-finder-bandeau', '1');
+    banner.appendChild(el('strong', C['finder-titre'], 'Vos factures électroniques ont besoin de votre SIREN'));
+    banner.appendChild(el('span', C['finder-note'], 'Le SIREN correspond aux 9 premiers chiffres de votre SIRET. Il sert uniquement à adresser vos factures électroniques à votre plateforme de facturation.'));
+    // Dans la carte de Mon profil, le texte de la carte dit déjà tout : pas de bandeau (présentation
+    // d'origine : masqué par profile-overview.js).
+    if (!(DESSIN && root.closest('[data-ordo-v2]'))) root.appendChild(banner);
 
     // Un seul bouton d'action par mode : le mode alternatif est un lien texte
     // (altLink) sous le formulaire, pas un second bouton « Rechercher ».
-    var panel = el('div', 'ordo-siren-panel');
+    var panel = el('div', DESSIN ? '' : 'ordo-siren-panel');
     root.appendChild(panel);
     if (activeTab === 'search') renderSearch(panel); else renderNumber(panel);
   }
@@ -433,8 +516,8 @@
   }
 
   function altLink(text, label, onClick) {
-    var line = el('div', 'ordo-siren-muted ordo-siren-alt', text + ' ');
-    var link = el('button', 'ordo-siren-link', label);
+    var line = el('div', C['finder-note-haut'], text + ' ');
+    var link = el('button', C['finder-lien'], label);
     link.type = 'button';
     link.addEventListener('click', onClick);
     line.appendChild(link);
@@ -444,20 +527,20 @@
   // --- Onglet recherche ------------------------------------------------------------
 
   function renderSearch(panel) {
-    var row = el('div', 'ordo-siren-row');
-    var nameInput = el('input', 'form-input w-input');
+    var row = el('div', C['finder-ligne']);
+    var nameInput = el('input', C['finder-champ']);
     nameInput.type = 'text';
     nameInput.placeholder = 'Nom et prénom, ou raison sociale';
     nameInput.value = (state.prenom + ' ' + state.nom).trim();
     nameInput.setAttribute('aria-label', 'Nom de l\'entreprise ou du praticien');
     nameInput.maxLength = 80;
-    var cpInput = el('input', 'form-input w-input ordo-siren-cp');
+    var cpInput = el('input', C['finder-champ-cp']);
     cpInput.type = 'text';
     cpInput.placeholder = 'CP ou département (facultatif)';
     cpInput.value = memberPostalCode();
     cpInput.setAttribute('aria-label', 'Code postal ou département (facultatif)');
     cpInput.maxLength = 5;
-    var btn = el('button', BTN_PRIMARY, 'Rechercher');
+    var btn = el('button', C['finder-bouton'], 'Rechercher');
     btn.type = 'button';
     row.appendChild(nameInput);
     row.appendChild(cpInput);
@@ -471,8 +554,8 @@
     // vers un autre panneau : 3 des 4 premiers enregistrements en production
     // sont venus de ce chemin, et une recherche vide ne doit pas obliger le
     // membre à comprendre qu'une autre porte existe ailleurs.
-    var direct = el('div', 'ordo-siren-direct');
-    direct.appendChild(el('div', 'ordo-siren-muted', 'Ou, si vous le connaissez, saisissez directement votre numéro :'));
+    var direct = el('div', C['finder-direct']);
+    direct.appendChild(el('div', C['finder-note-bas'], 'Ou, si vous le connaissez, saisissez directement votre numéro :'));
     renderNumber(direct, { altLink: false });
     panel.appendChild(direct);
 
@@ -543,7 +626,7 @@
       searchedOnce = true;
       setError(panel, '');
       clear(results);
-      results.appendChild(el('div', 'ordo-siren-muted', 'Recherche en cours…'));
+      results.appendChild(el('div', C['finder-note'], 'Recherche en cours…'));
       btn.disabled = true;
 
       var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom && loc.dep
@@ -598,7 +681,7 @@
           pausedUntil = Date.now() + (err.status === 429 ? 20000 : 10000);
           lastKey = '';
           if (!force) {
-            results.appendChild(el('div', 'ordo-siren-muted', err.status === 429
+            results.appendChild(el('div', C['finder-note'], err.status === 429
               ? 'Trop de recherches d\'affilée : cliquez sur Rechercher dans quelques secondes.'
               : 'Le répertoire SIRENE ne répond pas pour le moment : cliquez sur Rechercher dans un instant.'));
             return;
@@ -617,20 +700,20 @@
       var unfiltered = withoutActivity || unfilteredStep;
       var where = whereLabel(loc);
       if (!list.length) {
-        container.appendChild(el('div', 'ordo-siren-muted', unfiltered
+        container.appendChild(el('div', C['finder-note'], unfiltered
           // Près de 4 praticiens sur 10 ont demandé la non-diffusion à l'INSEE
           // (mesuré à la calibration) : aucune recherche par nom ne les trouvera
           // jamais. Le dire, et pointer le champ numéro juste en dessous.
           ? 'Aucune entreprise à ce nom' + where + '. Beaucoup de praticiens ont demandé la non-diffusion de leurs données à l\'INSEE : leur entreprise n\'apparaît alors dans aucune recherche par nom. Saisissez votre numéro ci-dessous, il reste vérifié auprès du répertoire.'
           : 'Aucun résultat avec ce nom' + where + ' : cliquez sur Rechercher pour élargir à toutes les activités.'));
       } else {
-        if (note) container.appendChild(el('div', 'ordo-siren-muted', note));
-        var ul = el('ul', 'ordo-siren-list');
+        if (note) container.appendChild(el('div', C['finder-note'], note));
+        var ul = el('ul', C['finder-liste']);
         list.forEach(function(c) {
           c.scope = loc.scope; // portée réelle de la liste d'où vient ce choix
-          var li = el('li');
-          li.appendChild(el('span', null, candidateLabel(c)));
-          var pick = el('button', BTN_SMALL, 'C\'est moi');
+          var li = el('li', C['finder-item']);
+          li.appendChild(el('span', C['finder-libelle'], candidateLabel(c)));
+          var pick = el('button', C['finder-choix'], 'C\'est moi');
           pick.type = 'button';
           pick.addEventListener('click', function() { confirmCandidate(c, 'search', li); });
           li.appendChild(pick);
@@ -638,14 +721,14 @@
         });
         container.appendChild(ul);
         if (total > list.length) {
-          container.appendChild(el('div', 'ordo-siren-muted', total + ' résultats, seuls les ' + list.length + ' premiers sont affichés : précisez le nom' + (loc.cp ? '' : (loc.dep ? ' ou indiquez votre code postal' : ' ou ajoutez un code postal')) + '.'));
+          container.appendChild(el('div', C['finder-note'], total + ' résultats, seuls les ' + list.length + ' premiers sont affichés : précisez le nom' + (loc.cp ? '' : (loc.dep ? ' ou indiquez votre code postal' : ' ou ajoutez un code postal')) + '.'));
         }
       }
       // Quand la liste est déjà élargie à toutes les activités, il n'y a plus
       // rien à proposer ici : le champ numéro est juste en dessous du panneau.
       if (!unfiltered) {
-        var more = el('div', 'ordo-siren-muted');
-        var link = el('button', 'ordo-siren-link', 'Je ne trouve pas mon entreprise');
+        var more = el('div', C['finder-note']);
+        var link = el('button', C['finder-lien'], 'Je ne trouve pas mon entreprise');
         link.type = 'button';
         link.addEventListener('click', function() {
           withoutActivity = true;
@@ -688,15 +771,15 @@
 
   function renderSuggestion(container, c, onDecline) {
     clear(container);
-    var card = el('div', 'ordo-siren-card');
-    card.appendChild(el('strong', null, 'Est-ce votre entreprise ?'));
+    var card = el('div', C['finder-carte']);
+    card.appendChild(el('strong', DESSIN ? C['finder-titre'] : null, 'Est-ce votre entreprise ?'));
     card.appendChild(el('div', null, candidateLabel(c)));
-    card.appendChild(el('div', 'ordo-siren-muted', 'Proposition issue du répertoire SIRENE de l\'INSEE à partir de votre nom et de votre département. Rien n\'est enregistré sans votre confirmation.'));
-    var row = el('div', 'ordo-siren-row');
-    row.style.marginTop = '10px';
-    var yes = el('button', BTN_PRIMARY, 'Oui, c\'est moi');
+    card.appendChild(el('div', C['finder-note'], 'Proposition issue du répertoire SIRENE de l\'INSEE à partir de votre nom et de votre département. Rien n\'est enregistré sans votre confirmation.'));
+    var row = el('div', C['finder-ligne-haut']);
+    if (!DESSIN) row.style.marginTop = '10px';
+    var yes = el('button', C['finder-bouton'], 'Oui, c\'est moi');
     yes.type = 'button';
-    var no = el('button', BTN_SECONDARY, 'Non');
+    var no = el('button', C['finder-bouton-secondaire'], 'Non');
     no.type = 'button';
     yes.addEventListener('click', function() {
       track('siren_suggestion_confirmed');
@@ -713,14 +796,14 @@
 
   function renderNumber(panel, opts) {
     opts = opts || {};
-    var row = el('div', 'ordo-siren-row');
-    var numInput = el('input', 'form-input w-input');
+    var row = el('div', C['finder-ligne']);
+    var numInput = el('input', C['finder-champ']);
     numInput.type = 'text';
     numInput.inputMode = 'numeric';
     numInput.placeholder = 'SIREN (9 chiffres) ou SIRET (14 chiffres)';
     numInput.setAttribute('aria-label', 'SIREN ou SIRET');
     numInput.maxLength = 20;
-    var btn = el('button', BTN_PRIMARY, 'Vérifier');
+    var btn = el('button', C['finder-bouton'], 'Vérifier');
     btn.type = 'button';
     btn.disabled = true;
     row.appendChild(numInput);
@@ -748,7 +831,7 @@
       var num = normalizeNumber(numInput.value);
       if (!num) return;
       clear(out);
-      out.appendChild(el('div', 'ordo-siren-muted', 'Vérification dans le répertoire SIRENE…'));
+      out.appendChild(el('div', C['finder-note'], 'Vérification dans le répertoire SIRENE…'));
       btn.disabled = true;
       track('siren_search', { mode: 'number' });
       apiSearch({ mode: 'number', n: num.siret || num.siren }).then(function(body) {
@@ -758,24 +841,24 @@
           setError(panel, 'Ce numéro est inconnu du répertoire SIRENE. Vérifiez les chiffres.');
           return;
         }
-        var card = el('div', 'ordo-siren-card');
+        var card = el('div', C['finder-carte']);
         card.appendChild(el('div', null, candidateLabel(c) + (c.etat === 'C' ? ' · fermée' : ' · active')));
         if (c.diffusion === 'P') {
-          card.appendChild(el('div', 'ordo-siren-muted', 'Entreprise non diffusible : le nom n\'est pas affiché, vérifiez la commune et l\'activité.'));
+          card.appendChild(el('div', C['finder-note'], 'Entreprise non diffusible : le nom n\'est pas affiché, vérifiez la commune et l\'activité.'));
         } else if (state.nom && !nameMatches(state.nom, c.nom)) {
-          card.appendChild(el('div', 'ordo-siren-warn', 'Ce numéro correspond à « ' + c.nom + ' ». Est-ce bien votre structure ?'));
+          card.appendChild(notice('Ce numéro correspond à « ' + c.nom + ' ». Est-ce bien votre structure ?', 'warn'));
         }
         if (num.siret && c.siret_known === false) {
-          card.appendChild(el('div', 'ordo-siren-warn', 'Cet établissement (14 chiffres) est introuvable dans le répertoire : seul le SIREN sera enregistré. Vérifiez les 5 derniers chiffres si vous tenez au SIRET.'));
+          card.appendChild(notice('Cet établissement (14 chiffres) est introuvable dans le répertoire : seul le SIREN sera enregistré. Vérifiez les 5 derniers chiffres si vous tenez au SIRET.', 'warn'));
         } else if (num.siret && c.siret_etat === 'F') {
-          card.appendChild(el('div', 'ordo-siren-warn', 'Cet établissement est fermé dans le répertoire : seul le SIREN sera enregistré.'));
+          card.appendChild(notice('Cet établissement est fermé dans le répertoire : seul le SIREN sera enregistré.', 'warn'));
         }
         if (c.etat === 'C') {
-          card.appendChild(el('div', 'ordo-siren-error', 'Cette entreprise est fermée dans le répertoire SIRENE : elle ne peut pas recevoir vos factures. Vérifiez votre numéro.'));
+          card.appendChild(notice('Cette entreprise est fermée dans le répertoire SIRENE : elle ne peut pas recevoir vos factures. Vérifiez votre numéro.'));
         } else {
-          var confirm = el('button', BTN_PRIMARY, 'Confirmer');
+          var confirm = el('button', C['finder-confirmer'], 'Confirmer');
           confirm.type = 'button';
-          confirm.style.marginTop = '10px';
+          if (!DESSIN) confirm.style.marginTop = '10px';
           confirm.addEventListener('click', function() {
             c.siret_chosen = num.siret;
             confirmCandidate(c, 'number', card);
@@ -880,14 +963,14 @@
   }
 
   function hideAll() {
-    root.hidden = true;
+    showRoot(false);
     input.style.display = 'none';
     var cell = fieldCell();
     if (cell && cell.style) cell.style.display = 'none';
   }
 
   function showAll() {
-    root.hidden = false;
+    showRoot(true);
     var cell = fieldCell();
     if (cell && cell.style) cell.style.display = '';
   }
@@ -913,15 +996,16 @@
   // --- Init ------------------------------------------------------------------------------------
 
   function init() {
-    injectStyles();
+    if (!DESSIN) injectStyles();
     input.style.display = 'none';
     input.setAttribute('aria-hidden', 'true');
     input.tabIndex = -1;
     var host = input.parentNode;
     if (host) {
       host.insertBefore(root, input.nextSibling);
-      // Voir .ordo-siren-host : la cellule de grille du champ SIRET prend toute la ligne.
-      host.classList.add('ordo-siren-host');
+      // Voir .ordo-siren-host : la cellule de grille du champ SIRET prend toute la ligne. Présentation
+      // du Designer : la cellule porte la combo is-pleine-largeur, posée dans le Designer.
+      if (!DESSIN) host.classList.add('ordo-siren-host');
     }
 
     var current = normalizeNumber(state.siret || state.siren);

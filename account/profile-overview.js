@@ -228,6 +228,12 @@
     for (var i = moved.length - 1; i >= 0; i--) {
       var m = moved[i];
       try { m.parent.insertBefore(m.node, m.next && m.next.parentNode === m.parent ? m.next : null); } catch (e) { /* no-op */ }
+      // Recherche remise dans l'ancien formulaire : elle reprend ses classes d'avant la carte.
+      var hors = m.node.getAttribute && m.node.getAttribute('data-ordo-classe-hors-carte');
+      if (hors != null) {
+        m.node.className = hors;
+        m.node.removeAttribute('data-ordo-classe-hors-carte');
+      }
     }
     moved = [];
   }
@@ -617,19 +623,40 @@
 
   // --- Blocs déplacés d'office -----------------------------------------------------------------
 
+  /**
+   * Recherche (RPPS, SIREN) dessinée dans le Designer et placée dans une carte : elle prend les classes
+   * du gabarit « finder-en-carte » (combo is-en-carte : sans marges ni largeur maximale, toute la
+   * ligne). Ses classes d'avant sont gardées pour un retour en arrière. Présentation d'origine : règles
+   * [data-ordo-v2] .ordo-siren / .ordo-rpps ci-dessous.
+   */
+  function finderEnCarte(root) {
+    if (!root || root.getAttribute('data-ordo-dessin') !== 'designer') return;
+    var g = document.querySelector('[data-ordo-gabarits="profil"] [data-ordo-gabarit="finder-en-carte"]');
+    if (!g || !g.className) return;
+    if (!root.hasAttribute('data-ordo-classe-hors-carte')) root.setAttribute('data-ordo-classe-hors-carte', root.className);
+    root.className = g.className;
+  }
+
   /** Le finder SIREN prend place dans sa carte ; son bandeau d'accueil doublait le texte de la carte. */
   function placeSirenFinder() {
     var slot = profil && profil.querySelector('[data-ordo-siren-slot]');
-    var root = document.querySelector('.ordo-siren');
-    if (slot && root) move(root, slot);
+    var root = document.querySelector('[data-ordo-finder="siren"], .ordo-siren');
+    if (!slot || !root) return;
+    move(root, slot);
+    finderEnCarte(root);
+    // Présentation du Designer : le finder ne redessine plus le bandeau une fois dans la carte.
+    var bandeau = root.querySelector('[data-ordo-finder-bandeau]');
+    if (bandeau && root.getAttribute('data-ordo-dessin') === 'designer') bandeau.parentNode.removeChild(bandeau);
   }
 
   /** La vérification du RPPS se place juste sous la ligne « Numéro RPPS » de la carte. */
   function placeRppsFinder() {
-    var root = document.querySelector('.ordo-rpps');
+    var root = document.querySelector('[data-ordo-finder="rpps"], .ordo-rpps');
     var champ = profil && profil.querySelector('[data-ordo-champ="n-rpps"]');
     var row = champ && (champ.closest('.compte-v2_field') || champ);
-    if (root && row && row.parentNode) move(root, row.parentNode, row.nextSibling);
+    if (!root || !row || !row.parentNode) return;
+    move(root, row.parentNode, row.nextSibling);
+    finderEnCarte(root);
   }
 
   function placeDelete() {
