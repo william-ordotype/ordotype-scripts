@@ -46,6 +46,46 @@
   var slot = null;
   var busy = false;
 
+  // Palier facturation-designer.js : la ligne (libellé, aide, interrupteur, zone d'état) est dessinée
+  // dans le Designer ([data-ordo-factures-email]) ; ce fichier la place dans l'ancrage et la pilote.
+  // L'interrupteur y est un élément role="switch" : l'état se lit dans aria-checked, et la combo
+  // « is-coche » (posée sur l'interrupteur et sur son bouton) le dessine ; « is-chargement » dessine
+  // l'attente. Renommer ces combos dans le Designer demande de les renommer ici.
+  var DESIGNER_GATE = 'facturation-designer.js';
+  var designer = null; // { row, sw, knob, statusClass, errorClass }
+
+  function designerRow() {
+    var d = null;
+    try { d = window.OrdoRollout && window.OrdoRollout[DESIGNER_GATE]; } catch (e) { d = null; }
+    if (!d || !d.enabled) return null;
+    return document.querySelector('[data-ordo-factures-email]');
+  }
+
+  function isOn() {
+    return designer ? designer.sw.getAttribute('aria-checked') === 'true' : Boolean(input && input.checked);
+  }
+
+  function setOn(on) {
+    if (designer) {
+      designer.sw.setAttribute('aria-checked', on ? 'true' : 'false');
+      designer.sw.classList.toggle('is-coche', on);
+      if (designer.knob) designer.knob.classList.toggle('is-coche', on);
+      return;
+    }
+    if (!input) return;
+    input.checked = on;
+    input.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+
+  function setDisabled(off) {
+    if (designer) {
+      designer.sw.setAttribute('aria-disabled', off ? 'true' : 'false');
+      designer.sw.style.opacity = off ? '0.5' : '';
+      return;
+    }
+    if (input) input.disabled = off;
+  }
+
   // Délai avant d'afficher le témoin d'attente. La lecture répond le plus
   // souvent en moins que ça : dans ce cas le témoin n'apparaît jamais, et le
   // membre voit son interrupteur arriver d'un coup, sans clignotement.
@@ -199,6 +239,10 @@
     status.style.display = message ? 'block' : 'none';
     // La couleur d'erreur vient de la classe du système de design, jamais d'un
     // littéral : deux modules de la même page afficheraient sinon deux rouges.
+    if (designer) {
+      status.className = isError ? designer.errorClass : designer.statusClass;
+      return;
+    }
     status.className = 'text-size-small' + (isError ? ' text-color-error' : '');
   }
 
@@ -307,6 +351,8 @@
       console.log(PREFIX + ' Already rendered');
       return false;
     }
+    var drawn = designerRow();
+    if (drawn) return takeDesignerRow(drawn);
     injectStyle();
 
     var row = document.createElement('div');
@@ -352,6 +398,44 @@
     return true;
   }
 
+  /**
+   * La ligne dessinée dans le Designer, placée dans l'ancrage : `relocate` la déplace ensuite
+   * avec lui, comme la ligne construite ici. Rien n'est créé, seuls des repères sont posés.
+   */
+  function takeDesignerRow(row) {
+    var sw = row.querySelector('[data-ordo-champ="interrupteur"]');
+    var etat = row.querySelector('[data-ordo-champ="etat"]');
+    if (!sw || !etat) {
+      reportIfActionable(new Error('invoice-emails: Designer row without switch or state'));
+      return false;
+    }
+    var title = row.querySelector('[data-ordo-champ="titre"]');
+    var error = document.querySelector('[data-ordo-gabarits="facturation"] [data-ordo-gabarit="erreur"]');
+    designer = {
+      row: row,
+      sw: sw,
+      knob: sw.firstElementChild,
+      title: title,
+      statusClass: etat.className,
+      errorClass: error ? error.className : etat.className
+    };
+    if (title) {
+      title.id = INPUT_ID + '-libelle';
+      sw.setAttribute('aria-labelledby', title.id);
+    }
+    sw.id = INPUT_ID;
+    sw.setAttribute('role', 'switch');
+    sw.setAttribute('tabindex', '0');
+    slot = sw;
+    status = etat;
+    status.textContent = '';
+    status.style.display = 'none';
+    row.hidden = false;
+    row.style.display = '';
+    anchor.appendChild(row);
+    return true;
+  }
+
   function viderSlot() {
     while (slot.firstChild) slot.removeChild(slot.firstChild);
   }
@@ -372,13 +456,21 @@
    */
   function showSkeleton() {
     if (!buildShell()) return;
-    viderSlot();
-    var skel = document.createElement('span');
-    skel.className = 'ordo-invmail-skel';
-    // Le témoin n'a rien à dire aux lecteurs d'écran : la même information leur
-    // est donnée par la zone d'état, en toutes lettres.
-    skel.setAttribute('aria-hidden', 'true');
-    slot.appendChild(skel);
+    if (designer) {
+      designer.sw.classList.add('is-chargement');
+      designer.sw.setAttribute('aria-busy', 'true');
+      if (designer.knob) designer.knob.style.display = 'none';
+    } else {
+      viderSlot();
+    }
+    if (!designer) {
+      var skel = document.createElement('span');
+      skel.className = 'ordo-invmail-skel';
+      // Le témoin n'a rien à dire aux lecteurs d'écran : la même information leur
+      // est donnée par la zone d'état, en toutes lettres.
+      skel.setAttribute('aria-hidden', 'true');
+      slot.appendChild(skel);
+    }
     if (status) {
       status.textContent = 'Chargement de votre choix…';
       status.setAttribute('role', 'status');
@@ -410,8 +502,35 @@
 
   function render(enabled) {
     if (!buildShell()) return;
-    viderSlot();
     resetStatus();
+    if (designer) {
+      var sw = designer.sw;
+      sw.classList.remove('is-chargement');
+      sw.removeAttribute('aria-busy');
+      if (designer.knob) designer.knob.style.display = '';
+      setOn(Boolean(enabled));
+      setDisabled(false);
+      if (!designer.bound) {
+        designer.bound = true;
+        var toggle = function() {
+          if (busy || sw.getAttribute('aria-disabled') === 'true') return;
+          setOn(!isOn());
+          onChange();
+        };
+        sw.addEventListener('click', toggle);
+        sw.addEventListener('keydown', function(e) {
+          if (e.key === ' ' || e.key === 'Enter' || e.key === 'Spacebar') {
+            e.preventDefault();
+            toggle();
+          }
+        });
+        // Le libellé agit comme celui d'une case à cocher.
+        if (designer.title) designer.title.addEventListener('click', toggle);
+      }
+      show();
+      return;
+    }
+    viderSlot();
 
     // L'interrupteur reste une vraie case à cocher, seulement rendue
     // invisible : le clavier, les lecteurs d'écran et l'évènement `change`
@@ -442,19 +561,17 @@
 
   function onChange() {
     if (busy) return;
-    var wanted = input.checked;
+    var wanted = isOn();
     busy = true;
-    input.disabled = true;
+    setDisabled(true);
     setStatus('Enregistrement...');
 
     function release() {
       busy = false;
-      if (input) {
-        input.disabled = false;
-        // L'état annoncé aux lecteurs d'écran doit suivre l'état réel, y
-        // compris après un retour en arrière.
-        input.setAttribute('aria-checked', input.checked ? 'true' : 'false');
-      }
+      setDisabled(false);
+      // L'état annoncé aux lecteurs d'écran doit suivre l'état réel, y
+      // compris après un retour en arrière.
+      setOn(isOn());
     }
 
     request('POST', { enabled: wanted }).then(function(payload) {
@@ -473,7 +590,7 @@
       // L'affichage doit refléter ce qui a été accepté : on remet
       // l'interrupteur dans son état précédent plutôt que de laisser croire que
       // le choix est pris en compte.
-      if (input) input.checked = !wanted;
+      setOn(!wanted);
       setStatus(messageFor(err), true);
       track('invoice_emails_toggled', { invoice_toggle_state: wanted ? 'on' : 'off', invoice_toggle_outcome: 'failed' });
       console.error(PREFIX + ' Save error:', err && err.message);

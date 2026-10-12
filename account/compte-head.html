@@ -10,7 +10,7 @@
   var debut = Date.now();
   var SUIVIS = [
     { fichier: 'profile-overview.js', classe: 'ordo-profil', rendu: function () { return h.classList.contains('ordo-profil-v2'); } },
-    { fichier: 'subscriptions-overview.js', classe: 'ordo-subs', rendu: function () { return !!document.querySelector('#ordotype-subscriptions .ordo-subs'); } }
+    { fichier: 'subscriptions-overview.js', classe: 'ordo-subs', rendu: function () { return h.classList.contains('ordo-subs-v2') || !!document.querySelector('#ordotype-subscriptions .ordo-subs'); } }
   ];
 
   function alerter(nom, message) {
@@ -101,4 +101,11 @@ html.ordo-subs-fallback [data-w-tab="billing"] .inner-block-wraper.is-secours,
 }
 /* Encart visible seulement dans le Designer. */
 .compte-v2_designer { display: none !important; }
+/* Facturation dessinée dans le Designer : cachée tant que son script ne l'a pas remplie (le Designer, lui, la montre). */
+html:not(.ordo-subs-v2) [data-ordo-facturation] { display: none !important; }
+/* Ce que le Designer ne sait pas dessiner : pulsation des squelettes, bouton occupé. */
+@keyframes compte-v2-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+.compte-v2_squelette, .compte-v2_interrupteur.is-chargement { animation: compte-v2-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .compte-v2_squelette, .compte-v2_interrupteur.is-chargement { animation: none; } }
+[data-ordo-facturation] button[disabled], [data-ordo-facturation] input[type="submit"][disabled] { opacity: .5; cursor: default; }
 </style>
