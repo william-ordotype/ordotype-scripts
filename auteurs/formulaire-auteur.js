@@ -112,6 +112,13 @@
     ['fa-transparence', 'fa-linkedin', 'fa-site'].forEach(function (id) {
       var c = $(id); if (c) { c.setAttribute('inputmode', 'url'); c.setAttribute('autocomplete', 'url'); }
     });
+    // Le Designer pose « Example Text » sur chaque champ natif et l'API Webflow ne sait pas l'ôter :
+    // ces textes d'exemple-là sont retirés, seuls restent ceux du formulaire d'origine.
+    Array.prototype.forEach.call(racine.querySelectorAll('input[placeholder], textarea[placeholder]'), function (c) {
+      if (c.getAttribute('placeholder') === 'Example Text') c.removeAttribute('placeholder');
+    });
+    var EXEMPLES = { 'fa-transparence': 'https://www.transparence.sante.gouv.fr/...', 'fa-linkedin': 'https://www.linkedin.com/in/...' };
+    Object.keys(EXEMPLES).forEach(function (id) { var c = $(id); if (c) c.setAttribute('placeholder', EXEMPLES[id]); });
 
     // ---- Compteurs ----
     var gabaritCompteur = racine.querySelector('[data-fa-gabarit="compteur"]');
@@ -175,7 +182,8 @@
       var b = nouveauBloc('experience', 'fa-experiences', { exp_poste: e.poste, exp_structure: e.structure, debut: e.debut, fin: e.fin, en_cours: e.en_cours });
       if (!b) return;
       var cb = b.querySelector('[data-cle="en_cours"]'), fin = b.querySelector('[data-fa-fin]');
-      function majFin() { if (fin) fin.style.visibility = cb && cb.checked ? 'hidden' : 'visible'; }
+      // Retirée et pas seulement masquée : sur mobile, les champs sont empilés et une fin masquée laissait un trou.
+      function majFin() { if (fin) fin.style.display = cb && cb.checked ? 'none' : ''; }
       if (cb) cb.addEventListener('change', majFin);
       majFin();
     }
