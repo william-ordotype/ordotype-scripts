@@ -129,8 +129,11 @@ const BROUILLON = {
   verifier('lien : 2 expériences et 1 diplôme copiés des gabarits', blocs.length === 2 && r.d.querySelectorAll('[data-fa-bloc="diplome"]').length === 1);
   verifier('blocs : ni id en double, ni attribut de gabarit', r.d.querySelectorAll('#gabarit-poste').length === 1
     && !$(r, 'fa-experiences').querySelector('[data-fa-gabarit],[data-fa-cache]'));
-  verifier('blocs : fin cachée pour le poste actuel', blocs[0].querySelector('[data-fa-fin]').style.visibility === 'hidden'
-    && blocs[1].querySelector('[data-fa-fin]').style.visibility === 'visible');
+  verifier('blocs : fin retirée pour le poste actuel (pas de trou sur mobile)', blocs[0].querySelector('[data-fa-fin]').style.display === 'none'
+    && blocs[1].querySelector('[data-fa-fin]').style.display === '');
+  verifier('textes d\'exemple : « Example Text » du Designer retiré, exemples d\'adresse posés',
+    !r.d.querySelector('[placeholder="Example Text"]') && $(r, 'fa-linkedin').placeholder === 'https://www.linkedin.com/in/...'
+    && $(r, 'fa-transparence').placeholder.startsWith('https://www.transparence.sante.gouv.fr/'));
   verifier('blocs : compteurs branchés', blocs[0].querySelector('[data-cle="exp_poste"]').nextElementSibling.hasAttribute('data-fa-compteur'));
   blocs[1].querySelector('[data-fa-retirer]').dispatchEvent(new r.w.Event('click', { bubbles: true, cancelable: true }));
   verifier('blocs : retirer', r.d.querySelectorAll('[data-fa-bloc="experience"]').length === 1);
