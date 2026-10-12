@@ -1,6 +1,7 @@
 /**
  * Ordotype Homepage - CGU Modal
  * Handles CGU acceptance modal with 90-day expiration.
+ * Never shown without its #cgu-accepted button (reported instead).
  * Depends on: Memberstack ($memberstackDom)
  */
 (function() {
@@ -56,6 +57,18 @@
       }
     }
 
+    // The modal covers the whole page: shown without its "J'ai compris"
+    // button, nothing could close it. Better to skip it and say so loudly.
+    function canClose() {
+      if (acceptBtn || !modalEls.length) return true;
+      var reporter = window.OrdoErrorReporter;
+      if (reporter && typeof reporter.report === 'function') {
+        reporter.report('CGUModal', new Error('#cgu-accepted introuvable : fenêtre CGU non affichée'));
+      }
+      console.error('[CGUModal] #cgu-accepted not found - modal not shown');
+      return false;
+    }
+
     function showModal() {
       modalEls.forEach(function(el) {
         el.classList.add('show');
@@ -95,7 +108,7 @@
     }
 
     // Run initial check
-    checkCGUAcceptedDate();
+    if (canClose()) checkCGUAcceptedDate();
 
     console.log('[CGUModal] Initialized');
   }
