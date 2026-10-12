@@ -55,6 +55,19 @@ function jouer(body) {
   r.w.eval(SOURCE);
   verifier('rejoué : une seule carte', r.d.querySelectorAll('[data-ordo-section="emails"]').length === 1);
 
+  // Carte dessinée dans le Designer : rien n'est construit, seul le clic est mesuré (une fois, même rejoué)
+  const DESSINEE = PROFIL.replace('<div class="compte-v2_help is-colonne">',
+    '<div class="compte-v2_card" data-ordo-section="emails"><div class="compte-v2_card-head"><h3 class="compte-v2_card-title">E-mails</h3>'
+    + '<a href="/preferences-email" class="compte-v2_btn" data-ordo-champ="preferences-email">Modifier</a></div></div><div class="compte-v2_help is-colonne">');
+  r = jouer(DESSINEE);
+  r.w.eval(SOURCE);
+  verifier('carte du Designer : aucune seconde carte', r.d.querySelectorAll('[data-ordo-section="emails"]').length === 1);
+  const lienD = r.d.querySelector('[data-ordo-champ="preferences-email"]');
+  verifier('carte du Designer : nom accessible ajouté', lienD.getAttribute('aria-label') === 'Modifier mes préférences d’e-mail');
+  lienD.dispatchEvent(new r.w.MouseEvent('click', { bubbles: true, cancelable: true }));
+  const clics = r.evenements.filter((e) => e.event === 'email_preferences_open' && e.email_prefs_from === 'compte');
+  verifier('carte du Designer : clic mesuré une seule fois', clics.length === 1, clics.length);
+
   r = jouer('<div data-ordo-section="contact" class="compte-v2_card"></div>');
   await new Promise((ok) => setTimeout(ok, 50));
   verifier('sans bloc « Mon profil » : rien d\'ajouté', !r.d.querySelector('[data-ordo-section="emails"]'));
