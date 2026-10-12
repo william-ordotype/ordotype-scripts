@@ -272,6 +272,26 @@
             !hasLivePlanIn(paidAccountPlanIds || []);
     }
 
+    var DOCTEUR_JUNIOR_BANNER_ID = 'banner-to-hide-docteur-junior';
+    var DOCTEUR_JUNIOR_CLOSED_KEY = 'docteurJuniorBannerClosedTs';
+
+    function isDocteurJuniorBannerClosed() {
+        return !!safeGetItem(DOCTEUR_JUNIOR_CLOSED_KEY);
+    }
+
+    // Close button: hides the banner and remembers it in this browser.
+    function watchDocteurJuniorBannerClose() {
+        var selector = '#' + DOCTEUR_JUNIOR_BANNER_ID + ' .nfc_close-button, #' + DOCTEUR_JUNIOR_BANNER_ID + ' .banner_close';
+        document.addEventListener('click', function(event) {
+            var target = event.target;
+            if (!target || !target.closest || !target.closest(selector)) return;
+            event.preventDefault();
+            var banner = document.getElementById(DOCTEUR_JUNIOR_BANNER_ID);
+            if (banner) banner.style.display = 'none';
+            markNow(DOCTEUR_JUNIOR_CLOSED_KEY);
+        });
+    }
+
     /**
      * Check if the member has a specific plan (any status).
      */
@@ -489,6 +509,8 @@
         isFinInternatBannerPeriod: isFinInternatBannerPeriod,
         isDocteurJuniorBannerPeriod: isDocteurJuniorBannerPeriod,
         isDocteurJuniorAudience: isDocteurJuniorAudience,
+        isDocteurJuniorBannerClosed: isDocteurJuniorBannerClosed,
+        watchDocteurJuniorBannerClose: watchDocteurJuniorBannerClose,
         getEndOfInternship: getEndOfInternship,
         markFinInternatSeen: markFinInternatSeen,
         watchFinInternatActions: watchFinInternatActions,

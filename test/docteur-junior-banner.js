@@ -51,28 +51,52 @@ const membre = ({
     metaData: {},
 });
 
+const FERME = 'docteurJuniorBannerClosedTs';
+// Bandeau tel que posé dans le Designer : croix nfc_close-button (accueil) ou banner_close (fiches).
+const HTML_BANDEAU = {
+    accueil: '<div id="banner-to-hide-docteur-junior" class="nfc_wrapper"><div class="nfc_content">Texte'
+        + '<a class="nfc_close-button" href="#"><div class="nfc_close-icon"><svg></svg></div></a></div></div><p id="ailleurs">x</p>',
+    pathologie: '<div id="banner-to-hide-docteur-junior" class="banner-wrapper"><div class="bn_inner">Texte</div>'
+        + '<a class="banner_close" href="#"><div class="banner-icon"><svg></svg></div></a></div><p id="ailleurs">x</p>',
+};
+
 /** Fenêtre jsdom avec memberstack-utils chargé, l'horloge de la page fixée à `maintenant`. */
-function utils(m, maintenant = PENDANT) {
-    const dom = new JSDOM('<!doctype html><head></head><body></body>', {
+function utils(m, maintenant = PENDANT, { corps = '', stockage = {} } = {}) {
+    const dom = new JSDOM(`<!doctype html><head></head><body>${corps}</body>`, {
         url: 'https://www.ordotype.fr/', runScripts: 'outside-only', virtualConsole: new VirtualConsole(),
     });
     const w = dom.window;
     if (w.Date === Date) throw new Error('horloge partagée avec le test');
     w.Date.now = () => maintenant;
     if (m) w.localStorage.setItem('_ms-mem', JSON.stringify(m));
+    for (const [k, v] of Object.entries(stockage)) w.localStorage.setItem(k, v);
     w.eval(UTILS);
     return w;
 }
 
-function page(nom, m, maintenant) {
-    const w = utils(m, maintenant);
+function page(nom, m, maintenant, options) {
+    const w = utils(m, maintenant, options);
     const vus = [];
     const redirections = [];
     w.__navigate = (u) => redirections.push(u);
     w.jQuery = w.$ = (sel) => ({ css(r) { if (r && r.display === 'flex') vus.push(sel); }, on() { return this; }, hide() { return this; } });
     w.dataLayer = [];
     w.eval(PAGES[nom]);
-    return { vus, redirections };
+    return { vus, redirections, w };
+}
+
+/** Clique sur `selecteur` dans la page `nom` affichée pour un S6 : état du bandeau et du stockage après le clic. */
+function cliquer(nom, selecteur) {
+    const { w, vus } = page(nom, membre({}), PENDANT, { corps: HTML_BANDEAU[nom] });
+    const cible = w.document.querySelector(selecteur);
+    const evt = new w.MouseEvent('click', { bubbles: true, cancelable: true });
+    cible.dispatchEvent(evt);
+    return {
+        affiche: vus.includes(BANDEAU),
+        cache: w.document.getElementById('banner-to-hide-docteur-junior').style.display === 'none',
+        memorise: !!w.localStorage.getItem(FERME),
+        empeche: evt.defaultPrevented,
+    };
 }
 
 // La règle seule, avec la liste des comptes payants de la page d'accueil.
@@ -152,6 +176,18 @@ for (const nom of Object.keys(PAGES)) {
         [`[${nom}] pendant le bandeau de fin d'internat, un S6 garde le sien`, () => [
             [dj({ semestre: '6' }, PENDANT_FIN_INTERNAT), true, 'S6 le 20/10'],
         ]],
+        [`[${nom}] fermé une fois : ne revient plus`, () => [
+            [page(nom, membre({}), PENDANT, { stockage: { [FERME]: String(PENDANT - JOUR) } }).vus.includes(BANDEAU), false, 'fermé la veille'],
+        ]],
+        [`[${nom}] clic sur la croix : caché, mémorisé, sans remonter en haut de page`, () => {
+            const sel = nom === 'accueil' ? '.nfc_close-icon svg' : '.banner_close .banner-icon';
+            const r = cliquer(nom, sel);
+            return [[r.affiche, true, 'affiché avant'], [r.cache, true, 'caché'], [r.memorise, true, 'mémorisé'], [r.empeche, true, 'lien # neutralisé']];
+        }],
+        [`[${nom}] clic ailleurs : rien n'est mémorisé`, () => {
+            const r = cliquer(nom, '#ailleurs');
+            return [[r.cache, false, 'pas caché'], [r.memorise, false, 'pas mémorisé']];
+        }],
     );
 }
 
@@ -164,6 +200,10 @@ CAS.push(
     ['[accueil] téléphone manquant : le bandeau Docteur Junior passe avant', () => {
         const { vus } = page('accueil', membre({ phone: '' }));
         return [[vus.includes(BANDEAU), true, 'docteur junior'], [vus.includes('#banner-to-hide-phone-missing'), false, 'téléphone']];
+    }],
+    ['[accueil] téléphone manquant, bandeau Docteur Junior fermé : le bandeau téléphone reprend sa place', () => {
+        const { vus } = page('accueil', membre({ phone: '' }), PENDANT, { stockage: { [FERME]: String(PENDANT) } });
+        return [[vus.includes(BANDEAU), false, 'docteur junior'], [vus.includes('#banner-to-hide-phone-missing'), true, 'téléphone']];
     }],
     ['[pathologie] compte payant impayé : redirection vers le paiement, pas de bandeau', () => {
         const { vus, redirections } = page('pathologie', membre({ plans: [ASSO, { planId: SPECIAL_500, status: 'REQUIRES_PAYMENT' }] }));

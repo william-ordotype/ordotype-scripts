@@ -203,7 +203,8 @@
         window.location.replace("/membership/probleme-de-paiement");
         return;
     }
-    else if (ms.isDocteurJuniorBannerPeriod() && ms.isDocteurJuniorAudience(ACCOUNT_PLAN_IDS)) {
+    else if (ms.isDocteurJuniorBannerPeriod() && ms.isDocteurJuniorAudience(ACCOUNT_PLAN_IDS) && !ms.isDocteurJuniorBannerClosed()) {
+        ms.watchDocteurJuniorBannerClose();
         if ($) $('#banner-to-hide-docteur-junior').css({ 'display': 'flex' });
     }
 
