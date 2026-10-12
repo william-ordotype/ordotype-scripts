@@ -2053,11 +2053,22 @@
     return node;
   }
 
+  // Facturation du Designer incomplète : présentation construite par le script, signalée à Sentry ET
+  // comptée dans GA4 (subscriptions_list, subs_outcome « designer-absent », une fois par page), pour suivre
+  // le palier sans Sentry. Ce n'est pas un affichage de la liste : la liste suit, avec sa propre issue.
+  var designerAbsentTracked = false;
+  function designerAbsent(name, detail) {
+    reportProblem(name, detail);
+    if (designerAbsentTracked) return;
+    designerAbsentTracked = true;
+    track('subscriptions_list', { subs_outcome: 'designer-absent' });
+  }
+
   function prepareDesigner() {
     var root = document.querySelector('[data-ordo-facturation]');
     var store = document.querySelector('[data-ordo-gabarits="facturation"]');
     if (!root || !store) {
-      reportProblem('FacturationDesignerAbsent', (root ? '' : '[data-ordo-facturation] ') + (store ? '' : '[data-ordo-gabarits]'));
+      designerAbsent('FacturationDesignerAbsent', (root ? '' : '[data-ordo-facturation] ') + (store ? '' : '[data-ordo-gabarits]'));
       return null;
     }
     var g = {};
@@ -2093,7 +2104,7 @@
     var actions = g.abonnement && champ(g.abonnement, 'actions');
     if (!actions) missing.push('abonnement > actions');
     if (missing.length) {
-      reportProblem('FacturationGabaritAbsent', missing.join(', '));
+      designerAbsent('FacturationGabaritAbsent', missing.join(', '));
       return null;
     }
     g.pdf = pdf;
