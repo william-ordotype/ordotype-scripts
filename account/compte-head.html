@@ -108,4 +108,11 @@ html:not(.ordo-subs-v2) [data-ordo-facturation] { display: none !important; }
 .compte-v2_squelette, .compte-v2_interrupteur.is-chargement { animation: compte-v2-pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .compte-v2_squelette, .compte-v2_interrupteur.is-chargement { animation: none; } }
 [data-ordo-facturation] button[disabled], [data-ordo-facturation] input[type="submit"][disabled] { opacity: .5; cursor: default; }
+/* Photo de profil dessinée dans le Designer : pastille, liens et message cachés tant que son script ne l'a pas activée. */
+html:not(.ordo-photo-v2) [data-ordo-photo]:not([data-ordo-photo="declencheur"]) { display: none !important; }
+html:not(.ordo-photo-v2) .compte-v2_photo { cursor: auto; }
+/* Ce que le Designer ne sait pas dessiner : cercle qui tourne pendant l'envoi de la photo. */
+@keyframes compte-v2-tourne { to { transform: rotate(360deg); } }
+.compte-v2_photo-chargement { animation: compte-v2-tourne 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .compte-v2_photo-chargement { animation: none; } }
 </style>
