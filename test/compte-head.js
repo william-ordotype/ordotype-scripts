@@ -110,7 +110,9 @@ async function test(name, fn) {
     for (const el of v2(d)) assert.ok(visible(w, el));
     for (const tab of ['information', 'security', 'billing']) for (const b of anciens(d, tab)) assert.ok(!visible(w, b), tab);
     assert.ok(visible(w, d.querySelector('.compte-v2_designer')));
-    assert.ok(!visible(w, d.querySelector('[data-ordo-champ="vat-id"]').closest('.compte-v2_field')), 'ligne TVA (masquée à tous) masquée aussi ici');
+    // Ligne TVA retirée du Designer le 29/09 ; si elle revient, elle reste masquée.
+    const tva = d.querySelector('[data-ordo-champ="vat-id"]');
+    assert.ok(!tva || !visible(w, tva.closest('.compte-v2_field')), 'ligne TVA (masquée à tous) masquée aussi ici');
   });
 
   await test('site, chargement : ni nouvelle présentation ni anciens blocs, pas d\'encart', async () => {

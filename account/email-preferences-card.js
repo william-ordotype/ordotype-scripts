@@ -92,7 +92,8 @@
 
   // La carte dessinée dans le Designer : seule la mesure du clic s'y ajoute (une fois).
   function bind(card) {
-    var link = card.querySelector('[data-ordo-champ="preferences-email"]') || card.querySelector('a[href="' + PAGE_URL + '"]');
+    // 🔴 Jamais `data-ordo-champ` sur ce lien : profile-overview.js remplit tout ce qui le porte dans Mon profil.
+    var link = card.querySelector('[data-ordo-lien="preferences-email"]') || card.querySelector('a[href="' + PAGE_URL + '"]');
     if (!link || link.hasAttribute('data-ordo-mesure')) return;
     link.setAttribute('data-ordo-mesure', '1');
     if (!link.getAttribute('aria-label')) link.setAttribute('aria-label', 'Modifier mes préférences d’e-mail');
