@@ -532,6 +532,7 @@ async function main() {
     assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-v2'));
     assert.ok(!visibleIn(t, root(t)), 'cachée par la règle d\'en-tête');
     assert.strictEqual(root(t).querySelectorAll('[data-ordo-gabarit]').length, 6, 'gabarits en place (et le PDF) laissés tels quels');
+    assert.ok(!t.pushed.some((p) => p.subs_outcome === 'designer-absent'), 'hors palier : pas de repli compté');
     t.dom.window.close();
   }
 
@@ -544,6 +545,10 @@ async function main() {
     assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-v2'));
     const names = t.reported.map((r) => r.err.name);
     assert.ok(names.includes('FacturationGabaritAbsent') || names.includes('FacturationDesignerAbsent'), missing + ' ' + names.join(','));
+    // Compté aussi dans GA4, une seule fois, et la liste garde sa propre issue.
+    const outcomes = t.pushed.filter((p) => p.event === 'subscriptions_list').map((p) => p.subs_outcome);
+    assert.strictEqual(outcomes.filter((o) => o === 'designer-absent').length, 1, missing + ' ' + outcomes.join(','));
+    assert.ok(outcomes.some((o) => o === 'shown' || o === 'instant'), 'la liste reste comptée : ' + outcomes.join(','));
     t.dom.window.close();
   }
 
