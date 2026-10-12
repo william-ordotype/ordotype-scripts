@@ -114,7 +114,7 @@
     'profile-photo.js': {
       'sandbox-ordotype.webflow.io': 100,
       'ordotype.webflow.io': 100,
-      'www.ordotype.fr': 10 // 10 % depuis le 2026-10-08 (mêmes membres que rpps-finder.js : bucket commun)
+      'www.ordotype.fr': 100 // 100 % depuis le 2026-10-12 (10 % du 2026-10-08 au 2026-10-12)
     },
     // Vérification du RPPS dans l'Annuaire santé, depuis « Mon profil ».
     'rpps-finder.js': {
