@@ -452,6 +452,13 @@ async function test(name, fn) {
     assert.ok(!visible(r.w, b2));
     r = await page({ before: (w) => { w.document.getElementById('ordotype-totp-section').innerHTML = '<div class="ot-totp"><button data-ot-action="start-setup">Activer</button></div>'; } });
     assert.ok(visible(r.w, r.d.querySelector('[data-ordo-2fa-block]')), 'module déjà monté avant le script');
+    // Étape de vérification : sa ligne d'erreur, vide, n'est pas une panne.
+    r = await page({ before: (w) => { w.document.getElementById('ordotype-totp-section').innerHTML = '<div class="ot-totp"><p class="ot-totp__error" data-ot-error></p><button data-ot-action="verify">Vérifier</button></div>'; } });
+    assert.ok(visible(r.w, r.d.querySelector('[data-ordo-2fa-block]')), 'étape de vérification : affichée');
+    // Module aux classes du Designer en panne de chargement : repère data-ot-fatal.
+    r = await page({ before: (w) => { w.document.getElementById('ordotype-totp-section').innerHTML = '<div class="ot-totp"><div class="compte-v2_totp"><p class="compte-v2_totp-erreur" data-ot-fatal>Impossible</p></div></div>'; } });
+    assert.ok(!visible(r.w, r.d.querySelector('[data-ordo-2fa-block]')), 'panne : cachée');
+    assert.ok(r.pushed.some((p) => p.profile_step === '2fa:2fa:error'), 'panne mesurée');
   });
 
   await test('Google : le bloc Memberstack d\'origine (état connecté, déliaison) prend la place du bouton', async () => {

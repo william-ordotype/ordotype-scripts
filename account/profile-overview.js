@@ -716,7 +716,7 @@
     if (s) return s;
     if (!container) return 'absent';
     if (container.style.display === 'none') return 'not-required';
-    if (container.querySelector('.ot-totp__error')) return 'error';
+    if (container.querySelector('[data-ot-fatal], .ot-totp__error:not([data-ot-error])')) return 'error';
     if (container.querySelector('[data-ot-action]')) return 'required';
     return 'pending';
   }
@@ -756,7 +756,9 @@
     // Le SIREN a sa propre carte : sa cellule d'origine ne s'affiche plus dans le formulaire pro.
     '[data-ordo-v2] .ordo-siren-host{display:none!important}',
     '[data-ordo-v2] .ordo-rpps{grid-column:1/-1;flex-basis:100%;margin:0;max-width:none}',
-    // Module TOTP : même langage visuel que les cartes.
+    // Module TOTP : même langage visuel que les cartes. Seulement pour un module qui garde ses propres
+    // classes (ot-totp__*) : depuis ordotype-authentication-proxy#70, il prend celles des gabarits
+    // « totp-… » du Designer (bloc GABARITS · Double authentification) et ces règles ne s'appliquent plus.
     '[data-ordo-v2] .ot-totp__card{background:transparent;border:0;border-radius:0;padding:16px 0 0;margin:0;box-shadow:none}',
     '[data-ordo-v2] .ot-totp__title{font-size:16px;line-height:1.5;font-weight:600;margin:0 0 4px}',
     '[data-ordo-v2] .ot-totp__hint{font-size:14px;line-height:1.5;color:#47505c;margin:0}',

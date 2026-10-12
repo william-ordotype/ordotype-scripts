@@ -110,6 +110,8 @@ html:not(.ordo-subs-v2) [data-ordo-facturation] { display: none !important; }
 [data-ordo-facturation] button[disabled], [data-ordo-facturation] input[type="submit"][disabled] { opacity: .5; cursor: default; }
 /* Recherches RPPS et SIREN dessinées dans le Designer : bouton occupé (le Designer n'a pas d'état « désactivé »). */
 .compte-v2_finder button[disabled] { opacity: .5; cursor: default; }
+/* Double authentification dessinée dans le Designer (module d'authentification) : bouton occupé. */
+#ordotype-totp-section button[disabled] { opacity: .5; cursor: not-allowed; }
 /* Photo de profil dessinée dans le Designer : pastille, liens et message cachés tant que son script ne l'a pas activée. */
 html:not(.ordo-photo-v2) [data-ordo-photo]:not([data-ordo-photo="declencheur"]) { display: none !important; }
 html:not(.ordo-photo-v2) .compte-v2_photo { cursor: auto; }
