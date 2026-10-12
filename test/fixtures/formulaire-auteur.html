@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head></head>
+<body>
+<!-- Balisage attendu du Designer (classes du site), réduit à ce que lit auteurs/formulaire-auteur.js. -->
+<section class="section_auteur">
+ <div class="padding-global"><div class="container-small"><div class="padding-section-medium">
+  <div id="fa-racine">
+   <h1 class="heading-style-h3">Votre page sur Ordotype</h1>
+   <p class="text-size-regular text-color-neutral-500">Les informations ci-dessous apparaîtront sur votre page auteur.</p>
+   <p id="fa-prerempli" data-fa-cache class="text-size-small">Ce formulaire a été pré-rempli à partir de votre CV.</p>
+   <div class="w-form">
+    <form id="fa-form" name="wf-form-auteur" data-name="auteur" method="get">
+     <div class="hide"><input type="text" name="site_web_confirmation" class="form-input w-input" tabindex="-1" autocomplete="off"></div>
+     <label for="fa-titre" class="field-label-2">Titre</label><select id="fa-titre" class="form-input w-select"></select>
+     <label for="fa-prenom" class="field-label-2">Prénom</label><input id="fa-prenom" type="text" class="form-input w-input" data-max="prenom">
+     <label for="fa-nom" class="field-label-2">Nom</label><input id="fa-nom" type="text" class="form-input w-input" data-max="nom">
+     <label for="fa-specialite" class="field-label-2">Diplôme ou qualification principale</label><select id="fa-specialite" class="form-input w-select"><option value="">Choisir</option></select>
+     <div id="fa-autre-bloc" data-fa-cache><label for="fa-autre" class="field-label-2">Intitulé exact</label><input id="fa-autre" type="text" class="form-input w-input" data-max="autre"></div>
+     <div class="compte-v2_help">Aperçu sur une fiche <strong id="fa-apercu-nom"></strong> - <em id="fa-apercu-bio"></em></div>
+     <label for="fa-sous" class="field-label-2">Complément</label><input id="fa-sous" type="text" class="form-input w-input" data-max="sous">
+     <label for="fa-equipe" class="field-label-2">Description pour la page Équipe</label><input id="fa-equipe" type="text" class="form-input w-input" data-max="equipe">
+     <label for="fa-bio" class="field-label-2">Biographie</label><textarea id="fa-bio" class="form-input w-input" data-max="bio"></textarea>
+     <div data-fa-complete data-fa-cache>
+      <label for="fa-biomodule" class="field-label-2">Présentation pour la page de votre module</label><textarea id="fa-biomodule" class="form-input w-input" data-max="bio_module"></textarea>
+      <label for="fa-photo" class="field-label-2">Photo</label><input type="file" id="fa-photo" accept="image/jpeg,image/png,image/webp">
+     </div>
+     <label for="fa-transparence" class="field-label-2">Votre fiche sur Transparence Santé</label><input id="fa-transparence" type="text" class="form-input w-input" data-max="url">
+     <label class="w-checkbox"><input type="checkbox" id="fa-sansfiche" class="w-checkbox-input"><span class="w-form-label">Aucune fiche à mon nom</span></label>
+     <label for="fa-linkedin" class="field-label-2">Profil LinkedIn</label><input id="fa-linkedin" type="text" class="form-input w-input" data-max="url">
+     <label for="fa-site" class="field-label-2">Site personnel</label><input id="fa-site" type="text" class="form-input w-input" data-max="url">
+     <div data-fa-complete data-fa-cache>
+      <div id="fa-experiences"></div><a href="#" id="fa-ajout-exp" class="button is-secondary w-button">Ajouter une expérience</a>
+      <div id="fa-diplomes"></div><a href="#" id="fa-ajout-dip" class="button is-secondary w-button">Ajouter un diplôme</a>
+     </div>
+     <label class="w-checkbox"><input type="checkbox" id="fa-accord" class="w-checkbox-input"><span class="w-form-label">J'accepte</span></label>
+     <div id="fa-erreurs" data-fa-cache class="text-color-error"></div>
+     <input type="submit" id="fa-envoyer" value="Envoyer" class="button is-gradient w-button">
+     <div id="fa-merci" data-fa-cache class="compte-v2_badge is-succes">Merci.</div>
+    </form>
+   </div>
+   <div class="compte-v2_designer" data-fa-cache>
+    <div data-fa-gabarit="compteur" class="text-size-tiny text-color-neutral-400"></div>
+    <div data-fa-gabarit="experience" class="compte-v2_card">
+     <label class="field-label-2">Poste</label><input type="text" class="form-input w-input" data-cle="exp_poste" data-max="exp_poste" id="gabarit-poste">
+     <label class="field-label-2">Établissement ou structure</label><input type="text" class="form-input w-input" data-cle="exp_structure" data-max="exp_structure">
+     <label class="field-label-2">Début</label><input type="text" class="form-input w-input" data-cle="debut">
+     <div data-fa-fin><label class="field-label-2">Fin</label><input type="text" class="form-input w-input" data-cle="fin"></div>
+     <label class="w-checkbox"><input type="checkbox" class="w-checkbox-input" data-cle="en_cours"><span class="w-form-label">Poste actuel</span></label>
+     <a href="#" data-fa-retirer class="compte-v2_lien">Retirer</a>
+    </div>
+    <div data-fa-gabarit="diplome" class="compte-v2_card">
+     <label class="field-label-2">Intitulé du diplôme</label><input type="text" class="form-input w-input" data-cle="dip_titre" data-max="dip_titre">
+     <label class="field-label-2">Université ou école</label><input type="text" class="form-input w-input" data-cle="dip_universite" data-max="dip_universite">
+     <label class="field-label-2">Année d'obtention</label><input type="text" class="form-input w-input" data-cle="annee">
+     <a href="#" data-fa-retirer class="compte-v2_lien">Retirer</a>
+    </div>
+   </div>
+  </div>
+ </div></div></div>
+</section>
+</body>
+</html>

@@ -686,6 +686,56 @@ node test/preferences-email.js
 
 ---
 
+## Formulaire des auteurs (`/votre-page-auteur`)
+
+Public page, no account: an author or reviewer checks the information of their author page and sends
+it to the team. Nathalie sends a personal link prefilled from the CV: `/votre-page-auteur#d=<JSON in
+base64url>` (`ref`, `type` `courte` or `complete`, and the form fields). `type: complete` shows the
+module bio, photo, experiences and diplomas. The answer goes to the Netlify function
+`auteur-formulaire` (ordotype-webhooks), which writes a row in the « Formulaires auteurs - réponses »
+Sheet and puts the photo in the Drive. Texts, limits and checks are Guillaume's form of 12/10/2026.
+
+The page is drawn in the **Designer** with the site classes (`form-input`, `field-label-2`,
+`button is-gradient`, `compte-v2_*`); the script only adds the logic and finds the elements by the
+`fa-…` ids listed at the top of `formulaire-auteur.js`. Repeated blocks (experiences, diplomas) and
+the character counters are copies of the hidden Designer templates `[data-fa-gabarit=…]`. Blocks
+hidden at first carry `data-fa-cache` (hidden by the head code, so the Designer still shows them).
+
+The photo is resized to 1,600 px JPEG in the browser before sending. The request is a POST with a
+JSON body sent as `text/plain`: a CORS « simple request », no preflight. The submit event is stopped
+before Webflow's form handler sees it.
+
+### Files
+
+| File                   | Purpose                                                        |
+|------------------------|----------------------------------------------------------------|
+| `formulaire-auteur.js` | Prefill, lists, counters, repeated blocks, checks, photo, send |
+| `head.html`            | Reference copy of the page head code (not loaded by a script)  |
+
+### Usage in Webflow
+
+**Head (page settings):** paste `auteurs/head.html` (edit there first). It sets `noindex`, hides
+`[data-fa-cache]`, preconnects to the functions server, and moves the `#d=` link (name and bio of
+the author) to `sessionStorage` before the analytics tools load. Also turn « Sitemap indexing » off.
+
+**Before `</body>`:**
+```html
+<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/shared/error-reporter.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<commit>/auteurs/formulaire-auteur.js"></script>
+```
+
+### Console Prefixes
+
+- `[FormulaireAuteur]`
+
+### Test
+
+```bash
+node test/formulaire-auteur.js
+```
+
+---
+
 ## Ordonnances Page (Prescriptions)
 
 ### Files
