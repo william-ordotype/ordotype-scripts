@@ -68,6 +68,11 @@ async function page({ member = MEDECIN, fixture = FIXTURE, reporter = true, fres
 }
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+/** Attend une condition (relectures en tâche de fond), 3 s au plus : une machine lente ne fait pas échouer le test. */
+async function waitFor(cond, ms = 3000) {
+  const end = Date.now() + ms;
+  while (!cond() && Date.now() < end) await tick(20);
+}
 const txt = (d, sel) => (d.querySelector(sel) || {}).textContent;
 const champ = (d, name) => txt(d, `[data-ordo-v2="profil"] [data-ordo-champ="${name}"]`);
 const visible = (w, el) => !!el && w.getComputedStyle(el).display !== 'none';
@@ -329,7 +334,7 @@ async function test(name, fn) {
     const nom = form.querySelector('[data-ms-member="nom"]');
     if (nom) nom.value = 'le  bihan';
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:perso:saved'));
     assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:saved'), 'la carte se referme');
     assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="perso"]')));
     assert.strictEqual(champ(d, 'prnom'), 'Clara', 'la lecture affiche la valeur corrigée');
@@ -361,7 +366,7 @@ async function test(name, fn) {
     form.querySelector('[data-ms-member="current-password"]').value = 'Ancien1!';
     form.querySelector('[data-ms-member="new-password"]').value = 'Nouveau1!';
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:password:unverified'));
     assert.deepStrictEqual(reports, []);
     assert.ok(pushed.some((p) => p.profile_step === 'edit:password:unverified'));
     assert.ok(!pushed.some((p) => p.profile_step === 'edit:password:unconfirmed'));
@@ -374,10 +379,11 @@ async function test(name, fn) {
     form.querySelector('#first-name').value = 'Clara'; // Memberstack renvoie toujours « Claire »
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => reports.length >= 1);
+    await tick(200); // un second signalement aurait eu le temps d'arriver
     assert.strictEqual(reports.length, 1);
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => reports.length >= 2);
     assert.strictEqual(reports.length, 2, 'un nouvel envoi après la fin de la surveillance est de nouveau surveillé');
   });
 
@@ -393,7 +399,7 @@ async function test(name, fn) {
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     await tick(100);
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:perso:saved'));
     assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:saved'));
   });
 
@@ -403,7 +409,7 @@ async function test(name, fn) {
     const form = d.querySelector('[data-ordo-form-slot="contact"] form');
     form.querySelector('[data-ms-member="phone"]').value = '+33 6 12 34 56 78'; // enregistré : +33612345678
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:contact:saved'));
     assert.deepStrictEqual(reports, []);
     assert.ok(pushed.some((p) => p.profile_step === 'edit:contact:saved'));
   });
