@@ -89,7 +89,7 @@
     'facturation-designer.js': {
       'sandbox-ordotype.webflow.io': 100,
       'ordotype.webflow.io': 100,
-      'www.ordotype.fr': 0
+      'www.ordotype.fr': 10 // 10 % depuis le 2026-10-12 (bucket commun : mêmes membres que la photo et le RPPS)
     },
     // Live members only, like invoice-emails.js: verified on www with the override.
     'subscriptions-overview.js': {
