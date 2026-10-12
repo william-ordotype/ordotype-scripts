@@ -241,6 +241,37 @@
         return semester >= getRequiredSemester(specialization);
     }
 
+    // Display window of the Docteur Junior banner (Paris time), end excluded.
+    var DOCTEUR_JUNIOR_BANNER_FROM = '2026-10-15T00:00:00+02:00';
+    var DOCTEUR_JUNIOR_BANNER_UNTIL = '2026-11-16T00:00:00+01:00';
+
+    // Free intern plans (paid intern accounts are not listed).
+    var DOCTEUR_JUNIOR_FREE_PLAN_IDS = [
+        'pln_brique-google-internes-paris-i31as0w8p',
+        'pln_interne-m-decine-g-n-rale-adh-rent--4a4t0o95',
+        'pln_compte-interne-derni-re-ann-e-9f4o0oyy',
+        'pln_sau-interne-811d0aht'
+    ];
+
+    function isDocteurJuniorBannerPeriod(now) {
+        var t = now == null ? Date.now() : now;
+        return t >= new Date(DOCTEUR_JUNIOR_BANNER_FROM).getTime() &&
+            t < new Date(DOCTEUR_JUNIOR_BANNER_UNTIL).getTime();
+    }
+
+    /**
+     * General-practice resident in semester 6 or 7 (labelled values such as
+     * "6 (FST)" excluded), on a free intern plan, without a paid account plan.
+     */
+    function isDocteurJuniorAudience(paidAccountPlanIds) {
+        var semestre = String(customFields.semestre == null ? '' : customFields.semestre).trim();
+        return customFields.statut === 'Interne' &&
+            String(customFields.specialite || '').trim() === 'Médecine générale' &&
+            (semestre === '6' || semestre === '7') &&
+            hasLivePlanIn(DOCTEUR_JUNIOR_FREE_PLAN_IDS) &&
+            !hasLivePlanIn(paidAccountPlanIds || []);
+    }
+
     /**
      * Check if the member has a specific plan (any status).
      */
@@ -456,6 +487,8 @@
         getRequiredSemester: getRequiredSemester,
         isInFinalSemester: isInFinalSemester,
         isFinInternatBannerPeriod: isFinInternatBannerPeriod,
+        isDocteurJuniorBannerPeriod: isDocteurJuniorBannerPeriod,
+        isDocteurJuniorAudience: isDocteurJuniorAudience,
         getEndOfInternship: getEndOfInternship,
         markFinInternatSeen: markFinInternatSeen,
         watchFinInternatActions: watchFinInternatActions,

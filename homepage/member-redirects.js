@@ -349,6 +349,9 @@
         ) {
             $('#banner-to-hide-fin-internat').css({ display: 'flex' });
         }
+        else if (ms.isDocteurJuniorBannerPeriod() && ms.isDocteurJuniorAudience(ACCOUNT_PLAN_IDS)) {
+            $('#banner-to-hide-docteur-junior').css({ display: 'flex' });
+        }
         // SAU signup prompt for all emergency-medicine members (snooze-gated).
         // Low priority: any billing/profile banner above wins.
         else if (

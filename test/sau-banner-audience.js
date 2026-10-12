@@ -79,6 +79,8 @@ function jouer({ statut, specialite, semestre, heure, snoozeMs }) {
         getRequiredSemester() { return 6; },
         isInFinalSemester() { return false; },
         isFinInternatBannerPeriod() { return false; },
+        isDocteurJuniorBannerPeriod() { return false; },
+        isDocteurJuniorAudience() { return false; },
         getEndOfInternship() { return { ended: false, hasPaidModule: false, lockContent: false, redirect: false, banner: false }; },
         markFinInternatSeen() {},
     };
