@@ -4,6 +4,10 @@
  * la page (test/fixtures/compte-profil-securite.html) et profile-overview.js chargé après lui,
  * comme le fait le chargeur. Le serveur est simulé.
  *
+ * Deux présentations, mêmes comportements : « designer » (la page publiée, classes reprises des
+ * gabarits « finder-… » du Designer) et « ancienne » (la même page sans ces gabarits : classes et
+ * feuille de style du script).
+ *
  * Usage : node test/rpps-finder.js
  */
 const fs = require('fs');
@@ -51,7 +55,16 @@ function reply(status, body) {
   return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
 }
 
-async function page({ member = MEMBRE, overview = true, server = {}, token = 'jeton-test', noV2 = false } = {}) {
+let MODE = 'designer';
+
+/** La page d'avant le Designer : aucun gabarit de recherche. */
+function sansDesigner(d) {
+  const g = d.querySelector('[data-ordo-gabarit="finder"]');
+  const groupe = g && g.closest('.compte-v2_gabarits-groupe');
+  if (groupe) groupe.remove();
+}
+
+async function page({ member = MEMBRE, overview = true, server = {}, token = 'jeton-test', noV2 = false, mode = MODE, avant } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -61,6 +74,8 @@ async function page({ member = MEMBRE, overview = true, server = {}, token = 'je
   const dom = new JSDOM(`<!doctype html><html><head><style>${SITE_CSS}</style></head><body><div class="w-tabs">${fixture}</div></body></html>`,
     { url: 'https://www.ordotype.fr/membership/compte', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole });
   const w = dom.window;
+  if (mode === 'ancienne') sansDesigner(w.document);
+  if (avant) avant(w.document);
   const calls = [];
   const pushed = [];
   const reports = [];
@@ -99,6 +114,7 @@ async function page({ member = MEMBRE, overview = true, server = {}, token = 'je
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 async function settle() { for (let i = 0; i < 6; i++) await tick(); }
 const visible = (w, el) => !!el && w.getComputedStyle(el).display !== 'none' && !el.hidden;
+const ROOT_SEL = '[data-ordo-finder="rpps"]';
 const byText = (scope, sel, re) => [...scope.querySelectorAll(sel)].find((b) => re.test(b.textContent));
 const steps = (pushed) => pushed.filter((p) => p.event === 'profile_action' && p.profile_action === 'rpps').map((p) => p.profile_step);
 
@@ -108,16 +124,18 @@ async function test(name, fn) {
     await fn();
     passed += 1;
   } catch (e) {
-    console.error(`✗ ${name}\n  ${e.stack}`);
+    console.error(`✗ [${MODE}] ${name}\n  ${e.stack}`);
     process.exit(1);
   }
 }
 
 (async () => {
+  for (const mode of ['designer', 'ancienne']) {
+  MODE = mode;
   await test('non vérifié : invitation discrète sous la ligne RPPS de la carte, aucun appel', async () => {
     const { w, d, calls, erreurs, pushed } = await page();
     assert.deepStrictEqual(erreurs, []);
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     assert.ok(root, 'bloc créé');
     const row = d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="n-rpps"]').closest('.compte-v2_field');
     assert.strictEqual(row.nextSibling, root, 'placé juste après la ligne « Numéro RPPS »');
@@ -135,7 +153,7 @@ async function test(name, fn) {
     m.customFields['statut-rpps'] = 'E';
     m.metaData = { 'rpps-tested': '8' + N1 };
     const { w, d, calls, pushed } = await page({ member: m });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     assert.ok(root && !visible(w, root), 'bloc masqué');
     assert.ok(d.querySelector('[data-ordo-v2="profil"] [data-ordo-rpps-verifie]'), 'coche « Vérifié » inchangée');
     assert.strictEqual(calls.length, 0);
@@ -147,7 +165,7 @@ async function test(name, fn) {
     m.customFields['statut-rpps'] = 'C';
     m.metaData = { 'rpps-tested': N2 };
     const { w, d, calls } = await page({ member: m });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     assert.ok(root && visible(w, root), 'invitation affichée');
     assert.ok(byText(root, 'button', /Vérifier maintenant/));
     assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-verifie]').length, 0, 'aucune coche');
@@ -156,9 +174,9 @@ async function test(name, fn) {
 
   await test('recherche par nom : champs préremplis, jeton, résultats, « C’est moi » seulement sur son nom', async () => {
     const { d, calls, pushed } = await page({ server: { search: () => reply(200, { results: [CLAIRE, PAUL], total: 42 }) } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
-    const inputs = root.querySelectorAll('.ordo-rpps-row input');
+    const inputs = root.querySelectorAll('input');
     assert.strictEqual(inputs[0].value, 'Martin');
     assert.strictEqual(inputs[1].value, 'Claire');
     assert.strictEqual(inputs[2].value, N1, 'numéro déjà saisi repris');
@@ -169,7 +187,7 @@ async function test(name, fn) {
     assert.strictEqual(calls[0].method, 'POST');
     assert.strictEqual(calls[0].headers.Authorization, 'Bearer jeton-test');
     assert.deepStrictEqual(calls[0].body, { action: 'search', family: 'Martin', given: 'Claire', scope: 'medecin' });
-    const items = root.querySelectorAll('.ordo-rpps-list li');
+    const items = root.querySelectorAll('ul > li');
     assert.strictEqual(items.length, 2);
     assert.strictEqual(items[0].querySelector('span').textContent, `Claire Anne MARTIN · Médecin · Spécialiste en Médecine générale · RPPS ${N1}`);
     assert.ok(byText(items[0], 'button', /C’est moi/));
@@ -185,7 +203,7 @@ async function test(name, fn) {
       search: () => reply(200, { results: [CLAIRE], total: 1 }),
       select: () => reply(200, saved)
     } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -214,10 +232,10 @@ async function test(name, fn) {
       lookup: () => reply(200, { results: [CLAIRE] }),
       select: () => reply(200, { ok: true, rpps: N1, category: 'C', family: 'MARTIN', given: 'CLAIRE', profession: 'Médecin', specialty: '', verified_at: '2026-09-28T12:00:00.000Z' })
     } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     assert.ok(/Rechercher mon RPPS/.test(root.textContent), 'texte sans numéro valide');
     byText(root, 'button', /Rechercher mon RPPS/).click();
-    const num = root.querySelectorAll('.ordo-rpps-row input')[2];
+    const num = root.querySelectorAll('input')[2];
     assert.strictEqual(num.value, '', 'un texte libre n’est pas repris comme numéro');
     num.value = N1;
     num.dispatchEvent(new d.defaultView.Event('input'));
@@ -236,9 +254,9 @@ async function test(name, fn) {
 
   await test('numéro saisi : contrôle de validité, fiche d’un autre nom sans bouton', async () => {
     const { d, calls, pushed } = await page({ server: { lookup: () => reply(200, { results: [PAUL] }) } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
-    const num = root.querySelectorAll('.ordo-rpps-row input')[2];
+    const num = root.querySelectorAll('input')[2];
     const check = byText(root, 'button', /^Vérifier$/);
     num.value = BAD;
     num.dispatchEvent(new d.defaultView.Event('input'));
@@ -261,7 +279,7 @@ async function test(name, fn) {
       search: () => reply(200, { results: [CLAIRE], total: 1 }),
       select: () => reply(409, { error: 'name_mismatch' })
     } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -277,7 +295,7 @@ async function test(name, fn) {
 
   await test('pannes : session, indisponibilité, réseau, erreur serveur', async () => {
     let ctx = await page({ server: { search: () => reply(401, { error: 'unauthorized' }) } });
-    let root = ctx.d.querySelector('.ordo-rpps');
+    let root = ctx.d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -285,20 +303,20 @@ async function test(name, fn) {
     assert.deepStrictEqual(ctx.reports, []);
 
     ctx = await page({ server: { search: () => reply(503, { error: 'upstream_unavailable' }) } });
-    root = ctx.d.querySelector('.ordo-rpps');
+    root = ctx.d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
     assert.ok(/L’Annuaire santé ne répond pas en ce moment/.test(root.textContent));
     assert.ok(!/quelques secondes/.test(root.textContent), 'pas de promesse de délai');
-    const msg = root.querySelector('.ordo-rpps-error');
-    const row = root.querySelector('.ordo-rpps-panel > .ordo-rpps-row');
+    const msg = root.querySelector('[data-ordo-message="erreur"]');
+    const row = root.querySelector('input').parentNode;
     assert.strictEqual(msg.parentNode, row.nextSibling, 'message juste sous les champs de recherche');
     assert.ok(steps(ctx.pushed).includes('rpps:pro:search-unavailable'), 'panne de l’annuaire comptée dans GA4');
     assert.deepStrictEqual(ctx.reports, []);
 
     ctx = await page({ server: { search: () => reply(429, { error: 'rate_limited' }) } });
-    root = ctx.d.querySelector('.ordo-rpps');
+    root = ctx.d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -307,7 +325,7 @@ async function test(name, fn) {
     assert.deepStrictEqual(ctx.reports, []);
 
     ctx = await page({ server: {} });
-    root = ctx.d.querySelector('.ordo-rpps');
+    root = ctx.d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -316,7 +334,7 @@ async function test(name, fn) {
     assert.deepStrictEqual(ctx.reports.map((r) => r.kind), ['network'], 'requête morte signalée comme telle');
 
     ctx = await page({ server: { search: () => reply(502, { error: 'upstream_error' }) } });
-    root = ctx.d.querySelector('.ordo-rpps');
+    root = ctx.d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -326,7 +344,7 @@ async function test(name, fn) {
 
   await test('professions : médecins par défaut, toutes sur demande, toutes d’emblée pour un autre professionnel', async () => {
     let ctx = await page({ server: { search: () => reply(200, { results: [], total: 0 }) } });
-    let root = ctx.d.querySelector('.ordo-rpps');
+    let root = ctx.d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /pas médecin/).click();
     await settle();
@@ -337,7 +355,7 @@ async function test(name, fn) {
     const m = clone(MEMBRE);
     m.customFields.statut = 'Autre professionnel de sante';
     ctx = await page({ member: m, server: { search: () => reply(200, { results: [], total: 0 }) } });
-    root = ctx.d.querySelector('.ordo-rpps');
+    root = ctx.d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -348,12 +366,12 @@ async function test(name, fn) {
     const m = clone(MEMBRE);
     m.customFields.nom = '';
     const { d } = await page({ member: m, server: { search: () => reply(200, { results: [{ ...CLAIRE, name_match: 'n/a' }], total: 1 }) } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
     assert.ok(/Indiquez au moins 2 lettres/.test(root.textContent), 'nom vide : pas d’appel');
-    root.querySelectorAll('.ordo-rpps-row input')[0].value = 'Martin';
+    root.querySelectorAll('input')[0].value = 'Martin';
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
     assert.ok(/Renseignez votre nom/.test(root.textContent));
@@ -370,20 +388,20 @@ async function test(name, fn) {
         return reply(200, { results: [CLAIRE], total: 1 });
       }
     } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
-    const fam = root.querySelectorAll('.ordo-rpps-row input')[0];
+    const fam = root.querySelectorAll('input')[0];
     const e = new w.KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true });
     fam.dispatchEvent(e);
     assert.ok(e.defaultPrevented, 'Entrée ne soumet pas le formulaire');
     await settle();
     assert.ok(byText(root, 'button', /^Rechercher$/).disabled, 'bouton inactif pendant la recherche');
     // Seconde recherche lancée au clavier pendant que la première attend encore sa réponse.
-    root.querySelectorAll('.ordo-rpps-row input')[1].dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true }));
+    root.querySelectorAll('input')[1].dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true }));
     await settle();
     resolveFirst();
     await settle();
-    const items = root.querySelectorAll('.ordo-rpps-list li');
+    const items = root.querySelectorAll('ul > li');
     assert.strictEqual(items.length, 1);
     assert.ok(items[0].textContent.includes(N1), 'la dernière recherche l’emporte');
   });
@@ -391,7 +409,7 @@ async function test(name, fn) {
   await test('texte de l’annuaire jamais interprété comme du HTML', async () => {
     const evil = { ...CLAIRE, family: '<img src=x onerror="window.__pwn=1">', given: '<b>x</b>' };
     const { w, d } = await page({ server: { search: () => reply(200, { results: [evil], total: 1 }) } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -401,7 +419,7 @@ async function test(name, fn) {
 
   await test('sans la nouvelle présentation : le bloc reste sous le champ RPPS du formulaire', async () => {
     const { d } = await page({ overview: false });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     const cell = d.getElementById('RPPS').closest('.form-field-wrapper');
     assert.strictEqual(cell.nextSibling, root);
   });
@@ -409,7 +427,7 @@ async function test(name, fn) {
   await test('« Fermer » replie et ignore une recherche en cours', async () => {
     let release;
     const { d, pushed } = await page({ server: { search: () => new Promise((r) => { release = () => r({ ok: true, status: 200, json: () => Promise.resolve({ results: [CLAIRE], total: 1 }) }); }) } });
-    const root = d.querySelector('.ordo-rpps');
+    const root = d.querySelector(ROOT_SEL);
     byText(root, 'button', /Vérifier maintenant/).click();
     byText(root, 'button', /^Rechercher$/).click();
     await settle();
@@ -417,9 +435,132 @@ async function test(name, fn) {
     release();
     await settle();
     assert.ok(byText(root, 'button', /Vérifier maintenant/), 'replié');
-    assert.ok(!root.querySelector('.ordo-rpps-list'));
+    assert.ok(!root.querySelector('ul'));
     assert.deepStrictEqual(steps(pushed), ['rpps:pro:shown', 'rpps:pro:open', 'rpps:pro:search', 'rpps:pro:close'], 'la réponse tardive n’est ni affichée ni comptée');
   });
 
+  }
+  MODE = 'designer';
+  await test('[designer] classes reprises des gabarits du Designer, aucune feuille injectée, aucun style en ligne', async () => {
+    const { d } = await page({ server: {
+      search: () => reply(200, { results: [CLAIRE, PAUL], total: 1 }),
+      lookup: () => reply(200, { results: [CLAIRE] })
+    } });
+    const root = d.querySelector(ROOT_SEL);
+    assert.strictEqual(d.getElementById('ordo-rpps-styles'), null, 'aucune feuille injectée');
+    assert.strictEqual(root.getAttribute('data-ordo-dessin'), 'designer');
+    assert.strictEqual(root.className, 'compte-v2_finder is-en-carte', 'dans la carte : variante « finder-en-carte » du Designer');
+    assert.strictEqual(root.getAttribute('data-ordo-classe-hors-carte'), 'compte-v2_finder');
+    assert.strictEqual(root.firstChild.className, 'compte-v2_finder-cta');
+    assert.strictEqual(root.firstChild.firstChild.className, 'compte-v2_finder-note');
+    const open = byText(root, 'button', /Vérifier maintenant/);
+    assert.strictEqual(open.className, 'compte-v2_finder-lien');
+    open.click();
+    assert.strictEqual(root.firstChild.className, 'compte-v2_finder-panneau');
+    assert.strictEqual(root.querySelector('strong').className, 'compte-v2_finder-titre');
+    const inputs = root.querySelectorAll('input');
+    assert.strictEqual(inputs[0].className, 'form-input is-finder-champ w-input', 'champ : classes du gabarit + base Webflow');
+    assert.strictEqual(inputs[0].parentNode.className, 'compte-v2_finder-ligne is-finder-haut');
+    const go = byText(root, 'button', /^Rechercher$/);
+    assert.strictEqual(go.className, 'button is-gradient w-button');
+    const foot = byText(root, 'button', /^Fermer$/).parentNode;
+    assert.strictEqual(foot.className, 'compte-v2_finder-note is-note-pied');
+    assert.strictEqual(foot.getAttribute('style'), null, 'marge dessinée dans le Designer, pas en ligne');
+    assert.ok(root.querySelector('.compte-v2_finder-direct'));
+    assert.strictEqual(byText(root, 'button', /pas médecin/).parentNode.className, 'compte-v2_finder-note is-note-haut');
+    go.click();
+    await settle();
+    const ul = root.querySelector('ul');
+    assert.strictEqual(ul.className, 'compte-v2_finder-liste');
+    const items = ul.querySelectorAll('li');
+    assert.strictEqual(items[0].className, 'compte-v2_finder-item');
+    assert.strictEqual(items[0].querySelector('span').className, 'compte-v2_finder-libelle');
+    assert.strictEqual(items[0].querySelector('button').className, 'button is-grey is-small is-finder-choix w-button');
+    assert.strictEqual(items[1].querySelector('span:last-child').className, 'compte-v2_finder-note is-note-droite');
+    const num = inputs[2];
+    num.value = N1;
+    num.dispatchEvent(new d.defaultView.Event('input'));
+    byText(root, 'button', /^Vérifier$/).click();
+    await settle();
+    const card = root.querySelector('.compte-v2_finder-carte');
+    assert.ok(card, 'carte du Designer');
+    const ok = byText(card, 'button', /^Confirmer$/);
+    assert.strictEqual(ok.className, 'button is-gradient is-finder-confirmer w-button');
+    assert.strictEqual(ok.getAttribute('style'), null);
+  });
+
+  await test('[designer] message d’erreur et encadré « vérifié » : classes du Designer', async () => {
+    const { d } = await page({ server: {
+      search: () => reply(503, { error: 'upstream_unavailable' }),
+      lookup: () => reply(200, { results: [CLAIRE] }),
+      select: () => reply(200, { ok: true, rpps: N1, category: 'C', family: 'MARTIN', given: 'CLAIRE', profession: 'Médecin', verified_at: '2026-09-28T12:00:00.000Z' })
+    } });
+    const root = d.querySelector(ROOT_SEL);
+    byText(root, 'button', /Vérifier maintenant/).click();
+    byText(root, 'button', /^Rechercher$/).click();
+    await settle();
+    assert.strictEqual(root.querySelector('[data-ordo-message]').className, 'compte-v2_finder-erreur');
+    const num = root.querySelectorAll('input')[2];
+    num.value = N1;
+    num.dispatchEvent(new d.defaultView.Event('input'));
+    byText(root, 'button', /^Vérifier$/).click();
+    await settle();
+    byText(root, 'button', /^Confirmer$/).click();
+    await settle();
+    assert.strictEqual(root.firstChild.className, 'compte-v2_finder-fait');
+  });
+
+  await test('[designer] William renomme ou change une classe dans le Designer : le script suit', async () => {
+    const { d } = await page({ avant: (doc) => {
+      doc.querySelector('[data-ordo-gabarit="finder-note"]').className = 'compte-v2_finder-note is-discret';
+    } });
+    const root = d.querySelector(ROOT_SEL);
+    assert.strictEqual(root.firstChild.firstChild.className, 'compte-v2_finder-note is-discret');
+  });
+
+  await test('[designer] gabarits incomplets : présentation d’origine, signalée, recherche utilisable', async () => {
+    const { d, reports } = await page({
+      server: { search: () => reply(200, { results: [CLAIRE], total: 1 }) },
+      avant: (doc) => doc.querySelector('[data-ordo-gabarit="finder-carte"]').removeAttribute('data-ordo-gabarit')
+    });
+    const root = d.querySelector(ROOT_SEL);
+    assert.strictEqual(root.className, 'ordo-rpps');
+    assert.ok(d.getElementById('ordo-rpps-styles'), 'feuille d’origine injectée');
+    assert.deepStrictEqual(reports.map((r) => r.ctx), ['RppsFinder.designer']);
+    byText(root, 'button', /Vérifier maintenant/).click();
+    byText(root, 'button', /^Rechercher$/).click();
+    await settle();
+    assert.ok(byText(root, 'button', /C’est moi/));
+  });
+
+  await test('[designer] hors de la nouvelle présentation : classes du Designer, sans la variante « carte »', async () => {
+    const { d } = await page({ overview: false });
+    assert.strictEqual(d.querySelector(ROOT_SEL).className, 'compte-v2_finder');
+  });
+
+  await test('[designer] présentation en échec après placement : recherche remise sous le champ, classes d’avant la carte', async () => {
+    const { d, reports } = await page({ avant: (doc) => {
+      const cl = doc.documentElement.classList;
+      const add = cl.add.bind(cl);
+      cl.add = (...names) => {
+        if (names.includes('ordo-profil-v2')) throw new Error('panne simulée');
+        return add(...names);
+      };
+    } });
+    const root = d.querySelector(ROOT_SEL);
+    assert.ok(reports.some((r) => r.ctx === 'ProfileOverview'), 'échec de la présentation signalé');
+    assert.strictEqual(d.getElementById('RPPS').closest('.form-field-wrapper').nextSibling, root, 'remise sous le champ');
+    assert.strictEqual(root.className, 'compte-v2_finder');
+    assert.ok(!root.hasAttribute('data-ordo-classe-hors-carte'));
+  });
+
+  await test('[ancienne] classes et feuille du script, aucune trace du Designer', async () => {
+    const { d, reports } = await page({ mode: 'ancienne' });
+    const root = d.querySelector(ROOT_SEL);
+    assert.strictEqual(root.className, 'ordo-rpps', 'classe d’origine : les règles [data-ordo-v2] .ordo-rpps de la présentation s’appliquent');
+    assert.ok(!root.hasAttribute('data-ordo-dessin'));
+    assert.ok(d.getElementById('ordo-rpps-styles'));
+    assert.deepStrictEqual(reports, [], 'page pas encore republiée : rien à signaler');
+  });
   console.log(`rpps-finder : ${passed} tests OK`);
 })();

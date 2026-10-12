@@ -6,10 +6,11 @@
  * des préférences se lit sur la page elle-même, pas à chaque ouverture de Mon
  * compte.
  *
- * La carte reprend les classes des cartes du Designer (`compte-v2_*`), dans le
- * bloc « Mon profil » de la nouvelle présentation ([data-ordo-v2="profil"]).
- * Sans ce bloc, rien n'est ajouté : la page reste joignable par le lien des
- * e-mails.
+ * La carte est dessinée dans le Designer ([data-ordo-section="emails"], après
+ * « Contact ») : ce fichier n'y ajoute que la mesure du clic. Sur une page publiée
+ * sans elle, il la construit avec les mêmes classes (`compte-v2_*`), dans le bloc
+ * « Mon profil » de la nouvelle présentation ([data-ordo-v2="profil"]). Sans ce
+ * bloc, rien n'est ajouté : la page reste joignable par le lien des e-mails.
  *
  * Depends on: profile-overview.js (le bloc [data-ordo-v2]), shared/error-reporter.js (facultatif)
  */
@@ -67,9 +68,9 @@
     link.href = PAGE_URL;
     link.textContent = 'Modifier';
     link.setAttribute('aria-label', 'Modifier mes préférences d’e-mail');
-    link.addEventListener('click', function() {
-      track({ event: 'email_preferences_open', email_prefs_from: 'compte' });
-    });
+    // Posé ici : la carte construite ne repasse pas par bind().
+    link.setAttribute('data-ordo-mesure', '1');
+    measure(link);
     head.appendChild(title);
     head.appendChild(link);
 
@@ -83,10 +84,30 @@
     return card;
   }
 
+  function measure(link) {
+    link.addEventListener('click', function() {
+      track({ event: 'email_preferences_open', email_prefs_from: 'compte' });
+    });
+  }
+
+  // La carte dessinée dans le Designer : seule la mesure du clic s'y ajoute (une fois).
+  function bind(card) {
+    // 🔴 Jamais `data-ordo-champ` sur ce lien : profile-overview.js remplit tout ce qui le porte dans Mon profil.
+    var link = card.querySelector('[data-ordo-lien="preferences-email"]') || card.querySelector('a[href="' + PAGE_URL + '"]');
+    if (!link || link.hasAttribute('data-ordo-mesure')) return;
+    link.setAttribute('data-ordo-mesure', '1');
+    if (!link.getAttribute('aria-label')) link.setAttribute('aria-label', 'Modifier mes préférences d’e-mail');
+    measure(link);
+  }
+
   function place() {
     var root = document.querySelector('[data-ordo-v2="profil"]');
     if (!root) return false;
-    if (root.querySelector('[data-ordo-section="emails"]')) return true;
+    var drawn = root.querySelector('[data-ordo-section="emails"]');
+    if (drawn) {
+      bind(drawn);
+      return true;
+    }
     var contact = root.querySelector('[data-ordo-section="contact"]');
     if (!contact || !contact.parentNode) return false;
     contact.parentNode.insertBefore(build(), contact.nextSibling);

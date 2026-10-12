@@ -169,6 +169,49 @@
     return e;
   }
 
+  // --- Deux présentations, une seule logique ---------------------------------------------------
+  // Héritée : ce script construit les sections et leur feuille de style dans #ordotype-subscriptions.
+  // Designer (palier facturation-designer.js du chargeur) : les sections, leurs classes et leurs textes
+  // fixes sont dessinés dans Webflow ([data-ordo-facturation]) ; les états à recopier vivent dans le bloc
+  // [data-ordo-gabarits="facturation"], visible seulement dans le Designer. Le script n'y met que les
+  // données et les actions. `ui` porte ce qui diffère entre les deux présentations.
+  var DESIGNER_GATE = 'facturation-designer.js';
+  var D = null;
+
+  var KIND_CLASS = { bouton: 'ordo-subs-btn', 'bouton-primaire': 'ordo-subs-btn is-primary', lien: 'ordo-subs-link' };
+
+  var legacyUi = {
+    actions: function() { return el('div', 'ordo-subs-actions'); },
+    // kind : 'bouton', 'bouton-primaire' ou 'lien'.
+    button: function(kind, label) {
+      var b = el('button', KIND_CLASS[kind], label);
+      b.type = 'button';
+      return b;
+    },
+    anchor: function(kind, label, href) {
+      var a = el('a', KIND_CLASS[kind], label);
+      a.setAttribute('href', href);
+      return a;
+    },
+    message: function() {
+      var m = el('div', 'ordo-subs-note ordo-subs-msg');
+      m.setAttribute('role', 'status');
+      return m;
+    },
+    flash: function(text) {
+      var p = el('p', 'ordo-subs-flash', text);
+      p.setAttribute('role', 'status');
+      return p;
+    }
+  };
+  var ui = legacyUi;
+
+  // Le libellé d'un bouton d'envoi : un <input type="submit"> (formulaire Webflow) le porte dans `value`.
+  function setLabel(node, text) {
+    if (node.tagName === 'INPUT') node.value = text;
+    else node.textContent = text;
+  }
+
   function day(ymd) {
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
     if (!m) return '';
@@ -253,18 +296,45 @@
     return img;
   }
 
-  function priceRow(c) {
-    var row = el('div', 'ordo-subs-price');
+  // The price line: what is charged now, and the full price struck through when it is lower.
+  function priceInfo(c) {
     var shown = c.offeredUntil ? 0 : c.price.current;
-    row.appendChild(el('span', 'ordo-subs-amount', money(shown, c.price.currency)));
-    row.appendChild(el('span', 'ordo-subs-period', period(c.price)));
-    if (shown < c.price.amount) {
+    return {
+      amount: money(shown, c.price.currency),
+      period: period(c.price),
+      old: shown < c.price.amount ? money(c.price.amount, c.price.currency) : null
+    };
+  }
+
+  function priceRow(c) {
+    var info = priceInfo(c);
+    var row = el('div', 'ordo-subs-price');
+    row.appendChild(el('span', 'ordo-subs-amount', info.amount));
+    row.appendChild(el('span', 'ordo-subs-period', info.period));
+    if (info.old) {
       var old = el('s', 'ordo-subs-old');
       old.appendChild(el('span', 'ordo-subs-sr', 'au lieu de '));
-      old.appendChild(document.createTextNode(money(c.price.amount, c.price.currency)));
+      old.appendChild(document.createTextNode(info.old));
       row.appendChild(old);
     }
     return row;
+  }
+
+  // The lines under a card's title, in order: { price }, { badge, note } (offer chip) or { text }.
+  function bodyLines(c) {
+    var lines = [];
+    if (c.price && c.status !== 'paused') lines.push({ price: true });
+    if (c.note) lines.push({ text: c.note });
+    if (c.offeredUntil) lines.push({ badge: 'Offert', note: 'jusqu’au ' + day(c.offeredUntil) });
+    if (c.discount) lines.push({ badge: badgeText(c.discount, c.price && c.price.currency), note: noteText(c.discount) });
+    var then = thenText(c);
+    if (then) lines.push({ text: then });
+    if (c.status === 'pause_scheduled' && c.endsOn) {
+      lines.push({ text: 'Accès maintenu jusqu’au ' + day(c.endsOn) + ', puis mise en pause.' });
+    }
+    if (c.status === 'canceling' && c.next && c.endsOn) lines.push({ text: 'Se termine le ' + day(c.endsOn) + '.' });
+    if (c.status === 'pending') lines.push({ text: 'Votre paiement est en cours de validation.' });
+    return lines;
   }
 
   function footRow(label, value) {
@@ -275,22 +345,29 @@
     return foot;
   }
 
-  function footOf(c) {
+  // The card's last line: { label, value }, or { label, link } for the payment method link; null when none.
+  function footInfo(c) {
     if (c.status === 'past_due') {
       // Saving a new payment method also retries the unpaid invoice.
-      return footRow('Paiement en échec', paymentLink('ordo-subs-link', 'Modifier le moyen de paiement', c.status));
+      return { label: 'Paiement en échec', link: 'Modifier le moyen de paiement' };
     }
     if ((c.status === 'paused' || c.status === 'pause_scheduled') && c.resumesOn) {
-      return footRow('Reprise automatique le', day(c.resumesOn));
+      return { label: 'Reprise automatique le', value: day(c.resumesOn) };
     }
     if (c.next && c.next.date) {
-      if (typeof c.next.amount !== 'number') return footRow('Prochaine échéance', day(c.next.date));
+      if (typeof c.next.amount !== 'number') return { label: 'Prochaine échéance', value: day(c.next.date) };
       var label = c.next.amount > 0 ? 'Prochain prélèvement' : 'Prochaine échéance';
       var currency = c.price ? c.price.currency : 'eur';
-      return footRow(label, money(c.next.amount, currency) + ' le ' + day(c.next.date));
+      return { label: label, value: money(c.next.amount, currency) + ' le ' + day(c.next.date) };
     }
-    if ((c.status === 'canceling' || c.status === 'free') && c.endsOn) return footRow('Se termine le', day(c.endsOn));
+    if ((c.status === 'canceling' || c.status === 'free') && c.endsOn) return { label: 'Se termine le', value: day(c.endsOn) };
     return null;
+  }
+
+  function footOf(c) {
+    var f = footInfo(c);
+    if (!f) return null;
+    return footRow(f.label, f.link ? paymentLink('lien', f.link, c.status) : f.value);
   }
 
   function reportProblem(name, detail) {
@@ -433,9 +510,8 @@
     return Boolean(window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function');
   }
 
-  function portalButton(cls, label) {
-    var b = mark(el('button', cls, label), label === 'Modifier' ? 'modifier_moyen' : label);
-    b.type = 'button';
+  function portalButton(kind, label) {
+    var b = mark(ui.button(kind, label), label === 'Modifier' ? 'modifier_moyen' : label);
     b.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
     return b;
   }
@@ -448,9 +524,9 @@
     'Régler': 'regler'
   };
 
-  function paymentLink(cls, label, status) {
-    var a = mark(el('a', cls, label), PAYMENT_ACTIONS[label] || label, status);
-    a.setAttribute('href', PAYMENT_URL);
+  // kind : 'bouton', 'bouton-primaire' ou 'lien'.
+  function paymentLink(kind, label, status) {
+    var a = mark(ui.anchor(kind, label, PAYMENT_URL), PAYMENT_ACTIONS[label] || label, status);
     a.addEventListener('click', function(e) { openPaymentSetup(e, a); });
     return a;
   }
@@ -472,17 +548,14 @@
   }
 
   function button(label, primary) {
-    var b = el('button', 'ordo-subs-btn' + (primary ? ' is-primary' : ''), label);
-    b.type = 'button';
-    return b;
+    return ui.button(primary ? 'bouton-primaire' : 'bouton', label);
   }
 
   function pauseActions(c) {
-    var row = el('div', 'ordo-subs-actions');
+    var row = ui.actions();
     var resume = mark(button('Reprendre mon abonnement', true), 'reprendre_pause', c.status);
     var cancel = mark(button('Annuler définitivement', false), 'annuler_pause', c.status);
-    var msg = el('div', 'ordo-subs-note ordo-subs-msg');
-    msg.setAttribute('role', 'status');
+    var msg = ui.message();
     var pause = window.OrdoPause;
     function busy(on) {
       resume.disabled = on;
@@ -523,10 +596,9 @@
   var REF = /^[0-9a-f]{20}$/;
 
   function reactivateActions(c) {
-    var row = el('div', 'ordo-subs-actions');
+    var row = ui.actions();
     var btn = mark(button('Me réabonner', true), 'reabonner', c.status);
-    var msg = el('div', 'ordo-subs-note ordo-subs-msg');
-    msg.setAttribute('role', 'status');
+    var msg = ui.message();
     btn.addEventListener('click', function() {
       var question = 'Votre abonnement continuera après le ' + day(c.endsOn) + ', aux mêmes conditions. Confirmer ?';
       if (!window.confirm(question)) return;
@@ -559,14 +631,13 @@
     }
     var action = c.action;
     if (!action || !action.label || typeof action.href !== 'string') return null;
-    var row = el('div', 'ordo-subs-actions');
+    var row = ui.actions();
     if (ELEMENT_LINK.test(action.href)) {
       var b = mark(button(action.label, false), action.label, c.status);
       b.addEventListener('click', function() { showElement(action.href.slice(1)); });
       row.appendChild(b);
     } else if (SITE_LINK.test(action.href)) {
-      var a = mark(el('a', 'ordo-subs-btn', action.label), action.label, c.status);
-      a.setAttribute('href', action.href);
+      var a = mark(ui.anchor('bouton', action.label, action.href), action.label, c.status);
       row.appendChild(a);
     } else {
       return null;
@@ -589,19 +660,12 @@
     root.appendChild(head);
 
     var body = el('div', 'ordo-subs-body');
-    if (c.price && c.status !== 'paused') body.appendChild(priceRow(c));
-    if (c.note) body.appendChild(el('div', 'ordo-subs-muted', c.note));
-    if (c.offeredUntil) body.appendChild(offerRow('Offert', 'jusqu’au ' + day(c.offeredUntil)));
-    if (c.discount) body.appendChild(offerRow(badgeText(c.discount, c.price && c.price.currency), noteText(c.discount)));
-    var then = thenText(c);
-    if (then) body.appendChild(el('div', 'ordo-subs-muted', then));
-    if (c.status === 'pause_scheduled' && c.endsOn) {
-      body.appendChild(el('div', 'ordo-subs-muted', 'Accès maintenu jusqu’au ' + day(c.endsOn) + ', puis mise en pause.'));
+    var lines = bodyLines(c);
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].price) body.appendChild(priceRow(c));
+      else if (lines[i].badge) body.appendChild(offerRow(lines[i].badge, lines[i].note));
+      else body.appendChild(el('div', 'ordo-subs-muted', lines[i].text));
     }
-    if (c.status === 'canceling' && c.next && c.endsOn) {
-      body.appendChild(el('div', 'ordo-subs-muted', 'Se termine le ' + day(c.endsOn) + '.'));
-    }
-    if (c.status === 'pending') body.appendChild(el('div', 'ordo-subs-muted', 'Votre paiement est en cours de validation.'));
     if (body.firstChild) root.appendChild(body);
 
     var foot = footOf(c);
@@ -720,20 +784,25 @@
 
   // "A.", "A et B.", "A, B et C.", each subscription with its logo when it has one; the punctuation
   // stays with the name so that a line never starts with it.
-  function usedList(box, used, icons) {
+  // `makeItem(text, icon)` draws one subscription of the list (legacy span, or the Designer's « usage »).
+  function usedList(box, used, icons, makeItem) {
     var last = used.length - 1;
     for (var i = 0; i < used.length; i++) {
       if (i) box.appendChild(document.createTextNode(i === last ? ' et ' : ' '));
-      var item = el('span', 'ordo-pm-use');
-      var img = logo(icons[i], 16);
-      if (img) item.appendChild(img);
-      item.appendChild(document.createTextNode(used[i] + (i === last ? '.' : (i === last - 1 ? '' : ','))));
-      box.appendChild(item);
+      box.appendChild(makeItem(used[i] + (i === last ? '.' : (i === last - 1 ? '' : ',')), icons[i]));
     }
   }
 
-  function pmDetail(pm, several) {
-    var box = el('div', 'ordo-subs-muted ordo-pm-detail');
+  function legacyUsage(text, icon) {
+    var item = el('span', 'ordo-pm-use');
+    var img = logo(icon, 16);
+    if (img) item.appendChild(img);
+    item.appendChild(document.createTextNode(text));
+    return item;
+  }
+
+  // Expiry and "Utilisée pour : …" in `box`; false when there is nothing to say.
+  function fillDetail(box, pm, several, makeItem) {
     var month = Number(pm.expMonth);
     if (pm.type === 'card' && month >= 1 && month <= 12 && pm.expYear) {
       var when = MOIS[month - 1] + ' ' + pm.expYear;
@@ -744,9 +813,14 @@
     var prefix = pm.type !== 'none' ? (pm.type === 'card' ? 'Utilisée' : 'Utilisé') + ' pour : ' : (several ? 'Pour : ' : '');
     if (used.length && prefix) {
       box.appendChild(document.createTextNode(prefix));
-      usedList(box, used, icons);
+      usedList(box, used, icons, makeItem);
     }
-    return box.firstChild ? box : null;
+    return Boolean(box.firstChild);
+  }
+
+  function pmDetail(pm, several) {
+    var box = el('div', 'ordo-subs-muted ordo-pm-detail');
+    return fillDetail(box, pm, several, legacyUsage) ? box : null;
   }
 
   // Saved methods nothing charges: named, never offered.
@@ -758,26 +832,50 @@
     return null;
   }
 
-  function othersBox(others) {
-    var box = el('div', 'ordo-pm-others');
+  function otherNames(others) {
+    var names = [];
     for (var i = 0; i < others.length; i++) {
       var name = others[i] && otherName(others[i]);
-      if (name) box.appendChild(el('div', 'ordo-subs-muted', name));
+      if (name) names.push(name);
     }
-    return box.firstChild ? box : null;
+    return names;
+  }
+
+  // What the payment method section says, whatever draws it.
+  function pmModel(list, pms, others) {
+    var urgent = false;
+    var none = true;
+    for (var i = 0; i < pms.length; i++) {
+      if (pms[i].type !== 'none') none = false;
+      if (pms[i].expired || pms[i].expiresSoon) urgent = true;
+    }
+    for (var j = 0; j < list.length; j++) {
+      if (list[j].status === 'past_due') urgent = true;
+    }
+    return {
+      several: pms.length > 1,
+      none: none,
+      urgent: urgent,
+      saved: none ? [] : otherNames(others || []),
+      label: none ? 'Ajouter un moyen de paiement' : (urgent ? 'Mettre à jour' : 'Modifier'),
+      // "Modifier" opens the billing portal, where a saved method can be made the default. Adding one, or
+      // replacing an expired or failing one, goes through the SEPA setup, which also retries the unpaid invoice.
+      portal: !none && !urgent && portalAvailable(),
+      primary: none || urgent
+    };
+  }
+
+  function pmAction(m) {
+    return m.portal ? portalButton('bouton', m.label) : paymentLink(m.primary ? 'bouton-primaire' : 'bouton', m.label);
   }
 
   function paymentSection(list, pms, others) {
     var root = el('div', 'ordo-subs ordo-pm');
     root.appendChild(el('h3', 'ordo-subs-title', 'Moyen de paiement'));
-    var several = pms.length > 1;
-    var urgent = false;
-    var none = true;
+    var m = pmModel(list, pms, others);
     var rows = [];
     for (var i = 0; i < pms.length; i++) {
       var pm = pms[i];
-      if (pm.type !== 'none') none = false;
-      if (pm.expired || pm.expiresSoon) urgent = true;
       var row = el('div', 'ordo-pm-row');
       row.appendChild(pmIcon(pm));
       var text = el('div', 'ordo-pm-text');
@@ -786,25 +884,20 @@
       if (pm.expired) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-expired', 'Expirée'));
       else if (pm.expiresSoon) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-soon', 'Expire bientôt'));
       text.appendChild(name);
-      var detail = pmDetail(pm, several);
+      var detail = pmDetail(pm, m.several);
       if (detail) text.appendChild(detail);
       row.appendChild(text);
       rows.push(row);
       root.appendChild(row);
     }
-    for (var j = 0; j < list.length; j++) {
-      if (list[j].status === 'past_due') urgent = true;
+    if (m.saved.length) {
+      var box = el('div', 'ordo-pm-others');
+      for (var k = 0; k < m.saved.length; k++) box.appendChild(el('div', 'ordo-subs-muted', m.saved[k]));
+      root.appendChild(box);
     }
-    var saved = none ? null : othersBox(others || []);
-    if (saved) root.appendChild(saved);
-    var label = none ? 'Ajouter un moyen de paiement' : (urgent ? 'Mettre à jour' : 'Modifier');
-    // "Modifier" opens the billing portal, where a saved method can be made the default. Adding one, or
-    // replacing an expired or failing one, goes through the SEPA setup, which also retries the unpaid invoice.
-    var link = !none && !urgent && portalAvailable()
-      ? portalButton('ordo-subs-btn', label)
-      : paymentLink('ordo-subs-btn' + (none || urgent ? ' is-primary' : ''), label);
-    if (several) {
-      var actions = el('div', 'ordo-subs-actions');
+    var link = pmAction(m);
+    if (m.several) {
+      var actions = ui.actions();
       actions.appendChild(link);
       root.appendChild(actions);
     } else {
@@ -932,32 +1025,142 @@
     return error;
   }
 
+  // --- Vues de l'adresse et du numéro de TVA, présentation héritée --------------------------------
+  // Chaque vue rend ses éléments et les poignées dont la logique a besoin ; la logique (envois, erreurs,
+  // focus, mesure) est commune aux deux présentations (voir taxIdBlock et addressSection).
+
+  function legacyValueRow(value) {
+    var row = el('div', 'ordo-addr-row');
+    var box = addressValue(TAX_LABEL, [value]);
+    box.className = 'ordo-addr-main';
+    row.appendChild(box);
+    return row;
+  }
+
+  legacyUi.addressShell = function() {
+    var root = el('div', 'ordo-subs ordo-addr');
+    root.appendChild(el('h3', 'ordo-subs-title', 'Adresse de facturation'));
+    root.appendChild(el('p', 'ordo-addr-sub', 'Elle figure sur vos factures.'));
+    var body = el('div');
+    root.appendChild(body);
+    var taxBox = el('div', 'ordo-addr-tva');
+    root.appendChild(taxBox);
+    return { root: root, body: body, taxBox: taxBox };
+  };
+
+  legacyUi.addressRead = function(addr) {
+    var row = el('div', 'ordo-addr-row');
+    var grid = el('div', 'ordo-addr-grid');
+    grid.appendChild(addressValue('Nom sur les factures', addr.name ? [addr.name] : []));
+    grid.appendChild(addressValue('Adresse', addressFilled(addr) ? addressLines(addr) : []));
+    row.appendChild(grid);
+    var edit = button(addressFilled(addr) ? 'Modifier' : 'Ajouter', !addressFilled(addr));
+    row.appendChild(edit);
+    return { root: row, edit: edit };
+  };
+
+  legacyUi.addressForm = function(addr) {
+    var form = el('form', 'ordo-addr-form');
+    form.noValidate = true;
+    var l1 = el('div', 'ordo-addr-line');
+    l1.appendChild(addressField('name', 'Nom sur les factures', addr.name, { placeholder: 'Nom et prénom, ou raison sociale', autocomplete: 'name', optional: true, max: 100 }));
+    form.appendChild(l1);
+    var l2 = el('div', 'ordo-addr-line');
+    l2.appendChild(addressField('line1', 'Adresse', addr.line1, { autocomplete: 'address-line1', required: true }));
+    l2.appendChild(addressField('line2', 'Complément', addr.line2, { placeholder: 'Bâtiment, étage…', autocomplete: 'address-line2', optional: true }));
+    form.appendChild(l2);
+    var l3 = el('div', 'ordo-addr-line');
+    l3.appendChild(addressField('postalCode', 'Code postal', addr.postalCode, { autocomplete: 'postal-code', required: true, short: true, max: 20 }));
+    l3.appendChild(addressField('city', 'Ville', addr.city, { autocomplete: 'address-level2', required: true, max: 100 }));
+    l3.appendChild(addressField('country', 'Pays (outre-mer inclus)', addr.country, {
+      options: COUNTRIES,
+      hint: 'Le pays ou la collectivité d\'outre-mer détermine la TVA appliquée à vos prochaines factures.'
+    }));
+    form.appendChild(l3);
+    form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
+    var error = errorLine();
+    form.appendChild(error);
+    var actions = el('div', 'ordo-subs-actions');
+    var cancel = button('Annuler', false);
+    var save = button('Enregistrer', true);
+    save.type = 'submit';
+    actions.appendChild(cancel);
+    actions.appendChild(save);
+    form.appendChild(actions);
+    return { root: form, form: form, error: error, cancel: cancel, save: save };
+  };
+
+  legacyUi.taxRead = function(value, allowed) {
+    var row = legacyValueRow(value);
+    var actions = el('div', 'ordo-subs-actions');
+    var edit = null;
+    if (allowed) {
+      edit = button('Modifier', false);
+      actions.appendChild(edit);
+    }
+    var remove = button('Retirer', false);
+    actions.appendChild(remove);
+    row.appendChild(actions);
+    return { root: row, edit: edit, remove: remove };
+  };
+
+  legacyUi.taxAsk = function() {
+    var line = el('p', 'ordo-subs-muted', 'Vous avez un numéro de TVA intracommunautaire ? ');
+    var add = el('button', 'ordo-subs-link', 'L’ajouter');
+    add.type = 'button';
+    line.appendChild(add);
+    return { root: line, add: add };
+  };
+
+  legacyUi.taxForm = function(value) {
+    var form = el('form', 'ordo-addr-form');
+    form.noValidate = true;
+    var field = addressField('taxId', TAX_LABEL, value, { placeholder: 'FR12345678901', autocomplete: 'off', max: 20 });
+    form.appendChild(field);
+    var input = field.querySelector('input');
+    input.setAttribute('spellcheck', 'false');
+    var hint = el('p', 'ordo-subs-muted', 'Il figurera sur vos prochaines factures. Les factures déjà émises ne changent pas.');
+    hint.id = 'ordo-addr-taxId-hint';
+    input.setAttribute('aria-describedby', hint.id);
+    form.appendChild(hint);
+    var error = errorLine();
+    form.appendChild(error);
+    var actions = el('div', 'ordo-subs-actions');
+    var cancel = button('Annuler', false);
+    var save = button('Enregistrer', true);
+    save.type = 'submit';
+    actions.appendChild(cancel);
+    actions.appendChild(save);
+    form.appendChild(actions);
+    return { root: form, form: form, input: input, error: error, cancel: cancel, save: save };
+  };
+
+  legacyUi.taxConfirm = function(value) {
+    var row = legacyValueRow(value);
+    var ask = el('p', 'ordo-addr-ask', 'Retirer ce numéro de vos prochaines factures ?');
+    ask.id = 'ordo-addr-tva-ask';
+    var error = errorLine();
+    var actions = el('div', 'ordo-subs-actions');
+    var cancel = button('Annuler', false);
+    var confirm = button('Retirer', true);
+    actions.appendChild(cancel);
+    actions.appendChild(confirm);
+    return { nodes: [row, ask, error, actions], ask: ask, error: error, cancel: cancel, confirm: confirm };
+  };
+
   // Sous l'adresse, dans son propre conteneur : l'adresse et le numéro se modifient chacun sans
   // toucher à l'autre. Sans numéro, un simple lien quand l'ajout est permis, rien sinon ; un numéro
   // enregistré reste affiché, avec « Retirer » seulement quand l'ajout n'est pas permis.
   // `update` applique l'état renvoyé par un enregistrement de l'adresse, sans fermer une saisie en cours.
-  function taxIdBlock(taxId, allowed) {
+  function taxIdBlock(box, taxId, allowed) {
     taxId = taxIdOf(taxId);
     allowed = allowed === true;
     var mode = 'read';
-    var box = el('div', 'ordo-addr-tva');
 
     function reset(flash) {
       box.textContent = '';
-      box.hidden = false;
-      if (flash) {
-        var ok = el('p', 'ordo-subs-flash', flash);
-        ok.setAttribute('role', 'status');
-        box.appendChild(ok);
-      }
-    }
-
-    function valueRow() {
-      var row = el('div', 'ordo-addr-row');
-      var value = addressValue(TAX_LABEL, [taxId.value]);
-      value.className = 'ordo-addr-main';
-      row.appendChild(value);
-      return row;
+      afficher(box, true);
+      if (flash) box.appendChild(ui.flash(flash));
     }
 
     // `focus` : 'edit' rend le focus au bouton qui ouvre la saisie, 'remove' à « Retirer ».
@@ -966,60 +1169,40 @@
       reset(flash);
       var target = null;
       if (taxId) {
-        var row = valueRow();
-        var actions = el('div', 'ordo-subs-actions');
-        var edit = null;
-        if (allowed) {
-          edit = mark(button('Modifier', false), 'tva_modifier');
-          edit.addEventListener('click', function() { showEdit(); });
-          actions.appendChild(edit);
+        var view = ui.taxRead(taxId.value, allowed);
+        if (view.edit) {
+          mark(view.edit, 'tva_modifier');
+          view.edit.addEventListener('click', function(e) { e.preventDefault(); showEdit(); });
         }
-        var remove = mark(button('Retirer', false), 'tva_retirer');
-        remove.addEventListener('click', function() { showConfirm(); });
-        actions.appendChild(remove);
-        row.appendChild(actions);
-        box.appendChild(row);
-        target = focus === 'remove' ? remove : (edit || remove);
+        mark(view.remove, 'tva_retirer');
+        view.remove.addEventListener('click', function(e) { e.preventDefault(); showConfirm(); });
+        box.appendChild(view.root);
+        target = focus === 'remove' ? view.remove : (view.edit || view.remove);
       } else if (allowed) {
-        var line = el('p', 'ordo-subs-muted', 'Vous avez un numéro de TVA intracommunautaire ? ');
-        var add = mark(el('button', 'ordo-subs-link', 'L’ajouter'), 'tva_ajouter');
-        add.type = 'button';
-        add.addEventListener('click', function() { showEdit(); });
-        line.appendChild(add);
-        box.appendChild(line);
-        target = add;
+        var ask = ui.taxAsk();
+        mark(ask.add, 'tva_ajouter');
+        ask.add.addEventListener('click', function(e) { e.preventDefault(); showEdit(); });
+        box.appendChild(ask.root);
+        target = ask.add;
       }
-      box.hidden = !box.firstChild;
+      afficher(box, Boolean(box.firstChild));
       if (focus && target && typeof target.focus === 'function') target.focus();
     }
 
     function showEdit() {
       mode = 'edit';
       reset();
-      var form = el('form', 'ordo-addr-form');
-      form.noValidate = true;
-      var field = addressField('taxId', TAX_LABEL, taxId ? taxId.value : '', { placeholder: 'FR12345678901', autocomplete: 'off', max: 20 });
-      form.appendChild(field);
-      var input = field.querySelector('input');
-      input.setAttribute('spellcheck', 'false');
-      var hint = el('p', 'ordo-subs-muted', 'Il figurera sur vos prochaines factures. Les factures déjà émises ne changent pas.');
-      hint.id = 'ordo-addr-taxId-hint';
-      input.setAttribute('aria-describedby', hint.id);
-      form.appendChild(hint);
-      var error = errorLine();
-      form.appendChild(error);
-      var actions = el('div', 'ordo-subs-actions');
-      var cancel = mark(button('Annuler', false), 'tva_annuler');
-      cancel.addEventListener('click', function() { showRead(null, 'edit'); });
-      var save = mark(button('Enregistrer', true), 'tva_enregistrer');
-      save.type = 'submit';
-      actions.appendChild(cancel);
-      actions.appendChild(save);
-      form.appendChild(actions);
+      var view = ui.taxForm(taxId ? taxId.value : '');
+      var form = view.form;
+      var input = view.input;
+      var error = view.error;
+      var cancel = mark(view.cancel, 'tva_annuler');
+      var save = mark(view.save, 'tva_enregistrer');
+      cancel.addEventListener('click', function(e) { e.preventDefault(); showRead(null, 'edit'); });
 
       function fail(message, invalid) {
         error.textContent = message;
-        error.hidden = false;
+        afficher(error, true);
         if (!invalid) return;
         input.setAttribute('aria-invalid', 'true');
         if (typeof input.focus === 'function') input.focus();
@@ -1027,16 +1210,18 @@
 
       form.addEventListener('submit', function(e) {
         e.preventDefault();
+        // Le formulaire Webflow posterait la saisie vers Webflow : l'envoi ne doit pas lui parvenir.
+        e.stopPropagation();
         var value = String(input.value || '').trim();
         if (!value) {
           fail('Saisissez votre numéro de TVA.', true);
           return;
         }
-        error.hidden = true;
+        afficher(error, false);
         input.removeAttribute('aria-invalid');
         save.disabled = true;
         cancel.disabled = true;
-        save.textContent = 'Enregistrement…';
+        setLabel(save, 'Enregistrement…');
         call({ action: 'tax_id_update', value: value }).then(function(payload) {
           var saved = taxIdOf(payload && payload.taxId);
           if (!saved) {
@@ -1053,34 +1238,33 @@
           if (!err || (err.status !== 400 && err.status !== 422)) reportIfActionable(err);
           save.disabled = false;
           cancel.disabled = false;
-          save.textContent = 'Enregistrer';
+          setLabel(save, 'Enregistrer');
           fail(taxSaveError(err), Boolean(err && err.status === 400));
         });
       });
-      box.appendChild(form);
+      box.appendChild(view.root);
       if (typeof input.focus === 'function') input.focus();
     }
 
     function showConfirm() {
       mode = 'confirm';
       reset();
-      box.appendChild(valueRow());
-      var ask = el('p', 'ordo-addr-ask', 'Retirer ce numéro de vos prochaines factures ?');
-      ask.id = 'ordo-addr-tva-ask';
-      box.appendChild(ask);
-      var error = errorLine();
-      box.appendChild(error);
-      var actions = el('div', 'ordo-subs-actions');
-      var cancel = mark(button('Annuler', false), 'tva_annuler');
-      var confirm = mark(button('Retirer', true), 'tva_retirer');
-      cancel.setAttribute('aria-describedby', ask.id);
-      confirm.setAttribute('aria-describedby', ask.id);
-      cancel.addEventListener('click', function() { showRead(null, 'remove'); });
-      confirm.addEventListener('click', function() {
-        error.hidden = true;
+      var view = ui.taxConfirm(taxId.value);
+      for (var i = 0; i < view.nodes.length; i++) box.appendChild(view.nodes[i]);
+      var error = view.error;
+      var cancel = mark(view.cancel, 'tva_annuler');
+      var confirm = mark(view.confirm, 'tva_retirer');
+      if (view.ask && view.ask.id) {
+        cancel.setAttribute('aria-describedby', view.ask.id);
+        confirm.setAttribute('aria-describedby', view.ask.id);
+      }
+      cancel.addEventListener('click', function(e) { e.preventDefault(); showRead(null, 'remove'); });
+      confirm.addEventListener('click', function(e) {
+        e.preventDefault();
+        afficher(error, false);
         confirm.disabled = true;
         cancel.disabled = true;
-        confirm.textContent = 'Retrait…';
+        setLabel(confirm, 'Retrait…');
         call({ action: 'tax_id_remove' }).then(function(payload) {
           if (!payload || payload.ok !== true) {
             var bad = new Error('account-subscriptions: unexpected tax id body');
@@ -1096,21 +1280,17 @@
           error.textContent = err && err.status === 401
             ? SESSION_EXPIRED
             : 'Le numéro n’a pas pu être retiré. Réessayez dans un instant.';
-          error.hidden = false;
+          afficher(error, true);
           confirm.disabled = false;
           cancel.disabled = false;
-          confirm.textContent = 'Retirer';
+          setLabel(confirm, 'Retirer');
         });
       });
-      actions.appendChild(cancel);
-      actions.appendChild(confirm);
-      box.appendChild(actions);
       if (typeof cancel.focus === 'function') cancel.focus();
     }
 
     showRead();
     return {
-      root: box,
       // Champ absent de la réponse (`undefined`) : valeur précédente gardée.
       update: function(nextTaxId, nextAllowed) {
         if (nextTaxId !== undefined) taxId = taxIdOf(nextTaxId);
@@ -1121,81 +1301,48 @@
   }
 
   function addressSection(addr, taxId, taxAllowed) {
-    var root = el('div', 'ordo-subs ordo-addr');
-    root.appendChild(el('h3', 'ordo-subs-title', 'Adresse de facturation'));
-    root.appendChild(el('p', 'ordo-addr-sub', 'Elle figure sur vos factures.'));
-    var body = el('div');
-    root.appendChild(body);
-    var tax = taxIdBlock(taxId, taxAllowed);
-    root.appendChild(tax.root);
+    var shell = ui.addressShell();
+    var body = shell.body;
+    var tax = taxIdBlock(shell.taxBox, taxId, taxAllowed);
 
     function showRead(flash, focus) {
       body.textContent = '';
-      if (flash) {
-        var ok = el('p', 'ordo-subs-flash', flash);
-        ok.setAttribute('role', 'status');
-        body.appendChild(ok);
-      }
-      var row = el('div', 'ordo-addr-row');
-      var grid = el('div', 'ordo-addr-grid');
-      grid.appendChild(addressValue('Nom sur les factures', addr.name ? [addr.name] : []));
-      grid.appendChild(addressValue('Adresse', addressFilled(addr) ? addressLines(addr) : []));
-      row.appendChild(grid);
-      var edit = mark(button(addressFilled(addr) ? 'Modifier' : 'Ajouter', !addressFilled(addr)), 'adresse_modifier');
-      edit.addEventListener('click', function() { showEdit(); });
-      row.appendChild(edit);
-      body.appendChild(row);
+      if (flash) body.appendChild(ui.flash(flash));
+      var view = ui.addressRead(addr);
+      var edit = mark(view.edit, 'adresse_modifier');
+      edit.addEventListener('click', function(e) { e.preventDefault(); showEdit(); });
+      body.appendChild(view.root);
       if (focus && typeof edit.focus === 'function') edit.focus();
     }
 
     function showEdit() {
       body.textContent = '';
-      var form = el('form', 'ordo-addr-form');
-      form.noValidate = true;
-      var l1 = el('div', 'ordo-addr-line');
-      l1.appendChild(addressField('name', 'Nom sur les factures', addr.name, { placeholder: 'Nom et prénom, ou raison sociale', autocomplete: 'name', optional: true, max: 100 }));
-      form.appendChild(l1);
-      var l2 = el('div', 'ordo-addr-line');
-      l2.appendChild(addressField('line1', 'Adresse', addr.line1, { autocomplete: 'address-line1', required: true }));
-      l2.appendChild(addressField('line2', 'Complément', addr.line2, { placeholder: 'Bâtiment, étage…', autocomplete: 'address-line2', optional: true }));
-      form.appendChild(l2);
-      var l3 = el('div', 'ordo-addr-line');
-      l3.appendChild(addressField('postalCode', 'Code postal', addr.postalCode, { autocomplete: 'postal-code', required: true, short: true, max: 20 }));
-      l3.appendChild(addressField('city', 'Ville', addr.city, { autocomplete: 'address-level2', required: true, max: 100 }));
-      l3.appendChild(addressField('country', 'Pays (outre-mer inclus)', addr.country, {
-        options: COUNTRIES,
-        hint: 'Le pays ou la collectivité d\'outre-mer détermine la TVA appliquée à vos prochaines factures.'
-      }));
-      form.appendChild(l3);
-      form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
-      var error = errorLine();
-      form.appendChild(error);
-      var actions = el('div', 'ordo-subs-actions');
-      var cancel = mark(button('Annuler', false), 'adresse_annuler');
-      cancel.type = 'button';
-      cancel.addEventListener('click', function() { showRead(null, true); });
-      var save = mark(button('Enregistrer', true), 'adresse_enregistrer');
-      save.type = 'submit';
-      actions.appendChild(cancel);
-      actions.appendChild(save);
-      form.appendChild(actions);
+      var view = ui.addressForm(addr);
+      var form = view.form;
+      var error = view.error;
+      var cancel = mark(view.cancel, 'adresse_annuler');
+      var save = mark(view.save, 'adresse_enregistrer');
+      cancel.addEventListener('click', function(e) { e.preventDefault(); showRead(null, true); });
       form.addEventListener('submit', function(e) {
         e.preventDefault();
+        // Le formulaire Webflow posterait la saisie vers Webflow : l'envoi ne doit pas lui parvenir.
+        e.stopPropagation();
         var values = {};
         ['name', 'line1', 'line2', 'postalCode', 'city', 'country'].forEach(function(k) {
-          values[k] = String(form.elements[k].value || '').trim();
+          var field = form.elements[k];
+          values[k] = String((field && field.value) || '').trim();
         });
         // Un nom vidé n'efface pas celui des factures : il n'est simplement pas envoyé.
         if (!values.name && addr.name) delete values.name;
         if (!values.line1 || !values.postalCode || !values.city || !values.country) {
           error.textContent = 'Renseignez l’adresse, le code postal, la ville et le pays.';
-          error.hidden = false;
+          afficher(error, true);
           return;
         }
-        error.hidden = true;
+        afficher(error, false);
         save.disabled = true;
         cancel.disabled = true;
-        save.textContent = 'Enregistrement…';
+        setLabel(save, 'Enregistrement…');
         call({ action: 'address_update', address: values }).then(function(payload) {
           if (!payload || !payload.billingAddress) {
             var bad = new Error('account-subscriptions: unexpected address body');
@@ -1215,19 +1362,19 @@
             : (err && err.status === 400
               ? 'Vérifiez les champs de l’adresse.'
               : 'L’adresse n’a pas pu être enregistrée. Réessayez dans un instant.');
-          error.hidden = false;
+          afficher(error, true);
           save.disabled = false;
           cancel.disabled = false;
-          save.textContent = 'Enregistrer';
+          setLabel(save, 'Enregistrer');
         });
       });
-      body.appendChild(form);
+      body.appendChild(view.root);
       var first = form.elements.line1;
       if (first && typeof first.focus === 'function') first.focus();
     }
 
     showRead();
-    return root;
+    return shell.root;
   }
 
   function intro() {
@@ -1235,6 +1382,7 @@
   }
 
   function clear() {
+    if (D) return resetD();
     while (anchor.firstChild) anchor.removeChild(anchor.firstChild);
   }
 
@@ -1244,12 +1392,14 @@
   }
 
   function hide() {
+    if (D) return hideD();
     if (anchor) anchor.style.display = 'none';
     var w = wrapper();
     if (w) w.style.display = 'none';
   }
 
   function show() {
+    if (D) return showD();
     if (anchor) anchor.style.display = '';
     var w = wrapper();
     if (w) w.style.display = '';
@@ -1266,6 +1416,7 @@
   }
 
   function showSkeleton() {
+    if (D) return skeletonD();
     injectStyle();
     clear();
     var root = el('div', 'ordo-subs');
@@ -1368,22 +1519,27 @@
 
   function invoiceAction(inv) {
     if (inv.status === 'due' || inv.status === 'uncollectible') {
-      if (inv.pay !== 'invoice' || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return paymentLink('ordo-subs-link', 'Régler', inv.status);
-      var pay = mark(el('button', 'ordo-subs-link', 'Régler'), 'regler', inv.status);
-      pay.type = 'button';
+      if (inv.pay !== 'invoice' || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return paymentLink('lien', 'Régler', inv.status);
+      var pay = mark(ui.button('lien', 'Régler'), 'regler', inv.status);
       pay.setAttribute('aria-label', 'Régler la facture du ' + day(inv.date));
       pay.addEventListener('click', function() { payInvoice(inv, pay); });
       return pay;
     }
     if (!inv.pdf || typeof inv.ref !== 'string' || !REF.test(inv.ref)) return null;
-    var btn = mark(el('button', 'ordo-inv-pdf'), 'pdf', inv.status);
-    btn.type = 'button';
+    var btn = mark(ui.pdfButton(), 'pdf', inv.status);
     btn.setAttribute('aria-label', 'Télécharger la facture du ' + day(inv.date));
-    btn.appendChild(svgIcon('download', 16));
-    btn.appendChild(el('span', null, 'PDF'));
     btn.addEventListener('click', function() { downloadInvoice(inv, btn); });
     return btn;
   }
+
+  // The PDF button ends with its label: downloadInvoice writes « Réessayer » there.
+  legacyUi.pdfButton = function() {
+    var btn = el('button', 'ordo-inv-pdf');
+    btn.type = 'button';
+    btn.appendChild(svgIcon('download', 16));
+    btn.appendChild(el('span', null, 'PDF'));
+    return btn;
+  };
 
   function invoicesSection(invoices) {
     var root = el('div', 'ordo-subs ordo-inv');
@@ -1513,6 +1669,7 @@
   function render(list, flash, pms, invoices, others, address, taxId, taxIdAllowed) {
     pms = Array.isArray(pms) ? pms : [];
     others = Array.isArray(others) ? others : [];
+    if (D) return renderD(list, flash, pms, invoices, others, address, taxId, taxIdAllowed);
     injectStyle();
     clear();
     var root = el('div', 'ordo-subs');
@@ -1832,6 +1989,562 @@
     reporter.report('SubscriptionsOverview', err);
   }
 
+  // --- Présentation Designer -------------------------------------------------------------------
+  // Tout le dessin vient de Webflow : les cartes de [data-ordo-facturation] (avec un exemple en place
+  // qui sert de gabarit : carte d'abonnement, moyen de paiement, adresse, ligne de facture) et les états
+  // du bloc [data-ordo-gabarits="facturation"] (statuts, boutons, formulaires, messages). Le script les
+  // recopie et n'y écrit que des données ; il ne crée d'éléments que pour des boutons, dont la classe
+  // vient alors du gabarit. Un repère manquant fait retomber sur la présentation héritée, en le signalant.
+
+  var GABARITS = [
+    'statut-active', 'statut-free', 'statut-past_due', 'statut-pending', 'statut-canceling',
+    'statut-pause_scheduled', 'statut-paused', 'statut-ended',
+    'facture-paid', 'facture-processing', 'facture-open', 'facture-due', 'facture-uncollectible',
+    'moyen-expire', 'moyen-bientot', 'icone-banque', 'icone-carte', 'icone-carte-alerte', 'usage', 'moyen-autres',
+    'bouton', 'bouton-primaire', 'lien', 'flash', 'vide', 'lent', 'erreur', 'message', 'valeur-vide', 'sr', 'squelette',
+    'adresse-formulaire', 'tva-lecture', 'tva-formulaire', 'tva-confirmation'
+  ];
+  // Exemples visibles dans la page du Designer : retirés au démarrage, recopiés pour chaque donnée.
+  var EN_PLACE = ['abonnement', 'moyen', 'adresse-lecture', 'tva-demande', 'facture'];
+  var SECTIONS = ['abonnements', 'moyen-de-paiement', 'adresse', 'factures'];
+  var AIDE_ACTIONS = {
+    email: 'aide_email',
+    telephone: 'aide_telephone',
+    demo: 'aide_demo',
+    'video-1': 'video_moyen_de_paiement',
+    'video-2': 'video_factures'
+  };
+
+  function designerWanted() {
+    var d = null;
+    try { d = window.OrdoRollout && window.OrdoRollout[DESIGNER_GATE]; } catch (e) { d = null; }
+    return Boolean(d && d.enabled);
+  }
+
+  function champ(node, name) {
+    return node ? node.querySelector('[data-ordo-champ="' + name + '"]') : null;
+  }
+
+  function poser(node, text) {
+    if (node) node.textContent = text;
+  }
+
+  function retirer(node) {
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+  }
+
+  function remplacer(oldNode, newNode) {
+    if (oldNode && oldNode.parentNode) oldNode.parentNode.replaceChild(newNode, oldNode);
+    return newNode;
+  }
+
+  // Masquer ou montrer un élément du Designer. L'attribut `hidden` seul ne suffit pas : la feuille Webflow
+  // ne le rend prioritaire que dans un cas précis, et une classe qui fixe `display` (carte, zone en flex)
+  // l'emporte sur lui. Le style en ligne, lui, gagne toujours.
+  function afficher(node, visible) {
+    if (!node) return;
+    node.hidden = !visible;
+    node.style.display = visible ? '' : 'none';
+  }
+
+  // Ce que le script ajoute à la page, retiré au rendu suivant.
+  function rendu(node) {
+    node.setAttribute('data-ordo-rendu', '1');
+    return node;
+  }
+
+  function prepareDesigner() {
+    var root = document.querySelector('[data-ordo-facturation]');
+    var store = document.querySelector('[data-ordo-gabarits="facturation"]');
+    if (!root || !store) {
+      reportProblem('FacturationDesignerAbsent', (root ? '' : '[data-ordo-facturation] ') + (store ? '' : '[data-ordo-gabarits]'));
+      return null;
+    }
+    var g = {};
+    var missing = [];
+    var i;
+    for (i = 0; i < GABARITS.length; i++) {
+      g[GABARITS[i]] = store.querySelector('[data-ordo-gabarit="' + GABARITS[i] + '"]');
+      if (!g[GABARITS[i]]) missing.push(GABARITS[i]);
+    }
+    for (i = 0; i < EN_PLACE.length; i++) {
+      g[EN_PLACE[i]] = root.querySelector('[data-ordo-gabarit="' + EN_PLACE[i] + '"]');
+      if (!g[EN_PLACE[i]]) missing.push(EN_PLACE[i]);
+    }
+    var cards = {};
+    for (i = 0; i < SECTIONS.length; i++) {
+      cards[SECTIONS[i]] = root.querySelector('[data-ordo-section="' + SECTIONS[i] + '"]');
+      if (!cards[SECTIONS[i]]) missing.push('section ' + SECTIONS[i]);
+    }
+    var d = {
+      root: root,
+      g: g,
+      cards: cards,
+      liste: root.querySelector('[data-ordo-liste="abonnements"]'),
+      zoneAdresse: root.querySelector('[data-ordo-zone="adresse"]'),
+      zoneTva: root.querySelector('[data-ordo-zone="tva"]'),
+      portail: root.querySelector('[data-ordo-champ="portail"]'),
+      slot: root.querySelector('[data-ordo-slot="factures-email"]'),
+      aide: root.querySelector('[data-ordo-aide-bloc]')
+    };
+    ['liste', 'zoneAdresse', 'zoneTva', 'portail', 'slot', 'aide'].forEach(function(k) { if (!d[k]) missing.push(k); });
+    var pdf = g.facture && g.facture.querySelector('[data-ordo-gabarit="pdf"]');
+    if (!pdf) missing.push('pdf');
+    var actions = g.abonnement && champ(g.abonnement, 'actions');
+    if (!actions) missing.push('abonnement > actions');
+    if (missing.length) {
+      reportProblem('FacturationGabaritAbsent', missing.join(', '));
+      return null;
+    }
+    g.pdf = pdf;
+    root.setAttribute('data-ordo-pret', '1');
+    d.actionsClass = actions.className;
+    d.table = g.facture.parentNode;
+    for (i = 0; i < EN_PLACE.length; i++) retirer(g[EN_PLACE[i]]);
+    // L'interrupteur « factures par e-mail » n'apparaît que si invoice-emails.js l'a pris en charge.
+    var toggleRow = d.slot.querySelector('[data-ordo-factures-email]');
+    if (toggleRow) afficher(toggleRow, false);
+    // Le lien vers le portail Stripe devient un bouton : il ouvre le portail, sans adresse à suivre.
+    var portail = enBouton(d.portail);
+    mark(portail, 'portail');
+    portail.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
+    d.portail = portail;
+    var aideLinks = d.aide.querySelectorAll('[data-ordo-aide]');
+    for (i = 0; i < aideLinks.length; i++) {
+      var action = AIDE_ACTIONS[aideLinks[i].getAttribute('data-ordo-aide')];
+      if (action) mark(aideLinks[i], action);
+    }
+    return d;
+  }
+
+  // Une copie du gabarit, sans son repère ni ses identifiants (la page ne doit jamais en avoir deux).
+  function copie(name) {
+    var n = D.g[name].cloneNode(true);
+    n.removeAttribute('data-ordo-gabarit');
+    if (n.id) n.removeAttribute('id');
+    var ids = n.querySelectorAll('[id]');
+    for (var i = 0; i < ids.length; i++) ids[i].removeAttribute('id');
+    return n;
+  }
+
+  // Un lien du Designer qui déclenche une action devient un vrai bouton : même classe, même contenu.
+  function enBouton(node) {
+    if (!node) return null;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = node.className;
+    var champName = node.getAttribute('data-ordo-champ');
+    if (champName) b.setAttribute('data-ordo-champ', champName);
+    while (node.firstChild) b.appendChild(node.firstChild);
+    remplacer(node, b);
+    return b;
+  }
+
+  function erreurD(node) {
+    if (!node) {
+      node = copie('erreur');
+    }
+    node.textContent = '';
+    node.setAttribute('role', 'alert');
+    afficher(node, false);
+    return node;
+  }
+
+  // Les identifiants des champs d'un formulaire recopié, et le libellé qui pointe dessus.
+  function nommerChamps(form, prefix) {
+    var fields = form.querySelectorAll('input[name], select[name], textarea[name]');
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      if (f.type === 'submit') continue;
+      f.id = prefix + f.name;
+      var wrap = f.parentNode;
+      var label = wrap && wrap.querySelector('label');
+      if (label) label.setAttribute('for', f.id);
+    }
+  }
+
+  function placeholderParDefaut(field, text) {
+    if (field && !field.getAttribute('placeholder')) field.setAttribute('placeholder', text);
+  }
+
+  // Texte d'exemple que Webflow pose d'office dans un champ neuf : un champ qui le porte n'en a pas.
+  var WEBFLOW_PLACEHOLDER = 'Example text';
+
+  function formulaireD(name) {
+    var root = copie(name);
+    var form = root.querySelector('form');
+    form.noValidate = true;
+    form.removeAttribute('action');
+    var inputs = form.querySelectorAll('[placeholder]');
+    for (var i = 0; i < inputs.length; i++) {
+      if (inputs[i].getAttribute('placeholder') === WEBFLOW_PLACEHOLDER) inputs[i].removeAttribute('placeholder');
+    }
+    var cancel = enBouton(champ(form, 'annuler'));
+    var save = form.querySelector('[type="submit"]');
+    return { root: root, form: form, error: erreurD(champ(form, 'erreur')), cancel: cancel, save: save };
+  }
+
+  var designerUi = {
+    actions: function() {
+      var row = document.createElement('div');
+      row.className = D.actionsClass;
+      return row;
+    },
+    button: function(kind, label) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = D.g[kind].className;
+      b.textContent = label;
+      return b;
+    },
+    anchor: function(kind, label, href) {
+      var a = copie(kind);
+      a.textContent = label;
+      a.setAttribute('href', href);
+      return a;
+    },
+    message: function() {
+      var m = copie('message');
+      m.textContent = '';
+      m.setAttribute('role', 'status');
+      return m;
+    },
+    flash: function(text) {
+      var f = copie('flash');
+      f.textContent = text;
+      f.setAttribute('role', 'status');
+      return f;
+    },
+    pdfButton: function() {
+      var holder = document.createElement('div');
+      holder.appendChild(D.g.pdf.cloneNode(true));
+      var b = enBouton(holder.firstChild);
+      b.removeAttribute('data-ordo-gabarit');
+      return b;
+    },
+    addressShell: function() {
+      D.zoneAdresse.textContent = '';
+      D.zoneTva.textContent = '';
+      return { root: D.cards.adresse, body: D.zoneAdresse, taxBox: D.zoneTva };
+    },
+    addressRead: function(addr) {
+      var view = copie('adresse-lecture');
+      var nom = champ(view, 'nom');
+      if (addr.name) poser(nom, addr.name);
+      else remplacer(nom, copie('valeur-vide'));
+      var adresse = champ(view, 'adresse');
+      if (addressFilled(addr)) {
+        adresse.textContent = '';
+        var lines = addressLines(addr);
+        for (var i = 0; i < lines.length; i++) {
+          if (i) adresse.appendChild(document.createElement('br'));
+          adresse.appendChild(document.createTextNode(lines[i]));
+        }
+      } else {
+        remplacer(adresse, copie('valeur-vide'));
+      }
+      var edit = remplacer(champ(view, 'action'), button(addressFilled(addr) ? 'Modifier' : 'Ajouter', !addressFilled(addr)));
+      return { root: view, edit: edit };
+    },
+    addressForm: function(addr) {
+      var f = formulaireD('adresse-formulaire');
+      var form = f.form;
+      nommerChamps(form, 'ordo-addr-');
+      placeholderParDefaut(form.elements.name, 'Nom et prénom, ou raison sociale');
+      placeholderParDefaut(form.elements.line2, 'Bâtiment, étage…');
+      ['line1', 'postalCode', 'city'].forEach(function(k) { if (form.elements[k]) form.elements[k].required = true; });
+      ['name', 'line1', 'line2', 'postalCode', 'city'].forEach(function(k) {
+        if (form.elements[k]) form.elements[k].value = addr[k] || '';
+      });
+      var select = form.elements.country;
+      if (select) {
+        while (select.firstChild) select.removeChild(select.firstChild);
+        var codes = COUNTRIES.slice();
+        if (addr.country && codes.indexOf(addr.country) === -1) codes.unshift(addr.country);
+        if (!addr.country) {
+          var none = document.createElement('option');
+          none.value = '';
+          none.textContent = 'Choisir un pays';
+          select.appendChild(none);
+        }
+        for (var i = 0; i < codes.length; i++) {
+          var o = document.createElement('option');
+          o.value = codes[i];
+          o.textContent = countryName(codes[i]);
+          select.appendChild(o);
+        }
+        select.value = addr.country || '';
+      }
+      return f;
+    },
+    taxRead: function(value, allowed) {
+      var view = copie('tva-lecture');
+      poser(champ(view, 'valeur'), value);
+      var edit = enBouton(champ(view, 'modifier'));
+      var remove = enBouton(champ(view, 'retirer'));
+      if (!allowed) {
+        retirer(edit);
+        edit = null;
+      }
+      return { root: view, edit: edit, remove: remove };
+    },
+    taxAsk: function() {
+      var view = copie('tva-demande');
+      return { root: view, add: enBouton(champ(view, 'action')) };
+    },
+    taxForm: function(value) {
+      var f = formulaireD('tva-formulaire');
+      nommerChamps(f.form, 'ordo-addr-');
+      var input = f.form.elements.taxId;
+      placeholderParDefaut(input, 'FR12345678901');
+      input.setAttribute('spellcheck', 'false');
+      input.value = value || '';
+      f.input = input;
+      return f;
+    },
+    taxConfirm: function(value) {
+      var view = copie('tva-confirmation');
+      poser(champ(view, 'valeur'), value);
+      var ask = champ(view, 'question');
+      if (ask) ask.id = 'ordo-addr-tva-ask';
+      return {
+        nodes: [view],
+        ask: ask,
+        error: erreurD(champ(view, 'erreur')),
+        cancel: enBouton(champ(view, 'annuler')),
+        confirm: enBouton(champ(view, 'confirmer'))
+      };
+    }
+  };
+
+  function showD() {
+    afficher(D.root, true);
+    document.documentElement.classList.add('ordo-subs-v2');
+  }
+
+  function hideD() {
+    afficher(D.root, false);
+    document.documentElement.classList.remove('ordo-subs-v2');
+  }
+
+  function resetD() {
+    var added = D.root.querySelectorAll('[data-ordo-rendu]');
+    for (var i = 0; i < added.length; i++) retirer(added[i]);
+    D.zoneAdresse.textContent = '';
+    D.zoneTva.textContent = '';
+    D.cards.abonnements.removeAttribute('aria-busy');
+  }
+
+  function logoD(img, src) {
+    if (!img) return;
+    if (typeof src !== 'string' || !LOGO_URL.test(src)) {
+      retirer(img);
+      return;
+    }
+    img.setAttribute('src', src);
+    img.removeAttribute('srcset');
+    img.removeAttribute('sizes');
+    img.setAttribute('alt', '');
+  }
+
+  function cardD(c) {
+    var root = copie('abonnement');
+    var nom = champ(root, 'nom');
+    logoD(nom && nom.querySelector('img'), c.icon);
+    poser(champ(root, 'libelle'), c.label || 'Abonnement');
+    remplacer(champ(root, 'statut'), copie('statut-' + (STATUS[c.status] ? c.status : 'active')));
+
+    var corps = champ(root, 'corps');
+    var prix = champ(root, 'prix');
+    var offre = champ(root, 'offre');
+    var note = champ(root, 'note');
+    while (corps.firstChild) corps.removeChild(corps.firstChild);
+    var lines = bodyLines(c);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.price) {
+        var info = priceInfo(c);
+        poser(champ(prix, 'montant'), info.amount);
+        poser(champ(prix, 'periode'), info.period);
+        var old = champ(prix, 'ancien-prix');
+        if (info.old) {
+          old.textContent = '';
+          var sr = copie('sr');
+          sr.textContent = 'au lieu de ';
+          old.appendChild(sr);
+          old.appendChild(document.createTextNode(info.old));
+        } else {
+          retirer(old);
+        }
+        corps.appendChild(prix);
+      } else if (line.badge) {
+        var chip = offre.cloneNode(true);
+        poser(champ(chip, 'offre-valeur'), line.badge);
+        var chipNote = champ(chip, 'offre-note');
+        if (line.note) poser(chipNote, line.note);
+        else retirer(chipNote);
+        corps.appendChild(chip);
+      } else {
+        var text = note.cloneNode(true);
+        text.textContent = line.text;
+        corps.appendChild(text);
+      }
+    }
+    if (!corps.firstChild) retirer(corps);
+
+    var pied = champ(root, 'pied');
+    var f = footInfo(c);
+    if (!f) {
+      retirer(pied);
+    } else {
+      poser(champ(pied, 'pied-libelle'), f.label);
+      var value = champ(pied, 'pied-valeur');
+      value.textContent = '';
+      if (f.link) value.appendChild(paymentLink('lien', f.link, c.status));
+      else value.textContent = f.value;
+    }
+
+    var actions = actionsOf(c);
+    if (actions) remplacer(champ(root, 'actions'), actions);
+    else retirer(champ(root, 'actions'));
+    root.setAttribute('role', 'listitem');
+    return root;
+  }
+
+  function usageD(text, icon) {
+    var item = copie('usage');
+    logoD(item.querySelector('img'), icon);
+    poser(champ(item, 'nom'), text);
+    return item;
+  }
+
+  function paymentD(list, pms, others) {
+    var card = D.cards['moyen-de-paiement'];
+    var m = pmModel(list, pms, others);
+    var rows = [];
+    for (var i = 0; i < pms.length; i++) {
+      var pm = pms[i];
+      var row = rendu(copie('moyen'));
+      var icon = pm.type === 'sepa_debit' ? 'icone-banque' : (pm.expired ? 'icone-carte-alerte' : 'icone-carte');
+      remplacer(champ(row, 'icone'), copie(icon));
+      var nom = champ(row, 'nom');
+      poser(champ(nom, 'libelle'), pmName(pm));
+      if (pm.expired) nom.appendChild(copie('moyen-expire'));
+      else if (pm.expiresSoon) nom.appendChild(copie('moyen-bientot'));
+      var detail = champ(row, 'detail');
+      detail.textContent = '';
+      if (!fillDetail(detail, pm, m.several, usageD)) retirer(detail);
+      retirer(champ(row, 'action'));
+      rows.push(row);
+      card.appendChild(row);
+    }
+    if (m.saved.length) {
+      var box = rendu(copie('moyen-autres'));
+      var line = champ(box, 'ligne');
+      while (box.firstChild) box.removeChild(box.firstChild);
+      for (var k = 0; k < m.saved.length; k++) {
+        var l = line.cloneNode(true);
+        l.textContent = m.saved[k];
+        box.appendChild(l);
+      }
+      card.appendChild(box);
+    }
+    var link = pmAction(m);
+    if (m.several) {
+      var actions = rendu(ui.actions());
+      actions.appendChild(link);
+      card.appendChild(actions);
+    } else {
+      rows[0].appendChild(link);
+    }
+  }
+
+  function invoicesD(invoices) {
+    for (var i = 0; i < invoices.length; i++) {
+      var inv = invoices[i];
+      var row = rendu(copie('facture'));
+      poser(champ(row, 'date'), shortDay(inv.date));
+      poser(champ(row, 'libelle'), inv.label || 'Abonnement');
+      poser(champ(row, 'montant'), typeof inv.amount === 'number' ? money(inv.amount, inv.currency) : '');
+      var status = champ(row, 'statut');
+      status.textContent = '';
+      status.appendChild(copie('facture-' + (INVOICE_STATUS[inv.status] ? inv.status : 'open')));
+      var cell = champ(row, 'action');
+      cell.textContent = '';
+      var action = invoiceAction(inv);
+      if (action) cell.appendChild(action);
+      D.table.appendChild(row);
+    }
+    afficher(D.portail, portalAvailable());
+  }
+
+  function placeInvoicesD(invoices) {
+    var block = document.getElementById('invoices-block');
+    if (!Array.isArray(invoices)) {
+      afficher(D.cards.factures, false);
+      afficher(D.aide, false);
+      keepBlock(block, true);
+      if (toggleMoved && moveToggle(block)) toggleMoved = false;
+      return;
+    }
+    if (invoices.length) {
+      invoicesD(invoices);
+      afficher(D.cards.factures, true);
+      whenInvoiceEmails(function() {
+        if (!D.cards.factures.hidden && moveToggle(D.slot)) toggleMoved = true;
+      });
+    } else {
+      afficher(D.cards.factures, false);
+      if (toggleMoved && moveToggle(block)) toggleMoved = false;
+    }
+    afficher(D.aide, true);
+    keepBlock(block, false);
+  }
+
+  function renderD(list, flash, pms, invoices, others, address, taxId, taxIdAllowed) {
+    resetD();
+    var subs = D.cards.abonnements;
+    if (flash) subs.insertBefore(rendu(ui.flash(flash)), D.liste);
+    if (!list.length) {
+      D.liste.appendChild(rendu(copie('vide')));
+    } else {
+      for (var i = 0; i < list.length; i++) D.liste.appendChild(rendu(cardD(list[i])));
+    }
+    afficher(D.cards['moyen-de-paiement'], pms.length > 0);
+    if (pms.length) paymentD(list, pms, others);
+    var withAddress = Boolean(address && billingCardWanted(list, pms, invoices, others, address, taxId));
+    afficher(D.cards.adresse, withAddress);
+    if (withAddress) addressSection(address, taxId, taxIdAllowed);
+    placeInvoicesD(invoices);
+    showD();
+    hideOldSection();
+    togglePaymentBlock(list, pms);
+  }
+
+  function skeletonD() {
+    resetD();
+    var subs = D.cards.abonnements;
+    subs.setAttribute('aria-busy', 'true');
+    for (var k = 0; k < SECTIONS.length; k++) afficher(D.cards[SECTIONS[k]], SECTIONS[k] === 'abonnements');
+    afficher(D.aide, false);
+    for (var i = skeletonCount(); i > 0; i--) {
+      var s = rendu(copie('squelette'));
+      s.setAttribute('aria-hidden', 'true');
+      D.liste.appendChild(s);
+    }
+    var sr = rendu(copie('sr'));
+    sr.textContent = 'Chargement de vos abonnements…';
+    subs.appendChild(sr);
+    showD();
+    clearTimeout(slowTimer);
+    slowTimer = setTimeout(function() {
+      if (subs.getAttribute('aria-busy') !== 'true') return;
+      var slow = rendu(copie('lent'));
+      slow.setAttribute('role', 'status');
+      subs.appendChild(slow);
+    }, Math.max(0, SLOW_MS - (Date.now() - startedAt)));
+  }
+
   function observed() {
     var w = wrapper();
     return (w && w.parentElement) || anchor.parentElement || anchor;
@@ -1858,16 +2571,29 @@
   }
 
   function init() {
-    anchor = document.getElementById(ANCHOR_ID);
-    if (!anchor) {
-      console.log(PREFIX + ' Anchor not found');
-      fallbackToPageBlocks();
-      track('subscriptions_list', { subs_outcome: 'no-anchor' });
-      return;
-    }
-    if (anchor.firstElementChild) {
+    // Une seconde exécution (bundle périmé servi à côté de l'épinglé) trouverait les gabarits déjà retirés
+    // et retomberait sur la présentation héritée : la page aurait deux listes.
+    var drawn = document.querySelector('[data-ordo-facturation][data-ordo-pret]');
+    if (drawn) {
       console.log(PREFIX + ' Already rendered');
       return;
+    }
+    if (designerWanted()) D = prepareDesigner();
+    if (D) {
+      ui = designerUi;
+      anchor = D.root;
+    } else {
+      anchor = document.getElementById(ANCHOR_ID);
+      if (!anchor) {
+        console.log(PREFIX + ' Anchor not found');
+        fallbackToPageBlocks();
+        track('subscriptions_list', { subs_outcome: 'no-anchor' });
+        return;
+      }
+      if (anchor.firstElementChild) {
+        console.log(PREFIX + ' Already rendered');
+        return;
+      }
     }
     hide();
     listenClicks();

@@ -1,0 +1,122 @@
+/* Règles de base des classes compte-v2_* telles que Webflow les publie (domaine de recette, 12/10/2026), sans les
+   points de rupture. Sert aux tests à juger ce qui est réellement visible : une classe qui fixe `display` l'emporte sur
+   l'attribut `hidden` (règle de base `[hidden]{display:none}`, non prioritaire). Couleurs remplacées : seul `display` compte ici. */
+[hidden],template{display:none}
+.compte-v2_wrap{color:#0c0e16;flex-direction:column;gap:24px;margin-bottom:24px;display:none}
+.compte-v2_wrap.is-on{display:flex}
+.compte-v2_identity{background-color:#f7f7fb;border:1px solid #ecedef;border-radius:4px;align-items:flex-start;gap:20px;padding:24px;display:flex}
+.compte-v2_avatar{color:#263fd3;background-color:#f0f3ff;border-radius:32px;flex-shrink:0;justify-content:center;align-items:center;width:64px;height:64px;font-size:22px;font-weight:600;line-height:1;display:flex}
+.compte-v2_identity-text{flex-direction:column;row-gap:4px;min-width:0;display:flex}
+.compte-v2_name{font-size:20px;font-weight:600;line-height:1.4}
+.compte-v2_muted{color:#47505c;font-size:14px;line-height:1.5}
+.compte-v2_card{background-color:#fff;border:1px solid #0c0e1633;border-radius:4px;flex-direction:column;row-gap:16px;padding:16px;display:flex}
+.compte-v2_card.is-liste{row-gap:0}
+.compte-v2_card.is-liste.is-2fa{display:none}
+.compte-v2_card-head{justify-content:space-between;align-items:center;gap:8px 16px;display:flex}
+.compte-v2_card-head.is-start{flex-wrap:wrap;justify-content:flex-start;column-gap:8px}
+.compte-v2_card-title{margin-top:0;margin-bottom:0;font-size:16px;font-weight:600;line-height:1.5}
+.compte-v2_btn{color:#0c0e16;background-color:#0000;border:1px solid #0c0e1680;border-radius:4px;flex-shrink:0;justify-content:center;align-items:center;min-height:40px;padding:8px 16px;font-size:14px;font-weight:600;line-height:1.2;text-decoration:none;display:inline-flex}
+.compte-v2_btn:hover{color:#0c0e16;border-color:#0c0e16}
+.compte-v2_btn.is-danger{color:#ba1b1b;border-color:#ba1b1b}
+.compte-v2_btn.is-principal{border-color:#000;background-color:#000;color:#fff}
+.compte-v2_btn.is-principal:hover{border-color:#000;background-color:#000;color:#fff}
+.compte-v2_dl{grid-template-rows:auto;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 24px;display:grid}
+.compte-v2_dl.is-adresse{flex:20rem;min-width:0}
+.compte-v2_field{flex-direction:column;row-gap:2px;min-width:0;display:flex}
+.compte-v2_field.is-cache{display:none}
+.compte-v2_field.is-etendu{flex:16rem}
+.compte-v2_dt{color:#47505c;font-size:14px;line-height:1.5}
+.compte-v2_dd{overflow-wrap:anywhere;font-size:16px;font-weight:500;line-height:1.5}
+.compte-v2_dd.is-non-renseigne{color:#000;font-weight:400}
+.compte-v2_hint{color:#47505c;font-size:12px;line-height:1.5}
+.compte-v2_edit{display:none}
+.compte-v2_edit.is-open{display:block}
+.compte-v2_edit.is-ligne{padding-bottom:16px}
+.compte-v2_help{text-align:center;background-color:#0c0e1608;border:1px solid #0c0e161a;border-radius:4px;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px 16px;padding:24px;display:flex}
+.compte-v2_help.is-colonne{flex-direction:column;row-gap:16px}
+.compte-v2_help-text{font-size:16px;line-height:1.5}
+.compte-v2_ligne-bloc{border-bottom:1px solid #0c0e161a;display:block}
+.compte-v2_ligne-bloc.is-derniere{border-bottom-width:0}
+.compte-v2_ligne{align-items:center;gap:12px 16px;padding-top:16px;padding-bottom:16px;display:flex}
+.compte-v2_picto{color:#0c0e16;border:1px solid #0c0e1633;border-radius:4px;flex-shrink:0;justify-content:center;align-items:center;width:48px;height:32px;display:flex}
+.compte-v2_picto.is-moyen.is-expiree{border-color:#000;color:#000}
+.compte-v2_ligne-texte{flex-direction:column;flex:1;row-gap:2px;min-width:0;display:flex}
+.compte-v2_ligne-titre{flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:16px;font-weight:600;line-height:1.5;display:flex}
+.compte-v2_lien{background-color:#000;color:#3454f6;text-align:left;padding:0;font-weight:600;text-decoration:underline}
+.compte-v2_lien.is-seul{align-self:flex-start}
+.compte-v2_badge{color:#0c0e16;white-space:nowrap;background-color:#fff;border:1px solid #0c0e1633;border-radius:4px;flex-shrink:0;align-items:center;height:24px;padding-left:8px;padding-right:8px;font-size:12px;font-weight:600;line-height:1;display:inline-flex}
+.compte-v2_badge.is-succes{color:#fff;background-color:#106820;border-color:#106820}
+.compte-v2_badge.is-actif{border-color:#000;background-color:#000;color:#fff}
+.compte-v2_badge.is-paye{border-color:#000;background-color:#000;color:#000}
+.compte-v2_badge.is-a-regulariser{border-color:#000;background-color:#000;color:#fff}
+.compte-v2_badge.is-en-cours{border-color:#000;background-color:#000;color:#000}
+.compte-v2_badge.is-a-regler{border-color:#000;background-color:#000;color:#000}
+.compte-v2_badge.is-expire-bientot{border-color:#000;background-color:#000;color:#000}
+.compte-v2_help-liens{flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:12px 40px;display:flex}
+.compte-v2_help-icone{color:#0c0e16;align-items:center;column-gap:10px;min-height:28px;font-size:16px;font-weight:600;line-height:1.5;text-decoration:none;display:inline-flex}
+.compte-v2_help-icone:hover{color:#263fd3}
+.compte-v2_help-link{color:#0c0e16;font-size:16px;font-weight:600;line-height:1.5;text-decoration:none}
+.compte-v2_help-link:hover{color:#263fd3}
+.compte-v2_help-tel{flex-direction:column;align-items:center;row-gap:2px;display:flex}
+.compte-v2_help-note{color:#47505c;font-size:12px;line-height:1.5}
+.compte-v2_designer{color:#263fd3;background-color:#f0f3ff;border:1px dashed #3454f6;border-radius:4px;margin-bottom:24px;padding:16px;font-size:14px;line-height:1.5}
+.compte-v2_designer.is-gabarits-facturation{grid-column-gap:24px;grid-row-gap:24px;color:#000;background-color:#fff;flex-direction:column;display:flex}
+.compte-v2_abos{grid-column-gap:16px;grid-row-gap:16px;flex-direction:column;display:flex}
+.compte-v2_abo{grid-column-gap:12px;grid-row-gap:12px;border:1px solid #000;background-color:#000;border-radius:4px;flex-direction:column;padding:24px;display:flex}
+.compte-v2_abo-head{grid-column-gap:16px;grid-row-gap:8px;justify-content:space-between;align-items:center;display:flex}
+.compte-v2_abo-nom{grid-column-gap:12px;grid-row-gap:12px;overflow-wrap:anywhere;flex:auto;align-items:center;min-width:0;display:flex}
+.compte-v2_abo-logo{object-fit:contain;flex:none;width:40px;height:40px}
+.compte-v2_abo-logo.is-mini{vertical-align:-3px;width:16px;height:16px;margin-right:4px;display:inline-block}
+.compte-v2_abo-libelle{font-size:16px;font-weight:600;line-height:1.5}
+.compte-v2_abo-corps{grid-column-gap:8px;grid-row-gap:8px;flex-direction:column;display:flex}
+.compte-v2_prix{grid-column-gap:8px;grid-row-gap:4px;flex-wrap:wrap;align-items:baseline;display:flex}
+.compte-v2_prix-montant{font-size:20px;font-weight:600;line-height:1.4}
+.compte-v2_prix-periode{color:#000;font-size:14px;line-height:1.5}
+.compte-v2_prix-ancien{color:#000;font-size:14px;line-height:1.5;text-decoration:line-through}
+.compte-v2_offre{grid-column-gap:6px;background-color:#000;min-height:24px;color:#000;grid-row-gap:0;border-radius:4px;flex-wrap:wrap;align-self:flex-start;align-items:baseline;padding:3px 8px;font-size:13px;font-weight:500;line-height:18px;display:inline-flex}
+.compte-v2_offre-valeur{white-space:nowrap;font-weight:700}
+.compte-v2_abo-pied{grid-column-gap:16px;grid-row-gap:2px;border-top:1px solid #000;flex-wrap:wrap;justify-content:space-between;padding-top:12px;font-size:14px;line-height:1.5;display:flex}
+.compte-v2_abo-pied-libelle{color:#000}
+.compte-v2_abo-pied-valeur{font-weight:600}
+.compte-v2_actions{grid-column-gap:8px;grid-row-gap:8px;flex-wrap:wrap;justify-content:flex-end;display:flex}
+.compte-v2_message{color:#000;text-align:right;flex-basis:100%;font-size:14px;line-height:1.5}
+.compte-v2_flash{color:#000;font-size:14px;font-weight:600;line-height:1.5}
+.compte-v2_erreur{color:#000;font-size:14px;line-height:1.5}
+.compte-v2_question{font-size:14px;font-weight:600;line-height:1.5}
+.compte-v2_squelette{border:1px solid #000;background-color:#000;border-radius:4px;height:132px}
+.compte-v2_sr{white-space:nowrap;clip-path:inset(50%);width:1px;height:1px;position:absolute;overflow:hidden}
+.compte-v2_moyen{grid-column-gap:16px;grid-row-gap:12px;flex-wrap:wrap;align-items:center;display:flex}
+.compte-v2_moyen-texte{grid-column-gap:2px;grid-row-gap:2px;flex-direction:column;flex:12rem;min-width:0;display:flex}
+.compte-v2_moyen-nom{grid-column-gap:8px;grid-row-gap:4px;flex-wrap:wrap;align-items:center;font-size:16px;font-weight:600;line-height:1.5;display:flex}
+.compte-v2_moyen-usage{white-space:nowrap;display:inline}
+.compte-v2_moyen-autres{grid-column-gap:2px;grid-row-gap:2px;border-top:1px solid #000;flex-direction:column;padding-top:12px;display:flex}
+.compte-v2_adresse{grid-column-gap:16px;grid-row-gap:12px;flex-wrap:wrap;align-items:flex-start;display:flex}
+.compte-v2_tva{grid-column-gap:12px;grid-row-gap:12px;border-top:1px solid #000;flex-direction:column;padding-top:16px;display:flex}
+.compte-v2_tva-demande{grid-column-gap:4px;grid-row-gap:4px;color:#000;flex-wrap:wrap;align-items:baseline;font-size:14px;line-height:1.5;display:flex}
+.compte-v2_tva-confirmation{grid-column-gap:12px;grid-row-gap:12px;flex-direction:column;display:flex}
+.compte-v2_factures{flex-direction:column;display:flex}
+.compte-v2_facture{grid-column-gap:16px;grid-row-gap:4px;border-bottom-style:solid;border-bottom-width:1px;border-bottom-color:#000;grid-template-rows:auto;grid-template-columns:7.5rem minmax(0,1fr) 6rem 10rem 6.5rem;align-items:center;padding-top:12px;padding-bottom:12px;font-size:14px;line-height:1.5;display:grid}
+.compte-v2_facture:last-child{border-bottom-width:0}
+.compte-v2_facture.is-entete{color:#000;padding-top:0;font-weight:500}
+.compte-v2_facture-cellule{min-width:0}
+.compte-v2_facture-cellule.is-droite{text-align:right}
+.compte-v2_facture-cellule.is-montant{text-align:right;font-weight:600}
+.compte-v2_pdf{grid-column-gap:6px;grid-row-gap:6px;background-color:#000;color:#000;align-items:center;padding:0;font-weight:600;text-decoration:underline;display:inline-flex}
+.compte-v2_pdf:hover{color:#000}
+.compte-v2_interrupteur-ligne{grid-column-gap:16px;grid-row-gap:16px;justify-content:space-between;align-items:flex-start;display:flex}
+.compte-v2_interrupteur-texte{grid-column-gap:2px;grid-row-gap:2px;flex-direction:column;flex:auto;display:flex}
+.compte-v2_interrupteur-titre{cursor:pointer;font-size:16px;font-weight:600;line-height:1.5}
+.compte-v2_interrupteur{background-color:#000;cursor:pointer;border-radius:999px;flex:none;width:44px;height:26px;transition:background-color .2s;position:relative}
+.compte-v2_interrupteur:focus{outline-color:#000;outline-offset:2px;outline-width:2px;outline-style:solid}
+.compte-v2_interrupteur.is-chargement{cursor:default}
+.compte-v2_interrupteur.is-coche{background-color:#000}
+.compte-v2_interrupteur-bouton{background-color:#fff;border-radius:50%;width:20px;height:20px;transition:transform .2s;position:absolute;top:3px;left:3px;box-shadow:0 1px 3px #00000040}
+.compte-v2_interrupteur-bouton.is-coche{transform:translate(18px)}
+.compte-v2_help-separateur{border-top:1px solid #000;align-self:stretch}
+.compte-v2_help-videos{grid-column-gap:40px;grid-row-gap:12px;flex-wrap:wrap;justify-content:center;align-items:flex-start;display:flex}
+.compte-v2_help-video{grid-column-gap:8px;grid-row-gap:8px;min-height:28px;color:#000;align-items:center;font-size:14px;font-weight:600;line-height:1.5;text-decoration:none;display:inline-flex}
+.compte-v2_help-video:hover{color:#000}
+.compte-v2_gabarits-groupe{grid-column-gap:8px;grid-row-gap:8px;flex-direction:column;display:flex}
+.compte-v2_moyen-usage-nom{display:inline}
+.compte-v2_gabarits-titre{color:#000;letter-spacing:.04em;text-transform:uppercase;font-size:12px;font-weight:600;line-height:1.5}
+.compte-v2_gabarits-ligne{grid-column-gap:12px;grid-row-gap:8px;flex-wrap:wrap;align-items:center;display:flex}

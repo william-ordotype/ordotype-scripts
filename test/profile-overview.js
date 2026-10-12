@@ -68,6 +68,11 @@ async function page({ member = MEDECIN, fixture = FIXTURE, reporter = true, fres
 }
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+/** Attend une condition (relectures en tâche de fond), 3 s au plus : une machine lente ne fait pas échouer le test. */
+async function waitFor(cond, ms = 3000) {
+  const end = Date.now() + ms;
+  while (!cond() && Date.now() < end) await tick(20);
+}
 const txt = (d, sel) => (d.querySelector(sel) || {}).textContent;
 const champ = (d, name) => txt(d, `[data-ordo-v2="profil"] [data-ordo-champ="${name}"]`);
 const visible = (w, el) => !!el && w.getComputedStyle(el).display !== 'none';
@@ -93,7 +98,9 @@ async function test(name, fn) {
     assert.strictEqual(champ(d, 'mode-dexercice'), 'Libéral');
     assert.strictEqual(champ(d, 'phone'), '+33 6 12 34 56 78');
     assert.strictEqual(champ(d, 'email'), 'claire.martin@exemple.fr');
-    assert.ok(!visible(w, d.querySelector('[data-ordo-champ="vat-id"]').closest('.compte-v2_field')), 'pas de ligne TVA');
+    // Ligne TVA retirée du Designer le 29/09 ; si elle revient, le script la masque.
+    const tva = d.querySelector('[data-ordo-champ="vat-id"]');
+    assert.ok(!tva || !visible(w, tva.closest('.compte-v2_field')), 'pas de ligne TVA');
     assert.strictEqual(txt(d, '[data-ordo-initiales]'), 'CM');
     assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Dr Claire Martin');
     assert.strictEqual(txt(d, '[data-ordo-rpps-entete]'), 'N° RPPS 10000668540');
@@ -120,8 +127,9 @@ async function test(name, fn) {
     m.customFields.statut = 'Interne';
     m.customFields['vat-id'] = 'FR00000000000';
     const { w, d } = await page({ member: m });
+    // Mode d'exercice et carte SIREN (la ligne TVA a quitté le Designer le 29/09).
     const pro = d.querySelectorAll('[data-ordo-v2="profil"] [data-ordo-si-pas-interne]');
-    assert.strictEqual(pro.length, 3);
+    assert.strictEqual(pro.length, 2);
     for (const el of pro) assert.ok(!visible(w, el));
     assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Interne · Médecine générale');
     assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Claire Martin', 'pas de « Dr » pour un interne');
@@ -139,8 +147,10 @@ async function test(name, fn) {
     const m = clone(MEDECIN);
     m.customFields['vat-id'] = 'FR12345678901';
     const { w, d } = await page({ member: m });
-    const ligne = d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="vat-id"]').closest('.compte-v2_field');
-    assert.ok(!visible(w, ligne), 'pas de ligne TVA pour un médecin');
+    // Ligne retirée du Designer le 29/09 : absente, ou masquée si elle revient.
+    const champTva = d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="vat-id"]');
+    const ligne = champTva ? champTva.closest('.compte-v2_field') : null;
+    assert.ok(!ligne || !visible(w, ligne), 'pas de ligne TVA pour un médecin');
     // Les autres lignes réservées aux non-internes restent affichées.
     const autres = [...d.querySelectorAll('[data-ordo-v2="profil"] [data-ordo-si-pas-interne]')].filter((el) => el !== ligne);
     assert.strictEqual(autres.length, 2);
@@ -151,7 +161,7 @@ async function test(name, fn) {
     assert.ok(!visible(w, tva.closest('.form-field-wrapper') || tva.parentNode), 'cellule masquée');
     assert.strictEqual(tva.value, 'FR12345678901', 'valeur enregistrée remise, envoyée telle quelle');
     await tick(10);
-    assert.ok(!visible(w, ligne), 'toujours masquée après relecture du membre');
+    assert.ok(!ligne || !visible(w, ligne), 'toujours masquée après relecture du membre');
   });
 
   await test('en-tête : « Dr » aussi pour « Médecin » accentué ; pas de ligne RPPS sans numéro, et une seule après relecture', async () => {
@@ -324,7 +334,7 @@ async function test(name, fn) {
     const nom = form.querySelector('[data-ms-member="nom"]');
     if (nom) nom.value = 'le  bihan';
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:perso:saved'));
     assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:saved'), 'la carte se referme');
     assert.ok(!visible(w, d.querySelector('[data-ordo-form-slot="perso"]')));
     assert.strictEqual(champ(d, 'prnom'), 'Clara', 'la lecture affiche la valeur corrigée');
@@ -356,7 +366,7 @@ async function test(name, fn) {
     form.querySelector('[data-ms-member="current-password"]').value = 'Ancien1!';
     form.querySelector('[data-ms-member="new-password"]').value = 'Nouveau1!';
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:password:unverified'));
     assert.deepStrictEqual(reports, []);
     assert.ok(pushed.some((p) => p.profile_step === 'edit:password:unverified'));
     assert.ok(!pushed.some((p) => p.profile_step === 'edit:password:unconfirmed'));
@@ -369,10 +379,11 @@ async function test(name, fn) {
     form.querySelector('#first-name').value = 'Clara'; // Memberstack renvoie toujours « Claire »
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => reports.length >= 1);
+    await tick(200); // un second signalement aurait eu le temps d'arriver
     assert.strictEqual(reports.length, 1);
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => reports.length >= 2);
     assert.strictEqual(reports.length, 2, 'un nouvel envoi après la fin de la surveillance est de nouveau surveillé');
   });
 
@@ -388,7 +399,7 @@ async function test(name, fn) {
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     await tick(100);
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:perso:saved'));
     assert.ok(pushed.some((p) => p.profile_step === 'edit:perso:saved'));
   });
 
@@ -398,7 +409,7 @@ async function test(name, fn) {
     const form = d.querySelector('[data-ordo-form-slot="contact"] form');
     form.querySelector('[data-ms-member="phone"]').value = '+33 6 12 34 56 78'; // enregistré : +33612345678
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
-    await tick(200);
+    await waitFor(() => pushed.some((p) => p.profile_step === 'edit:contact:saved'));
     assert.deepStrictEqual(reports, []);
     assert.ok(pushed.some((p) => p.profile_step === 'edit:contact:saved'));
   });
@@ -447,6 +458,13 @@ async function test(name, fn) {
     assert.ok(!visible(r.w, b2));
     r = await page({ before: (w) => { w.document.getElementById('ordotype-totp-section').innerHTML = '<div class="ot-totp"><button data-ot-action="start-setup">Activer</button></div>'; } });
     assert.ok(visible(r.w, r.d.querySelector('[data-ordo-2fa-block]')), 'module déjà monté avant le script');
+    // Étape de vérification : sa ligne d'erreur, vide, n'est pas une panne.
+    r = await page({ before: (w) => { w.document.getElementById('ordotype-totp-section').innerHTML = '<div class="ot-totp"><p class="ot-totp__error" data-ot-error></p><button data-ot-action="verify">Vérifier</button></div>'; } });
+    assert.ok(visible(r.w, r.d.querySelector('[data-ordo-2fa-block]')), 'étape de vérification : affichée');
+    // Module aux classes du Designer en panne de chargement : repère data-ot-fatal.
+    r = await page({ before: (w) => { w.document.getElementById('ordotype-totp-section').innerHTML = '<div class="ot-totp"><div class="compte-v2_totp"><p class="compte-v2_totp-erreur" data-ot-fatal>Impossible</p></div></div>'; } });
+    assert.ok(!visible(r.w, r.d.querySelector('[data-ordo-2fa-block]')), 'panne : cachée');
+    assert.ok(r.pushed.some((p) => p.profile_step === '2fa:2fa:error'), 'panne mesurée');
   });
 
   await test('Google : le bloc Memberstack d\'origine (état connecté, déliaison) prend la place du bouton', async () => {
@@ -550,6 +568,59 @@ async function test(name, fn) {
     assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
     assert.ok(d.documentElement.classList.contains('ordo-profil-fallback'));
     assert.strictEqual(pushed.length, 0);
+  });
+
+  await test('gabarits du Designer : « Non renseigné », coche « Vérifié », séparateur, aucun dessin construit', async () => {
+    const m = clone(MEDECIN);
+    m.customFields.specialite = '';
+    m.customFields['statut-rpps'] = 'C';
+    m.metaData = { 'rpps-tested': '10000668540' };
+    const { w, d } = await page({ member: m });
+    // Vide : le champ prend la classe et le texte du gabarit « valeur-vide », sans style en ligne
+    const spe = d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="specialite"]');
+    const vide = d.querySelector('[data-ordo-gabarits="profil"] [data-ordo-gabarit="valeur-vide"]');
+    assert.strictEqual(spe.textContent, vide.textContent);
+    assert.strictEqual(spe.className, vide.className);
+    assert.strictEqual(spe.style.color, '');
+    // Rempli : la classe d'origine revient
+    const prenom = d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="prnom"]');
+    assert.strictEqual(prenom.className, 'compte-v2_dd');
+    // Coche : copie du gabarit (classe du Designer, texte du Designer), deux fois (en-tête et carte)
+    const coches = d.querySelectorAll('[data-ordo-rpps-verifie]');
+    assert.strictEqual(coches.length, 2);
+    for (const c of coches) {
+      assert.strictEqual(c.className, 'compte-v2_verifie');
+      assert.strictEqual(c.getAttribute('style'), null, 'aucun style en ligne');
+      assert.ok(!c.hasAttribute('data-ordo-gabarit'));
+    }
+    // L'en-tête RPPS est l'élément du Designer, rempli
+    const entete = d.querySelector('[data-ordo-rpps-entete]');
+    assert.ok(entete.classList.contains('is-rpps'));
+    assert.strictEqual(entete.textContent, 'N° RPPS 10000668540Vérifié');
+    // Contact : séparateur du Designer entre les deux formulaires, une seule fois même rouvert
+    const ouvrir = () => d.querySelector('[data-ordo-edit="contact"]').click();
+    ouvrir();
+    const slot = d.querySelector('[data-ordo-form-slot="contact"]');
+    const sep = slot.querySelectorAll('[data-ordo-separateur]');
+    assert.strictEqual(sep.length, 1);
+    assert.strictEqual(sep[0].className, 'compte-v2_separateur');
+    assert.ok(sep[0].nextElementSibling.querySelector('form[data-ms-form="email"]'), 'avant le formulaire e-mail');
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    ouvrir();
+    assert.strictEqual(slot.querySelectorAll('[data-ordo-separateur]').length, 1);
+    // Plus de dessin du bouton Google ni des formulaires dans le script
+    const css = d.getElementById('ordo-profil-v2-styles').textContent;
+    assert.ok(!/social-btn|manage-providers|compte-form-wrapper/.test(css), css);
+    assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')));
+  });
+
+  await test('aucun bouton ni lien ne porte data-ordo-champ : le remplissage ne les écrase jamais', async () => {
+    const { d } = await page();
+    for (const el of d.querySelectorAll('[data-ordo-v2] [data-ordo-champ]')) {
+      assert.ok(!el.closest('a, button'), 'repère de champ sur un lien : ' + el.getAttribute('data-ordo-champ'));
+    }
+    const emails = d.querySelector('[data-ordo-section="emails"] a');
+    assert.strictEqual(emails.textContent, 'Modifier', 'bouton de la carte E-mails intact');
   });
 
   console.log(`profile-overview : ${passed} tests OK`);

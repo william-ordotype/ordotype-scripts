@@ -113,8 +113,31 @@
     return !!numero && numero === normalizeRpps((member.metaData || {})['rpps-tested']);
   }
 
-  /** Coche verte « Vérifié », construite élément par élément (jamais de HTML injecté). */
+  /**
+   * Gabarits dessinés dans le Designer (bloc [data-ordo-gabarits="profil"], visible seulement dans le
+   * Designer) : « Non renseigné », coche « Vérifié », séparateur de formulaires. Sans eux (page publiée
+   * avant), le script retombe sur son ancien dessin.
+   */
+  function gabarit(name) {
+    var store = document.querySelector('[data-ordo-gabarits="profil"]');
+    return store ? store.querySelector('[data-ordo-gabarit="' + name + '"]') : null;
+  }
+
+  function copie(name) {
+    var g = gabarit(name);
+    if (!g) return null;
+    var n = g.cloneNode(true);
+    n.removeAttribute('data-ordo-gabarit');
+    return n;
+  }
+
+  /** Coche verte « Vérifié » : celle du Designer, sinon construite élément par élément (jamais de HTML injecté). */
   function checkBadge() {
+    var drawn = copie('rpps-verifie');
+    if (drawn) {
+      drawn.setAttribute('data-ordo-rpps-verifie', '1');
+      return drawn;
+    }
     var badge = document.createElement('span');
     badge.setAttribute('data-ordo-rpps-verifie', '1');
     badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:8px;color:var(--success-700, #106820);font-size:13px;font-weight:600;vertical-align:middle';
@@ -177,7 +200,18 @@
     }
   }
 
+  /**
+   * Valeur d'une carte. Vide : le dessin du gabarit « valeur-vide » (sa classe et son texte) remplace
+   * celui du champ le temps qu'il reste vide ; la classe d'origine revient avec une valeur.
+   */
   function setValue(node, value) {
+    var vide = gabarit('valeur-vide');
+    if (!node.hasAttribute('data-ordo-classe')) node.setAttribute('data-ordo-classe', node.className);
+    if (vide) {
+      node.textContent = value || text(vide.textContent) || VIDE;
+      node.className = value ? node.getAttribute('data-ordo-classe') : vide.className;
+      return;
+    }
     node.textContent = value || VIDE;
     node.style.color = value ? '' : '#47505c';
     node.style.fontWeight = value ? '' : '400';
@@ -194,6 +228,12 @@
     for (var i = moved.length - 1; i >= 0; i--) {
       var m = moved[i];
       try { m.parent.insertBefore(m.node, m.next && m.next.parentNode === m.parent ? m.next : null); } catch (e) { /* no-op */ }
+      // Recherche remise dans l'ancien formulaire : elle reprend ses classes d'avant la carte.
+      var hors = m.node.getAttribute && m.node.getAttribute('data-ordo-classe-hors-carte');
+      if (hors != null) {
+        m.node.className = hors;
+        m.node.removeAttribute('data-ordo-classe-hors-carte');
+      }
     }
     moved = [];
   }
@@ -402,6 +442,7 @@
       var from = blocks[i].parentNode;
       var origin = from && from.getAttribute && from.getAttribute('data-ordo-form-slot');
       if (from !== c.slot) c.slot.appendChild(blocks[i]);
+      if (i > 0) separate(c.slot, blocks[i]);
       if (origin && origin !== section) closeEdit(origin);
       show(blocks[i], true);
       resetFormState(blocks[i]);
@@ -420,6 +461,16 @@
     if (focus && typeof focus.focus === 'function') focus.focus();
     track('edit', section, 'open');
     return true;
+  }
+
+  /** Deux formulaires dans une carte (Contact : coordonnées puis e-mail) : le séparateur du Designer entre eux. */
+  function separate(slot, block) {
+    var prev = block.previousElementSibling;
+    if (prev && prev.hasAttribute('data-ordo-separateur')) return;
+    var line = copie('separateur');
+    if (!line) return;
+    line.setAttribute('data-ordo-separateur', '1');
+    slot.insertBefore(line, block);
   }
 
   /** Après un enregistrement, Webflow masque le formulaire et affiche son message : on revient aux champs. */
@@ -572,19 +623,40 @@
 
   // --- Blocs déplacés d'office -----------------------------------------------------------------
 
+  /**
+   * Recherche (RPPS, SIREN) dessinée dans le Designer et placée dans une carte : elle prend les classes
+   * du gabarit « finder-en-carte » (combo is-en-carte : sans marges ni largeur maximale, toute la
+   * ligne). Ses classes d'avant sont gardées pour un retour en arrière. Présentation d'origine : règles
+   * [data-ordo-v2] .ordo-siren / .ordo-rpps ci-dessous.
+   */
+  function finderEnCarte(root) {
+    if (!root || root.getAttribute('data-ordo-dessin') !== 'designer') return;
+    var g = document.querySelector('[data-ordo-gabarits="profil"] [data-ordo-gabarit="finder-en-carte"]');
+    if (!g || !g.className) return;
+    if (!root.hasAttribute('data-ordo-classe-hors-carte')) root.setAttribute('data-ordo-classe-hors-carte', root.className);
+    root.className = g.className;
+  }
+
   /** Le finder SIREN prend place dans sa carte ; son bandeau d'accueil doublait le texte de la carte. */
   function placeSirenFinder() {
     var slot = profil && profil.querySelector('[data-ordo-siren-slot]');
-    var root = document.querySelector('.ordo-siren');
-    if (slot && root) move(root, slot);
+    var root = document.querySelector('[data-ordo-finder="siren"], .ordo-siren');
+    if (!slot || !root) return;
+    move(root, slot);
+    finderEnCarte(root);
+    // Présentation du Designer : le finder ne redessine plus le bandeau une fois dans la carte.
+    var bandeau = root.querySelector('[data-ordo-finder-bandeau]');
+    if (bandeau && root.getAttribute('data-ordo-dessin') === 'designer') bandeau.parentNode.removeChild(bandeau);
   }
 
   /** La vérification du RPPS se place juste sous la ligne « Numéro RPPS » de la carte. */
   function placeRppsFinder() {
-    var root = document.querySelector('.ordo-rpps');
+    var root = document.querySelector('[data-ordo-finder="rpps"], .ordo-rpps');
     var champ = profil && profil.querySelector('[data-ordo-champ="n-rpps"]');
     var row = champ && (champ.closest('.compte-v2_field') || champ);
-    if (root && row && row.parentNode) move(root, row.parentNode, row.nextSibling);
+    if (!root || !row || !row.parentNode) return;
+    move(root, row.parentNode, row.nextSibling);
+    finderEnCarte(root);
   }
 
   function placeDelete() {
@@ -644,7 +716,7 @@
     if (s) return s;
     if (!container) return 'absent';
     if (container.style.display === 'none') return 'not-required';
-    if (container.querySelector('.ot-totp__error')) return 'error';
+    if (container.querySelector('[data-ot-fatal], .ot-totp__error:not([data-ot-error])')) return 'error';
     if (container.querySelector('[data-ot-action]')) return 'required';
     return 'pending';
   }
@@ -679,14 +751,14 @@
     // siens), masqués seulement une fois la nouvelle présentation rendue.
     'html.' + HTML_CLASS + ' .ordo-v2-host > .inner-block-wraper{display:none!important}',
     'html.' + HTML_CLASS + ' [data-ordo-v2]{display:flex!important}',
-    '[data-ordo-v2] .compte-v2_edit .w-form,[data-ordo-v2] .compte-v2_edit form{margin:0}',
-    '[data-ordo-v2] .compte-v2_edit .compte-form-wrapper + .compte-form-wrapper{margin-top:24px;padding-top:24px;border-top:1px solid #0c0e161a}',
     '[data-ordo-v2] .ordo-siren{margin:0;max-width:none}',
     '[data-ordo-v2] .ordo-siren-banner{display:none}',
     // Le SIREN a sa propre carte : sa cellule d'origine ne s'affiche plus dans le formulaire pro.
     '[data-ordo-v2] .ordo-siren-host{display:none!important}',
     '[data-ordo-v2] .ordo-rpps{grid-column:1/-1;flex-basis:100%;margin:0;max-width:none}',
-    // Module TOTP : même langage visuel que les cartes.
+    // Module TOTP : même langage visuel que les cartes. Seulement pour un module qui garde ses propres
+    // classes (ot-totp__*) : depuis ordotype-authentication-proxy#70, il prend celles des gabarits
+    // « totp-… » du Designer (bloc GABARITS · Double authentification) et ces règles ne s'appliquent plus.
     '[data-ordo-v2] .ot-totp__card{background:transparent;border:0;border-radius:0;padding:16px 0 0;margin:0;box-shadow:none}',
     '[data-ordo-v2] .ot-totp__title{font-size:16px;line-height:1.5;font-weight:600;margin:0 0 4px}',
     '[data-ordo-v2] .ot-totp__hint{font-size:14px;line-height:1.5;color:#47505c;margin:0}',
@@ -695,14 +767,10 @@
     '[data-ordo-v2] .ot-totp__btn--primary:hover{background:#263fd3;border-color:#263fd3}',
     '[data-ordo-v2] .ot-totp__btn--secondary{color:#3454f6;border-color:#3454f6}',
     '[data-ordo-v2] .ot-totp__btn--danger{color:#ba1b1b;border-color:#ba1b1b}',
-    '[data-ordo-v2] .ot-totp__badge{border-radius:4px;background:#106820;color:#fff}',
-    // Bouton Google d'origine, au format des boutons des cartes.
-    '[data-ordo-v2] [data-ms-auth="manage-providers"] > :not([data-ms-auth-provider]){display:none}',
-    '[data-ordo-v2] [data-ms-auth="manage-providers"]{flex-shrink:0}',
-    '[data-ordo-v2] .social-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;margin:0;padding:8px 16px;border:1px solid #0c0e1680;border-radius:4px;background:transparent;color:#0c0e16;font-size:14px;font-weight:600;text-decoration:none;box-shadow:none}',
-    '[data-ordo-v2] .social-btn:hover{border-color:#0c0e16}',
-    '[data-ordo-v2] .social-btn .social-image{width:18px;height:18px;margin:0}',
-    '@media screen and (max-width:767px){[data-ordo-v2] [data-ms-auth="manage-providers"]{width:100%;order:1}[data-ordo-v2] .social-btn{width:100%;min-height:44px}}'
+    '[data-ordo-v2] .ot-totp__badge{border-radius:4px;background:#106820;color:#fff}'
+    // Le bouton Google (conteneur Memberstack déplacé dans la carte) est dessiné dans le Designer :
+    // classes compte-v2_google, compte-v2_btn is-avec-logo, compte-v2_google-contenu, compte-v2_google-logo.
+    // Les formulaires déplacés aussi (compte-form-wrapper sans marge ; séparateur = gabarit « separateur »).
   ].join('\n');
 
   function injectStyles() {

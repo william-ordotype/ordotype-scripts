@@ -82,6 +82,15 @@
       // client ne pourrait plus retirer depuis sa page.
       'www.ordotype.fr': 100
     },
+    // Facturation dessinée dans le Designer (bloc [data-ordo-facturation] et ses gabarits) : ce fichier
+    // n'est qu'un marqueur de palier, lu par subscriptions-overview.js et invoice-emails.js. Hors palier,
+    // ils gardent la présentation construite par le script. Membres live seulement, comme la liste :
+    // vérifié sur www avec l'override `facturation-designer.js:on`.
+    'facturation-designer.js': {
+      'sandbox-ordotype.webflow.io': 100,
+      'ordotype.webflow.io': 100,
+      'www.ordotype.fr': 0
+    },
     // Live members only, like invoice-emails.js: verified on www with the override.
     'subscriptions-overview.js': {
       // 100 % d'emblée depuis le 2026-09-22, après la recette sur de vrais comptes avec l'override.
@@ -221,6 +230,7 @@
     'status-selectors.js',
     'delete-account.js',
     'billing-portal.js',
+    'facturation-designer.js', // Palier : la Facturation se dessine dans le Designer. Gated by GATES.
     'subscriptions-overview.js', // « Mes abonnements » list. Gated by GATES.
     'invoice-emails.js', // Opt-in « recevoir mes factures par e-mail ». Gated by GATES.
     'profile-overview.js', // Mon profil + Connexion et Sécurité, après les scripts dont il déplace les blocs. Gated by GATES.

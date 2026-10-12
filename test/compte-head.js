@@ -27,7 +27,7 @@ const HEAD_SCRIPT = /<script>([\s\S]*?)<\/script>/.exec(HEAD)[1];
 
 // Classes du Designer (feuille Webflow publiée) dont dépend l'affichage.
 const SITE_CSS = '.compte-v2_wrap{display:none}.compte-v2_wrap.is-on{display:flex}.inner-block-wraper.is-secours{display:none}'
-  + '.compte-v2_field.is-cache{display:none}';
+  + '.compte-v2_field.is-cache{display:none}.compte-v2_photo{cursor:pointer}';
 // Ce que Memberstack pose pour un membre payant sans mot de passe (feuille #dynamic-css).
 const MS_CSS = "[data-ms-content='!paid-plans'],[data-ms-content='has-password']{display: none !important;}";
 
@@ -110,7 +110,9 @@ async function test(name, fn) {
     for (const el of v2(d)) assert.ok(visible(w, el));
     for (const tab of ['information', 'security', 'billing']) for (const b of anciens(d, tab)) assert.ok(!visible(w, b), tab);
     assert.ok(visible(w, d.querySelector('.compte-v2_designer')));
-    assert.ok(!visible(w, d.querySelector('[data-ordo-champ="vat-id"]').closest('.compte-v2_field')), 'ligne TVA (masquée à tous) masquée aussi ici');
+    // Ligne TVA retirée du Designer le 29/09 ; si elle revient, elle reste masquée.
+    const tva = d.querySelector('[data-ordo-champ="vat-id"]');
+    assert.ok(!tva || !visible(w, tva.closest('.compte-v2_field')), 'ligne TVA (masquée à tous) masquée aussi ici');
   });
 
   await test('site, chargement : ni nouvelle présentation ni anciens blocs, pas d\'encart', async () => {
@@ -311,6 +313,22 @@ async function test(name, fn) {
     h.classList.add('ordo-subs-fallback'); // fallbackToPageBlocks()
     for (const b of anciens(d, 'billing')) assert.ok(visible(w, b));
     for (const b of anciens(d, 'information')) assert.ok(!visible(w, b), 'le profil n\'est pas concerné');
+  });
+
+  await test('photo dessinée : pastille, liens et message cachés tant que profile-photo.js ne l\'a pas activée ; rond toujours là', async () => {
+    const pieces = (d) => ['pastille', 'actions', 'statut'].map((r) => d.querySelector(`[data-ordo-v2="profil"] [data-ordo-photo="${r}"]`));
+    const designer = page({ head: false });
+    for (const el of pieces(designer.d)) assert.ok(visible(designer.w, el), 'le Designer montre tout');
+    const { w, d, h } = page();
+    h.classList.add('ordo-profil-v2');
+    const rond = d.querySelector('[data-ordo-photo="declencheur"]');
+    assert.ok(rond && rond.querySelector('[data-ordo-initiales]'), 'initiales dans le rond');
+    assert.ok(visible(w, rond), 'le rond reste : il porte les initiales');
+    assert.strictEqual(w.getComputedStyle(rond).cursor, 'auto', 'pas de main sur un rond inerte');
+    for (const el of pieces(d)) assert.ok(el && !visible(w, el), el && el.getAttribute('data-ordo-photo'));
+    h.classList.add('ordo-photo-v2'); // posé par profile-photo.js
+    for (const el of pieces(d)) assert.ok(visible(w, el), el.getAttribute('data-ordo-photo'));
+    assert.strictEqual(w.getComputedStyle(rond).cursor, 'pointer', 'rond actif : la main du Designer');
   });
 
   for (const w of fenetres) w.close();

@@ -260,6 +260,70 @@
   var BTN_PRIMARY = 'button is-gradient w-button ordo-rpps-btn';
   var BTN_SMALL = 'button is-grey is-small w-button ordo-rpps-btn';
 
+  // Présentation d'origine : classes propres au script et leur feuille de style injectée.
+  var ORIGINE = {
+    'finder': 'ordo-rpps',
+    'finder-cta': 'ordo-rpps-cta',
+    'finder-note': 'ordo-rpps-muted',
+    'finder-lien': 'ordo-rpps-link',
+    'finder-panneau': 'ordo-rpps-panel',
+    'finder-titre': '',
+    'finder-ligne-haut': 'ordo-rpps-row',
+    'finder-champ': 'form-input w-input',
+    'finder-bouton': BTN_PRIMARY,
+    'finder-choix': BTN_SMALL,
+    'finder-confirmer': BTN_PRIMARY,
+    'finder-liste': 'ordo-rpps-list',
+    'finder-item': '',
+    'finder-libelle': '',
+    'finder-note-droite': 'ordo-rpps-note',
+    'finder-note-haut': 'ordo-rpps-muted ordo-rpps-scope',
+    'finder-note-pied': 'ordo-rpps-muted',
+    'finder-direct': 'ordo-rpps-direct',
+    'finder-carte': 'ordo-rpps-card',
+    'finder-alerte': 'ordo-rpps-warn',
+    'finder-erreur': 'ordo-rpps-error',
+    'finder-fait': 'ordo-rpps-done'
+  };
+  // Classe de base que Webflow pose sur ses champs et ses boutons : le gabarit (un bloc) ne l'a pas.
+  var BASE_WEBFLOW = { 'finder-champ': 'w-input', 'finder-bouton': 'w-button', 'finder-choix': 'w-button', 'finder-confirmer': 'w-button' };
+
+  /**
+   * Présentation dessinée dans le Designer : chaque morceau prend les classes de son gabarit dans le
+   * bloc « GABARITS · Recherche RPPS et SIREN » de Mon profil ([data-ordo-gabarit="finder-…"]).
+   * Changer le dessin d'un gabarit dans le Designer change celui de la recherche ; les textes restent
+   * écrits ici. Sans ce bloc (page pas encore republiée) : présentation d'origine. Bloc incomplet :
+   * présentation d'origine aussi, signalée.
+   */
+  function classesDuDesigner() {
+    var box = document.querySelector('[data-ordo-gabarits="profil"]');
+    if (!box || !box.querySelector('[data-ordo-gabarit="finder"]')) return null;
+    var out = {};
+    var manque = [];
+    Object.keys(ORIGINE).forEach(function(name) {
+      var g = box.querySelector('[data-ordo-gabarit="' + name + '"]');
+      var cls = g && typeof g.className === 'string' ? g.className.trim() : '';
+      if (!cls) {
+        manque.push(name);
+        return;
+      }
+      var base = BASE_WEBFLOW[name];
+      out[name] = base && !g.classList.contains(base) ? cls + ' ' + base : cls;
+    });
+    if (manque.length) {
+      console.warn(PREFIX, 'Gabarits incomplets, présentation d’origine :', manque.join(', '));
+      var reporter = window.OrdoErrorReporter;
+      if (reporter && typeof reporter.report === 'function') {
+        reporter.report('RppsFinder.designer', new Error('Gabarits incomplets : ' + manque.join(', ')));
+      }
+      return null;
+    }
+    return out;
+  }
+
+  var DESSIN = classesDuDesigner();
+  var C = DESSIN || ORIGINE;
+
   var CSS = [
     '.ordo-rpps{margin:8px 0 16px;font-size:15px;line-height:1.45;max-width:48rem;text-align:left}',
     '.ordo-rpps[hidden]{display:none}',
@@ -294,26 +358,41 @@
     document.head.appendChild(style);
   }
 
-  var root = el('div', 'ordo-rpps');
+  var root = el('div', C.finder);
+  root.setAttribute('data-ordo-finder', 'rpps');
+  if (DESSIN) root.setAttribute('data-ordo-dessin', 'designer');
   root.setAttribute('aria-live', 'polite');
 
-  function setMessage(container, message, kind) {
-    var old = container.querySelector(':scope > .ordo-rpps-error, :scope > .ordo-rpps-warn');
+  /** Montre ou cache le bloc. Sur le site, `[hidden]` ne l'emporte pas sur une classe qui fixe `display`. */
+  function showRoot(visible) {
+    root.hidden = !visible;
+    root.style.display = visible ? '' : 'none';
+  }
+
+  /** Message (alerte ou erreur) : un seul à la fois, marqué pour être retrouvé quelle que soit la présentation. */
+  function message(text, kind) {
+    var node = el('div', kind === 'warn' ? C['finder-alerte'] : C['finder-erreur'], text);
+    node.setAttribute('data-ordo-message', kind === 'warn' ? 'alerte' : 'erreur');
+    return node;
+  }
+
+  function setMessage(container, text, kind) {
+    var old = container.querySelector(':scope > [data-ordo-message]');
     if (old) old.parentNode.removeChild(old);
-    if (message) container.appendChild(el('div', kind === 'warn' ? 'ordo-rpps-warn' : 'ordo-rpps-error', message));
+    if (text) container.appendChild(message(text, kind));
   }
 
   // --- Replié -------------------------------------------------------------------------------------
 
   function renderCollapsed() {
     clear(root);
-    root.hidden = false;
-    var line = el('div', 'ordo-rpps-cta');
+    showRoot(true);
+    var line = el('div', C['finder-cta']);
     var hasNumber = !!normalizeRpps(fields()['n-rpps']);
-    line.appendChild(el('span', 'ordo-rpps-muted', hasNumber
+    line.appendChild(el('span', C['finder-note'], hasNumber
       ? 'Votre numéro RPPS n’est pas encore vérifié dans l’Annuaire santé.'
       : 'Retrouvez votre numéro RPPS dans l’Annuaire santé : il sera vérifié immédiatement.'));
-    var open = button('ordo-rpps-link', hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
+    var open = button(C['finder-lien'], hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
     open.addEventListener('click', function() {
       track('open');
       renderPanel();
@@ -329,54 +408,54 @@
 
   function renderPanel() {
     clear(root);
-    root.hidden = false;
-    var panel = el('div', 'ordo-rpps-panel');
-    panel.appendChild(el('strong', null, 'Vérifier mon numéro RPPS'));
-    panel.appendChild(el('span', 'ordo-rpps-muted', 'Recherchez votre fiche dans l’Annuaire santé, puis confirmez-la. Rien n’est enregistré sans votre confirmation.'));
+    showRoot(true);
+    var panel = el('div', C['finder-panneau']);
+    panel.appendChild(el('strong', C['finder-titre'], 'Vérifier mon numéro RPPS'));
+    panel.appendChild(el('span', C['finder-note'], 'Recherchez votre fiche dans l’Annuaire santé, puis confirmez-la. Rien n’est enregistré sans votre confirmation.'));
     root.appendChild(panel);
     renderSearch(panel);
-    var direct = el('div', 'ordo-rpps-direct');
+    var direct = el('div', C['finder-direct']);
     panel.appendChild(direct);
     renderNumber(direct);
-    var close = button('ordo-rpps-link', 'Fermer');
+    var close = button(C['finder-lien'], 'Fermer');
     close.addEventListener('click', function() {
       searchSeq++;
       track('close');
       renderCollapsed();
     });
-    var foot = el('div', 'ordo-rpps-muted');
-    foot.style.marginTop = '10px';
+    var foot = el('div', C['finder-note-pied']);
+    if (!DESSIN) foot.style.marginTop = '10px';
     foot.appendChild(close);
     panel.appendChild(foot);
   }
 
   function renderSearch(panel) {
-    var row = el('div', 'ordo-rpps-row');
-    var family = el('input', 'form-input w-input');
+    var row = el('div', C['finder-ligne-haut']);
+    var family = el('input', C['finder-champ']);
     family.type = 'text';
     family.placeholder = 'Nom';
     family.maxLength = 60;
     family.setAttribute('aria-label', 'Nom');
     family.value = text(fields().nom);
-    var given = el('input', 'form-input w-input');
+    var given = el('input', C['finder-champ']);
     given.type = 'text';
     given.placeholder = 'Prénom (facultatif)';
     given.maxLength = 60;
     given.setAttribute('aria-label', 'Prénom (facultatif)');
     given.value = text(fields().prnom).split(/\s+/)[0] || '';
-    var go = button(BTN_PRIMARY, 'Rechercher');
+    var go = button(C['finder-bouton'], 'Rechercher');
     row.appendChild(family);
     row.appendChild(given);
     row.appendChild(go);
     panel.appendChild(row);
     var results = el('div');
     panel.appendChild(results);
-    var scopeLine = el('div', 'ordo-rpps-muted ordo-rpps-scope');
+    var scopeLine = el('div', C['finder-note-haut']);
     panel.appendChild(scopeLine);
 
     function renderScopeLink() {
       clear(scopeLine);
-      var link = button('ordo-rpps-link', scope === 'medecin'
+      var link = button(C['finder-lien'], scope === 'medecin'
         ? 'Vous n’êtes pas médecin ? Chercher dans toutes les professions de santé'
         : 'Chercher parmi les médecins seulement');
       link.addEventListener('click', function() {
@@ -398,7 +477,7 @@
       }
       var seq = ++searchSeq;
       clear(results);
-      results.appendChild(el('div', 'ordo-rpps-muted', 'Recherche dans l’Annuaire santé…'));
+      results.appendChild(el('div', C['finder-note'], 'Recherche dans l’Annuaire santé…'));
       go.disabled = true;
       track('search');
       api({ action: 'search', family: f, given: g, scope: scope }).then(function(body) {
@@ -431,43 +510,43 @@
     clear(container);
     if (!list.length) {
       track('empty');
-      container.appendChild(el('div', 'ordo-rpps-muted', 'Aucune fiche à ce nom dans l’Annuaire santé. Vérifiez l’orthographe, ou saisissez votre numéro ci-dessous.'));
+      container.appendChild(el('div', C['finder-note'], 'Aucune fiche à ce nom dans l’Annuaire santé. Vérifiez l’orthographe, ou saisissez votre numéro ci-dessous.'));
       return;
     }
     track('results');
     if (list.some(function(c) { return c.name_match === 'n/a'; })) {
-      container.appendChild(el('div', 'ordo-rpps-warn', 'Renseignez votre nom dans « Informations personnelles » pour pouvoir confirmer votre fiche.'));
+      container.appendChild(message('Renseignez votre nom dans « Informations personnelles » pour pouvoir confirmer votre fiche.', 'warn'));
     }
-    var ul = el('ul', 'ordo-rpps-list');
+    var ul = el('ul', C['finder-liste']);
     list.forEach(function(c) {
-      var li = el('li');
-      li.appendChild(el('span', null, candidateLabel(c)));
+      var li = el('li', C['finder-item']);
+      li.appendChild(el('span', C['finder-libelle'], candidateLabel(c)));
       if (c.name_match === 'yes') {
-        var pick = button(BTN_SMALL, 'C’est moi');
+        var pick = button(C['finder-choix'], 'C’est moi');
         pick.addEventListener('click', function() { confirmCandidate(c, 'search', li); });
         li.appendChild(pick);
       } else if (c.name_match === 'no') {
-        li.appendChild(el('span', 'ordo-rpps-note', 'Nom différent de votre profil'));
+        li.appendChild(el('span', C['finder-note-droite'], 'Nom différent de votre profil'));
       }
       ul.appendChild(li);
     });
     container.appendChild(ul);
     if (total > list.length) {
-      container.appendChild(el('div', 'ordo-rpps-muted', total + ' fiches correspondent, seules les ' + list.length + ' premières sont affichées : précisez le prénom.'));
+      container.appendChild(el('div', C['finder-note'], total + ' fiches correspondent, seules les ' + list.length + ' premières sont affichées : précisez le prénom.'));
     }
   }
 
   function renderNumber(container) {
-    container.appendChild(el('div', 'ordo-rpps-muted', 'Ou saisissez directement votre numéro RPPS (11 chiffres) :'));
-    var row = el('div', 'ordo-rpps-row');
-    var num = el('input', 'form-input w-input');
+    container.appendChild(el('div', C['finder-note'], 'Ou saisissez directement votre numéro RPPS (11 chiffres) :'));
+    var row = el('div', C['finder-ligne-haut']);
+    var num = el('input', C['finder-champ']);
     num.type = 'text';
     num.inputMode = 'numeric';
     num.placeholder = 'N° RPPS (11 chiffres)';
     num.maxLength = 20;
     num.setAttribute('aria-label', 'Numéro RPPS');
     num.value = normalizeRpps(fields()['n-rpps']);
-    var check = button(BTN_PRIMARY, 'Vérifier');
+    var check = button(C['finder-bouton'], 'Vérifier');
     row.appendChild(num);
     row.appendChild(check);
     container.appendChild(row);
@@ -487,7 +566,7 @@
       if (!n) return;
       clear(out);
       setMessage(container, '');
-      out.appendChild(el('div', 'ordo-rpps-muted', 'Vérification dans l’Annuaire santé…'));
+      out.appendChild(el('div', C['finder-note'], 'Vérification dans l’Annuaire santé…'));
       check.disabled = true;
       track('lookup');
       api({ action: 'lookup', rpps: n }).then(function(body) {
@@ -497,18 +576,18 @@
           setMessage(container, messageFor({ status: 404, code: 'unknown_rpps' }));
           return;
         }
-        var card = el('div', 'ordo-rpps-card');
+        var card = el('div', C['finder-carte']);
         card.appendChild(el('div', null, candidateLabel(c)));
         if (c.name_match === 'yes') {
-          var ok = button(BTN_PRIMARY, 'Confirmer');
-          ok.style.marginTop = '10px';
+          var ok = button(C['finder-confirmer'], 'Confirmer');
+          if (!DESSIN) ok.style.marginTop = '10px';
           ok.addEventListener('click', function() { confirmCandidate(c, 'number', card); });
           card.appendChild(ok);
         } else if (c.name_match === 'n/a') {
-          card.appendChild(el('div', 'ordo-rpps-warn', messageFor({ code: 'name_missing', status: 409 })));
+          card.appendChild(message(messageFor({ code: 'name_missing', status: 409 }), 'warn'));
         } else {
           track('mismatch');
-          card.appendChild(el('div', 'ordo-rpps-warn', 'Ce numéro correspond à ' + displayName(c) + ' dans l’Annuaire santé, pas au nom de votre profil. S’il s’agit bien de vous (nom d’usage, par exemple), écrivez-nous à ' + CONTACT + '.'));
+          card.appendChild(message('Ce numéro correspond à ' + displayName(c) + ' dans l’Annuaire santé, pas au nom de votre profil. S’il s’agit bien de vous (nom d’usage, par exemple), écrivez-nous à ' + CONTACT + '.'));
         }
         out.appendChild(card);
       }).catch(function(err) {
@@ -564,8 +643,8 @@
 
   function renderDone(body) {
     clear(root);
-    root.hidden = false;
-    var box = el('div', 'ordo-rpps-done');
+    showRoot(true);
+    var box = el('div', C['finder-fait']);
     var who = [displayName(body), body.profession].filter(Boolean).join(', ');
     box.appendChild(el('div', null, 'Numéro RPPS vérifié dans l’Annuaire santé : ' + body.rpps + (who ? ' (' + who + ')' : '') + '.'));
     root.appendChild(box);
@@ -576,14 +655,14 @@
   function render() {
     if (isVerified()) {
       clear(root);
-      root.hidden = true;
+      showRoot(false);
       return;
     }
     renderCollapsed();
   }
 
   function init() {
-    injectStyles();
+    if (!DESSIN) injectStyles();
     var cell = input.closest('.form-field-wrapper') || input.parentNode;
     if (cell && cell.parentNode) cell.parentNode.insertBefore(root, cell.nextSibling);
     render();

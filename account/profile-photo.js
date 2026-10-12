@@ -8,6 +8,10 @@
  *             Memberstack DOM SDK ($memberstackDom.updateMemberProfileImage)
  * Expected DOM (Webflow): [data-ordo-v2="profil"] .compte-v2_identity avec
  *             [data-ordo-initiales] (rond d'initiales) et .compte-v2_identity-text.
+ *             Présentation dessinée dans le Designer : [data-ordo-photo] (rond « declencheur »
+ *             autour des initiales, « pastille », « changer », « retirer », « conseil », « statut »)
+ *             et, dans [data-ordo-gabarits="profil"], les gabarits « photo-image » et
+ *             « photo-chargement ». Sans eux : présentation d'origine, construite ici.
  */
 (function() {
   'use strict';
@@ -41,6 +45,12 @@
     console.log(PREFIX, 'No profile header on this page');
     return;
   }
+  // Marque posée dès la première exécution : une seconde, même avant DOMContentLoaded, ne fait rien.
+  if (profil.hasAttribute('data-ordo-photo-pret')) {
+    console.log(PREFIX, 'Already initialized');
+    return;
+  }
+  profil.setAttribute('data-ordo-photo-pret', '1');
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -261,14 +271,136 @@
     return node;
   }
 
-  var trigger = button('ordo-photo');
-  var img = el('img', 'ordo-photo-img');
-  img.alt = '';
-  img.hidden = true;
-  var badge = el('span', 'compte-v2_badge ordo-photo-badge');
-  badge.appendChild(cameraIcon());
-  var spin = spinner();
-  spin.setAttribute('hidden', '');
+  /**
+   * Montre ou cache. Sur le site, `[hidden]` ne l'emporte pas sur une classe qui fixe `display` :
+   * le style en ligne, si.
+   */
+  function afficher(node, visible) {
+    if (!node) return;
+    if (visible) node.removeAttribute('hidden');
+    else node.setAttribute('hidden', '');
+    node.style.display = visible ? '' : 'none';
+  }
+
+  // --- Présentation d'origine, construite ici (page sans les éléments du Designer) ----------------
+
+  function legacyUi() {
+    var trigger = button('ordo-photo');
+    var img = el('img', 'ordo-photo-img');
+    img.alt = '';
+    var badge = el('span', 'compte-v2_badge ordo-photo-badge');
+    badge.appendChild(cameraIcon());
+    var spin = spinner();
+    var actions = el('div', 'ordo-photo-actions');
+    var change = button('compte-v2_lien ordo-photo-link', 'Ajouter une photo');
+    var remove = button('compte-v2_lien ordo-photo-link ordo-photo-retirer', 'Retirer');
+    var hint = el('span', 'compte-v2_hint', 'Une photo de vous, cadrée sur le visage.');
+    actions.appendChild(change);
+    actions.appendChild(remove);
+    actions.appendChild(hint);
+    var status = el('div', 'ordo-photo-status');
+    status.setAttribute('aria-live', 'polite');
+    return {
+      trigger: trigger, img: img, spin: spin, change: change, remove: remove, hint: hint, status: status,
+      labels: { sans: 'Ajouter une photo', avec: 'Changer la photo' },
+      errorClass: 'is-error',
+      busy: function(on) { trigger.classList.toggle('is-busy', on); },
+      place: function() {
+        injectStyles();
+        avatar.parentNode.insertBefore(trigger, avatar);
+        trigger.appendChild(avatar);
+        trigger.appendChild(img);
+        trigger.appendChild(spin);
+        trigger.appendChild(badge);
+        textCol.appendChild(actions);
+        textCol.appendChild(status);
+      }
+    };
+  }
+
+  // --- Présentation dessinée dans le Designer ----------------------------------------------------
+  // En-tête de « Mon profil » : le rond [data-ordo-photo="declencheur"] autour des initiales, avec sa
+  // pastille ; les liens « changer » (texte avec photo : attribut data-ordo-texte-avec-photo) et
+  // « retirer » ; le conseil ; le message. Bloc « GABARITS · Photo » : l'image du membre et le cercle
+  // de chargement, recopiés ici. Le script n'y crée que les <button> (classes recopiées) et le champ
+  // fichier, caché. L'en-tête de la page cache ces éléments tant que <html> n'a pas « ordo-photo-v2 ».
+  // Combos d'état posées par le script : renommer l'une d'elles dans le Designer demande de la
+  // renommer ici.
+  var ETATS = { occupe: 'is-photo-occupe', avatar: 'is-photo-attenue', image: 'is-photo-attenuee', erreur: 'is-photo-erreur' };
+
+  function gabarit(name) {
+    var g = document.querySelector('[data-ordo-gabarits="profil"] [data-ordo-gabarit="' + name + '"]');
+    if (!g) return null;
+    var c = g.cloneNode(true);
+    c.removeAttribute('data-ordo-gabarit');
+    return c;
+  }
+
+  /** Un élément du Designer devient un vrai bouton : mêmes classes, même contenu, même rôle. */
+  function enBouton(node) {
+    var b = button(node.className);
+    b.setAttribute('data-ordo-photo', node.getAttribute('data-ordo-photo'));
+    while (node.firstChild) b.appendChild(node.firstChild);
+    node.parentNode.replaceChild(b, node);
+    return b;
+  }
+
+  function designerUi() {
+    var drawn = profil.querySelector('[data-ordo-photo="declencheur"]');
+    if (!drawn) return null;
+    function piece(role) { return profil.querySelector('[data-ordo-photo="' + role + '"]'); }
+    var change = piece('changer');
+    var remove = piece('retirer');
+    var status = piece('statut');
+    var img = gabarit('photo-image');
+    var spin = gabarit('photo-chargement');
+    var manque = [];
+    if (!drawn.contains(avatar)) manque.push('initiales hors du rond');
+    if (!change) manque.push('changer');
+    if (!remove) manque.push('retirer');
+    if (!status) manque.push('statut');
+    if (!img) manque.push('gabarit photo-image');
+    if (!spin) manque.push('gabarit photo-chargement');
+    if (manque.length) {
+      // Repli bruyant : la photo marche encore, mais le dessin du Designer n'est plus utilisé.
+      console.warn(PREFIX, 'Designer incomplet, présentation d’origine :', manque.join(', '));
+      report('ProfilePhoto.designer', new Error('Designer incomplet : ' + manque.join(', ')));
+      return null;
+    }
+    var sans = (change.textContent || '').trim() || 'Ajouter une photo';
+    var avec = change.getAttribute('data-ordo-texte-avec-photo') || 'Changer la photo';
+    ['src', 'srcset', 'sizes', 'loading'].forEach(function(a) { img.removeAttribute(a); });
+    img.alt = '';
+    img.classList.remove(ETATS.image);
+    img.setAttribute('data-ordo-photo', 'image');
+    spin.setAttribute('data-ordo-photo', 'chargement');
+    var trigger;
+    return {
+      img: img, spin: spin, hint: piece('conseil'), status: status,
+      labels: { sans: sans, avec: avec },
+      errorClass: ETATS.erreur,
+      busy: function(on) {
+        trigger.classList.toggle(ETATS.occupe, on);
+        avatar.classList.toggle(ETATS.avatar, on);
+        img.classList.toggle(ETATS.image, on);
+      },
+      place: function() {
+        trigger = this.trigger = enBouton(drawn);
+        this.change = enBouton(change);
+        this.remove = enBouton(remove);
+        trigger.insertBefore(img, avatar.nextSibling);
+        trigger.insertBefore(spin, img.nextSibling);
+        document.documentElement.classList.add('ordo-photo-v2');
+      }
+    };
+  }
+
+  var ui = designerUi() || legacyUi();
+  var trigger, change, remove;
+  var img = ui.img;
+  var spin = ui.spin;
+  var hint = ui.hint;
+  var status = ui.status;
 
   var input = el('input');
   input.type = 'file';
@@ -277,23 +409,12 @@
   input.tabIndex = -1;
   input.setAttribute('aria-hidden', 'true');
 
-  var actions = el('div', 'ordo-photo-actions');
-  var change = button('compte-v2_lien ordo-photo-link', 'Ajouter une photo');
-  var remove = button('compte-v2_lien ordo-photo-link ordo-photo-retirer', 'Retirer');
-  var hint = el('span', 'compte-v2_hint', 'Une photo de vous, cadrée sur le visage.');
-  actions.appendChild(change);
-  actions.appendChild(remove);
-  actions.appendChild(hint);
-
-  var status = el('div', 'ordo-photo-status');
-  status.setAttribute('aria-live', 'polite');
-
   var busy = false;
   var broken = '';
 
   function setStatus(message, isError) {
     status.textContent = message || '';
-    status.classList.toggle('is-error', !!isError);
+    status.classList.toggle(ui.errorClass, !!isError);
     if (isError) status.setAttribute('role', 'alert');
     else status.removeAttribute('role');
   }
@@ -303,9 +424,8 @@
     trigger.disabled = on;
     change.disabled = on;
     remove.disabled = on;
-    trigger.classList.toggle('is-busy', on);
-    if (on) spin.removeAttribute('hidden');
-    else spin.setAttribute('hidden', '');
+    ui.busy(on);
+    afficher(spin, on);
   }
 
   function render() {
@@ -313,14 +433,13 @@
     if (url && url === broken) url = '';
     if (url) {
       if (img.getAttribute('src') !== url) img.src = url;
-      img.hidden = false;
     } else {
-      img.hidden = true;
       img.removeAttribute('src');
     }
-    change.textContent = url ? 'Changer la photo' : 'Ajouter une photo';
-    remove.hidden = !url;
-    hint.hidden = !!url;
+    afficher(img, !!url);
+    change.textContent = url ? ui.labels.avec : ui.labels.sans;
+    afficher(remove, !!url);
+    afficher(hint, !url);
     trigger.setAttribute('aria-label', url ? 'Changer la photo de profil' : 'Ajouter une photo de profil');
   }
 
@@ -424,16 +543,14 @@
   // --- Init --------------------------------------------------------------------------------------
 
   function init() {
-    injectStyles();
-    avatar.parentNode.insertBefore(trigger, avatar);
-    trigger.appendChild(avatar);
-    trigger.appendChild(img);
-    trigger.appendChild(spin);
-    trigger.appendChild(badge);
+    ui.place();
+    trigger = ui.trigger;
+    change = ui.change;
+    remove = ui.remove;
     // Hors de tout formulaire : un champ fichier `required` ou non bloquerait l'envoi d'un formulaire Webflow.
-    textCol.appendChild(actions);
-    textCol.appendChild(status);
     textCol.appendChild(input);
+    afficher(spin, false);
+    setStatus('');
     trigger.addEventListener('click', choose);
     change.addEventListener('click', choose);
     remove.addEventListener('click', onRemove);
