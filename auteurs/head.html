@@ -1,0 +1,12 @@
+<!-- Formulaire des auteurs : code d'en-tête de la page du formulaire (Webflow, réglages de la page).
+     Copie de référence, testée par test/formulaire-auteur.js : modifier ici d'abord, puis coller dans Webflow.
+     1. noindex : la page n'a rien à faire dans les moteurs de recherche (désactiver aussi « Sitemap indexing »).
+     2. Les blocs marqués data-fa-cache (page complète, intitulé libre, message de remerciement…) restent
+        cachés jusqu'à ce que le script les montre ; dans le Designer, sans ce code, ils restent visibles.
+     3. Le lien personnel (#d=…) porte le nom et la biographie de l'auteur : il passe en sessionStorage et
+        quitte la barre d'adresse avant les outils de mesure. formulaire-auteur.js le relit là.
+     4. Préconnexion au serveur des fonctions. -->
+<meta name="robots" content="noindex, nofollow">
+<style>[data-fa-cache]{display:none!important}[data-fa-trop]{color:var(--error-700,#ba1b1b);font-weight:600}</style>
+<link rel="preconnect" href="https://webhooks.ordotype.fr" crossorigin>
+<script>(function(){try{var m=/[#&]d=([A-Za-z0-9_-]+)/.exec(location.hash);if(m){try{sessionStorage.setItem('ordo-auteur-brouillon',m[1]);}catch(e){}try{history.replaceState(history.state,'',location.pathname+location.search);}catch(e){}}}catch(e){}})();</script>
