@@ -19,9 +19,9 @@
  * member's identity, which the server reads from the session. Forms without the attribute keep the
  * original behaviour.
  *
- * A visitor without a session, or a member the server turns away because the offer is not on their
- * account (409), sees a message in the error element with a link to the subscriptions tab of their
- * account, instead of the generic error.
+ * A logged out visitor (nothing is sent), or a member the server turns away because the offer is not
+ * on their account (409), sees a message in the error element with a link to the subscriptions tab of
+ * their account, instead of the generic error.
  *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
@@ -40,13 +40,10 @@
   const IDENTITY_FIELDS = ['email', 'MSuserId', 'memberId', 'stripeCustomerId', 'stripeCustomerIdCancel', 'stripeCustomerIdPause'];
   // Logged out visitors land on the account login card, which brings them back to this tab.
   const ACCOUNT_URL = '/membership/compte#abonnements';
+  // Report name and link label of each notice; the wording is per form (FORMS[].notices).
   const NOTICES = {
     noSession: { name: 'CancelFormNoSession', link: 'Se connecter' },
-    planAbsent: {
-      name: 'CancelFormPlanAbsent',
-      text: 'Cette offre n\'est pas active sur votre compte\u00a0: rien n\'a été résilié. Vos abonnements et leur résiliation sont dans votre compte.',
-      link: 'Voir mes abonnements'
-    }
+    planAbsent: { name: 'CancelFormPlanAbsent', link: 'Voir mes abonnements' }
   };
 
   /**
@@ -96,7 +93,10 @@
       waitingId: 'waiting-message-redeem',
       successId: 'success-message-redeem',
       errorId: 'error-message-redeem',
-      noSessionText: 'Connectez-vous pour profiter de cette offre.'
+      notices: {
+        noSession: 'Connectez-vous pour profiter de cette offre.',
+        planAbsent: 'Cette offre n\'est pas disponible pour votre compte. Vos abonnements sont dans votre compte.'
+      }
     },
     cancel: {
       formId: 'cancel-form',
@@ -104,7 +104,10 @@
       waitingId: 'waiting-message-cancel',
       successId: 'success-message-cancel',
       errorId: 'error-message-cancel',
-      noSessionText: 'Connectez-vous pour résilier votre offre.'
+      notices: {
+        noSession: 'Connectez-vous pour résilier votre offre.',
+        planAbsent: 'Cette offre n\'est pas active sur votre compte : rien n\'a été résilié. Vos abonnements et leur résiliation sont dans votre compte.'
+      }
     }
   };
 
@@ -156,7 +159,9 @@
       error,
       // The page's own error content, put back after a notice replaced it.
       errorContent: error ? Array.prototype.map.call(error.childNodes, (n) => n.cloneNode(true)) : [],
-      noSessionText: config.noSessionText
+      noticeShown: false,
+      notices: config.notices,
+      busy: false
     };
 
     form.addEventListener('submit', (e) => handleSubmit(e, elements, name));
@@ -169,6 +174,9 @@
    */
   async function handleSubmit(event, elements, formName) {
     event.preventDefault();
+    // One request at a time: a second click while the first is in flight sends nothing.
+    if (elements.busy) return;
+    elements.busy = true;
 
     const { form, stripeInput, waiting, success, error } = elements;
 
@@ -207,28 +215,25 @@
         showElement(success);
         console.log(PREFIX, `${formName} form submitted successfully`);
 
-        // Redirect to homepage
+        // Redirect to homepage (the form stays locked until then)
         setTimeout(() => {
           window.location.href = '/';
         }, REDIRECT_DELAY);
-      } else if (action && (response.status === 401 || response.status === 409)) {
-        refuse(elements, formName, response.status === 401 ? 'noSession' : 'planAbsent', 'server returned ' + response.status);
+      } else if (action && response.status === 409) {
+        refuse(elements, formName, 'planAbsent', 'server returned 409');
       } else {
         const detail = response.body ? `: ${String(response.body).slice(0, 200)}` : '';
         throw new Error(`Server returned ${response.status}${detail}`);
       }
 
     } catch (err) {
-      if (err && err.notice) {
-        refuse(elements, formName, err.notice, err.message);
-        return;
-      }
       console.error(PREFIX, `Error in ${formName}:`, err);
       report(formName, 'CancelFormSubmitFailed', (err && err.message) || String(err));
       hideElement(waiting);
       showElement(form);
-      setError(elements, null);
+      if (elements.noticeShown) setError(elements, null);
       showElement(error);
+      elements.busy = false;
     }
   }
 
@@ -236,12 +241,12 @@
    * Nothing was done: say why in the error element, with a link to the account, and give the form back.
    */
   function refuse(elements, formName, kind, detail) {
-    const notice = NOTICES[kind];
-    report(formName, notice.name, detail);
+    report(formName, NOTICES[kind].name, detail);
     hideElement(elements.waiting);
     showElement(elements.form);
-    setError(elements, { text: notice.text || elements.noSessionText, link: notice.link });
+    setError(elements, { text: elements.notices[kind], link: NOTICES[kind].link });
     showElement(elements.error);
+    elements.busy = false;
   }
 
   /**
@@ -252,6 +257,7 @@
     if (!el) return;
     try {
       while (el.firstChild) el.removeChild(el.firstChild);
+      elements.noticeShown = !!notice;
       if (!notice) {
         elements.errorContent.forEach((n) => el.appendChild(n.cloneNode(true)));
         return;
@@ -294,11 +300,7 @@
    */
   async function submitToServer(form, action) {
     const token = await Promise.resolve(window.$memberstackDom.getMemberCookie()).catch(() => '');
-    if (!token) {
-      const err = new Error('No member session token');
-      err.notice = 'noSession';
-      throw err;
-    }
+    if (!token) throw new Error('No member session token');
 
     const fields = {};
     new FormData(form).forEach((value, name) => {
