@@ -6,6 +6,7 @@
  * - /membership/annulation-abonnement
  * - /membership/offre-annulation
  * - /membership/desabonnement-module-ordotype
+ * - /membership/annulation-offre-asso-interne
  *
  * Required DOM elements:
  * - Forms: #redeem-form (optional), #cancel-form (optional)
@@ -17,6 +18,10 @@
  * own action: the request carries the member's session token and the form's own fields, never the
  * member's identity, which the server reads from the session. Forms without the attribute keep the
  * original behaviour.
+ *
+ * A visitor without a session, or a member the server turns away because the offer is not on their
+ * account (409), sees a message in the error element with a link to the subscriptions tab of their
+ * account, instead of the generic error.
  *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
@@ -33,6 +38,16 @@
   const MEMBER_FORMS_URL = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
   // Identity fields stay in the page: the server reads the member from the session.
   const IDENTITY_FIELDS = ['email', 'MSuserId', 'memberId', 'stripeCustomerId', 'stripeCustomerIdCancel', 'stripeCustomerIdPause'];
+  // Logged out visitors land on the account login card, which brings them back to this tab.
+  const ACCOUNT_URL = '/membership/compte#abonnements';
+  const NOTICES = {
+    noSession: { name: 'CancelFormNoSession', link: 'Se connecter' },
+    planAbsent: {
+      name: 'CancelFormPlanAbsent',
+      text: 'Cette offre n\'est pas active sur votre compte\u00a0: rien n\'a été résilié. Vos abonnements et leur résiliation sont dans votre compte.',
+      link: 'Voir mes abonnements'
+    }
+  };
 
   /**
    * Pages that load this script through a page loader already have the reporter.
@@ -80,14 +95,16 @@
       stripeInputId: 'stripeCustomerId',
       waitingId: 'waiting-message-redeem',
       successId: 'success-message-redeem',
-      errorId: 'error-message-redeem'
+      errorId: 'error-message-redeem',
+      noSessionText: 'Connectez-vous pour profiter de cette offre.'
     },
     cancel: {
       formId: 'cancel-form',
       stripeInputId: 'stripeCustomerIdCancel',
       waitingId: 'waiting-message-cancel',
       successId: 'success-message-cancel',
-      errorId: 'error-message-cancel'
+      errorId: 'error-message-cancel',
+      noSessionText: 'Connectez-vous pour résilier votre offre.'
     }
   };
 
@@ -130,12 +147,16 @@
       return false;
     }
 
+    const error = document.getElementById(config.errorId);
     const elements = {
       form,
       stripeInput: document.getElementById(config.stripeInputId),
       waiting: document.getElementById(config.waitingId),
       success: document.getElementById(config.successId),
-      error: document.getElementById(config.errorId)
+      error,
+      // The page's own error content, put back after a notice replaced it.
+      errorContent: error ? Array.prototype.map.call(error.childNodes, (n) => n.cloneNode(true)) : [],
+      noSessionText: config.noSessionText
     };
 
     form.addEventListener('submit', (e) => handleSubmit(e, elements, name));
@@ -152,16 +173,22 @@
     const { form, stripeInput, waiting, success, error } = elements;
 
     try {
-      // Get current member and inject Stripe Customer ID
       const { data: member } = await window.$memberstackDom.getCurrentMember();
-
-      if (!member || !member.stripeCustomerId) {
-        throw new Error('Stripe Customer ID not found');
+      if (!member) {
+        refuse(elements, formName, 'noSession', 'no member session');
+        return;
       }
 
-      if (stripeInput) {
-        stripeInput.value = member.stripeCustomerId;
-        console.log(PREFIX, `Stripe ID set for ${formName}:`, member.stripeCustomerId);
+      // Only the legacy path posts the Stripe id; the endpoint reads the member from the session.
+      const action = form.getAttribute('data-ordo-action');
+      if (!action) {
+        if (!member.stripeCustomerId) {
+          throw new Error('Stripe Customer ID not found');
+        }
+        if (stripeInput) {
+          stripeInput.value = member.stripeCustomerId;
+          console.log(PREFIX, `Stripe ID set for ${formName}:`, member.stripeCustomerId);
+        }
       }
 
       // Show waiting state
@@ -170,7 +197,6 @@
       hideElement(error);
 
       // Submit the form
-      const action = form.getAttribute('data-ordo-action');
       const response = action ? await submitToServer(form, action) : await submitForm(form);
 
       // Hide waiting
@@ -185,17 +211,60 @@
         setTimeout(() => {
           window.location.href = '/';
         }, REDIRECT_DELAY);
+      } else if (action && (response.status === 401 || response.status === 409)) {
+        refuse(elements, formName, response.status === 401 ? 'noSession' : 'planAbsent', 'server returned ' + response.status);
       } else {
-        const detail = response.body ? ` — ${String(response.body).slice(0, 200)}` : '';
+        const detail = response.body ? `: ${String(response.body).slice(0, 200)}` : '';
         throw new Error(`Server returned ${response.status}${detail}`);
       }
 
     } catch (err) {
+      if (err && err.notice) {
+        refuse(elements, formName, err.notice, err.message);
+        return;
+      }
       console.error(PREFIX, `Error in ${formName}:`, err);
       report(formName, 'CancelFormSubmitFailed', (err && err.message) || String(err));
       hideElement(waiting);
       showElement(form);
+      setError(elements, null);
       showElement(error);
+    }
+  }
+
+  /**
+   * Nothing was done: say why in the error element, with a link to the account, and give the form back.
+   */
+  function refuse(elements, formName, kind, detail) {
+    const notice = NOTICES[kind];
+    report(formName, notice.name, detail);
+    hideElement(elements.waiting);
+    showElement(elements.form);
+    setError(elements, { text: notice.text || elements.noSessionText, link: notice.link });
+    showElement(elements.error);
+  }
+
+  /**
+   * Fills the error element with a notice, or puts the page's own content back when notice is null.
+   */
+  function setError(elements, notice) {
+    const el = elements.error;
+    if (!el) return;
+    try {
+      while (el.firstChild) el.removeChild(el.firstChild);
+      if (!notice) {
+        elements.errorContent.forEach((n) => el.appendChild(n.cloneNode(true)));
+        return;
+      }
+      const line = document.createElement('div');
+      line.appendChild(document.createTextNode(notice.text + ' '));
+      const link = document.createElement('a');
+      link.href = ACCOUNT_URL;
+      link.textContent = notice.link;
+      line.appendChild(link);
+      el.appendChild(line);
+    } catch (e) {
+      // the element keeps whatever it holds
     }
   }
 
@@ -225,7 +294,11 @@
    */
   async function submitToServer(form, action) {
     const token = await Promise.resolve(window.$memberstackDom.getMemberCookie()).catch(() => '');
-    if (!token) throw new Error('No member session token');
+    if (!token) {
+      const err = new Error('No member session token');
+      err.notice = 'noSession';
+      throw err;
+    }
 
     const fields = {};
     new FormData(form).forEach((value, name) => {

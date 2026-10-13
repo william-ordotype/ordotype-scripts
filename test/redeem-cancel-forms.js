@@ -11,7 +11,11 @@
  *     fields (the reason) and none of the identity fields (email, member id, customer id);
  *   - success only on 200 (confirmation, then home); any other status or no answer shows the error,
  *     gives the form back and is reported;
- *   - without a session token nothing is sent, the error shows and is reported;
+ *   - a form WITH data-ordo-action is sent even when the member has no Stripe customer id: the server
+ *     decides; a legacy form still needs it;
+ *   - without a member or a session token nothing is sent; a 401 or a 409 from the endpoint shows no
+ *     confirmation; each puts its own message, with a link to the account, in the error element and is
+ *     reported under its own name; a later failure puts the page's own error content back;
  *   - two forms on the same page each take their own path.
  *
  * Usage: node test/redeem-cancel-forms.js
@@ -47,18 +51,22 @@ function formHtml(kind, action, attr) {
     '<input type="submit" value="Envoyer"></form>' +
     '<div id="' + ids.w + '" style="display:none"></div>' +
     '<div id="' + ids.s + '" style="display:none"></div>' +
-    '<div id="' + ids.e + '" style="display:none"></div>';
+    '<div id="' + ids.e + '" style="display:none"><div>Oops! <a href="mailto:support@example.fr">support</a></div></div>';
 }
 
 // cancelAttr / redeemAttr: data-ordo-action value or null; answers: for fetch, { status } or
 // { transport }; xhrStatus: what the legacy endpoint answers.
-async function page({ cancelAttr = 'cancel-mg', redeem = false, redeemAttr = null, answers = [], token = 'jeton-de-test', xhrStatus = 200 } = {}) {
+const MEMBER = { id: 'mem_test', stripeCustomerId: 'cus_test' };
+const ORIGINAL_ERROR = '<div>Oops! <a href="mailto:support@example.fr">support</a></div>';
+const ACCOUNT = '/membership/compte#abonnements';
+
+async function page({ cancelAttr = 'cancel-mg', redeem = false, redeemAttr = null, answers = [], token = 'jeton-de-test', xhrStatus = 200, member = MEMBER } = {}) {
   const html = '<!doctype html><html><body>' + formHtml('cancel', CANCEL_ACTION, cancelAttr) +
     (redeem ? formHtml('redeem', REDEEM_ACTION, redeemAttr) : '') + '</body></html>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://www.ordotype.fr/membership/offre-annulation', virtualConsole: new VirtualConsole() });
   const w = dom.window;
   w.$memberstackDom = {
-    getCurrentMember: () => Promise.resolve({ data: { id: 'mem_test', stripeCustomerId: 'cus_test' } }),
+    getCurrentMember: () => Promise.resolve({ data: member }),
     getMemberCookie: () => Promise.resolve(token),
   };
   const fetches = [];
@@ -93,7 +101,8 @@ async function page({ cancelAttr = 'cancel-mg', redeem = false, redeemAttr = nul
   const d = w.document;
   const shown = (id) => d.getElementById(id).style.display === 'block';
   const submit = (id) => d.getElementById(id).dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
-  return { w, d, fetches, xhrs, navigations, reports, shown, submit };
+  const errorHtml = (id) => d.getElementById(id).innerHTML;
+  return { w, d, fetches, xhrs, navigations, reports, shown, submit, errorHtml };
 }
 
 async function check(name, fn) {
@@ -159,7 +168,7 @@ async function check(name, fn) {
     assert.deepStrictEqual(p.navigations, ['/']);
   });
 
-  for (const status of [202, 400, 401, 422, 502, 503]) {
+  for (const status of [202, 400, 403, 422, 502, 503]) {
     await check(`with data-ordo-action: HTTP ${status} shows the error, gives the form back, is reported`, async () => {
       const p = await page({ answers: [{ status }] });
       p.submit('cancel-form');
@@ -183,14 +192,113 @@ async function check(name, fn) {
     assert.match(p.reports[0].err.message, /Network error/);
   });
 
-  await check('with data-ordo-action: no session token, nothing is sent, error shown and reported', async () => {
+  // A notice: nothing sent or nothing done, the form is back, the message and the account link replace
+  // the page's own error content, no confirmation and no navigation.
+  async function assertNotice(p, errorId, formId, text, name) {
+    assert.ok(p.shown(errorId), 'error element shown');
+    assert.ok(!p.shown(errorId.replace('error', 'success')), 'no confirmation');
+    assert.strictEqual(p.d.getElementById(formId).style.display, 'block', 'form given back');
+    const el = p.d.getElementById(errorId);
+    assert.ok(el.textContent.indexOf(text) !== -1, 'message: ' + el.textContent);
+    const links = el.querySelectorAll('a');
+    assert.strictEqual(links.length, 1);
+    assert.strictEqual(links[0].getAttribute('href'), ACCOUNT);
+    assert.ok(!/mailto/.test(el.innerHTML), 'the page content is replaced');
+    assert.strictEqual(p.reports.length, 1);
+    assert.strictEqual(p.reports[0].err.name, name);
+    await wait(3100);
+    assert.strictEqual(p.navigations.length, 0);
+  }
+
+  await check('with data-ordo-action: no session token, nothing is sent, the sign-in notice shows', async () => {
     const p = await page({ token: '' });
     p.submit('cancel-form');
     await wait(60);
     assert.strictEqual(p.fetches.length + p.xhrs.length, 0);
-    assert.ok(p.shown('error-message-cancel'));
-    assert.strictEqual(p.reports.length, 1);
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', 'Connectez-vous pour résilier votre offre.', 'CancelFormNoSession');
     assert.match(p.reports[0].err.message, /session token/);
+  });
+
+  await check('no member (logged out), marked form: nothing is sent, the sign-in notice shows', async () => {
+    const p = await page({ cancelAttr: 'cancel-free-asso', member: null });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(p.fetches.length + p.xhrs.length, 0);
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', 'Connectez-vous pour résilier votre offre.', 'CancelFormNoSession');
+  });
+
+  await check('no member (logged out), legacy form: nothing is sent, the sign-in notice shows', async () => {
+    const p = await page({ cancelAttr: null, member: null });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(p.fetches.length + p.xhrs.length, 0);
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', 'Connectez-vous pour résilier votre offre.', 'CancelFormNoSession');
+  });
+
+  await check('no member, redeem form: its own sign-in wording', async () => {
+    const p = await page({ cancelAttr: null, redeem: true, redeemAttr: 'redeem-mg', member: null });
+    p.submit('redeem-form');
+    await wait(60);
+    assert.strictEqual(p.fetches.length + p.xhrs.length, 0);
+    await assertNotice(p, 'error-message-redeem', 'redeem-form', 'Connectez-vous pour profiter de cette offre.', 'CancelFormNoSession');
+  });
+
+  await check('with data-ordo-action: HTTP 401 shows the sign-in notice', async () => {
+    const p = await page({ answers: [{ status: 401 }] });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', 'Connectez-vous pour résilier votre offre.', 'CancelFormNoSession');
+  });
+
+  await check('with data-ordo-action: HTTP 409 shows the offer-not-active notice, never the confirmation', async () => {
+    const p = await page({ cancelAttr: 'cancel-free-asso', answers: [{ status: 409 }] });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', "Cette offre n'est pas active sur votre compte\u00a0: rien n'a été résilié.", 'CancelFormPlanAbsent');
+  });
+
+  await check('legacy form: HTTP 409 stays a plain error (only the endpoint speaks that code)', async () => {
+    const p = await page({ cancelAttr: null, xhrStatus: 409 });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.ok(p.shown('error-message-cancel'));
+    assert.strictEqual(p.errorHtml('error-message-cancel'), ORIGINAL_ERROR);
+    assert.strictEqual(p.reports[0].err.name, 'CancelFormSubmitFailed');
+  });
+
+  await check('after a notice, a later failure puts the page error content back', async () => {
+    const p = await page({ answers: [{ status: 409 }, { status: 502 }] });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.ok(/Voir mes abonnements/.test(p.errorHtml('error-message-cancel')));
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(p.errorHtml('error-message-cancel'), ORIGINAL_ERROR);
+    assert.strictEqual(p.reports.length, 2);
+    assert.strictEqual(p.reports[1].err.name, 'CancelFormSubmitFailed');
+  });
+
+  await check('with data-ordo-action: a member without a Stripe customer id is still sent (the server decides)', async () => {
+    const p = await page({ cancelAttr: 'cancel-free-asso', member: { id: 'mem_test' } });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
+    assert.strictEqual(JSON.parse(p.fetches[0].body).action, 'cancel-free-asso');
+    assert.ok(p.shown('success-message-cancel'));
+    assert.strictEqual(p.reports.length, 0);
+  });
+
+  await check('legacy form: a member without a Stripe customer id is not sent, plain error', async () => {
+    const p = await page({ cancelAttr: null, member: { id: 'mem_test' } });
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(p.fetches.length + p.xhrs.length, 0);
+    assert.ok(p.shown('error-message-cancel'));
+    assert.strictEqual(p.errorHtml('error-message-cancel'), ORIGINAL_ERROR);
+    assert.strictEqual(p.reports[0].err.name, 'CancelFormSubmitFailed');
+    assert.match(p.reports[0].err.message, /Stripe Customer ID not found/);
   });
 
   await check('two forms on one page: the marked one goes to the endpoint, the other keeps its action', async () => {
