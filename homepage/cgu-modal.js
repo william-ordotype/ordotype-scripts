@@ -7,8 +7,11 @@
  * Is anyone stuck behind it?
  *   GA4 (consented visitors): cgu_modal_view, cgu_modal_accept, and
  *   cgu_modal_leave = page left after 3 s+ with the modal still open.
+ *   cgu_modal_masquee = modal not rendered in front of the page;
+ *   cgu_modal_contournee = page clicked through the open modal.
  *   Sentry + Discord (everyone): button missing, or entirely covered 3 s
- *   after the modal opened.
+ *   after the modal opened while the modal is in front. A modal that is
+ *   not in front is reported apart, once a day per browser.
  */
 (function() {
   'use strict';
@@ -66,29 +69,48 @@
       return storageGet('_ms-mem') !== null;
     }
 
-    // On load: check localStorage, fallback to member.json['cgu-accepted-date']
+    // Once a day per browser (every time when storage is unusable).
+    function firstToday(key) {
+      var today = new Date(Date.now()).toISOString().slice(0, 10);
+      if (storageGet(key) === today) return false;
+      storageSet(key, today);
+      return true;
+    }
+
+    function isRecent(date) {
+      return !!date && new Date(date) >= cutoffDate;
+    }
+
+    var memberJson = null; // member's Memberstack JSON, once read
+
+    // On load: this browser's date, else the member's Memberstack JSON.
+    // No ES2020 syntax (?. / ??) in this file: it must parse on old
+    // hospital browsers (Chrome 78, Sentry ORDOTYPE-FRONTEND-1FB)
     function checkCGUAcceptedDate() {
-      var acceptedDate = storageGet('cgu-accepted-date');
-
-      if (!acceptedDate) {
-        var memString = storageGet('_ms-mem');
-        if (memString) {
-          try {
-            var member = JSON.parse(memString);
-            // No ES2020 syntax (?. / ??) in this file: it must parse on old
-            // hospital browsers (Chrome 78, Sentry ORDOTYPE-FRONTEND-1FB)
-            acceptedDate = (member.json && member.json['cgu-accepted-date']) || null;
-          } catch (e) {
-            console.warn("[CGUModal] Could not parse _ms-mem JSON:", e);
-          }
-        }
-      }
-
-      if (!acceptedDate || new Date(acceptedDate) < cutoffDate) {
-        showModal();
-      } else {
+      if (isRecent(storageGet('cgu-accepted-date'))) {
         hideModal();
+        return;
       }
+      // The cached member (_ms-mem) has no json field: ask the API.
+      if (!isUserConnected() || !memberstack || typeof memberstack.getMemberJSON !== 'function') {
+        showModal();
+        return;
+      }
+      memberstack.getMemberJSON().then(function(res) {
+        memberJson = res && res.data && typeof res.data === 'object' ? res.data : {};
+        var remote = memberJson['cgu-accepted-date'];
+        if (isRecent(remote)) {
+          storageSet('cgu-accepted-date', remote);
+          hideModal();
+        } else {
+          showModal();
+        }
+      }, function(err) {
+        if (firstToday('cgu-modal-json-signale')) {
+          report('JSON Memberstack illisible, fenêtre affichée par défaut : ' + ((err && err.message) || err));
+        }
+        showModal();
+      });
     }
 
     // The modal covers the whole page: shown without its "J'ai compris"
@@ -101,19 +123,74 @@
 
     var openedAt = 0;      // 0 = modal not open
     var leftForCgu = false;
+    var bypassed = false;  // page clicked through the modal
+    var masked = false;    // modal found not in front of the page
 
     function describe(el) {
       var name = el.tagName.toLowerCase();
       if (el.id) name += '#' + el.id;
       if (typeof el.className === 'string' && el.className) name += '.' + el.className.split(/\s+/).join('.');
-      return name;
+      return name.slice(0, 80);
     }
 
-    // Blocked = no point of the button can be clicked. Off screen is fine:
-    // the modal scrolls. Partly covered is fine: the rest still works.
+    function inModal(el) {
+      for (var i = 0; i < modalEls.length; i++) {
+        if (modalEls[i].contains(el)) return true;
+      }
+      return false;
+    }
+
+    // What the four corners of the screen hit: the modal's backdrop when
+    // it is rendered in front.
+    function probeCorners() {
+      var de = document.documentElement;
+      var w = Math.min(de.clientWidth || window.innerWidth, window.innerWidth || de.clientWidth);
+      var h = Math.min(de.clientHeight || window.innerHeight, window.innerHeight || de.clientHeight);
+      return [[4, 4], [w - 4, 4], [4, h - 4], [w - 4, h - 4]].map(function(p) {
+        return document.elementFromPoint(p[0], p[1]);
+      });
+    }
+
+    function inFront(corners) {
+      return corners.some(function(hit) { return !!hit && inModal(hit); });
+    }
+
+    function details(corners) {
+      var vv = window.visualViewport;
+      var modal = (acceptBtn && acceptBtn.closest && acceptBtn.closest('[ms-code-element-temporary]')) || modalEls[0];
+      var cs = window.getComputedStyle(modal);
+      return 'écran ' + window.innerWidth + 'x' + window.innerHeight
+        + ', défilement ' + Math.round(window.pageYOffset || 0)
+        + ', zone visible ' + (vv ? Math.round(vv.width) + 'x' + Math.round(vv.height)
+          + ' décalage ' + Math.round(vv.offsetTop) + ' zoom ' + Math.round(vv.scale * 100) / 100 : 'inconnue')
+        + ', coins ' + corners.map(function(hit) { return hit ? describe(hit) : 'rien'; }).join(' / ')
+        + ', fenêtre visibility:' + cs.visibility + ' opacity:' + cs.opacity
+        + ' pointer-events:' + cs.pointerEvents + ' display:' + cs.display;
+    }
+
+    // Not in front of the page (hidden by the browser or an extension):
+    // the page stays usable, nobody is stuck.
+    function reportMasked(corners) {
+      if (masked) return;
+      masked = true;
+      track('cgu_modal_masquee');
+      if (firstToday('cgu-modal-masquee-signalee')) {
+        report('fenêtre CGU pas au premier plan, page utilisable (' + details(corners) + ')');
+      }
+    }
+
+    // Blocked = modal in front and no point of the button can be clicked.
+    // Off screen is fine: the modal scrolls. Partly covered is fine: the
+    // rest still works.
     function checkReachable() {
       try {
         if (!openedAt || !document.elementFromPoint) return;
+        var corners = probeCorners();
+        if (!inFront(corners)) {
+          reportMasked(corners);
+          return;
+        }
+        if (bypassed) return;
         var r = acceptBtn.getBoundingClientRect();
         if (!r.width || r.top < 0 || r.bottom > window.innerHeight) return;
         var y = r.top + r.height / 2;
@@ -124,11 +201,25 @@
           if (!hit || acceptBtn.contains(hit)) return;
           cover = hit;
         }
-        report('bouton « J’ai compris » entièrement recouvert par ' + describe(cover));
+        report('bouton « J’ai compris » entièrement recouvert par ' + describe(cover) + ' (' + details(corners) + ')');
       } catch (e) {
         console.error('[CGUModal] reachability check failed:', e);
       }
     }
+
+    // A real click outside the modal while it is not in front.
+    document.addEventListener('click', function(e) {
+      try {
+        if (!openedAt || bypassed || !e.isTrusted || !document.elementFromPoint) return;
+        var t = e.target;
+        if (!t || t === document.documentElement || inModal(t)) return;
+        if (inFront(probeCorners())) return;
+        bypassed = true;
+        track('cgu_modal_contournee');
+      } catch (err) {
+        console.error('[CGUModal] click check failed:', err);
+      }
+    }, true);
 
     function showModal() {
       if (!modalEls.length) return;
@@ -153,9 +244,10 @@
       });
     });
 
-    // Under 3 s it is a redirect or a bounce, not someone stuck.
+    // Under 3 s it is a redirect or a bounce, not someone stuck. Nor is
+    // someone the modal never stopped.
     window.addEventListener('pagehide', function() {
-      if (openedAt && !leftForCgu && Date.now() - openedAt >= 3000) {
+      if (openedAt && !leftForCgu && !bypassed && !masked && Date.now() - openedAt >= 3000) {
         openedAt = 0;
         track('cgu_modal_leave');
       }
@@ -172,9 +264,14 @@
 
         // Only update Memberstack if user is connected
         if (isUserConnected() && memberstack) {
-          memberstack.updateMemberJSON({
-            json: { 'cgu-accepted-date': nowISO }
-          })
+          // updateMemberJSON replaces the whole JSON: keep its other keys.
+          var json = {};
+          var known = memberJson || {};
+          for (var key in known) {
+            if (Object.prototype.hasOwnProperty.call(known, key)) json[key] = known[key];
+          }
+          json['cgu-accepted-date'] = nowISO;
+          memberstack.updateMemberJSON({ json: json })
           .then(function() {
             console.log("[CGUModal] Member JSON updated successfully");
           })
