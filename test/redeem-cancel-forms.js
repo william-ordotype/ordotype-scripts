@@ -17,7 +17,10 @@
  *     form's own message, with a link to the account, in the error element and is reported under its own
  *     name; a later failure puts the page's own error content back, an ordinary failure leaves it alone;
  *   - a 401 or a missing session token stays the ordinary error (a stale session cannot sign in again);
- *   - a 409 `abonnement_impaye` points to support (mailto link), reported as CancelFormUnpaid;
+ *   - the 409 wording follows the error code: `abonnement_absent` → no active subscription found
+ *     (CancelFormSubscriptionAbsent), `abonnement_impaye` → support (mailto link, CancelFormUnpaid), any
+ *     other or unreadable body → the offer is not active (CancelFormPlanAbsent); a form without wording
+ *     for a notice uses its planAbsent text;
  *   - a second submit while the first is in flight sends nothing;
  *   - two forms on the same page each take their own path.
  *
@@ -260,7 +263,7 @@ async function check(name, fn) {
     p.submit('cancel-form');
     await wait(60);
     assert.strictEqual(p.fetches.length, 1);
-    await assertNotice(p, 'error-message-cancel', 'cancel-form', "Aucune offre active à résilier n'a été trouvée sur votre compte.", 'CancelFormPlanAbsent');
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', "Cette offre n'est pas active sur votre compte\u00a0: rien n'a été résilié.", 'CancelFormPlanAbsent');
   });
 
   await check('with data-ordo-action: HTTP 409 abonnement_impaye points to support, never the confirmation', async () => {
@@ -279,8 +282,26 @@ async function check(name, fn) {
     assert.strictEqual(p.d.getElementById('cancel-form').style.display, 'block');
   });
 
+  await check('with data-ordo-action: HTTP 409 abonnement_absent says no active subscription was found', async () => {
+    const p = await page({ cancelAttr: 'cancel-module-rhumato', answers: [{ status: 409, body: '{"error":"abonnement_absent"}' }] });
+    p.submit('cancel-form');
+    await wait(60);
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', "Aucun abonnement actif à cette offre n'a été trouvé sur votre compte.", 'CancelFormSubscriptionAbsent');
+  });
+
+  await check('redeem form: HTTP 409 abonnement_absent or abonnement_impaye falls back to its own wording', async () => {
+    for (const code of ['abonnement_absent', 'abonnement_impaye']) {
+      const p = await page({ cancelAttr: null, redeem: true, redeemAttr: 'redeem-storage', answers: [{ status: 409, body: JSON.stringify({ error: code }) }] });
+      p.submit('redeem-form');
+      await wait(60);
+      const t = p.d.getElementById('error-message-redeem').textContent;
+      assert.ok(t.indexOf("Cette offre n'est pas disponible pour votre compte.") !== -1, t);
+      assert.ok(!/undefined/.test(t), t);
+    }
+  });
+
   await check('with data-ordo-action: HTTP 409 with an unreadable or other body is the offer-not-active notice', async () => {
-    for (const body of ['not json', '{"error":"abonnement_absent"}', '{"error":"plan_absent"}', '']) {
+    for (const body of ['not json', '{"error":"plan_absent"}', '{"error":"autre"}', '']) {
       const p = await page({ answers: [{ status: 409, body }] });
       p.submit('cancel-form');
       await wait(60);

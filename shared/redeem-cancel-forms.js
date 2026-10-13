@@ -21,7 +21,8 @@
  *
  * A logged out visitor (nothing is sent), or a member the server turns away because the offer is not
  * on their account (409), sees a message in the error element with a link to the subscriptions tab of
- * their account, instead of the generic error; a 409 `abonnement_impaye` points to support instead.
+ * their account, instead of the generic error; the wording follows the 409 error code, and
+ * `abonnement_impaye` points to support instead.
  *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
@@ -44,8 +45,11 @@
   const NOTICES = {
     noSession: { name: 'CancelFormNoSession', link: 'Se connecter' },
     planAbsent: { name: 'CancelFormPlanAbsent', link: 'Voir mes abonnements' },
+    subscriptionAbsent: { name: 'CancelFormSubscriptionAbsent', link: 'Voir mes abonnements' },
     unpaid: { name: 'CancelFormUnpaid', link: 'support@ordotype.fr', href: 'mailto:support@ordotype.fr' }
   };
+  // 409 error code from the endpoint → notice; any other 409 is planAbsent.
+  const NOTICE_OF_409 = { abonnement_absent: 'subscriptionAbsent', abonnement_impaye: 'unpaid' };
 
   /**
    * Pages that load this script through a page loader already have the reporter.
@@ -96,8 +100,7 @@
       errorId: 'error-message-redeem',
       notices: {
         noSession: 'Connectez-vous pour profiter de cette offre.',
-        planAbsent: 'Cette offre n\'est pas disponible pour votre compte. Vos abonnements sont dans votre compte.',
-        unpaid: 'Un paiement est en attente sur cet abonnement. Écrivez-nous\u00a0:'
+        planAbsent: 'Cette offre n\'est pas disponible pour votre compte. Vos abonnements sont dans votre compte.'
       }
     },
     cancel: {
@@ -108,7 +111,8 @@
       errorId: 'error-message-cancel',
       notices: {
         noSession: 'Connectez-vous pour résilier votre offre.',
-        planAbsent: 'Aucune offre active à résilier n\'a été trouvée sur votre compte. Vos abonnements et leur résiliation sont dans votre compte.',
+        planAbsent: 'Cette offre n\'est pas active sur votre compte\u00a0: rien n\'a été résilié. Vos abonnements et leur résiliation sont dans votre compte.',
+        subscriptionAbsent: 'Aucun abonnement actif à cette offre n\'a été trouvé sur votre compte. Vos abonnements et leur résiliation sont dans votre compte.',
         unpaid: 'Un paiement est en attente sur cet abonnement\u00a0: il ne peut pas être résilié en ligne. Écrivez-nous\u00a0:'
       }
     }
@@ -223,8 +227,7 @@
           window.location.href = '/';
         }, REDIRECT_DELAY);
       } else if (action && response.status === 409) {
-        const unpaid = serverError(response.body) === 'abonnement_impaye';
-        refuse(elements, formName, unpaid ? 'unpaid' : 'planAbsent', 'server returned 409');
+        refuse(elements, formName, NOTICE_OF_409[serverError(response.body)] || 'planAbsent', 'server returned 409');
       } else {
         const detail = response.body ? `: ${String(response.body).slice(0, 200)}` : '';
         throw new Error(`Server returned ${response.status}${detail}`);
@@ -248,7 +251,9 @@
     report(formName, NOTICES[kind].name, detail);
     hideElement(elements.waiting);
     showElement(elements.form);
-    setError(elements, { text: elements.notices[kind], link: NOTICES[kind].link, href: NOTICES[kind].href });
+    // A form without wording for this notice falls back to its planAbsent text.
+    const text = elements.notices[kind] || elements.notices.planAbsent;
+    setError(elements, { text: text, link: NOTICES[kind].link, href: NOTICES[kind].href });
     showElement(elements.error);
     elements.busy = false;
   }

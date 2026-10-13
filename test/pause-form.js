@@ -12,10 +12,11 @@
  *   - success only on 200 (confirmation, then the pause page); any other status or no answer shows
  *     the error, gives the form back and is reported as `PauseFormSubmitFailed`;
  *   - without a session token nothing is sent, the error shows and is reported;
- *   - a logged out visitor (getCurrentMember gives no member) sends nothing from a marked form: the error
- *     element shows the sign-in message with a link to the account tab, reported as PauseFormNoSession;
- *     a later ordinary failure puts the page's own error content back; when the member cannot be read,
- *     the request goes as before;
+ *   - a logged out visitor (getCurrentMember gives { data: null }) sends nothing from a marked form: the
+ *     error element shows the sign-in message, whose link goes to the login page with this page stored
+ *     in localStorage.locat for the way back, reported as PauseFormNoSession; a later ordinary failure
+ *     puts the page's own error content back; a legacy form is unchanged; when the member cannot be read
+ *     (no SDK, error, odd answer, no answer within the timeout) the request goes as before;
  *   - a second submit while the first is pending sends nothing more; a retry after a failure does.
  *
  * Usage: node test/pause-form.js
@@ -29,6 +30,8 @@ const REAL = fs.readFileSync(path.resolve(__dirname, '..', 'offre-annulation/pau
 const SCRIPT = REAL.split("window.location.href = '/membership/abonnement-en-pause';").join("window.__navigate('/membership/abonnement-en-pause');");
 assert.notStrictEqual(SCRIPT, REAL, 'navigation line not found: the test could not observe it');
 const SHORT_TIMEOUT = SCRIPT.split('var REQUEST_TIMEOUT = 10000;').join('var REQUEST_TIMEOUT = 30;');
+const SHORT_MEMBER_CHECK = SCRIPT.split('var MEMBER_CHECK_TIMEOUT = 3000;').join('var MEMBER_CHECK_TIMEOUT = 40;');
+assert.notStrictEqual(SHORT_MEMBER_CHECK, SCRIPT, 'member check timeout constant not found');
 assert.notStrictEqual(SHORT_TIMEOUT, SCRIPT, 'timeout constant not found');
 
 const ENDPOINT = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
@@ -62,17 +65,23 @@ const MEMBER = {
 
 // attr: data-ordo-action value or null; answers: for fetch, { status, body } or { transport } or
 // { hang } (only the abort ends it), optional delay; xhrStatus: what the legacy endpoint answers.
-// current: what $memberstackDom.getCurrentMember() gives (undefined = no such method, 'throw' = it fails);
-// a function is called at each submit, so a test can log the visitor in between two submits.
-function page({ attr = 'pause', action = ENDPOINT, names = NAMES, member = MEMBER, answers = [], token = 'jeton-de-test', memberstack = true, xhrStatus = 200, script = SCRIPT, current } = {}) {
+// current: the member $memberstackDom.getCurrentMember() gives (null = logged out; 'none' = no such method,
+// 'throw' = it fails, 'hang' = no answer, 'odd' = an answer without `data`); a function is called at each
+// submit, so a test can log the visitor in between two submits. Default: a logged in member, as in production.
+function page({ attr = 'pause', action = ENDPOINT, names = NAMES, member = MEMBER, answers = [], token = 'jeton-de-test', memberstack = true, xhrStatus = 200, script = SCRIPT, current = { id: 'mem_test' } } = {}) {
   const html = '<!doctype html><html><body>' + formHtml(attr ? action : LEGACY_ACTION, attr, names) + '</body></html>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: PAGE_URL, virtualConsole: new VirtualConsole() });
   const w = dom.window;
   if (memberstack) w.$memberstackDom = { getMemberCookie: () => Promise.resolve(token) };
-  if (memberstack && current !== undefined) {
-    w.$memberstackDom.getCurrentMember = () => {
+  const memberCalls = [];
+  if (memberstack && current !== 'none') {
+    w.$memberstackDom.getCurrentMember = (opts) => {
+      memberCalls.push(opts);
       const c = typeof current === 'function' ? current() : current;
-      return c === 'throw' ? Promise.reject(new Error('ms down')) : Promise.resolve({ data: c });
+      if (c === 'throw') return Promise.reject(new Error('ms down'));
+      if (c === 'hang') return new Promise(() => {});
+      if (c === 'odd') return Promise.resolve(undefined);
+      return Promise.resolve({ data: c });
     };
   }
   if (member) w.OrdoMemberstack = member;
@@ -114,7 +123,7 @@ function page({ attr = 'pause', action = ENDPOINT, names = NAMES, member = MEMBE
   const d = w.document;
   const shown = (id) => d.getElementById(id).style.display === 'block';
   const submit = () => d.getElementById('pause-form').dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
-  return { w, d, fetches, xhrs, navigations, reports, shown, submit };
+  return { w, d, fetches, xhrs, navigations, reports, shown, submit, memberCalls };
 }
 
 async function check(name, fn) {
@@ -299,7 +308,7 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
     assert.deepStrictEqual(JSON.parse(p.fetches[0].body), { action: 'pause', fields: REASON });
   });
 
-  const ACCOUNT = '/membership/compte#abonnements';
+  const LOGIN = '/membership/login-ms';
   const assertSignIn = (p) => {
     const el = p.d.getElementById('error-message-pause');
     assert.ok(p.shown('error-message-pause'));
@@ -309,7 +318,8 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
     assert.ok(el.textContent.indexOf('Connectez-vous pour mettre votre abonnement en pause.') !== -1, el.textContent);
     const links = el.querySelectorAll('a');
     assert.strictEqual(links.length, 1);
-    assert.strictEqual(links[0].getAttribute('href'), ACCOUNT);
+    assert.strictEqual(links[0].getAttribute('href'), LOGIN);
+    assert.strictEqual(p.w.localStorage.getItem('locat'), PAGE_URL, 'way back after login');
     assert.ok(!/mailto/.test(el.innerHTML));
   };
 
@@ -347,6 +357,46 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
     p.submit();
     await wait(60);
     assert.strictEqual(p.d.querySelector('#error-message-pause a.original'), before);
+  });
+
+  await check('legacy form, logged out: unchanged, posted as before', async () => {
+    const p = page({ attr: null, current: null });
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.xhrs.length, 1);
+    assert.ok(!/Connectez-vous/.test(p.d.getElementById('error-message-pause').textContent));
+  });
+
+  await check('member check without an answer: the request goes after the timeout', async () => {
+    const p = page({ current: 'hang', script: SHORT_MEMBER_CHECK });
+    p.submit();
+    await wait(20);
+    assert.strictEqual(p.fetches.length, 0, 'still waiting for the check');
+    await wait(100);
+    assert.strictEqual(p.fetches.length, 1);
+    assert.ok(p.shown('success-message-pause'));
+  });
+
+  await check('member check with an odd answer (no data field): the request goes', async () => {
+    const p = page({ current: 'odd' });
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
+    assert.strictEqual(p.reports.length, 0);
+  });
+
+  await check('member check asks Memberstack for its cached member', async () => {
+    const p = page();
+    p.submit();
+    await wait(60);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(p.memberCalls)), [{ useCache: true }]);
+  });
+
+  await check('no getCurrentMember in the SDK: the request goes as before', async () => {
+    const p = page({ current: 'none' });
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
   });
 
   await check('member unreadable (getCurrentMember fails): the request goes as before', async () => {

@@ -13,9 +13,9 @@
  * fields; the server reads the member from the session. A form without the attribute is posted to
  * its own action as before.
  *
- * A logged out visitor sends nothing: the error element shows a sign-in message with a link to the
- * subscriptions tab of the account, reported as PauseFormNoSession. (A legacy form stays unbound
- * without OrdoMemberstack, as before.)
+ * A logged out visitor sends nothing from a marked form: the error element shows a sign-in message
+ * whose link comes back to this page after login (localStorage.locat), reported as PauseFormNoSession.
+ * Legacy forms are unchanged.
  *
  * Requires: window.OrdoMemberstack (memberstack-utils.js loaded first)
  *
@@ -36,8 +36,9 @@
     var IDENTITY_FIELDS = ['email', 'MSuserId', 'memberId', 'memberIdPause', 'stripeCustomerId',
         'stripeCustomerIdCancel', 'stripeCustomerIdPause', 'stripeSubscriptionId', 'stripeSubscriptionIdPause'];
     var submitting = false;
-    // Logged out visitors land on the account login card, which brings them back to this tab.
-    var ACCOUNT_URL = '/membership/compte#abonnements';
+    // successful-login sends the member back to localStorage.locat: this page, where the pause is.
+    var LOGIN_URL = '/membership/login-ms';
+    var MEMBER_CHECK_TIMEOUT = 3000;
     var NO_SESSION_TEXT = 'Connectez-vous pour mettre votre abonnement en pause.';
     var NO_SESSION_LINK = 'Se connecter';
     var errorContent = null;
@@ -128,9 +129,10 @@
         hideElement(form);
         hideElement(error);
 
+        var action = form.getAttribute('data-ordo-action');
         currentMember()
             .then(function(member) {
-                if (member === null) {
+                if (member === null && action) {
                     report('PauseFormNoSession', 'no member session');
                     hideElement(waiting);
                     showElement(form);
@@ -139,7 +141,6 @@
                     submitting = false;
                     return null;
                 }
-                var action = form.getAttribute('data-ordo-action');
                 return action ? submitToServer(form, action) : submitForm(form);
             })
             .then(function(response) {
@@ -168,18 +169,32 @@
     }
 
     /**
-     * The member, null when nobody is logged in, undefined when it cannot be told (the request then
-     * goes as before and the server decides).
+     * The member, null when Memberstack says nobody is logged in ({ data: null }), undefined when it
+     * cannot be told: no SDK, an error, an unexpected answer or no answer within MEMBER_CHECK_TIMEOUT.
+     * Undefined lets the request go as before and the server decides.
      */
     function currentMember() {
         try {
             var ms = window.$memberstackDom;
             if (!ms || typeof ms.getCurrentMember !== 'function') return Promise.resolve(undefined);
-            return Promise.resolve(ms.getCurrentMember()).then(function(r) {
-                return r && r.data ? r.data : null;
+            var read = Promise.resolve(ms.getCurrentMember({ useCache: true })).then(function(r) {
+                if (r && typeof r === 'object' && 'data' in r) return r.data === null ? null : (r.data || undefined);
+                return undefined;
             }, function() { return undefined; });
+            var timeout = new Promise(function(resolve) {
+                setTimeout(function() { resolve(undefined); }, MEMBER_CHECK_TIMEOUT);
+            });
+            return Promise.race([read, timeout]);
         } catch (e) {
             return Promise.resolve(undefined);
+        }
+    }
+
+    function rememberReturn() {
+        try {
+            localStorage.setItem('locat', window.location.href);
+        } catch (e) {
+            // private mode: the login still works, it just lands on the default page
         }
     }
 
@@ -195,9 +210,10 @@
                 (errorContent || []).forEach(function(n) { el.appendChild(n.cloneNode(true)); });
                 return;
             }
+            rememberReturn();
             el.appendChild(document.createTextNode(NO_SESSION_TEXT + ' '));
             var link = document.createElement('a');
-            link.href = ACCOUNT_URL;
+            link.href = LOGIN_URL;
             link.textContent = NO_SESSION_LINK;
             el.appendChild(link);
         } catch (e) {
