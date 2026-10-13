@@ -12,6 +12,10 @@
  *   - success only on 200 (confirmation, then the pause page); any other status or no answer shows
  *     the error, gives the form back and is reported as `PauseFormSubmitFailed`;
  *   - without a session token nothing is sent, the error shows and is reported;
+ *   - a logged out visitor (getCurrentMember gives no member) sends nothing from a marked form: the error
+ *     element shows the sign-in message with a link to the account tab, reported as PauseFormNoSession;
+ *     a later ordinary failure puts the page's own error content back; when the member cannot be read,
+ *     the request goes as before;
  *   - a second submit while the first is pending sends nothing more; a retry after a failure does.
  *
  * Usage: node test/pause-form.js
@@ -46,7 +50,7 @@ function formHtml(action, attr, names) {
     '<input type="submit" value="Mettre en pause"></form>' +
     '<div id="waiting-message-pause" style="display:none"></div>' +
     '<div id="success-message-pause" style="display:none"></div>' +
-    '<div id="error-message-pause" style="display:none"></div>';
+    '<div id="error-message-pause" style="display:none">Une erreur est survenue. <a class="original" href="mailto:support@example.fr">support</a>.</div>';
 }
 
 const NAMES = ['stripeCustomerIdPause', 'memberId', 'stripeSubscriptionIdPause'];
@@ -58,11 +62,19 @@ const MEMBER = {
 
 // attr: data-ordo-action value or null; answers: for fetch, { status, body } or { transport } or
 // { hang } (only the abort ends it), optional delay; xhrStatus: what the legacy endpoint answers.
-function page({ attr = 'pause', action = ENDPOINT, names = NAMES, member = MEMBER, answers = [], token = 'jeton-de-test', memberstack = true, xhrStatus = 200, script = SCRIPT } = {}) {
+// current: what $memberstackDom.getCurrentMember() gives (undefined = no such method, 'throw' = it fails);
+// a function is called at each submit, so a test can log the visitor in between two submits.
+function page({ attr = 'pause', action = ENDPOINT, names = NAMES, member = MEMBER, answers = [], token = 'jeton-de-test', memberstack = true, xhrStatus = 200, script = SCRIPT, current } = {}) {
   const html = '<!doctype html><html><body>' + formHtml(attr ? action : LEGACY_ACTION, attr, names) + '</body></html>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: PAGE_URL, virtualConsole: new VirtualConsole() });
   const w = dom.window;
   if (memberstack) w.$memberstackDom = { getMemberCookie: () => Promise.resolve(token) };
+  if (memberstack && current !== undefined) {
+    w.$memberstackDom.getCurrentMember = () => {
+      const c = typeof current === 'function' ? current() : current;
+      return c === 'throw' ? Promise.reject(new Error('ms down')) : Promise.resolve({ data: c });
+    };
+  }
   if (member) w.OrdoMemberstack = member;
   const fetches = [];
   const queue = answers.slice();
@@ -217,7 +229,7 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
       assert.ok(!p.shown('waiting-message-pause'));
       assert.strictEqual(p.d.getElementById('pause-form').style.display, 'block');
       assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormSubmitFailed']);
-      assert.strictEqual(p.reports[0].message, 'Server returned ' + status + ' — ' + 'e'.repeat(200));
+      assert.strictEqual(p.reports[0].message, 'Server returned ' + status + ': ' + 'e'.repeat(200));
       await wait(3100);
       assert.strictEqual(p.navigations.length, 0);
     });
@@ -285,6 +297,72 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
     assert.strictEqual(p.fetches.length, 1);
     assert.strictEqual(p.fetches[0].headers.Authorization, 'Bearer jeton-de-test');
     assert.deepStrictEqual(JSON.parse(p.fetches[0].body), { action: 'pause', fields: REASON });
+  });
+
+  const ACCOUNT = '/membership/compte#abonnements';
+  const assertSignIn = (p) => {
+    const el = p.d.getElementById('error-message-pause');
+    assert.ok(p.shown('error-message-pause'));
+    assert.ok(!p.shown('waiting-message-pause'));
+    assert.ok(!p.shown('success-message-pause'));
+    assert.strictEqual(p.d.getElementById('pause-form').style.display, 'block', 'form given back');
+    assert.ok(el.textContent.indexOf('Connectez-vous pour mettre votre abonnement en pause.') !== -1, el.textContent);
+    const links = el.querySelectorAll('a');
+    assert.strictEqual(links.length, 1);
+    assert.strictEqual(links[0].getAttribute('href'), ACCOUNT);
+    assert.ok(!/mailto/.test(el.innerHTML));
+  };
+
+  await check('logged out, marked form: nothing is sent, sign-in message, PauseFormNoSession', async () => {
+    const p = page({ member: null, current: null });
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.fetches.length + p.xhrs.length, 0);
+    assertSignIn(p);
+    assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormNoSession']);
+    await wait(3100);
+    assert.deepStrictEqual(p.navigations, []);
+  });
+
+  await check('logged out then logged in: the second submit goes, a failure puts the page content back', async () => {
+    let who = null;
+    const p = page({ current: () => who, answers: [{ status: 502 }] });
+    p.submit();
+    await wait(60);
+    assertSignIn(p);
+    who = { id: 'mem_test' };
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
+    const el = p.d.getElementById('error-message-pause');
+    assert.ok(p.shown('error-message-pause'));
+    assert.ok(el.querySelector('a.original'), 'page content back');
+    assert.ok(!/Connectez-vous/.test(el.textContent));
+    assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormNoSession', 'PauseFormSubmitFailed']);
+  });
+
+  await check('an ordinary failure with no notice before keeps the page nodes', async () => {
+    const p = page({ current: { id: 'mem_test' }, answers: [{ status: 502 }] });
+    const before = p.d.querySelector('#error-message-pause a.original');
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.d.querySelector('#error-message-pause a.original'), before);
+  });
+
+  await check('member unreadable (getCurrentMember fails): the request goes as before', async () => {
+    const p = page({ current: 'throw' });
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
+    assert.ok(p.shown('success-message-pause'));
+  });
+
+  await check('logged in (getCurrentMember gives a member): the request goes', async () => {
+    const p = page({ current: { id: 'mem_test' } });
+    p.submit();
+    await wait(60);
+    assert.strictEqual(p.fetches.length, 1);
+    assert.strictEqual(p.reports.length, 0);
   });
 
   console.log('\n' + passed + ' checks pass');

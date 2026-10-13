@@ -21,7 +21,7 @@
  *
  * A logged out visitor (nothing is sent), or a member the server turns away because the offer is not
  * on their account (409), sees a message in the error element with a link to the subscriptions tab of
- * their account, instead of the generic error.
+ * their account, instead of the generic error; a 409 `abonnement_impaye` points to support instead.
  *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
@@ -40,10 +40,11 @@
   const IDENTITY_FIELDS = ['email', 'MSuserId', 'memberId', 'stripeCustomerId', 'stripeCustomerIdCancel', 'stripeCustomerIdPause'];
   // Logged out visitors land on the account login card, which brings them back to this tab.
   const ACCOUNT_URL = '/membership/compte#abonnements';
-  // Report name and link label of each notice; the wording is per form (FORMS[].notices).
+  // Report name, link label and target of each notice; the wording is per form (FORMS[].notices).
   const NOTICES = {
     noSession: { name: 'CancelFormNoSession', link: 'Se connecter' },
-    planAbsent: { name: 'CancelFormPlanAbsent', link: 'Voir mes abonnements' }
+    planAbsent: { name: 'CancelFormPlanAbsent', link: 'Voir mes abonnements' },
+    unpaid: { name: 'CancelFormUnpaid', link: 'support@ordotype.fr', href: 'mailto:support@ordotype.fr' }
   };
 
   /**
@@ -95,7 +96,8 @@
       errorId: 'error-message-redeem',
       notices: {
         noSession: 'Connectez-vous pour profiter de cette offre.',
-        planAbsent: 'Cette offre n\'est pas disponible pour votre compte. Vos abonnements sont dans votre compte.'
+        planAbsent: 'Cette offre n\'est pas disponible pour votre compte. Vos abonnements sont dans votre compte.',
+        unpaid: 'Un paiement est en attente sur cet abonnement. Écrivez-nous\u00a0:'
       }
     },
     cancel: {
@@ -106,7 +108,8 @@
       errorId: 'error-message-cancel',
       notices: {
         noSession: 'Connectez-vous pour résilier votre offre.',
-        planAbsent: 'Cette offre n\'est pas active sur votre compte : rien n\'a été résilié. Vos abonnements et leur résiliation sont dans votre compte.'
+        planAbsent: 'Aucune offre active à résilier n\'a été trouvée sur votre compte. Vos abonnements et leur résiliation sont dans votre compte.',
+        unpaid: 'Un paiement est en attente sur cet abonnement\u00a0: il ne peut pas être résilié en ligne. Écrivez-nous\u00a0:'
       }
     }
   };
@@ -220,7 +223,8 @@
           window.location.href = '/';
         }, REDIRECT_DELAY);
       } else if (action && response.status === 409) {
-        refuse(elements, formName, 'planAbsent', 'server returned 409');
+        const unpaid = serverError(response.body) === 'abonnement_impaye';
+        refuse(elements, formName, unpaid ? 'unpaid' : 'planAbsent', 'server returned 409');
       } else {
         const detail = response.body ? `: ${String(response.body).slice(0, 200)}` : '';
         throw new Error(`Server returned ${response.status}${detail}`);
@@ -244,9 +248,19 @@
     report(formName, NOTICES[kind].name, detail);
     hideElement(elements.waiting);
     showElement(elements.form);
-    setError(elements, { text: elements.notices[kind], link: NOTICES[kind].link });
+    setError(elements, { text: elements.notices[kind], link: NOTICES[kind].link, href: NOTICES[kind].href });
     showElement(elements.error);
     elements.busy = false;
+  }
+
+  /** The `error` code of a JSON error body, or ''. */
+  function serverError(body) {
+    try {
+      const parsed = JSON.parse(String(body || ''));
+      return parsed && typeof parsed.error === 'string' ? parsed.error : '';
+    } catch (e) {
+      return '';
+    }
   }
 
   /**
@@ -265,7 +279,7 @@
       const line = document.createElement('div');
       line.appendChild(document.createTextNode(notice.text + ' '));
       const link = document.createElement('a');
-      link.href = ACCOUNT_URL;
+      link.href = notice.href || ACCOUNT_URL;
       link.textContent = notice.link;
       line.appendChild(link);
       el.appendChild(line);

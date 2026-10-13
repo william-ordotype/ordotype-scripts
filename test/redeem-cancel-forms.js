@@ -17,6 +17,7 @@
  *     form's own message, with a link to the account, in the error element and is reported under its own
  *     name; a later failure puts the page's own error content back, an ordinary failure leaves it alone;
  *   - a 401 or a missing session token stays the ordinary error (a stale session cannot sign in again);
+ *   - a 409 `abonnement_impaye` points to support (mailto link), reported as CancelFormUnpaid;
  *   - a second submit while the first is in flight sends nothing;
  *   - two forms on the same page each take their own path.
  *
@@ -82,7 +83,8 @@ async function page({ cancelAttr = 'cancel-mg', redeem = false, redeemAttr = nul
     const a = queue.shift() || { status: 200 };
     return wait(a.delay || 0).then(() => {
       if (a.transport) throw new TypeError(a.transport);
-      return { ok: a.status < 300, status: a.status, text: () => Promise.resolve(a.status === 200 ? '{"ok":true}' : '{"error":"x"}') };
+      const body = a.body !== undefined ? a.body : (a.status === 200 ? '{"ok":true}' : '{"error":"x"}');
+      return { ok: a.status < 300, status: a.status, text: () => Promise.resolve(body) };
     });
   };
   const xhrs = [];
@@ -258,7 +260,33 @@ async function check(name, fn) {
     p.submit('cancel-form');
     await wait(60);
     assert.strictEqual(p.fetches.length, 1);
-    await assertNotice(p, 'error-message-cancel', 'cancel-form', "Cette offre n'est pas active sur votre compte\u00a0: rien n'a été résilié.", 'CancelFormPlanAbsent');
+    await assertNotice(p, 'error-message-cancel', 'cancel-form', "Aucune offre active à résilier n'a été trouvée sur votre compte.", 'CancelFormPlanAbsent');
+  });
+
+  await check('with data-ordo-action: HTTP 409 abonnement_impaye points to support, never the confirmation', async () => {
+    const p = await page({ cancelAttr: 'cancel-module-sp', answers: [{ status: 409, body: '{"error":"abonnement_impaye"}' }] });
+    p.submit('cancel-form');
+    await wait(60);
+    const el = p.d.getElementById('error-message-cancel');
+    assert.ok(p.shown('error-message-cancel'));
+    assert.ok(!p.shown('success-message-cancel'));
+    assert.ok(el.textContent.indexOf('Un paiement est en attente sur cet abonnement') !== -1, el.textContent);
+    const links = el.querySelectorAll('a');
+    assert.strictEqual(links.length, 1);
+    assert.strictEqual(links[0].getAttribute('href'), 'mailto:support@ordotype.fr');
+    assert.strictEqual(links[0].textContent, 'support@ordotype.fr');
+    assert.deepStrictEqual(p.reports.map((r) => r.err.name), ['CancelFormUnpaid']);
+    assert.strictEqual(p.d.getElementById('cancel-form').style.display, 'block');
+  });
+
+  await check('with data-ordo-action: HTTP 409 with an unreadable or other body is the offer-not-active notice', async () => {
+    for (const body of ['not json', '{"error":"abonnement_absent"}', '{"error":"plan_absent"}', '']) {
+      const p = await page({ answers: [{ status: 409, body }] });
+      p.submit('cancel-form');
+      await wait(60);
+      assert.strictEqual(p.reports[0].err.name, 'CancelFormPlanAbsent', body);
+      assert.strictEqual(p.d.querySelector('#error-message-cancel a').getAttribute('href'), ACCOUNT, body);
+    }
   });
 
   await check('legacy form: HTTP 409 stays a plain error (only the endpoint speaks that code)', async () => {
