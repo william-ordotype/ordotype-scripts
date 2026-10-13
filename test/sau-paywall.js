@@ -24,9 +24,8 @@ const GABARIT =
         '<h2 class="heading-h2-docs text-weight-medium">Besoin d’Ordotype en dehors de l’hôpital ?</h2>' +
         '<p class="text-color-base-600 text-size-regular">Votre compte gratuit Urgences est réservé au réseau de votre établissement.</p>' +
         '<div class="action_btns_form std" data-ordo-sau-bloc="offres"><a class="button" href="/nos-offres">Choisir mon offre</a></div>' +
-        '<p class="text-size-small text-color-base-600">Vous êtes dans votre établissement et voyez ce message ? Écrivez-nous à ' +
-          '<a class="fs-cc-banner_text-link" data-ordo-sau-contact="mail" href="mailto:support@ordotype.fr">support@ordotype.fr</a> en indiquant cette adresse :</p>' +
-        '<div class="text-size-small text-color-base-600" data-ordo-sau-ip="main"><strong>adresse IP</strong></div>' +
+        '<p class="text-size-small text-color-base-600" data-ordo-sau-ip="main">Vous \u00eates dans votre \u00e9tablissement et voyez ce message ? \u00c9crivez-nous \u00e0 ' +
+          '<a class="fs-cc-banner_text-link" data-ordo-sau-contact="mail" href="mailto:support@ordotype.fr">support@ordotype.fr</a> en indiquant cette adresse : <strong>adresse IP</strong></p>' +
         '<p class="text-size-small text-color-base-600">Vous pouvez aussi ' +
           '<a class="fs-cc-banner_text-link" data-ordo-sau-contact="chat" href="https://www.ordotype.fr/#ordo-chat">nous écrire sur le chat</a>' +
           ' ou nous appeler au <a class="fs-cc-banner_text-link" href="tel:+33744785503">07 44 78 55 03</a>.</p>' +
@@ -153,10 +152,19 @@ async function cas(nom, fn) {
         assert.strictEqual(carte(w).querySelector('[data-ordo-sau-ip="main"] strong').textContent, IP4);
     });
 
-    await cas('sans IP connue : la ligne d’adresse est masquée', async () => {
+    await cas('sans IP connue : seule l\u2019adresse est masquée, la phrase reste', async () => {
         const w = await page(GABARIT + FICHE_MG, { ip: '' });
-        const slot = carte(w).querySelector('[data-ordo-sau-ip="main"]');
-        assert.strictEqual(slot.style.display, 'none');
+        const ligne = carte(w).querySelector('[data-ordo-sau-ip="main"]');
+        assert.strictEqual(ligne.style.display, '');
+        assert.strictEqual(ligne.querySelector('strong').style.display, 'none');
+        assert.ok(ligne.querySelector('[data-ordo-sau-contact="mail"]'), 'le lien mail reste dans la phrase');
+    });
+
+    await cas('l\u2019adresse est sur la même ligne que la phrase', async () => {
+        const w = await page(GABARIT + FICHE_MG);
+        const ligne = carte(w).querySelector('[data-ordo-sau-ip="main"]');
+        assert.strictEqual(ligne.tagName, 'P');
+        assert.ok(ligne.textContent.endsWith('cette adresse : ' + IP4), ligne.textContent);
     });
 
     await cas('restriction levée : la carte d’origine revient', async () => {

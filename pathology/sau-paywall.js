@@ -134,12 +134,11 @@
                   'Passez au compte payant pour profiter d’Ordotype où que vous soyez.' +
                 '</p>' +
                 '<div class="action_btns_form std"><a href="/nos-offres" class="button w-button">Choisir mon offre</a></div>' +
-                '<p class="text-size-small text-color-base-600">' +
-                  'Vous êtes dans votre établissement et voyez ce message ? Écrivez-nous à ' +
+                '<p class="text-size-small text-color-base-600" data-ordo-sau-ip="main">' +
+                  'Vous \u00eates dans votre \u00e9tablissement et voyez ce message\u00a0? \u00c9crivez-nous \u00e0 ' +
                   '<a class="fs-cc-banner_text-link" data-ordo-sau-contact="mail" href="mailto:' + SUPPORT_EMAIL + '">' + SUPPORT_EMAIL + '</a>' +
-                  ' en indiquant cette adresse :' +
+                  ' en indiquant cette adresse\u00a0: <strong></strong>' +
                 '</p>' +
-                '<div class="text-size-small text-color-base-600" data-ordo-sau-ip="main"><strong></strong></div>' +
                 '<p class="text-size-small text-color-base-600">' +
                   'Vous pouvez aussi <a class="fs-cc-banner_text-link" data-ordo-sau-contact="chat" href="#">nous écrire sur le chat</a>' +
                   ' ou nous appeler au <a class="fs-cc-banner_text-link" href="tel:+33744785503">07 44 78 55 03</a>.' +
@@ -219,10 +218,13 @@
     /** IP shown with textContent only (never innerHTML). Safe to call again. */
     function fillCard(card) {
         var text = displayIp();
+        // The IP sits in bold at the end of the help sentence (William,
+        // 13/10/2026): only that bold part hides while no address is known,
+        // never the sentence with the mail link.
         card.querySelectorAll('[data-ordo-sau-ip="main"]').forEach(function(slot) {
             var target = slot.querySelector('strong') || slot;
             target.textContent = text;
-            slot.style.display = text ? '' : 'none';
+            target.style.display = text ? '' : 'none';
         });
         var href = mailHref();
         card.querySelectorAll('[data-ordo-sau-contact="mail"], a[href^="mailto:"]').forEach(function(a) {
