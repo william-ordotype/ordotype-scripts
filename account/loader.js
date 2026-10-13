@@ -120,7 +120,7 @@
     'rpps-finder.js': {
       'sandbox-ordotype.webflow.io': 100,
       'ordotype.webflow.io': 100,
-      'www.ordotype.fr': 10 // 10 % depuis le 2026-10-08
+      'www.ordotype.fr': 100 // 100 % depuis le 2026-10-13 (10 % du 2026-10-08 au 2026-10-13)
     }
   };
   const HOST = window.location.hostname;
