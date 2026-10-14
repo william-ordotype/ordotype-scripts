@@ -103,7 +103,7 @@
     if (c.specialty) parts.push(c.specialty);
     if (c.category === 'E') parts.push('Étudiant');
     parts.push('RPPS ' + c.rpps);
-    return parts.filter(Boolean).join(' · ');
+    return parts.filter(Boolean).join(', ');
   }
 
   function safeGet(key) {

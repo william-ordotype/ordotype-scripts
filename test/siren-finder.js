@@ -148,7 +148,7 @@ async function test(name, fn) {
       assert.deepStrictEqual(calls.map((c) => c.params.mode), ['suggest', 'name']);
       const items = root.querySelectorAll('ul > li');
       assert.strictEqual(items.length, 2);
-      assert.ok(items[0].querySelector('span').textContent.startsWith('CLAIRE MARTIN · SIREN '));
+      assert.ok(items[0].querySelector('span').textContent.startsWith('CLAIRE MARTIN, SIREN '));
       assert.ok(byText(items[0], 'button', /C'est moi/));
       assert.ok(/12 résultats, seuls les 2 premiers/.test(root.textContent));
       assert.ok(byText(root, 'button', /Je ne trouve pas mon entreprise/));
@@ -187,7 +187,7 @@ async function test(name, fn) {
       await settle();
       assert.ok(calls.some((c) => c.params && c.params.mode === 'number' && c.params.n === SIREN));
       assert.ok(byText(root, 'button', /^Confirmer$/), 'carte avec confirmation');
-      assert.ok(/· active/.test(root.textContent));
+      assert.ok(/\(active\)/.test(root.textContent));
     });
 
     await test('nom de la fiche différent : alerte dans la carte', async () => {
