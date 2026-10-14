@@ -219,7 +219,7 @@
     if (c.libelle_activite) parts.push(c.libelle_activite);
     var lieu = [c.code_postal, c.commune].filter(Boolean).join(' ');
     if (lieu) parts.push(lieu);
-    return parts.join(' · ');
+    return parts.join(', ');
   }
 
   // ---------------------------------------------------------------------------
@@ -842,7 +842,7 @@
           return;
         }
         var card = el('div', C['finder-carte']);
-        card.appendChild(el('div', null, candidateLabel(c) + (c.etat === 'C' ? ' · fermée' : ' · active')));
+        card.appendChild(el('div', null, candidateLabel(c) + (c.etat === 'C' ? ' (fermée)' : ' (active)')));
         if (c.diffusion === 'P') {
           card.appendChild(el('div', C['finder-note'], 'Entreprise non diffusible : le nom n\'est pas affiché, vérifiez la commune et l\'activité.'));
         } else if (state.nom && !nameMatches(state.nom, c.nom)) {

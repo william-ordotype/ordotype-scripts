@@ -189,7 +189,7 @@ async function test(name, fn) {
     assert.deepStrictEqual(calls[0].body, { action: 'search', family: 'Martin', given: 'Claire', scope: 'medecin' });
     const items = root.querySelectorAll('ul > li');
     assert.strictEqual(items.length, 2);
-    assert.strictEqual(items[0].querySelector('span').textContent, `Claire Anne MARTIN · Médecin · Spécialiste en Médecine générale · RPPS ${N1}`);
+    assert.strictEqual(items[0].querySelector('span').textContent, `Claire Anne MARTIN, Médecin, Spécialiste en Médecine générale, RPPS ${N1}`);
     assert.ok(byText(items[0], 'button', /C’est moi/));
     assert.ok(!items[1].querySelector('button'), 'pas de bouton sur un autre nom');
     assert.ok(/Nom différent de votre profil/.test(items[1].textContent));

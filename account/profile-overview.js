@@ -301,7 +301,7 @@
       if (resume) {
         var parts = [displayValue('statut'), text(f.specialite)];
         if (!isInterne()) parts.push(displayValue('mode-dexercice'));
-        var line = parts.filter(Boolean).join(' · ');
+        var line = parts.filter(Boolean).join(', ');
         resume.textContent = line;
         show(resume, !!line);
         var rpps = text(f['n-rpps']);

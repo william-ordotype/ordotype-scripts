@@ -105,7 +105,7 @@ async function test(name, fn) {
     assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Dr Claire Martin');
     assert.strictEqual(txt(d, '[data-ordo-rpps-entete]'), 'N° RPPS 10000668540');
     assert.ok(!d.querySelector('[data-ordo-rpps-verifie]'), 'pas de coche sans vérification annuaire');
-    assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Médecin · Médecine générale · Libéral');
+    assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Médecin, Médecine générale, Libéral');
     assert.strictEqual(txt(d, '[data-ordo-v2="securite"] [data-ordo-champ="email"]'), 'claire.martin@exemple.fr');
     assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'bloc profil affiché');
   });
@@ -131,7 +131,7 @@ async function test(name, fn) {
     const pro = d.querySelectorAll('[data-ordo-v2="profil"] [data-ordo-si-pas-interne]');
     assert.strictEqual(pro.length, 2);
     for (const el of pro) assert.ok(!visible(w, el));
-    assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Interne · Médecine générale');
+    assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Interne, Médecine générale');
     assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Claire Martin', 'pas de « Dr » pour un interne');
     d.querySelector('[data-ordo-edit="pro"]').click();
     const tva = d.querySelector('[data-ordo-form-slot="pro"] [data-ms-member="vat-id"]');
