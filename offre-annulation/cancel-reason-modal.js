@@ -35,7 +35,7 @@
      *            motif de ceux qui résilient vraiment : une ligne par
      *            résiliation, qui se recoupe avec l'onglet Désinscription.
      *            La grille étant déjà sous les yeux du membre, la modale est
-     *            refermable — revenir en arrière n'est pas contourner la
+     *            refermable : revenir en arrière n'est pas contourner la
      *            question, c'est renoncer à résilier.
      * 'load'    : la modale s'ouvre à l'arrivée sur la page et garde la grille
      *            d'offres tant qu'aucun motif n'est coché. On capte alors le
@@ -154,100 +154,31 @@
     // ----------------------------------------------------------------- styles
 
     /**
-     * Couleurs prises aux variables du design system Webflow (`:root` de
-     * ordotype.webflow.shared.css) plutôt qu'à l'embed de la page, qui a ses
-     * propres bleus inventés. Chaque `var()` porte son repli en dur : la
-     * modale reste correcte si elle est servie sur une page où les tokens
-     * n'ont pas encore été chargés.
-     *
-     *   --primary-500 #3454f6   bleu de marque (boutons, case cochée)
-     *   --primary-600 #263fd3   survol du bouton
-     *   --primary-50  #f0f3ff   fond d'une option cochée
-     *   --base-900    #0c0e16   texte courant
-     *   --neutral-500 #47505c   texte secondaire
-     *   --neutral-400 #858c95   texte discret
-     *   --neutral-100 #f7f7fb   surface claire
-     *   --gris300     #ecedef   bordures
-     *   --error-50/300/700      alerte
+     * Mise en page seulement : le fond, la fenêtre, les cases, le champ et les
+     * boutons portent les classes du site (fond `section_view compte-modal` de
+     * la fenêtre de résiliation de Mon compte, fenêtre `view_wrapper
+     * sauvegarder-ordonnance` de Mes documents, cases `checkbox-ins` de
+     * l'inscription, `form_input is-champ`, `button`, `form_link`). Aucune
+     * couleur, ombre ni rayon propre au script.
      */
+    var CROSS_ICON = 'https://cdn.prod.website-files.com/604b9ac88b080efc7ce802bd/6409a60abee24b0929f62f72_cross.svg';
+
     var CSS = [
-        '.ordo-reason-lock .page-wrapper{filter:blur(3px);pointer-events:none;user-select:none;-webkit-user-select:none}',
         '.ordo-reason-lock,.ordo-reason-lock body{overflow:hidden}',
-        '.ordo-reason-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;',
-        'background:rgba(12,14,22,.55);display:flex;align-items:flex-start;justify-content:center;',
-        'padding:24px 16px;overflow-y:auto;opacity:0;transition:opacity 200ms ease}',
-        '.ordo-reason-backdrop.is-open{opacity:1}',
-        '.ordo-reason-dialog{position:relative;margin:auto;width:100%;max-width:560px;background:#fff;border-radius:16px;',
-        'box-shadow:0 18px 50px rgba(12,14,22,.28);padding:32px 32px 24px;box-sizing:border-box;',
-        'transform:translateY(14px);transition:transform 220ms ease;font-family:inherit;',
-        'color:var(--base-900,#0c0e16);-webkit-font-smoothing:antialiased}',
-        '.ordo-reason-backdrop.is-open .ordo-reason-dialog{transform:none}',
-        // padding-right : garde le titre à l'écart de la croix de fermeture.
-        '.ordo-reason-dialog h2{font-size:22px;line-height:1.3;font-weight:700;margin:0 0 8px;padding-right:34px;',
-        'color:var(--base-900,#0c0e16)}',
-        '.ordo-reason-intro{font-size:15px;line-height:1.5;margin:0 0 20px;color:var(--neutral-500,#47505c)}',
-        '.ordo-reason-warning{color:var(--base-900,#0c0e16);font-weight:600}',
-        '.ordo-reason-fieldset{border:0;margin:0;padding:0}',
-        '.ordo-reason-legend{display:block;float:left;width:100%;padding:0;margin:0 0 12px;font-size:13px;',
-        'font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--neutral-400,#858c95)}',
-        '.ordo-reason-required{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:10px;',
-        'background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:11px;',
-        'font-weight:600;text-transform:none;letter-spacing:0;vertical-align:1px}',
-        '.ordo-reason-option{display:flex;align-items:center;position:relative;border-radius:12px;',
-        'border:2px solid var(--gris300,#ecedef);padding:15px 16px;margin:0 0 10px;cursor:pointer;background:#fff;',
-        'transition:border-color 140ms ease,background-color 140ms ease}',
-        '.ordo-reason-option:hover{border-color:var(--primary-100,#d6dffe);background:var(--neutral-100,#f7f7fb)}',
-        '.ordo-reason-option.is-checked{border-color:var(--primary-500,#3454f6);background:var(--primary-50,#f0f3ff)}',
-        '.ordo-reason-option input{position:absolute;left:18px;top:50%;width:1px;height:1px;opacity:0;margin:0}',
-        '.ordo-reason-box{position:relative;flex:0 0 auto;width:20px;height:20px;margin-right:14px;background:#fff;',
-        'border:2px solid var(--base-300,#0c0e164d);border-radius:6px;box-sizing:border-box;',
-        'transition:border-color 140ms ease,background-color 140ms ease}',
-        '.ordo-reason-content{flex:1 1 auto;min-width:0}',
-        '.ordo-reason-option.is-checked .ordo-reason-box{border-color:var(--primary-500,#3454f6);',
-        'background:var(--primary-500,#3454f6)}',
-        '.ordo-reason-box:after{content:"";position:absolute;left:7px;top:3px;width:4px;height:9px;',
-        'border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);opacity:0}',
-        '.ordo-reason-option.is-checked .ordo-reason-box:after{opacity:1}',
-        '.ordo-reason-option input:focus + .ordo-reason-box{box-shadow:0 0 0 3px rgba(52,84,246,.28)}',
-        '.ordo-reason-text{display:block;font-size:15px;font-weight:600;line-height:1.35;color:var(--base-900,#0c0e16)}',
-        '.ordo-reason-hint{display:block;font-size:13px;line-height:1.45;margin-top:4px;font-weight:400;',
-        'color:var(--neutral-400,#858c95)}',
-        '.ordo-reason-other{display:none;margin:-2px 0 12px}',
-        '.ordo-reason-other.is-visible{display:block}',
-        '.ordo-reason-other textarea{width:100%;box-sizing:border-box;min-height:86px;border-radius:10px;',
-        'border:2px solid var(--gris300,#ecedef);padding:12px 14px;font-family:inherit;font-size:14px;',
-        'line-height:1.45;color:var(--base-900,#0c0e16);resize:vertical}',
-        '.ordo-reason-other textarea:focus{outline:none;border-color:var(--primary-500,#3454f6)}',
-        '.ordo-reason-alert{display:none;margin:0 0 14px;padding:11px 14px;border-radius:10px;',
-        'background:var(--error-50,#fef1f1);border:1px solid var(--error-300,#fca6a6);',
-        'color:var(--error-700,#ba1b1b);font-size:14px;line-height:1.45}',
-        '.ordo-reason-alert.is-visible{display:block}',
-        // Rayon 4px et graisse 600 : ceux de `.button` du design system.
-        '.ordo-reason-submit{display:block;width:100%;padding:14px;border:0;border-radius:4px;',
-        'background:var(--primary-500,#3454f6);color:#fff;font-family:inherit;font-size:15px;font-weight:600;',
-        'line-height:1.2;cursor:pointer;transition:background-color 200ms ease}',
-        '.ordo-reason-submit:hover{background:var(--primary-600,#263fd3)}',
-        // --neutral-500 et pas --neutral-400 : le bouton reste cliquable (il
-        // affiche l'alerte) et son libellé dit ce qui va se passer, il doit donc
-        // rester lisible. --neutral-400 sur --gris300 tombe à 2,7:1.
-        '.ordo-reason-submit[aria-disabled="true"]{background:var(--gris300,#ecedef);',
-        'color:var(--neutral-500,#47505c);cursor:not-allowed}',
-        '.ordo-reason-submit.is-shaking{animation:ordoReasonShake 320ms ease}',
-        '@keyframes ordoReasonShake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(4px)}',
-        '50%{transform:translateX(-4px)}100%{transform:none}}',
-        '.ordo-reason-escape{display:block;text-align:center;margin:16px 0 0;font-size:13px}',
-        '.ordo-reason-escape a,.ordo-reason-escape button{color:var(--neutral-400,#858c95);text-decoration:underline;',
-        'background:none;border:0;padding:0;font-family:inherit;font-size:13px;cursor:pointer}',
-        '.ordo-reason-escape a:hover,.ordo-reason-escape button:hover{color:var(--neutral-500,#47505c)}',
-        '.ordo-reason-close{position:absolute;top:14px;right:14px;width:34px;height:34px;border:0;border-radius:50%;',
-        'background:none;color:var(--neutral-400,#858c95);font-size:22px;line-height:1;cursor:pointer;',
-        'font-family:inherit;transition:background-color 140ms ease,color 140ms ease}',
-        '.ordo-reason-close:hover{background:var(--neutral-100,#f7f7fb);color:var(--base-900,#0c0e16)}',
-        '@media (max-width:640px){.ordo-reason-backdrop{padding:12px}',
-        '.ordo-reason-dialog{padding:24px 20px 20px;border-radius:14px}',
-        '.ordo-reason-dialog h2{font-size:19px}.ordo-reason-intro{font-size:14px;margin-bottom:18px}}',
-        '@media (prefers-reduced-motion:reduce){.ordo-reason-backdrop,.ordo-reason-dialog{transition:none}',
-        '.ordo-reason-submit.is-shaking{animation:none}}'
+        // Page floutée derrière le fond : sur mobile, la carte d'offre a presque
+        // la taille de la fenêtre et son bord dessinait un double cadre.
+        '.ordo-reason-lock .page-wrapper{filter:blur(3px);pointer-events:none;user-select:none;-webkit-user-select:none}',
+        // Au-dessus de la barre de navigation, et défilable quand la fenêtre
+        // dépasse l'écran : les marges automatiques la centrent tant qu'elle
+        // tient, sans couper le haut quand elle déborde.
+        '.ordo-reason-backdrop.compte-modal{z-index:10000;align-items:flex-start;overflow-y:auto;',
+        'padding-top:24px;padding-bottom:24px}',
+        '.ordo-reason-dialog.sauvegarder-ordonnance{flex:none;margin-top:auto;margin-bottom:auto}',
+        // Les boutons suivent le contenu (pas de pied en position absolue).
+        '.inputs_wrapper.ordo-reason-body{padding-bottom:0}',
+        '.checkbox_form.ordo-reason-option{margin-bottom:12px}',
+        '.ordo-reason-hint{display:block}',
+        '.form_link.ordo-reason-escape{background:none;border:0;padding:0;cursor:pointer}'
     ].join('');
 
     function injectStyles() {
@@ -278,7 +209,7 @@
     }
 
     function buildDialog(submitLabel) {
-        var backdrop = el('div', 'ordo-reason-backdrop');
+        var backdrop = el('div', 'section_view compte-modal ordo-reason-backdrop');
         backdrop.setAttribute('role', 'presentation');
         if (dismissible()) {
             backdrop.addEventListener('click', function (event) {
@@ -286,78 +217,105 @@
             });
         }
 
-        var dialog = el('div', 'ordo-reason-dialog');
+        var dialog = el('div', 'view_wrapper sauvegarder-ordonnance ordo-reason-dialog');
         dialog.setAttribute('role', 'dialog');
         dialog.setAttribute('aria-modal', 'true');
         dialog.setAttribute('aria-labelledby', 'ordo-reason-title');
         dialog.setAttribute('aria-describedby', 'ordo-reason-intro');
 
-        if (dismissible()) {
-            var closeBtn = el('button', 'ordo-reason-close', '×');
-            closeBtn.type = 'button';
-            closeBtn.setAttribute('aria-label', 'Fermer sans résilier');
-            closeBtn.addEventListener('click', dismiss);
-            dialog.appendChild(closeBtn);
-        }
-
-        var title = el('h2', null, 'Dernière étape avant la résiliation');
+        // En-tête des fenêtres de Mes documents : titre centré, filet, croix.
+        var header = el('div', 'header_holder');
+        var inner = el('div', 'inner_header');
+        var title = el('div', 'display-inlineflex text_space', 'Dernière étape avant la résiliation');
         title.id = 'ordo-reason-title';
-        dialog.appendChild(title);
+        inner.appendChild(title);
+        if (dismissible()) {
+            // La croix du site est une image : rôle et clavier pour qu'elle
+            // reste un vrai bouton.
+            var closeBtn = document.createElement('img');
+            closeBtn.className = 'close_icon is_corner';
+            closeBtn.src = CROSS_ICON;
+            closeBtn.alt = 'Fermer sans résilier';
+            closeBtn.setAttribute('role', 'button');
+            closeBtn.setAttribute('tabindex', '0');
+            closeBtn.addEventListener('click', dismiss);
+            closeBtn.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    dismiss();
+                }
+            });
+            inner.appendChild(closeBtn);
+        }
+        header.appendChild(inner);
+        dialog.appendChild(header);
+
+        var body = el('div', 'inputs_wrapper ordo-reason-body');
 
         // Le membre vient de cliquer sur « annuler mon abonnement » : il croit
         // en avoir fini. Le premier mot doit être que non, et que sa réponse est
-        // ce qui déclenche la résiliation — pas une enquête de satisfaction
-        // qu'on peut ignorer.
-        var intro = el('p', 'ordo-reason-intro');
-        intro.appendChild(el('strong', 'ordo-reason-warning',
-            'Votre abonnement n\u2019est pas encore résilié.'));
+        // ce qui déclenche la résiliation, pas une enquête qu'on peut ignorer.
+        var intro = el('p', 'text-size-regular margin-bottom-3');
+        intro.appendChild(el('strong', null, 'Votre abonnement n\u2019est pas encore résilié.'));
         intro.appendChild(document.createTextNode(
-            ' Dites-nous ce qui vous fait partir, puis confirmez ci-dessous.'));
+            ' Dites-nous ce qui vous fait partir, puis confirmez '));
+        // Pas de coupure au trait d'union de « ci-dessous ».
+        var below = el('span', null, 'ci-dessous.');
+        below.style.whiteSpace = 'nowrap';
+        intro.appendChild(below);
         intro.id = 'ordo-reason-intro';
-        dialog.appendChild(intro);
+        body.appendChild(intro);
 
-        var fieldset = el('fieldset', 'ordo-reason-fieldset');
+        var fieldset = el('fieldset');
         // Légende visible, et pas seulement pour les lecteurs d'écran : c'est
         // elle qui dit que la question n'est pas facultative.
-        var legend = el('legend', 'ordo-reason-legend', 'Pourquoi partez-vous ?');
-        legend.appendChild(el('span', 'ordo-reason-required', 'obligatoire'));
+        var legend = el('legend', 'action_field_label', 'Pourquoi partez-vous ?');
+        legend.appendChild(el('span', 'text-weight-normal text-color-base-600', ' (obligatoire)'));
         fieldset.appendChild(legend);
 
         els.inputs = [];
         REASONS.forEach(function (reason, index) {
-            // <label> englobant, sans attribut `for` : avec les deux, certains
-            // navigateurs comptent le clic deux fois et la case se re-décoche.
-            var option = el('label', 'ordo-reason-option');
+            // Case à cocher de l'inscription : <label> englobant (sans `for`,
+            // sinon certains navigateurs comptent le clic deux fois), case
+            // dessinée `checkbox-ins`, vraie case invisible pour le clavier.
+            var option = el('label', 'w-checkbox checkbox_form ordo-reason-option');
+            var box = el('div', 'w-checkbox-input w-checkbox-input--inputType-custom checkbox-ins');
+            option.appendChild(box);
 
             var input = document.createElement('input');
             input.type = 'checkbox';
             input.id = 'ordo-reason-' + reason.code;
             input.value = reason.code;
             input.setAttribute('data-index', String(index));
+            input.style.cssText = 'opacity:0;position:absolute;z-index:-1';
             option.appendChild(input);
-            option.appendChild(el('span', 'ordo-reason-box'));
-            // Case et texte sont deux colonnes d'un flex : la case reste centrée
-            // sur la hauteur de l'option, y compris quand le sous-titre la fait
-            // tenir sur trois lignes.
-            var content = el('span', 'ordo-reason-content');
-            content.appendChild(el('span', 'ordo-reason-text', reason.label));
-            if (reason.hint) content.appendChild(el('span', 'ordo-reason-hint', reason.hint));
-            option.appendChild(content);
 
+            var text = el('span', 'w-form-label text-size-regular', reason.label);
+            if (reason.hint) text.appendChild(el('span', 'ordo-reason-hint text-size-small text-color-base-600', reason.hint));
+            option.appendChild(text);
+
+            // État posé, pas basculé : webflow.js ne gère ces cases que dans
+            // un formulaire Webflow, et un double basculement les inverserait.
             input.addEventListener('change', function () {
-                option.className = 'ordo-reason-option' + (input.checked ? ' is-checked' : '');
+                setClass(box, 'w--redirected-checked', input.checked);
                 if (reason.other) toggleOtherField(input.checked);
                 refreshSubmitState();
                 hideAlert();
             });
+            // Halo de focus au clavier seulement : la fenêtre place le focus sur
+            // la première case à l'ouverture, ce n'est pas un choix du membre.
+            input.addEventListener('focus', function () { setClass(box, 'w--redirected-focus', focusVisible(input)); });
+            input.addEventListener('blur', function () { setClass(box, 'w--redirected-focus', false); });
 
             els.inputs.push(input);
             fieldset.appendChild(option);
         });
-        dialog.appendChild(fieldset);
+        body.appendChild(fieldset);
 
-        var otherWrap = el('div', 'ordo-reason-other');
+        var otherWrap = el('div');
+        otherWrap.style.display = 'none';
         var textarea = document.createElement('textarea');
+        textarea.className = 'form_input is-champ is-text-area';
         textarea.id = 'ordo-reason-other-text';
         textarea.rows = 3;
         textarea.maxLength = 500;
@@ -368,47 +326,64 @@
             refreshSubmitState();
         });
         otherWrap.appendChild(textarea);
-        dialog.appendChild(otherWrap);
+        body.appendChild(otherWrap);
         els.otherWrap = otherWrap;
         els.textarea = textarea;
 
-        var alert = el('div', 'ordo-reason-alert');
+        var alert = el('div', 'text-size-small text-color-error');
         alert.setAttribute('role', 'alert');
-        dialog.appendChild(alert);
+        alert.style.display = 'none';
+        body.appendChild(alert);
         els.alert = alert;
 
         // Volontairement pas `disabled` : un bouton désactivé n'émet aucun
         // clic, donc le membre qui insiste n'obtiendrait aucune explication.
         // aria-disabled donne le même sens aux lecteurs d'écran, et le clic
         // reste capté pour afficher l'alerte.
-        var submit = el('button', 'ordo-reason-submit', submitLabel);
+        var actions = el('div', 'margin-top margin-small');
+        var submit = el('button', 'button', submitLabel);
         submit.type = 'button';
         submit.setAttribute('aria-disabled', 'true');
         submit.addEventListener('click', handleSubmitClick);
-        dialog.appendChild(submit);
+        actions.appendChild(submit);
         els.submit = submit;
 
-        var escape = el('p', 'ordo-reason-escape');
+        var escape = el('div', 'text-align-center margin-top margin-small');
         if (dismissible()) {
-            var back = el('button', null, 'Finalement, je ne résilie pas');
+            var back = el('button', 'form_link ordo-reason-escape', 'Finalement, je ne résilie pas');
             back.type = 'button';
             back.addEventListener('click', dismiss);
             escape.appendChild(back);
         } else {
-            var link = el('a', null, 'Revenir à mon compte');
+            var link = el('a', 'form_link', 'Revenir à mon compte');
             link.href = ACCOUNT_URL;
             escape.appendChild(link);
         }
-        dialog.appendChild(escape);
+        actions.appendChild(escape);
+        body.appendChild(actions);
 
+        dialog.appendChild(body);
         backdrop.appendChild(dialog);
         els.backdrop = backdrop;
         els.dialog = dialog;
         return backdrop;
     }
 
+    function focusVisible(node) {
+        try {
+            return node.matches(':focus-visible');
+        } catch (e) {
+            return true;
+        }
+    }
+
+    function setClass(node, name, on) {
+        var classes = (' ' + node.className + ' ').replace(' ' + name + ' ', ' ');
+        node.className = (classes + (on ? name : '')).replace(/\s+/g, ' ').trim();
+    }
+
     function toggleOtherField(visible) {
-        els.otherWrap.className = 'ordo-reason-other' + (visible ? ' is-visible' : '');
+        els.otherWrap.style.display = visible ? 'block' : 'none';
         if (visible) {
             try { els.textarea.focus(); } catch (e) {}
         }
@@ -441,18 +416,11 @@
 
     function showAlert(message) {
         els.alert.textContent = message;
-        els.alert.className = 'ordo-reason-alert is-visible';
+        els.alert.style.display = 'block';
     }
 
     function hideAlert() {
-        els.alert.className = 'ordo-reason-alert';
-    }
-
-    function shake() {
-        els.submit.className = 'ordo-reason-submit';
-        // Forcer un reflow pour rejouer l'animation sur un second clic.
-        void els.submit.offsetWidth;
-        els.submit.className = 'ordo-reason-submit is-shaking';
+        els.alert.style.display = 'none';
     }
 
     function handleSubmitClick() {
@@ -460,7 +428,6 @@
         if (!validate()) {
             var codes = checkedCodes();
             showAlert(codes.length ? MSG_OTHER_EMPTY : MSG_NO_CHOICE);
-            shake();
             try {
                 if (codes.length) els.textarea.focus();
                 else els.inputs[0].focus();
@@ -484,7 +451,7 @@
 
     function trapFocus(event) {
         if (event.key !== 'Tab' && event.keyCode !== 9) return;
-        var focusables = els.dialog.querySelectorAll('input,textarea,button,a[href]');
+        var focusables = els.dialog.querySelectorAll('[role="button"],input,textarea,button,a[href]');
         if (!focusables.length) return;
         var first = focusables[0];
         var last = focusables[focusables.length - 1];
@@ -508,12 +475,7 @@
         document.body.appendChild(backdrop);
         document.documentElement.className += ' ordo-reason-lock';
         document.addEventListener('keydown', onKeydown, true);
-        // Laisser un tick au navigateur pour poser l'état initial de la
-        // transition, sinon l'ouverture est sèche.
-        window.setTimeout(function () {
-            backdrop.className = 'ordo-reason-backdrop is-open';
-            try { els.inputs[0].focus(); } catch (e) {}
-        }, 20);
+        try { els.inputs[0].focus(); } catch (e) {}
         console.log(PREFIX, 'Modal opened (trigger: ' + TRIGGER + ')');
     }
 
@@ -533,12 +495,7 @@
         var backdrop = els.backdrop;
         var html = document.documentElement;
         html.className = html.className.replace(/\s*\bordo-reason-lock\b/g, '');
-        if (backdrop) {
-            backdrop.className = 'ordo-reason-backdrop';
-            window.setTimeout(function () {
-                if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
-            }, 240);
-        }
+        if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
         if (lastFocus && lastFocus.focus) {
             try { lastFocus.focus(); } catch (e) {}
         }
@@ -600,7 +557,7 @@
      * Une seule livraison, quoi qu'il arrive.
      *
      * La version précédente envoyait un `fetch(keepalive)` et retombait sur
-     * `sendBeacon` dans le `.catch` — ce qui a produit deux lignes identiques
+     * `sendBeacon` dans le `.catch`, ce qui a produit deux lignes identiques
      * dans la feuille le 27/08/2026. Avec `keepalive`, quand la page se ferme
      * pendant la requête (et ici elle se ferme : la résiliation repart juste
      * après et redirige), le navigateur LIVRE quand même la requête mais
