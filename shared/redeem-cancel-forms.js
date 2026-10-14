@@ -21,7 +21,7 @@
  *
  * A logged out visitor (nothing is sent), or a member the server turns away because the offer is not
  * on their account (409), sees a message in the error element with a link to the subscriptions tab of
- * their account, instead of the generic error.
+ * their account, instead of the generic error; the wording follows the 409 error code.
  *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
@@ -43,8 +43,11 @@
   // Report name and link label of each notice; the wording is per form (FORMS[].notices).
   const NOTICES = {
     noSession: { name: 'CancelFormNoSession', link: 'Se connecter' },
-    planAbsent: { name: 'CancelFormPlanAbsent', link: 'Voir mes abonnements' }
+    planAbsent: { name: 'CancelFormPlanAbsent', link: 'Voir mes abonnements' },
+    subscriptionAbsent: { name: 'CancelFormSubscriptionAbsent', link: 'Voir mes abonnements' }
   };
+  // 409 error code from the endpoint → notice; any other 409 is planAbsent.
+  const NOTICE_OF_409 = { abonnement_absent: 'subscriptionAbsent' };
 
   /**
    * Pages that load this script through a page loader already have the reporter.
@@ -106,7 +109,8 @@
       errorId: 'error-message-cancel',
       notices: {
         noSession: 'Connectez-vous pour résilier votre offre.',
-        planAbsent: 'Cette offre n\'est pas active sur votre compte : rien n\'a été résilié. Vos abonnements et leur résiliation sont dans votre compte.'
+        planAbsent: 'Cette offre n\'est pas active sur votre compte\u00a0: rien n\'a été résilié. Vos abonnements et leur résiliation sont dans votre compte.',
+        subscriptionAbsent: 'Aucun abonnement actif à cette offre n\'a été trouvé sur votre compte. Vos abonnements et leur résiliation sont dans votre compte.'
       }
     }
   };
@@ -220,7 +224,7 @@
           window.location.href = '/';
         }, REDIRECT_DELAY);
       } else if (action && response.status === 409) {
-        refuse(elements, formName, 'planAbsent', 'server returned 409');
+        refuse(elements, formName, NOTICE_OF_409[serverError(response.body)] || 'planAbsent', 'server returned 409');
       } else {
         const detail = response.body ? `: ${String(response.body).slice(0, 200)}` : '';
         throw new Error(`Server returned ${response.status}${detail}`);
@@ -244,9 +248,21 @@
     report(formName, NOTICES[kind].name, detail);
     hideElement(elements.waiting);
     showElement(elements.form);
-    setError(elements, { text: elements.notices[kind], link: NOTICES[kind].link });
+    // A form without wording for this notice falls back to its planAbsent text.
+    const text = elements.notices[kind] || elements.notices.planAbsent;
+    setError(elements, { text: text, link: NOTICES[kind].link });
     showElement(elements.error);
     elements.busy = false;
+  }
+
+  /** The `error` code of a JSON error body, or ''. */
+  function serverError(body) {
+    try {
+      const parsed = JSON.parse(String(body || ''));
+      return parsed && typeof parsed.error === 'string' ? parsed.error : '';
+    } catch (e) {
+      return '';
+    }
   }
 
   /**
