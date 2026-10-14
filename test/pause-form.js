@@ -17,6 +17,8 @@
  *     in localStorage.locat for the way back, reported as PauseFormNoSession; a later ordinary failure
  *     puts the page's own error content back; a legacy form is unchanged; when the member cannot be read
  *     (no SDK, error, odd answer, no answer within the timeout) the request goes as before;
+ *   - a 409 from the endpoint (no subscription the pause applies to) shows the not-eligible message with a
+ *     link to the account tab, reported as PauseFormNotEligible; a legacy form's 409 stays the plain error;
  *   - a second submit while the first is pending sends nothing more; a retry after a failure does.
  *
  * Usage: node test/pause-form.js
@@ -227,7 +229,7 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
     assert.deepStrictEqual(p.navigations, ['/membership/abonnement-en-pause']);
   });
 
-  for (const status of [202, 400, 401, 403, 409, 422, 429, 502, 503]) {
+  for (const status of [202, 400, 401, 403, 422, 429, 502, 503]) {
     await check(`marked form: HTTP ${status} shows the error, gives the form back, is reported`, async () => {
       const long = 'e'.repeat(300);
       const p = page({ answers: [{ status, body: long }] });
@@ -357,6 +359,46 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
     p.submit();
     await wait(60);
     assert.strictEqual(p.d.querySelector('#error-message-pause a.original'), before);
+  });
+
+  await check('marked form: HTTP 409 shows the not-eligible message, never the confirmation', async () => {
+    const p = page({ answers: [{ status: 409, body: '{"error":"abonnement_absent"}' }] });
+    p.submit();
+    await wait(60);
+    const el = p.d.getElementById('error-message-pause');
+    assert.ok(p.shown('error-message-pause'));
+    assert.ok(!p.shown('waiting-message-pause'));
+    assert.ok(!p.shown('success-message-pause'));
+    assert.strictEqual(p.d.getElementById('pause-form').style.display, 'block');
+    assert.ok(el.textContent.indexOf("La pause n'est pas disponible pour votre abonnement\u00a0: rien n'a été modifié.") !== -1, el.textContent);
+    const links = el.querySelectorAll('a');
+    assert.strictEqual(links.length, 1);
+    assert.strictEqual(links[0].getAttribute('href'), '/membership/compte#abonnements');
+    assert.strictEqual(p.w.localStorage.getItem('locat'), null, 'no way back stored for this notice');
+    assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormNotEligible']);
+    await wait(3100);
+    assert.deepStrictEqual(p.navigations, []);
+  });
+
+  await check('marked form: after the not-eligible message, a later failure puts the page content back', async () => {
+    const p = page({ answers: [{ status: 409 }, { status: 502 }] });
+    p.submit();
+    await wait(60);
+    p.submit();
+    await wait(60);
+    const el = p.d.getElementById('error-message-pause');
+    assert.ok(el.querySelector('a.original'));
+    assert.ok(!/pas disponible/.test(el.textContent));
+    assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormNotEligible', 'PauseFormSubmitFailed']);
+  });
+
+  await check('legacy form: HTTP 409 stays the plain error', async () => {
+    const p = page({ attr: null, xhrStatus: 409 });
+    p.submit();
+    await wait(60);
+    assert.ok(p.shown('error-message-pause'));
+    assert.ok(p.d.querySelector('#error-message-pause a.original'));
+    assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormSubmitFailed']);
   });
 
   await check('legacy form, logged out: unchanged, posted as before', async () => {
