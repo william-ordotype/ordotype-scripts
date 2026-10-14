@@ -9,8 +9,8 @@
  *   - a form WITH data-ordo-action never calls its own action: one fetch to the endpoint, with
  *     `Authorization: Bearer <token>` and `{ action, fields }`, where fields hold the form's own
  *     fields (the reason) and none of the identity fields, whatever name the prefilled inputs carry;
- *   - success only on 200 (confirmation, then the pause page); any other status or no answer shows
- *     the error, gives the form back and is reported as `PauseFormSubmitFailed`;
+ *   - success only on 200 (confirmation, then the pause page); any other status but a 409, or no
+ *     answer, shows the error, gives the form back and is reported as `PauseFormSubmitFailed`;
  *   - without a session token nothing is sent, the error shows and is reported;
  *   - a logged out visitor (getCurrentMember gives { data: null }) sends nothing from a marked form: the
  *     error element shows the sign-in message, whose link goes to the login page with this page stored
@@ -18,7 +18,8 @@
  *     puts the page's own error content back; a legacy form is unchanged; when the member cannot be read
  *     (no SDK, error, odd answer, no answer within the timeout) the request goes as before;
  *   - a 409 from the endpoint (no subscription the pause applies to) shows the not-eligible message with a
- *     link to the account tab, reported as PauseFormNotEligible; a legacy form's 409 stays the plain error;
+ *     link to the account tab, keeps the form hidden and ignores further submits, reported once as
+ *     PauseFormNotEligible with the error code; a legacy form's 409 stays the plain error;
  *   - a second submit while the first is pending sends nothing more; a retry after a failure does.
  *
  * Usage: node test/pause-form.js
@@ -369,27 +370,27 @@ const IDENTITY = /mem_test|cus_test|sub_test|dr\.someone|pageUrl/;
     assert.ok(p.shown('error-message-pause'));
     assert.ok(!p.shown('waiting-message-pause'));
     assert.ok(!p.shown('success-message-pause'));
-    assert.strictEqual(p.d.getElementById('pause-form').style.display, 'block');
+    assert.strictEqual(p.d.getElementById('pause-form').style.display, 'none', 'form stays hidden');
     assert.ok(el.textContent.indexOf("La pause n'est pas disponible pour votre abonnement\u00a0: rien n'a été modifié.") !== -1, el.textContent);
     const links = el.querySelectorAll('a');
     assert.strictEqual(links.length, 1);
     assert.strictEqual(links[0].getAttribute('href'), '/membership/compte#abonnements');
     assert.strictEqual(p.w.localStorage.getItem('locat'), null, 'no way back stored for this notice');
     assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormNotEligible']);
+    assert.match(p.reports[0].message, /409: \{"error":"abonnement_absent"\}/);
     await wait(3100);
     assert.deepStrictEqual(p.navigations, []);
   });
 
-  await check('marked form: after the not-eligible message, a later failure puts the page content back', async () => {
-    const p = page({ answers: [{ status: 409 }, { status: 502 }] });
+  await check('marked form: after the not-eligible message, a further submit sends nothing', async () => {
+    const p = page({ answers: [{ status: 409 }, { status: 200 }] });
     p.submit();
     await wait(60);
     p.submit();
     await wait(60);
-    const el = p.d.getElementById('error-message-pause');
-    assert.ok(el.querySelector('a.original'));
-    assert.ok(!/pas disponible/.test(el.textContent));
-    assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormNotEligible', 'PauseFormSubmitFailed']);
+    assert.strictEqual(p.fetches.length, 1);
+    assert.deepStrictEqual(p.reports.map((r) => r.name), ['PauseFormNotEligible']);
+    assert.ok(!p.shown('success-message-pause'));
   });
 
   await check('legacy form: HTTP 409 stays the plain error', async () => {

@@ -16,7 +16,8 @@
  * A logged out visitor sends nothing from a marked form: the error element shows a sign-in message
  * whose link comes back to this page after login (localStorage.locat), reported as PauseFormNoSession.
  * A 409 from the endpoint (no subscription the pause applies to) shows a message with a link to the
- * subscriptions tab of the account, reported as PauseFormNotEligible. Legacy forms are unchanged.
+ * subscriptions tab of the account and keeps the form hidden (the answer would not change), reported
+ * as PauseFormNotEligible with the error code. Legacy forms are unchanged.
  *
  * Requires: window.OrdoMemberstack (memberstack-utils.js loaded first)
  *
@@ -51,7 +52,8 @@
             name: 'PauseFormNotEligible',
             text: 'La pause n\'est pas disponible pour votre abonnement\u00a0: rien n\'a été modifié. Vos abonnements et leur résiliation sont dans votre compte.',
             link: 'Voir mes abonnements',
-            href: '/membership/compte#abonnements'
+            href: '/membership/compte#abonnements',
+            final: true
         }
     };
     var errorContent = null;
@@ -142,13 +144,14 @@
         hideElement(form);
         hideElement(error);
 
-        // Nothing was done: say why in the error element and give the form back.
+        // Nothing was done: say why in the error element. The form comes back unless the answer is final.
         function refuse(notice, detail) {
             report(notice.name, detail);
             hideElement(waiting);
-            showElement(form);
             setError(error, notice);
             showElement(error);
+            if (notice.final) return;
+            showElement(form);
             submitting = false;
         }
 
@@ -164,7 +167,7 @@
             .then(function(response) {
                 if (response === null) return;
                 if (action && response.status === 409) {
-                    refuse(NOTICES.notEligible, 'server returned 409');
+                    refuse(NOTICES.notEligible, 'server returned 409' + (response.body ? ': ' + String(response.body).slice(0, 100) : ''));
                     return;
                 }
                 hideElement(waiting);
