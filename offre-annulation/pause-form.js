@@ -15,7 +15,9 @@
  *
  * A logged out visitor sends nothing from a marked form: the error element shows a sign-in message
  * whose link comes back to this page after login (localStorage.locat), reported as PauseFormNoSession.
- * Legacy forms are unchanged.
+ * A 409 from the endpoint (no subscription the pause applies to) shows a message with a link to the
+ * subscriptions tab of the account and keeps the form hidden (the answer would not change), reported
+ * as PauseFormNotEligible with the error code. Legacy forms are unchanged.
  *
  * Requires: window.OrdoMemberstack (memberstack-utils.js loaded first)
  *
@@ -36,11 +38,24 @@
     var IDENTITY_FIELDS = ['email', 'MSuserId', 'memberId', 'memberIdPause', 'stripeCustomerId',
         'stripeCustomerIdCancel', 'stripeCustomerIdPause', 'stripeSubscriptionId', 'stripeSubscriptionIdPause'];
     var submitting = false;
-    // successful-login sends the member back to localStorage.locat: this page, where the pause is.
-    var LOGIN_URL = '/membership/login-ms';
     var MEMBER_CHECK_TIMEOUT = 3000;
-    var NO_SESSION_TEXT = 'Connectez-vous pour mettre votre abonnement en pause.';
-    var NO_SESSION_LINK = 'Se connecter';
+    var NOTICES = {
+        // successful-login sends the member back to localStorage.locat: this page, where the pause is.
+        noSession: {
+            name: 'PauseFormNoSession',
+            text: 'Connectez-vous pour mettre votre abonnement en pause.',
+            link: 'Se connecter',
+            href: '/membership/login-ms',
+            comeBack: true
+        },
+        notEligible: {
+            name: 'PauseFormNotEligible',
+            text: 'La pause n\'est pas disponible pour votre abonnement\u00a0: rien n\'a été modifié. Vos abonnements et leur résiliation sont dans votre compte.',
+            link: 'Voir mes abonnements',
+            href: '/membership/compte#abonnements',
+            final: true
+        }
+    };
     var errorContent = null;
     var noticeShown = false;
 
@@ -129,22 +144,32 @@
         hideElement(form);
         hideElement(error);
 
+        // Nothing was done: say why in the error element. The form comes back unless the answer is final.
+        function refuse(notice, detail) {
+            report(notice.name, detail);
+            hideElement(waiting);
+            setError(error, notice);
+            showElement(error);
+            if (notice.final) return;
+            showElement(form);
+            submitting = false;
+        }
+
         var action = form.getAttribute('data-ordo-action');
         currentMember()
             .then(function(member) {
                 if (member === null && action) {
-                    report('PauseFormNoSession', 'no member session');
-                    hideElement(waiting);
-                    showElement(form);
-                    setError(error, true);
-                    showElement(error);
-                    submitting = false;
+                    refuse(NOTICES.noSession, 'no member session');
                     return null;
                 }
                 return action ? submitToServer(form, action) : submitForm(form);
             })
             .then(function(response) {
                 if (response === null) return;
+                if (action && response.status === 409) {
+                    refuse(NOTICES.notEligible, 'server returned 409' + (response.body ? ': ' + String(response.body).slice(0, 100) : ''));
+                    return;
+                }
                 hideElement(waiting);
                 if (response.ok) {
                     showElement(success);
@@ -162,7 +187,7 @@
                 report('PauseFormSubmitFailed', (err && err.message) || String(err));
                 hideElement(waiting);
                 showElement(form);
-                if (noticeShown) setError(error, false);
+                if (noticeShown) setError(error, null);
                 showElement(error);
                 submitting = false;
             });
@@ -199,22 +224,22 @@
     }
 
     /**
-     * Puts the sign-in message in the error element, or the page's own content back.
+     * Puts a notice in the error element, or the page's own content back when notice is null.
      */
     function setError(el, notice) {
         if (!el) return;
         try {
             while (el.firstChild) el.removeChild(el.firstChild);
-            noticeShown = notice;
+            noticeShown = !!notice;
             if (!notice) {
                 (errorContent || []).forEach(function(n) { el.appendChild(n.cloneNode(true)); });
                 return;
             }
-            rememberReturn();
-            el.appendChild(document.createTextNode(NO_SESSION_TEXT + ' '));
+            if (notice.comeBack) rememberReturn();
+            el.appendChild(document.createTextNode(notice.text + ' '));
             var link = document.createElement('a');
-            link.href = LOGIN_URL;
-            link.textContent = NO_SESSION_LINK;
+            link.href = notice.href;
+            link.textContent = notice.link;
             el.appendChild(link);
         } catch (e) {
             // the element keeps whatever it holds
