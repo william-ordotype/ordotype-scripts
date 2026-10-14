@@ -102,31 +102,10 @@
     // exclure des rapports au lieu de les confondre avec du vrai trafic.
     var testing = false;
 
-    var CSS = [
-        '.ordo-expired{display:flex;align-items:center;justify-content:center;',
-        'min-height:60vh;padding:80px 24px;background:var(--neutral-100,#f7f7fb);}',
-        '.ordo-expired-card{width:100%;max-width:560px;padding:48px 40px;text-align:center;',
-        'background:#fff;border:1px solid var(--gris300,#ecedef);border-radius:16px;',
-        'box-shadow:0 1px 2px rgba(12,14,22,.04),0 12px 32px rgba(12,14,22,.06);}',
-        '.ordo-expired-badge{display:inline-flex;align-items:center;justify-content:center;',
-        'width:56px;height:56px;margin-bottom:24px;border-radius:50%;',
-        'background:var(--primary-50,#f0f3ff);color:var(--primary-500,#3454f6);}',
-        '.ordo-expired-title{margin:0 0 12px;font-size:28px;line-height:1.25;font-weight:600;',
-        'color:var(--base-900,#0c0e16);}',
-        '.ordo-expired-text{margin:0 auto 8px;max-width:44ch;font-size:16px;line-height:1.6;',
-        'color:var(--neutral-500,#47505c);}',
-        '.ordo-expired-actions{display:flex;flex-direction:column;align-items:center;margin-top:32px;}',
-        '.ordo-expired-actions>*+*{margin-top:16px;}',
-        // Le CTA principal porte les classes .button.is-gradient du site. On ne
-        // retouche que sa taille pour l'échelle de la carte, jamais ses couleurs :
-        // les redéfinir ferait diverger la page du design system à la prochaine
-        // refonte.
-        '.ordo-expired-actions .button{padding:.75rem 1.5rem;}',
-        '.ordo-expired-link{font-size:15px;color:var(--neutral-500,#47505c);text-decoration:underline;}',
-        '.ordo-expired-link:hover{color:var(--primary-500,#3454f6);}',
-        '@media (max-width:479px){.ordo-expired{padding:48px 16px;}',
-        '.ordo-expired-card{padding:36px 24px;}.ordo-expired-title{font-size:24px;}}'
-    ].join('');
+    // Mise en page seulement : la carte, le titre, le texte et le bouton portent les
+    // classes du site (inscr-p_*, button, form_link), comme les pages d'offre et
+    // d'inscription. Aucune couleur ni ombre propre au script.
+    var CSS = '.ordo-expired{min-height:50vh;justify-content:center;}';
 
     function param(name) {
         try {
@@ -207,31 +186,6 @@
         return node;
     }
 
-    function clockIcon() {
-        var NS = 'http://www.w3.org/2000/svg';
-        var svg = document.createElementNS(NS, 'svg');
-        svg.setAttribute('width', '28');
-        svg.setAttribute('height', '28');
-        svg.setAttribute('viewBox', '0 0 24 24');
-        svg.setAttribute('fill', 'none');
-        svg.setAttribute('stroke', 'currentColor');
-        svg.setAttribute('stroke-width', '1.8');
-        svg.setAttribute('stroke-linecap', 'round');
-        svg.setAttribute('aria-hidden', 'true');
-
-        var circle = document.createElementNS(NS, 'circle');
-        circle.setAttribute('cx', '12');
-        circle.setAttribute('cy', '12');
-        circle.setAttribute('r', '9');
-
-        var hands = document.createElementNS(NS, 'path');
-        hands.setAttribute('d', 'M12 7v5l3 2');
-
-        svg.appendChild(circle);
-        svg.appendChild(hands);
-        return svg;
-    }
-
     function injectStyle() {
         if (document.getElementById('ordo-expired-css')) return;
         var style = document.createElement('style');
@@ -241,30 +195,25 @@
     }
 
     function card(title, paragraphs, actions) {
-        var wrap = el('div', 'ordo-expired');
-        var box = el('div', 'ordo-expired-card');
+        var wrap = el('div', 'ordo-expired padding-global inscr-p_member');
+        var box = el('div', 'ordo-expired-card inscr-p_card inscr-p_offer');
 
-        var badge = el('div', 'ordo-expired-badge');
-        badge.appendChild(clockIcon());
-        box.appendChild(badge);
-
-        box.appendChild(el('h1', 'ordo-expired-title', title));
+        box.appendChild(el('h1', 'ordo-expired-title inscr-p_title', title));
         paragraphs.forEach(function(text) {
-            box.appendChild(el('p', 'ordo-expired-text', text));
+            box.appendChild(el('p', 'ordo-expired-text inscr-p_note', text));
         });
 
-        var row = el('div', 'ordo-expired-actions');
+        var row = el('div', 'ordo-expired-actions inscr-p_actions');
         actions.forEach(function(a) {
             if (!a.primary) {
-                var link = el('a', 'ordo-expired-link', a.label);
+                var link = el('a', 'ordo-expired-link form_link text-align-center', a.label);
                 link.href = a.href;
                 row.appendChild(link);
                 return;
             }
-            // Le CTA principal réutilise le composant bouton du site plutôt que
-            // d'en réimiter les couleurs : même dégradé, même rayon, et il suivra
-            // tout seul une future refonte du design system.
-            var btn = el('a', 'button is-gradient w-inline-block');
+            // Le CTA principal est le bouton plein du site (.button), celui des
+            // pages d'inscription : il suivra tout seul le design system.
+            var btn = el('a', 'button w-inline-block');
             btn.href = a.href;
             var content = el('div', 'button-content outer');
             content.appendChild(el('div', null, a.label));
