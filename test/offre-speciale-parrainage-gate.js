@@ -89,7 +89,8 @@ test('écran affiché : le fond va sur le conteneur de la page, pas seulement su
   w.eval(GATE);
   await tick();
   const style = w.document.getElementById('ordo-parrainage-css');
-  assert.ok(/\.ordo-parrainage-ground\{background-color:/.test(style.textContent));
+  assert.ok(/\.ordo-expired\{min-height:/.test(style.textContent));
+  assert.ok(!/background/.test(style.textContent), 'aucun fond propre au script');
   assert.ok($(w, 'page-wrapper-connected').classList.contains('ordo-parrainage-ground'));
 
   const sansWrapper = page();

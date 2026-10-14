@@ -40,26 +40,11 @@
     var BTN_MS_ID = 'signup-rempla-from-decouverte';
     var BTN_STRIPE_ID = 'signup-rempla-stripe-customer';
 
-    var CSS = [
-        // Le gabarit garde une marge et un rembourrage autour du contenu, sur un corps
-        // de page blanc : un fond posé sur le seul écran s'arrête avant le pied de page
-        // et laisse une bande claire. Le fond va donc sur le conteneur de la page, dont
-        // la barre de navigation (fixée, translucide) et le pied de page gardent le leur.
-        '.ordo-parrainage-ground{background-color:var(--neutral-100,#f7f7fb);}',
-        '.ordo-expired{display:flex;align-items:center;justify-content:center;',
-        'min-height:60vh;padding:80px 24px;background:var(--neutral-100,#f7f7fb);}',
-        '.ordo-expired-card{width:100%;max-width:560px;padding:48px 40px;text-align:center;',
-        'background:#fff;border:1px solid var(--gris300,#ecedef);border-radius:16px;',
-        'box-shadow:0 1px 2px rgba(12,14,22,.04),0 12px 32px rgba(12,14,22,.06);}',
-        '.ordo-expired-title{margin:0 0 12px;font-size:28px;line-height:1.25;font-weight:600;',
-        'color:var(--base-900,#0c0e16);}',
-        '.ordo-expired-text{margin:0 auto 8px;max-width:44ch;font-size:16px;line-height:1.6;',
-        'color:var(--neutral-500,#47505c);}',
-        '.ordo-expired-actions{display:flex;flex-direction:column;align-items:center;margin-top:32px;}',
-        '.ordo-expired-actions .button{padding:.75rem 1.5rem;}',
-        '@media (max-width:479px){.ordo-expired{padding:48px 16px;}',
-        '.ordo-expired-card{padding:36px 24px;}.ordo-expired-title{font-size:24px;}}'
-    ].join('');
+    // Mise en page seulement : la carte, le titre, le texte et le bouton portent les
+    // classes du site (inscr-p_*, button), comme les pages d'offre et d'inscription.
+    // Plus de fond gris : l'écran est blanc comme la page, donc plus de bande claire
+    // avant le pied de page (la classe ordo-parrainage-ground reste, sans effet).
+    var CSS = '.ordo-expired{min-height:50vh;justify-content:center;}';
 
     function param(name) {
         try {
@@ -132,16 +117,16 @@
     // `cta` absent : le bouton vers les offres ; `null` : aucun bouton.
     function card(title, paragraphs, cta) {
         var action = cta === undefined ? OFFERS_CTA : cta;
-        var wrap = el('div', 'ordo-expired');
+        var wrap = el('div', 'ordo-expired padding-global inscr-p_member');
         wrap.setAttribute('data-parrainage-screen', '');
-        var box = el('div', 'ordo-expired-card');
-        box.appendChild(el('h1', 'ordo-expired-title', title));
+        var box = el('div', 'ordo-expired-card inscr-p_card inscr-p_offer');
+        box.appendChild(el('h1', 'ordo-expired-title inscr-p_title', title));
         paragraphs.forEach(function(text) {
-            box.appendChild(el('p', 'ordo-expired-text', text));
+            box.appendChild(el('p', 'ordo-expired-text inscr-p_note', text));
         });
         if (action) {
-            var row = el('div', 'ordo-expired-actions');
-            var btn = el('a', 'button is-gradient w-inline-block');
+            var row = el('div', 'ordo-expired-actions inscr-p_actions');
+            var btn = el('a', 'button w-inline-block');
             btn.href = action.href;
             var content = el('div', 'button-content outer');
             content.appendChild(el('div', null, action.label));
