@@ -619,7 +619,7 @@ async function test(name, fn) {
   // --- Repli quand l'Annuaire santé est en panne --------------------------------------------------
 
   const NOTE_PANNE = 'L’Annuaire santé ne répond pas en ce moment : vous pouvez saisir votre numéro, il sera vérifié automatiquement dès son retour.';
-  const MSG_REPLI = 'L’Annuaire santé ne répond pas en ce moment : saisissez votre numéro dans le champ ci‑dessus puis « Sauvegarder ».';
+  const MSG_REPLI = 'L’Annuaire santé ne répond pas en ce moment : saisissez votre numéro dans le champ ci\u2011dessus puis «\u00a0Sauvegarder\u00a0».';
   const jamais = () => new Promise(() => {});
   const ouvrir = (d) => d.querySelector('[data-ordo-edit="pro"]').click();
 

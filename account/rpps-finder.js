@@ -282,10 +282,11 @@
   function messageFor(err) {
     var status = err && err.status;
     var code = err && err.code;
-    // En modification, le champ vient d'être libéré : le message dit quoi faire.
+    // En modification, le champ vient d'être libéré : le message dit quoi faire. Espaces insécables
+    // dans les guillemets : sinon « restait seul en bout de ligne.
     if (isOutage(err)) {
       return repli
-        ? 'L’Annuaire santé ne répond pas en ce moment : saisissez votre numéro dans le champ ci‑dessus puis « Sauvegarder ».'
+        ? 'L’Annuaire santé ne répond pas en ce moment : saisissez votre numéro dans le champ ci\u2011dessus puis «\u00a0Sauvegarder\u00a0».'
         : 'L’Annuaire santé ne répond pas en ce moment. Réessayez un peu plus tard.';
     }
     if (status === 401) return 'Votre session a expiré : reconnectez-vous puis réessayez.';
