@@ -3,6 +3,8 @@
 // un clic sur un renvoi du code, le bloc prend les textes posés dans le Designer
 // (data-referral-stuck-text, -placeholder, -value) et une barre y mène s'il est hors de l'écran.
 // Le jeton de pré-connexion de la session 2FA part avec l'invitation : le serveur en déduit le parrain.
+// Après la confirmation, la page demande pendant 30 s si l'adresse a été refusée par son serveur (ticket
+// rendu par le relais, fonction parrainage-statut) ; si oui, le formulaire revient avec un message.
 (function () {
   var SESSION_KEY = "_ms-2fa-session";
   var EMAIL_KEY = "ms_email";
@@ -11,6 +13,12 @@
   var TIMEOUT_MS = 10000;
   var RESEND_SELECTOR = "#resend-otp-by-email, #send-otp-by-sms";
   var BAR_CLASS = "referral-stuck-bar";
+  // Délais depuis la confirmation : le refus du serveur de l'invité arrive en quelques secondes.
+  var WATCH_DELAYS_MS = [5000, 10000, 18000, 30000];
+  var BOUNCED_TEXT = "L’adresse {email} n’a pas pu recevoir l’invitation. Vérifiez-la, puis renvoyez.";
+  var BOUNCED_BAR = "Invitation non remise : vérifiez l’adresse";
+  var bounced = {};
+  var watching = null;
   var pending = false;
   var sent = false;
   var variant = "default";
@@ -121,9 +129,9 @@
     for (var i = 0; i < bars.length; i++) bars[i].parentNode.removeChild(bars[i]);
   }
 
-  function showBar(invitation) {
-    var text = invitation.getAttribute("data-referral-stuck-bar");
+  function showBar(invitation, text) {
     if (!text || inView(invitation)) return;
+    removeBar();
     var bar = document.createElement("a");
     bar.className = BAR_CLASS;
     bar.href = "#referral-invitation";
@@ -158,7 +166,7 @@
     variant = "stuck";
     useStuckTexts(invitation);
     useStuckTexts(document.getElementById("referral-confirmation"));
-    showBar(invitation);
+    showBar(invitation, invitation.getAttribute("data-referral-stuck-bar"));
     track("referral_stuck_shown", { option: trigger });
   }
 
@@ -168,10 +176,22 @@
     if (seconds > 0) setTimeout(function () { enterStuck("timer"); }, seconds * 1000);
   }
 
-  function showFail(form, visible) {
+  // text : message propre à un cas (adresse refusée) ; sans, le texte posé dans le Designer.
+  function showFail(form, visible, text) {
     var block = form.closest(".w-form") || form.parentNode;
     var fail = block && block.querySelector(".w-form-fail");
-    if (fail) fail.style.display = visible ? "block" : "none";
+    if (!fail) return;
+    var slot = fail.firstElementChild || fail;
+    if (!fail.hasAttribute("data-referral-fail-text")) fail.setAttribute("data-referral-fail-text", slot.textContent);
+    slot.textContent = text || fail.getAttribute("data-referral-fail-text");
+    fail.style.display = visible ? "block" : "none";
+  }
+
+  function bouncedText(form, invitee) {
+    var block = form.closest(".w-form") || form.parentNode;
+    var fail = block && block.querySelector(".w-form-fail");
+    var text = (fail && fail.getAttribute("data-referral-bounced-text")) || BOUNCED_TEXT;
+    return text.replace("{email}", invitee);
   }
 
   function setBusy(form, busy) {
@@ -198,10 +218,64 @@
     }).then(function (response) {
       if (timer) clearTimeout(timer);
       if (!response.ok) throw new Error("HTTP " + response.status);
+      // Le corps (ticket de suivi) est un plus : illisible, l'invitation reste envoyée.
+      if (typeof response.json !== "function") return {};
+      return response.json().then(function (body) { return body || {}; }, function () { return {}; });
     }, function (error) {
       if (timer) clearTimeout(timer);
       throw error;
     });
+  }
+
+  function statusEndpoint(form, endpoint) {
+    var url = form.getAttribute("data-referral-status-endpoint") || endpoint.replace(/\/parrainage-invitation$/, "/parrainage-statut");
+    return url !== endpoint && url.indexOf("https://") === 0 ? url : "";
+  }
+
+  // Le serveur de l'invité a refusé l'adresse : le formulaire revient, avec l'adresse à corriger.
+  function showBounced(form, invitee) {
+    watching = null;
+    bounced[invitee.toLowerCase()] = true;
+    var invitation = document.getElementById("referral-invitation");
+    setVisible(document.getElementById("referral-confirmation"), false);
+    setVisible(invitation, true);
+    var input = form.querySelector('input[type="email"]');
+    if (input && input.value === "") input.value = invitee;
+    showFail(form, true, bouncedText(form, invitee));
+    // Bloc hors de l'écran (mobile, sous la boîte du code) : la barre y mène.
+    if (invitation) showBar(invitation, invitation.getAttribute("data-referral-bounced-bar") || BOUNCED_BAR);
+    track("referral_invite_failed", { failure_reason: "bounced", option: variant });
+  }
+
+  // Une demande à la fois ; toute réponse autre qu'« en attente » arrête le suivi (une panne est
+  // signalée côté serveur, la page se tait). Le code validé, la page part : on arrête aussi.
+  function watchBounce(form, endpoint, invitee, ticket) {
+    var url = statusEndpoint(form, endpoint);
+    if (!ticket || !url) return;
+    var watch = {};
+    var started = Date.now();
+    var step = 0;
+    watching = watch;
+    function next() {
+      if (step >= WATCH_DELAYS_MS.length) return;
+      setTimeout(poll, Math.max(0, WATCH_DELAYS_MS[step++] - (Date.now() - started)));
+    }
+    function poll() {
+      if (watching !== watch || codeValidated()) return;
+      fetch(url, {
+        method: "POST",
+        // text/plain : pas de préflight CORS, une seule invocation par demande.
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify({ ticket: ticket, invitee_email: invitee }),
+      }).then(function (response) {
+        return response.ok ? response.json() : null;
+      }).then(function (body) {
+        if (watching !== watch || !body) return;
+        if (body.status === "bounced") showBounced(form, invitee);
+        else if (body.status === "pending") next();
+      }, function () {});
+    }
+    next();
   }
 
   function showConfirmation(invitee) {
@@ -231,6 +305,12 @@
       showFail(form, true);
       return;
     }
+    // Déjà refusée pendant cette visite : un nouvel envoi ne partirait pas (Make n'invite qu'une fois).
+    if (bounced[invitee.toLowerCase()]) {
+      showFail(form, true, bouncedText(form, invitee));
+      track("referral_invite_failed", { failure_reason: "bounced_again", option: variant });
+      return;
+    }
     // Sans parrain ou sans adresse d'envoi, c'est une panne, pas une erreur de saisie.
     var blocked = !referrer ? "no_referrer" : endpoint.indexOf("https://") !== 0 ? "no_endpoint" : "";
     if (blocked) {
@@ -248,7 +328,7 @@
       referrer_email: referrer.email,
       pre_auth_token: referrer.preAuthToken,
       variant: variant,
-    }).then(function () {
+    }).then(function (body) {
       pending = false;
       sent = true;
       setBusy(form, false);
@@ -256,6 +336,7 @@
       removeBar();
       showConfirmation(invitee);
       track("referral_invite_sent", { option: variant });
+      watchBounce(form, endpoint, invitee, body && typeof body.ticket === "string" ? body.ticket : "");
     }, function (error) {
       pending = false;
       setBusy(form, false);

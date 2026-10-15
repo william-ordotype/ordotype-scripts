@@ -515,6 +515,214 @@ test('bloc déjà visible à l’écran : textes basculés, pas de barre', async
   assert.strictEqual(barre(w), null);
 });
 
+// --- Adresse refusée par le serveur de l'invité (suivi par ticket, 15/10/2026) ---------------------
+const RELAIS = 'https://webhooks.example.test/.netlify/functions/parrainage-invitation';
+const STATUT = 'https://webhooks.example.test/.netlify/functions/parrainage-statut';
+const TICKET = 'v1.1760000000000.' + 'T'.repeat(43);
+
+// Le relais rend le ticket ; parrainage-statut répond la suite `statuts` (un statut par demande).
+// Toute requête qui n'est pas une invitation compte comme demande de suivi, quelle que soit l'adresse.
+function suivi(w, statuts, { ticket = TICKET, statutHttp = 200 } = {}) {
+  const demandes = [];
+  const envois = [];
+  w.fetch = (url, options) => {
+    if (!String(options.body).includes('pre_auth_token')) {
+      demandes.push({ url, options, quand: Date.now() });
+      const s = statuts.length ? statuts.shift() : 'pending';
+      if (s === 'reseau') return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve({ ok: statutHttp === 200, status: statutHttp, json: () => Promise.resolve(s === 'vide' ? null : { status: s }) });
+    }
+    envois.push({ url, options });
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(ticket === null ? { ok: true } : { ok: true, ticket }) });
+  };
+  // Délais d'une seconde et plus divisés par 100 (suivi : 5, 10, 18, 30 s → 50, 100, 180, 300 ms).
+  const vraiSetTimeout = w.setTimeout.bind(w);
+  w.setTimeout = (fn, ms) => vraiSetTimeout(fn, ms >= 1000 ? ms / 100 : ms);
+  return { demandes, envois };
+}
+const echec = (w) => w.document.querySelector('.w-form-fail');
+
+test('adresse refusée : le formulaire revient avec l’adresse et le message, mesuré « bounced »', async () => {
+  const { w, erreurs } = page({ action: '', endpointAttr: RELAIS });
+  const { demandes } = suivi(w, ['pending', 'bounced']);
+  w.eval(SCRIPT);
+  submitInvite(w, ' Confrere@Orange.test ');
+  await attendre(10);
+  assertShown(w, 'referral-confirmation');
+  await attendre(150);
+  assert.strictEqual(demandes.length, 2);
+  assert.strictEqual(demandes[0].url, STATUT, 'adresse déduite du relais');
+  assert.strictEqual(demandes[0].options.method, 'POST');
+  assert.strictEqual(demandes[0].options.headers['Content-Type'], 'text/plain;charset=UTF-8', 'pas de préflight');
+  assert.deepStrictEqual(JSON.parse(demandes[0].options.body), { ticket: TICKET, invitee_email: 'Confrere@Orange.test' });
+  assertShown(w, 'referral-invitation');
+  assertHidden(w, 'referral-confirmation');
+  assert.strictEqual(el(w, 'parrainage').value, 'Confrere@Orange.test');
+  assert.strictEqual(echec(w).style.display, 'block');
+  assert.strictEqual(echec(w).textContent, 'L’adresse Confrere@Orange.test n’a pas pu recevoir l’invitation. Vérifiez-la, puis renvoyez.');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(w.dataLayer)).slice(-1), [{ event: 'referral_invite_failed', failure_reason: 'bounced', option: 'default' }]);
+  assert.ok(!JSON.stringify(w.dataLayer).includes('Orange.test'), 'pas d’adresse dans la mesure');
+  assert.strictEqual(barre(w).textContent, 'Invitation non remise : vérifiez l’adresse', 'bloc hors écran : la barre y mène');
+  assert.deepStrictEqual(erreurs, []);
+});
+
+test('adresse refusée, bloc à l’écran : pas de barre ; texte de barre du Designer sinon', async () => {
+  let { w } = page({ action: '', endpointAttr: RELAIS });
+  suivi(w, ['bounced']);
+  w.eval(SCRIPT);
+  el(w, 'referral-invitation').getBoundingClientRect = () => ({ top: 160, bottom: 489, height: 329, left: 0, right: 488, width: 488 });
+  submitInvite(w, 'faux@orange.test');
+  await attendre(100);
+  assert.strictEqual(echec(w).style.display, 'block');
+  assert.strictEqual(barre(w), null);
+  ({ w } = page({ action: '', endpointAttr: RELAIS }));
+  el(w, 'referral-invitation').setAttribute('data-referral-bounced-bar', 'Adresse refusée');
+  suivi(w, ['bounced']);
+  w.eval(SCRIPT);
+  submitInvite(w, 'faux@orange.test');
+  await attendre(100);
+  assert.strictEqual(barre(w).textContent, 'Adresse refusée');
+  assert.strictEqual(w.document.querySelectorAll('.referral-stuck-bar').length, 1);
+});
+
+test('adresse refusée : texte du Designer (data-referral-bounced-text) et retour au texte d’erreur d’origine ensuite', async () => {
+  const { w } = page({ action: '', endpointAttr: RELAIS });
+  echec(w).setAttribute('data-referral-bounced-text', 'Adresse {email} introuvable.');
+  const { envois } = suivi(w, ['bounced']);
+  w.eval(SCRIPT);
+  submitInvite(w, 'faux@orange.test');
+  await attendre(100);
+  assert.strictEqual(echec(w).textContent, 'Adresse faux@orange.test introuvable.');
+  w.fetch = () => Promise.resolve({ ok: false, status: 500 });
+  submitInvite(w, 'corrige@orange.test');
+  await tick();
+  assert.strictEqual(echec(w).textContent, 'Erreur', 'panne ordinaire = texte du Designer');
+  assert.strictEqual(envois.length, 1);
+});
+
+test('la même adresse refusée renvoyée : rien ne part, le message revient, mesuré « bounced_again » ; une autre adresse part', async () => {
+  const { w } = page({ action: '', endpointAttr: RELAIS });
+  const { envois } = suivi(w, ['bounced']);
+  w.eval(SCRIPT);
+  submitInvite(w, 'faux@orange.test');
+  await attendre(100);
+  submitInvite(w, 'FAUX@orange.test');
+  await tick();
+  assert.strictEqual(envois.length, 1);
+  assert.strictEqual(echec(w).style.display, 'block');
+  assert.ok(echec(w).textContent.includes('FAUX@orange.test'));
+  assert.strictEqual(w.dataLayer[w.dataLayer.length - 1].failure_reason, 'bounced_again');
+  submitInvite(w, 'bon@orange.test');
+  await tick();
+  assert.strictEqual(envois.length, 2);
+  assertShown(w, 'referral-confirmation');
+});
+
+test('adresse acceptée : 4 demandes au plus (5, 10, 18, 30 s), puis plus rien ; confirmation inchangée', async () => {
+  const { w } = page({ action: '', endpointAttr: RELAIS });
+  const { demandes } = suivi(w, []);
+  w.eval(SCRIPT);
+  submitInvite(w, 'bon@orange.test');
+  // L'écoulé est en temps réel, les délais divisés par 100 : la 4e demande part vers 480 ms.
+  await attendre(800);
+  assert.strictEqual(demandes.length, 4);
+  assertShown(w, 'referral-confirmation');
+  assert.strictEqual(echec(w).style.display, 'none');
+});
+
+test('pas de suivi : sans ticket, relais sans corps lisible, adresse de suivi non https, code validé', async () => {
+  for (const [nom, prep] of [
+    ['sans ticket', (w) => suivi(w, ['bounced'], { ticket: null })],
+    ['corps illisible', (w) => { const s = suivi(w, ['bounced']); const f = w.fetch; w.fetch = (u, o) => (!String(o.body).includes('pre_auth_token') ? f(u, o) : (s.envois.push(1), Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('x')) }))); return s; }],
+  ]) {
+    const { w } = page({ action: '', endpointAttr: RELAIS });
+    const { demandes } = prep(w);
+    w.eval(SCRIPT);
+    submitInvite(w, 'faux@orange.test');
+    await attendre(400);
+    assert.strictEqual(demandes.length, 0, nom);
+    assertShown(w, 'referral-confirmation');
+  }
+  // relais sans « /parrainage-invitation » final et sans attribut : adresse de suivi inconnue
+  let { w } = page({ action: '', endpointAttr: 'https://hook.example.test/autre' });
+  let s = suivi(w, ['bounced']);
+  w.eval(SCRIPT);
+  submitInvite(w, 'faux@orange.test');
+  await attendre(400);
+  assert.strictEqual(s.demandes.length, 0, 'adresse de suivi déduite seulement du relais');
+  // attribut explicite non https
+  ({ w } = page({ action: '', endpointAttr: RELAIS }));
+  el(w, 'wf-form-form-invite').setAttribute('data-referral-status-endpoint', 'http://x.test/statut');
+  s = suivi(w, ['bounced']);
+  w.eval(SCRIPT);
+  submitInvite(w, 'faux@orange.test');
+  await attendre(400);
+  assert.strictEqual(s.demandes.length, 0, 'non https');
+  // code validé avant la première demande : la page part, rien ne change
+  ({ w } = page({ action: '', endpointAttr: RELAIS }));
+  s = suivi(w, ['bounced']);
+  w.eval(SCRIPT);
+  submitInvite(w, 'faux@orange.test');
+  await attendre(10);
+  w.dataLayer.push({ event: '2fa_otp_success' });
+  await attendre(400);
+  assert.strictEqual(s.demandes.length, 0, 'code validé');
+  assertShown(w, 'referral-confirmation');
+});
+
+test('statut en panne (HTTP 410/502, réseau, statut inconnu, corps vide) : suivi arrêté, la page se tait', async () => {
+  for (const [statuts, http] of [[['pending'], 410], [['pending'], 502], [['reseau'], 200], [['autre'], 200], [['vide'], 200]]) {
+    const { w, erreurs } = page({ action: '', endpointAttr: RELAIS });
+    const { demandes } = suivi(w, statuts, { statutHttp: http });
+    w.eval(SCRIPT);
+    submitInvite(w, 'faux@orange.test');
+    await attendre(250);
+    assert.strictEqual(demandes.length, 1, `${http} ${statuts}`);
+    assertShown(w, 'referral-confirmation');
+    assert.strictEqual(echec(w).style.display, 'none');
+    assert.deepStrictEqual(erreurs, []);
+  }
+});
+
+test('nouvel envoi pendant le suivi : l’ancien suivi s’arrête', async () => {
+  const { w } = page({ action: '', endpointAttr: RELAIS });
+  const { demandes } = suivi(w, ['pending', 'bounced', 'pending', 'pending']);
+  w.eval(SCRIPT);
+  submitInvite(w, 'premier@orange.test');
+  await attendre(70);
+  cliquer(w, '#go-back-link');
+  submitInvite(w, 'second@orange.test');
+  await attendre(400);
+  const adresses = demandes.map((d) => JSON.parse(d.options.body).invitee_email);
+  assert.ok(adresses.indexOf('premier@orange.test') < adresses.indexOf('second@orange.test'));
+  assert.strictEqual(adresses.filter((a) => a === 'premier@orange.test').length, 1, 'premier suivi arrêté');
+});
+
+test('réponse « refusée » arrivée après un nouvel envoi : ignorée, la confirmation du second reste', async () => {
+  const { w } = page({ action: '', endpointAttr: RELAIS });
+  suivi(w, []);
+  const envoyer = w.fetch;
+  let libere;
+  w.fetch = (url, options) => {
+    if (!String(options.body).includes('pre_auth_token') && JSON.parse(options.body).invitee_email === 'premier@orange.test') {
+      return new Promise((r) => { libere = () => r({ ok: true, status: 200, json: () => Promise.resolve({ status: 'bounced' }) }); });
+    }
+    return envoyer(url, options);
+  };
+  w.eval(SCRIPT);
+  submitInvite(w, 'premier@orange.test');
+  await attendre(70);
+  assert.ok(libere, 'première demande en cours');
+  cliquer(w, '#go-back-link');
+  submitInvite(w, 'second@orange.test');
+  await attendre(10);
+  libere();
+  await attendre(20);
+  assertShown(w, 'referral-confirmation');
+  assert.strictEqual(w.document.querySelector('[data-referral-email]').textContent, 'second@orange.test');
+  assert.strictEqual(echec(w).style.display, 'none');
+});
+
 (async () => {
   let echecs = 0;
   for (const { nom, fn } of cas) {
