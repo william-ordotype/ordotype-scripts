@@ -41,6 +41,94 @@
         'shared/redeem-cancel-forms.js'
     ];
 
+    // Les formulaires que branche chaque script : s'il ne se charge pas, ses formulaires affichent leur erreur.
+    const FORM_SCRIPTS = {
+        'offre-annulation/pause-form.js': ['pause-form'],
+        'shared/redeem-cancel-forms.js': ['redeem-form', 'cancel-form']
+    };
+
+    // --------------------------------------------------------------------
+    // Garde des formulaires. Un formulaire sans son écouteur part en envoi
+    // natif du navigateur vers member-forms, qui répond par une page brute
+    // {"error":"invalid_json"} (vu le 15/10/2026). Un clic arrivé avant que le
+    // formulaire soit branché (attribut `data-ordo-bound`, posé par
+    // pause-form.js et redeem-cancel-forms.js) est retenu, puis rejoué dès qu'il
+    // l'est ; « annuler » attend aussi la fenêtre du motif, sinon la question
+    // serait sautée. Si le script échoue ou si rien ne vient en 15 s, le message
+    // d'erreur du formulaire s'affiche. Un envoi natif n'est jamais laissé partir.
+    const GUARDED = { 'redeem-form': 'redeem', 'pause-form': 'pause', 'cancel-form': 'cancel' };
+    const HOLD_TIMEOUT = 15000;
+    const failedForms = {};
+    let reasonSettled = false;
+    let held = null;
+    let holdTimer = null;
+
+    function report(name, detail) {
+        try {
+            const err = new Error(detail);
+            err.name = name;
+            if (window.OrdoErrorReporter) window.OrdoErrorReporter.report('OffreAnnulationLoader', err);
+            else console.error(PREFIX, name, detail);
+        } catch (e) {
+            // ne jamais lever depuis le chemin de report
+        }
+    }
+
+    function showMessage(form, kind, visible) {
+        const el = document.getElementById(kind + '-message-' + GUARDED[form.id]);
+        if (el) el.style.display = visible ? 'block' : 'none';
+    }
+
+    function formReady(form) {
+        if (!form.hasAttribute('data-ordo-bound')) return false;
+        return form.id !== 'cancel-form' || reasonSettled;
+    }
+
+    function failHeld() {
+        clearTimeout(holdTimer);
+        if (!held) return;
+        showMessage(held, 'waiting', false);
+        showMessage(held, 'error', true);
+        held = null;
+    }
+
+    function releaseHeld() {
+        if (!held || !formReady(held)) return;
+        const form = held;
+        held = null;
+        clearTimeout(holdTimer);
+        showMessage(form, 'waiting', false);
+        if (typeof form.requestSubmit === 'function') form.requestSubmit();
+        else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (!form || !GUARDED[form.id] || formReady(form)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (failedForms[form.id]) {
+            showMessage(form, 'error', true);
+            return;
+        }
+        held = form;
+        showMessage(form, 'waiting', true);
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+            report('FormsNotReady', 'submit held ' + HOLD_TIMEOUT + ' ms on ' + form.id);
+            failHeld();
+        }, HOLD_TIMEOUT);
+    }, true);
+
+    // Rejoue le clic retenu dès que son formulaire est branché.
+    if (typeof MutationObserver === 'function') {
+        const watcher = new MutationObserver(releaseHeld);
+        Object.keys(GUARDED).forEach((id) => {
+            const form = document.getElementById(id);
+            if (form) watcher.observe(form, { attributes: true, attributeFilter: ['data-ordo-bound'] });
+        });
+    }
+
     function loadScript(url) {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
@@ -62,21 +150,29 @@
         // must not skip the rest, and the grid must not wait on the queue.
         const reasonModal = loadScript(`${BASE}/${FIRST}`).catch((err) => {
             console.error(PREFIX, 'Load error:', err);
+        }).then(() => {
+            // Loaded or not, the cancel form no longer waits on it.
+            reasonSettled = true;
+            releaseHeld();
         });
 
-        try {
-            // Load shared utilities first
-            await loadScript(`${BASE}/shared/memberstack-utils.js`);
-            await loadScript(`${BASE}/shared/error-reporter.js`);
-
-            for (const file of scripts) {
+        // Each file on its own: a failing one is skipped, the next still loads,
+        // so a broken countdown no longer leaves the forms without their scripts.
+        let failed = 0;
+        for (const file of ['shared/memberstack-utils.js', 'shared/error-reporter.js'].concat(scripts)) {
+            try {
                 await loadScript(`${BASE}/${file}`);
+            } catch (err) {
+                failed += 1;
+                console.error(PREFIX, 'Load error:', err);
+                (FORM_SCRIPTS[file] || []).forEach((id) => { failedForms[id] = true; });
+                if (FORM_SCRIPTS[file]) report('FormScriptsFailed', file + ' did not load');
+                if (held && failedForms[held.id]) failHeld();
             }
-            await reasonModal;
-            console.log(PREFIX, 'All scripts loaded');
-        } catch (err) {
-            console.error(PREFIX, 'Load error:', err);
         }
+        releaseHeld();
+        await reasonModal;
+        console.log(PREFIX, failed ? 'Scripts loaded with ' + failed + ' error(s)' : 'All scripts loaded');
     }
 
     // Wait for DOMContentLoaded

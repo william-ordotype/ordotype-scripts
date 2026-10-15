@@ -125,10 +125,15 @@
     // reporting it needs the reporter loaded first.
     ensureReporter();
 
+    // The forms are bound even before the Memberstack SDK is there: an unbound
+    // form is submitted natively and the member lands on a raw error page. The
+    // handler reads the SDK at submit time; only an SDK still missing after
+    // 10 s is worth hearing about.
     if (!window.$memberstackDom) {
-      console.warn(PREFIX, 'Memberstack not available');
-      report('init', 'CancelFormNoMemberstack', 'Memberstack SDK absent, forms left unbound');
-      return;
+      console.warn(PREFIX, 'Memberstack not available yet, forms bound anyway');
+      setTimeout(() => {
+        if (!window.$memberstackDom) report('init', 'CancelFormNoMemberstack', 'Memberstack SDK absent 10 s after init');
+      }, 10000);
     }
 
     // Setup each form
@@ -169,6 +174,8 @@
     };
 
     form.addEventListener('submit', (e) => handleSubmit(e, elements, name));
+    // Read by offre-annulation/loader.js: a click held before this is replayed now.
+    form.setAttribute('data-ordo-bound', '');
     console.log(PREFIX, `Form setup: ${name}`);
     return true;
   }

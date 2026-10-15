@@ -94,7 +94,7 @@
         if (!ms || !ms.memberId) {
             console.warn(PREFIX, 'OrdoMemberstack not available');
             // A marked form only needs the session token: keep it bound.
-            if (form.getAttribute('data-ordo-action')) form.addEventListener('submit', handleSubmit);
+            if (form.getAttribute('data-ordo-action')) bind(form);
             return;
         }
 
@@ -122,8 +122,14 @@
             }
         }
 
-        form.addEventListener('submit', handleSubmit);
+        bind(form);
         console.log(PREFIX, 'Initialized');
+    }
+
+    // Read by offre-annulation/loader.js: a click held before this is replayed now.
+    function bind(form) {
+        form.addEventListener('submit', handleSubmit);
+        form.setAttribute('data-ordo-bound', '');
     }
 
     function handleSubmit(event) {
