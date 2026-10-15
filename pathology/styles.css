@@ -510,6 +510,24 @@ ul {
         hyphens: manual;
     }
 
+    /* En display: block, la grille du tableau se cale sur son contenu : un
+       tableau à 3 colonnes qui tient dans l'écran s'arrêtait avant le bord
+       droit (28px vides à 402px sur rgo, 102px sur epigastralgie-dyspepsie,
+       15/10). Le tbody devient le tableau, à 100% : il remplit la largeur et
+       grandit au-delà (le bloc défile) si son contenu l'impose. La légende en
+       bloc reste centrée sur l'écran au lieu de l'être sur toute la largeur
+       qui défile (titre coupé à droite). Seulement avec un tbody seul (149 des
+       168 tableaux) : avec thead ou tfoot, chaque groupe deviendrait un
+       tableau à part, colonnes désalignées. */
+    .rc-html table:has(tr > :nth-child(3)):not(:has(> thead, > tfoot)) > tbody {
+        display: table;
+        width: 100%;
+    }
+
+    .rc-html table:has(tr > :nth-child(3)):not(:has(> thead, > tfoot)) > caption {
+        display: block;
+    }
+
     .iframe-box {
         height: 600px;
     }
