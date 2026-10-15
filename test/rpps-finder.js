@@ -618,7 +618,7 @@ async function test(name, fn) {
 
   // --- Repli quand l'Annuaire santé est en panne --------------------------------------------------
 
-  const NOTE_PANNE = 'L’Annuaire santé ne répond pas en ce moment : vous pouvez saisir votre numéro, il sera vérifié automatiquement dès son retour.';
+  const NOTE_PANNE = 'Annuaire santé indisponible : saisissez votre numéro, il sera vérifié dès son retour.';
   const MSG_REPLI = 'L’Annuaire santé ne répond pas en ce moment : saisissez votre numéro dans le champ ci\u2011dessus puis «\u00a0Sauvegarder\u00a0».';
   const jamais = () => new Promise(() => {});
   const ouvrir = (d) => d.querySelector('[data-ordo-edit="pro"]').click();
@@ -810,6 +810,8 @@ async function test(name, fn) {
     assert.strictEqual(statusCalls[0].headers, undefined, 'point d’accès public : ni jeton ni en-tête');
     assert.strictEqual(calls.length, 0, 'aucun appel à la recherche');
     assert.ok(!root.querySelector('[data-ordo-message]'), 'pas de message dans le finder');
+    assert.ok(/momentanément indisponible/.test(root.textContent), 'la ligne repliée ne promet plus une vérification immédiate');
+    assert.ok(!/vérifié immédiatement/.test(root.textContent));
     assert.deepStrictEqual(steps(pushed), ['rpps:pro:shown', 'rpps:pro:repli-panne:status']);
     assert.deepStrictEqual(reports, []);
     // Annonce répétée sans fermeture : ni nouvelle lecture, ni retour au verrou.

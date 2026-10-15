@@ -468,12 +468,16 @@
     var hasNumber = !!normalizeRpps(fields()['n-rpps']);
     // Numéro déjà vérifié : seulement en modification, pour pouvoir en changer.
     var verified = editing && isVerified();
-    line.appendChild(el('span', C['finder-note'], verified
+    // Annuaire en panne (repli) : ne pas promettre une vérification immédiate sous la mention de panne.
+    var enPanne = editing && repli;
+    line.appendChild(el('span', C['finder-note'], enPanne
+      ? 'La recherche dans l’Annuaire santé est momentanément indisponible.'
+      : verified
       ? 'Votre numéro RPPS est vérifié. Pour en changer, recherchez votre nouvelle fiche.'
       : hasNumber
         ? 'Votre numéro RPPS n’est pas encore vérifié dans l’Annuaire santé.'
         : 'Retrouvez votre numéro RPPS dans l’Annuaire santé : il sera vérifié immédiatement.'));
-    var open = button(C['finder-lien'], verified ? 'Changer de numéro' : hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
+    var open = button(C['finder-lien'], enPanne ? 'Réessayer' : verified ? 'Changer de numéro' : hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
     open.addEventListener('click', function() {
       track('open');
       renderPanel();
@@ -757,7 +761,7 @@
   // Trait d'union insécable : la cellule est étroite, « ci- » restait seul en bout de ligne.
   var NOTE_VERROU = 'Modifiable uniquement par la recherche dans l’Annuaire santé ci\u2011dessous.';
   // Espace insécable avant « : » : il ne commence jamais une ligne de la cellule étroite.
-  var NOTE_PANNE = 'L’Annuaire santé ne répond pas en ce moment\u00a0: vous pouvez saisir votre numéro, il sera vérifié automatiquement dès son retour.';
+  var NOTE_PANNE = 'Annuaire santé indisponible\u00a0: saisissez votre numéro, il sera vérifié dès son retour.';
   var home = null;
   var host = null;
   var lockNote = null;
@@ -807,6 +811,7 @@
     input.readOnly = false;
     input.removeAttribute('aria-readonly');
     if (lockNote) lockNote.textContent = NOTE_PANNE;
+    if (state === 'collapsed') renderCollapsed();
     track('repli-panne', cause);
     console.log(PREFIX, 'Annuaire en panne : champ RPPS saisissable', 'cause=' + cause);
   }
