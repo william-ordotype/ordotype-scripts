@@ -276,3 +276,29 @@ html.is-embed .toast_component.centered {
         padding-left: 1.5em;
     }
 }
+
+/* Texte des tableaux à la taille du texte du conseil, à toutes les largeurs.
+   Webflow met les <p> et <li> à 12px, mais le texte posé directement dans une
+   cellule (« Option 1 », « 5 biberons ») prend la taille fluide de la page :
+   16px sur téléphone, de 10 à 18px selon la largeur. Sous 480px, le <strong>
+   est en plus forcé à 12px : une même cellule mélangeait 12 et 16px.
+   Même principe que `.rc-html table` dans pathology/styles.css. Écran
+   seulement : l'impression et les PDF gardent leur rendu. */
+@media screen {
+    .rc-html-fcp table,
+    .rich-text-ar table {
+        font-size: 12px;
+    }
+
+    .rc-html-fcp table *,
+    .rich-text-ar table * {
+        font-size: inherit !important;
+    }
+
+    .rc-html-fcp table sup,
+    .rc-html-fcp table sub,
+    .rich-text-ar table sup,
+    .rich-text-ar table sub {
+        font-size: 0.75em !important;
+    }
+}
