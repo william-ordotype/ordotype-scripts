@@ -702,7 +702,7 @@
       input.setAttribute('aria-readonly', 'true');
       if (!lockNote) {
         // Trait d'union insécable : la cellule est étroite, « ci- » restait seul en bout de ligne.
-        lockNote = el('div', C['finder-note-haut'], 'Le numéro se modifie uniquement par la recherche dans l’Annuaire santé, ci\u2011dessous.');
+        lockNote = el('div', C['finder-note-haut'], 'Modifiable uniquement par la recherche dans l’Annuaire santé ci\u2011dessous.');
         lockNote.id = 'ordo-rpps-verrou';
         lockNote.setAttribute('data-ordo-rpps-verrou', '1');
       }

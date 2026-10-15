@@ -433,7 +433,7 @@ async function test(name, fn) {
   const lectureRow = (d) => d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="n-rpps"]').closest('.compte-v2_field');
   const annuler = (d) => byText(d.querySelector('[data-ordo-form-slot="pro"]'), 'a', /Annuler/).click();
   const C_CTA = { designer: 'compte-v2_finder-cta', ancienne: 'ordo-rpps-cta' };
-  const NOTE_VERROU = 'Le numéro se modifie uniquement par la recherche dans l’Annuaire santé, ci\u2011dessous.';
+  const NOTE_VERROU = 'Modifiable uniquement par la recherche dans l’Annuaire santé ci\u2011dessous.';
 
   /** Le bloc est de retour dans la lecture, le champ libéré, plus de cellule ni de mention. */
   function enLecture(d, root) {
