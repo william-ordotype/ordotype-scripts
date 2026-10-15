@@ -701,7 +701,8 @@
     if (on) {
       input.setAttribute('aria-readonly', 'true');
       if (!lockNote) {
-        lockNote = el('div', C['finder-note-haut'], 'Le numéro se modifie uniquement par la recherche dans l’Annuaire santé, ci-dessous.');
+        // Trait d'union insécable : la cellule est étroite, « ci- » restait seul en bout de ligne.
+        lockNote = el('div', C['finder-note-haut'], 'Le numéro se modifie uniquement par la recherche dans l’Annuaire santé, ci\u2011dessous.');
         lockNote.id = 'ordo-rpps-verrou';
         lockNote.setAttribute('data-ordo-rpps-verrou', '1');
       }
@@ -717,8 +718,10 @@
 
   /**
    * « Modifier » sur la carte professionnelle : le bloc quitte la lecture (masquée) pour une cellule
-   * pleine largeur juste sous le champ RPPS. Écart avec les boutons : la marge de cellule (1rem) plus
-   * 1rem, soit deux marges de cellule ; avec une seule, la recherche collait aux boutons.
+   * pleine largeur juste sous le champ RPPS. Écart avec les boutons : celui entre deux lignes du
+   * formulaire, soit la marge de cellule (1rem) plus l'écart de la grille des champs, relu sur la page
+   * (1.5rem sur ordinateur, 0 sur mobile où les boutons ont déjà 1rem au-dessus). Avec la seule marge
+   * de cellule, la recherche collait aux boutons.
    */
   function onEditOpen(e) {
     if (!e || !e.detail || e.detail.section !== 'pro') return;
@@ -729,8 +732,9 @@
     if (!host) {
       host = el('div', CELLULE);
       host.setAttribute('data-ordo-rpps-hote', '1');
-      host.style.paddingBottom = '1rem';
     }
+    var gap = window.getComputedStyle(cell.parentNode).rowGap;
+    host.style.paddingBottom = gap && gap !== 'normal' && parseFloat(gap) > 0 ? gap : '';
     cell.parentNode.insertBefore(host, cell.nextSibling);
     host.appendChild(root);
     lockInput(true);

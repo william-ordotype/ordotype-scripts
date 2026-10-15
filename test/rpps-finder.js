@@ -69,7 +69,8 @@ async function page({ member = MEMBRE, overview = true, server = {}, token = 'je
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
   const SITE_CSS = '.compte-v2_wrap{display:none}.compte-v2_edit{display:none}.compte-v2_edit.is-open{display:block}'
-    + '.compte-v2_card.is-liste.is-2fa{display:none}.w-form-done,.w-form-fail{display:none}';
+    + '.compte-v2_card.is-liste.is-2fa{display:none}.w-form-done,.w-form-fail{display:none}'
+    + '.form-field-3col{row-gap:1.5rem}';
   const fixture = noV2 ? FIXTURE.replace(/data-ordo-v2="profil"/g, 'data-x="profil"') : FIXTURE;
   const dom = new JSDOM(`<!doctype html><html><head><style>${SITE_CSS}</style></head><body><div class="w-tabs">${fixture}</div></body></html>`,
     { url: 'https://www.ordotype.fr/membership/compte', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole });
@@ -432,7 +433,7 @@ async function test(name, fn) {
   const lectureRow = (d) => d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="n-rpps"]').closest('.compte-v2_field');
   const annuler = (d) => byText(d.querySelector('[data-ordo-form-slot="pro"]'), 'a', /Annuler/).click();
   const C_CTA = { designer: 'compte-v2_finder-cta', ancienne: 'ordo-rpps-cta' };
-  const NOTE_VERROU = 'Le numéro se modifie uniquement par la recherche dans l’Annuaire santé, ci-dessous.';
+  const NOTE_VERROU = 'Le numéro se modifie uniquement par la recherche dans l’Annuaire santé, ci\u2011dessous.';
 
   /** Le bloc est de retour dans la lecture, le champ libéré, plus de cellule ni de mention. */
   function enLecture(d, root) {
@@ -459,6 +460,7 @@ async function test(name, fn) {
     assert.strictEqual(host.getAttribute('data-ordo-rpps-hote'), '1', 'cellule juste après celle du champ RPPS');
     assert.strictEqual(host.className, 'form-field-wrapper is-short is-pleine-largeur', 'classes de cellule pleine largeur du gabarit Webflow');
     assert.strictEqual(host.firstChild, root);
+    assert.strictEqual(host.style.paddingBottom, '1.5rem', 'écart avec les boutons = écart entre lignes de la grille des champs');
     assert.ok(visible(w, root), 'visible pendant la modification');
     assert.ok(!visible(w, d.querySelector('[data-ordo-lecture="pro"]')), 'lecture masquée');
     assert.ok(byText(root, 'button', /Vérifier maintenant/));
@@ -495,9 +497,11 @@ async function test(name, fn) {
     ctx.d.querySelector('[data-ordo-edit="perso"]').click();
     enLecture(ctx.d, root);
 
-    ctx = await page({ fastPoll: true });
+    // Grille sans écart entre lignes (mobile) : aucun écart ajouté, les boutons ont le leur.
+    ctx = await page({ fastPoll: true, avant: (doc) => { doc.getElementById('RPPS').closest('.form-field-3col').style.rowGap = '0px'; } });
     root = ctx.d.querySelector(ROOT_SEL);
     ctx.d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.strictEqual(ctx.d.querySelector('[data-ordo-rpps-hote]').getAttribute('style'), null);
     const form = ctx.d.querySelector('[data-ordo-form-slot="pro"] form');
     form.dispatchEvent(new ctx.w.Event('submit', { cancelable: true }));
     for (let i = 0; i < 100 && !ctx.pushed.some((p) => p.profile_step === 'edit:pro:saved'); i++) await tick(10);
