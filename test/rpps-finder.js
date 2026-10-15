@@ -64,7 +64,7 @@ function sansDesigner(d) {
   if (groupe) groupe.remove();
 }
 
-async function page({ member = MEMBRE, overview = true, server = {}, token = 'jeton-test', noV2 = false, mode = MODE, avant } = {}) {
+async function page({ member = MEMBRE, overview = true, server = {}, token = 'jeton-test', noV2 = false, mode = MODE, avant, fastPoll = false } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -105,7 +105,8 @@ async function page({ member = MEMBRE, overview = true, server = {}, token = 'je
   w.console.log = () => {};
   w.console.warn = () => {};
   w.eval(FINDER);
-  if (overview) w.eval(OVERVIEW);
+  // fastPoll : relectures de l'enregistrement du formulaire toutes les 5 ms au lieu de 1,5 s.
+  if (overview) w.eval(fastPoll ? OVERVIEW.replace('SAVE_POLL_MS = 1500', 'SAVE_POLL_MS = 5') : OVERVIEW);
   if (w.document.readyState === 'loading') await new Promise((r) => w.document.addEventListener('DOMContentLoaded', r));
   await tick();
   return { w, d: w.document, calls, pushed, reports, erreurs, events, member: m };
@@ -417,11 +418,172 @@ async function test(name, fn) {
     assert.strictEqual(w.__pwn, undefined);
   });
 
-  await test('sans la nouvelle présentation : le bloc reste sous le champ RPPS du formulaire', async () => {
+  await test('sans la nouvelle présentation : le bloc reste sous le champ RPPS du formulaire, champ saisissable', async () => {
     const { d } = await page({ overview: false });
     const root = d.querySelector(ROOT_SEL);
-    const cell = d.getElementById('RPPS').closest('.form-field-wrapper');
+    const rpps = d.getElementById('RPPS');
+    const cell = rpps.closest('.form-field-wrapper');
     assert.strictEqual(cell.nextSibling, root);
+    assert.strictEqual(rpps.placeholder, 'ex. : 10000668540');
+    assert.ok(!rpps.readOnly, 'aucune annonce de modification : rien de verrouillé');
+    assert.ok(!d.querySelector('[data-ordo-rpps-verrou]'));
+  });
+
+  const lectureRow = (d) => d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="n-rpps"]').closest('.compte-v2_field');
+  const annuler = (d) => byText(d.querySelector('[data-ordo-form-slot="pro"]'), 'a', /Annuler/).click();
+  const C_CTA = { designer: 'compte-v2_finder-cta', ancienne: 'ordo-rpps-cta' };
+  const NOTE_VERROU = 'Le numéro se modifie uniquement par la recherche dans l’Annuaire santé, ci-dessous.';
+
+  /** Le bloc est de retour dans la lecture, le champ libéré, plus de cellule ni de mention. */
+  function enLecture(d, root) {
+    const rpps = d.getElementById('RPPS');
+    assert.strictEqual(lectureRow(d).nextSibling, root, 'revenu juste sous la ligne « Numéro RPPS » de la lecture');
+    assert.ok(!d.querySelector('[data-ordo-rpps-hote]'), 'cellule du formulaire retirée');
+    assert.ok(!rpps.readOnly);
+    assert.ok(!rpps.hasAttribute('aria-readonly'));
+    assert.ok(!rpps.hasAttribute('aria-describedby'));
+    assert.ok(!d.querySelector('[data-ordo-rpps-verrou]'), 'mention retirée');
+  }
+
+  await test('modification : le bloc passe sous le champ RPPS, champ en lecture seule avec sa mention ; « Annuler » le remet dans la lecture', async () => {
+    const { w, d, pushed } = await page();
+    const root = d.querySelector(ROOT_SEL);
+    const rpps = d.getElementById('RPPS');
+    assert.strictEqual(rpps.placeholder, 'ex. : 10000668540', 'placeholder en français');
+    assert.ok(!rpps.readOnly, 'en lecture, le formulaire caché n’est pas touché');
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    const slot = d.querySelector('[data-ordo-form-slot="pro"]');
+    const cell = rpps.closest('.form-field-wrapper');
+    assert.ok(slot.contains(rpps), 'formulaire pro dans la carte');
+    const host = cell.nextSibling;
+    assert.strictEqual(host.getAttribute('data-ordo-rpps-hote'), '1', 'cellule juste après celle du champ RPPS');
+    assert.strictEqual(host.className, 'form-field-wrapper is-short is-pleine-largeur', 'classes de cellule pleine largeur du gabarit Webflow');
+    assert.strictEqual(host.firstChild, root);
+    assert.ok(visible(w, root), 'visible pendant la modification');
+    assert.ok(!visible(w, d.querySelector('[data-ordo-lecture="pro"]')), 'lecture masquée');
+    assert.ok(byText(root, 'button', /Vérifier maintenant/));
+    assert.strictEqual(root.className, mode === 'designer' ? 'compte-v2_finder is-en-carte' : 'ordo-rpps', 'classes de la carte gardées');
+    assert.ok(rpps.readOnly, 'lecture seule');
+    assert.strictEqual(rpps.getAttribute('aria-readonly'), 'true');
+    assert.strictEqual(rpps.getAttribute('style'), null, 'aucune couleur ajoutée : dessin natif .w-input[readonly]');
+    assert.ok(rpps.classList.contains('w-input'), 'classe portant le dessin natif');
+    const note = cell.querySelector('[data-ordo-rpps-verrou]');
+    assert.ok(note, 'mention sous le champ');
+    assert.ok(rpps.compareDocumentPosition(note) & w.Node.DOCUMENT_POSITION_FOLLOWING, 'mention après le champ');
+    assert.strictEqual(note.textContent, NOTE_VERROU);
+    assert.strictEqual(note.className, mode === 'designer' ? 'compte-v2_finder-note is-note-haut' : 'ordo-rpps-muted ordo-rpps-scope', 'classe de note du finder');
+    assert.strictEqual(rpps.getAttribute('aria-describedby'), note.id, 'mention lue avec le champ');
+    assert.ok(!/[—]/.test(note.textContent + root.textContent));
+    annuler(d);
+    enLecture(d, root);
+    assert.ok(visible(w, root), 'non vérifié : invitation toujours affichée en lecture');
+    assert.ok(byText(root, 'button', /Vérifier maintenant/));
+    // Rouvrir puis refermer : une seule cellule, une seule mention.
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    annuler(d);
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-hote]').length, 1);
+    assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-verrou]').length, 1);
+    assert.deepStrictEqual(steps(pushed), ['rpps:pro:shown'], 'déplacements non comptés');
+  });
+
+  await test('modification : une autre carte ouverte, ou le formulaire enregistré, remet le bloc dans la lecture', async () => {
+    let ctx = await page();
+    let root = ctx.d.querySelector(ROOT_SEL);
+    ctx.d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.ok(root.closest('[data-ordo-form-slot="pro"]'));
+    ctx.d.querySelector('[data-ordo-edit="perso"]').click();
+    enLecture(ctx.d, root);
+
+    ctx = await page({ fastPoll: true });
+    root = ctx.d.querySelector(ROOT_SEL);
+    ctx.d.querySelector('[data-ordo-edit="pro"]').click();
+    const form = ctx.d.querySelector('[data-ordo-form-slot="pro"] form');
+    form.dispatchEvent(new ctx.w.Event('submit', { cancelable: true }));
+    for (let i = 0; i < 100 && !ctx.pushed.some((p) => p.profile_step === 'edit:pro:saved'); i++) await tick(10);
+    assert.ok(ctx.pushed.some((p) => p.profile_step === 'edit:pro:saved'), 'enregistrement constaté');
+    enLecture(ctx.d, root);
+  });
+
+  await test('numéro vérifié : en modification, replié avec « Changer de numéro » qui ouvre la recherche ; en lecture, caché', async () => {
+    const m = clone(MEMBRE);
+    m.customFields['statut-rpps'] = 'C';
+    m.metaData = { 'rpps-tested': N1 };
+    const { w, d, pushed } = await page({ member: m });
+    const root = d.querySelector(ROOT_SEL);
+    assert.ok(!visible(w, root), 'lecture : caché');
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.ok(visible(w, root), 'modification : affiché');
+    assert.ok(root.closest('[data-ordo-rpps-hote]'));
+    assert.strictEqual(root.firstChild.className, C_CTA[mode]);
+    assert.strictEqual(root.firstChild.firstChild.textContent, 'Votre numéro RPPS est vérifié. Pour en changer, recherchez votre nouvelle fiche.');
+    assert.ok(!byText(root, 'button', /Vérifier maintenant|Rechercher mon RPPS/));
+    assert.ok(d.getElementById('RPPS').readOnly);
+    byText(root, 'button', /^Changer de numéro$/).click();
+    assert.ok(root.querySelector('strong'), 'recherche ouverte');
+    assert.strictEqual(root.querySelectorAll('input')[2].value, N1, 'numéro actuel repris');
+    byText(root, 'button', /^Fermer$/).click();
+    assert.ok(byText(root, 'button', /^Changer de numéro$/), 'replié de nouveau, texte du numéro vérifié');
+    assert.deepStrictEqual(steps(pushed), ['rpps:pro:open', 'rpps:pro:close']);
+    annuler(d);
+    enLecture(d, root);
+    assert.ok(!visible(w, root), 'retour en lecture : caché comme avant');
+  });
+
+  await test('recherche ouverte en lecture puis « Modifier » : elle suit, ouverte ; « Annuler » la replie', async () => {
+    const { w, d } = await page();
+    const root = d.querySelector(ROOT_SEL);
+    byText(root, 'button', /Vérifier maintenant/).click();
+    root.querySelectorAll('input')[0].value = 'Martine';
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.ok(root.querySelector('strong'), 'toujours ouverte');
+    assert.strictEqual(root.querySelectorAll('input')[0].value, 'Martine', 'saisie conservée');
+    annuler(d);
+    assert.ok(visible(w, root));
+    assert.ok(!root.querySelector('strong'), 'repliée');
+  });
+
+  await test('enregistrement par la recherche en modification : le formulaire porte le NOUVEAU numéro (Annuler, rouvrir, Sauvegarder)', async () => {
+    const m = clone(MEMBRE);
+    m.customFields['n-rpps'] = '120';
+    const { w, d, member, pushed, reports, events } = await page({ member: m, fastPoll: true, server: {
+      lookup: () => reply(200, { results: [CLAIRE] }),
+      select: () => reply(200, { ok: true, rpps: N1, category: 'C', family: 'MARTIN', given: 'CLAIRE', profession: 'Médecin', specialty: '', verified_at: '2026-09-28T12:00:00.000Z' })
+    } });
+    const root = d.querySelector(ROOT_SEL);
+    const rpps = d.getElementById('RPPS');
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.strictEqual(rpps.value, '120', 'ancienne valeur avant la recherche');
+    byText(root, 'button', /Rechercher mon RPPS/).click();
+    const num = root.querySelectorAll('input')[2];
+    num.value = N1;
+    num.dispatchEvent(new w.Event('input'));
+    byText(root, 'button', /^Vérifier$/).click();
+    await settle();
+    byText(root, 'button', /^Confirmer$/).click();
+    await settle();
+    assert.deepStrictEqual(events.map((e) => e.source), ['rpps-finder']);
+    assert.strictEqual(member.customFields['n-rpps'], N1);
+    assert.strictEqual(rpps.value, N1, 'champ du formulaire ouvert = nouveau numéro');
+    assert.ok(root.closest('[data-ordo-rpps-hote]'), 'confirmation affichée sous le champ');
+    assert.ok(/Numéro RPPS vérifié dans l’Annuaire santé/.test(root.textContent));
+    assert.ok(rpps.readOnly);
+    // « Annuler » : refill() remet la valeur enregistrée, c'est-à-dire le nouveau numéro.
+    annuler(d);
+    assert.strictEqual(rpps.value, N1, 'refill ne remet pas l’ancien numéro');
+    enLecture(d, root);
+    assert.ok(!visible(w, root), 'vérifié : caché en lecture');
+    assert.ok(d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="n-rpps"] [data-ordo-rpps-verifie]'), 'coche dans la lecture');
+    // Rouvrir puis « Sauvegarder » : le formulaire envoie le nouveau numéro et l'enregistrement est constaté.
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    assert.strictEqual(rpps.value, N1);
+    assert.ok(byText(root, 'button', /^Changer de numéro$/));
+    const form = d.querySelector('[data-ordo-form-slot="pro"] form');
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    for (let i = 0; i < 100 && !pushed.some((p) => p.profile_step === 'edit:pro:saved'); i++) await tick(10);
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:pro:saved'), 'formulaire = Memberstack : enregistrement constaté');
+    assert.strictEqual(rpps.value, N1);
+    assert.deepStrictEqual(reports, []);
   });
 
   await test('« Fermer » replie et ignore une recherche en cours', async () => {
