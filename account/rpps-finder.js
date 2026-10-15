@@ -10,6 +10,11 @@
  *             formulaire du bloc professionnel de /membership/compte.
  *             profile-overview.js déplace ensuite le bloc dans la carte
  *             « Informations professionnelles ».
+ * Contrat avec profile-overview.js : il annonce `ordo:edit-open` et
+ *             `ordo:edit-close` sur document (detail.section). Pour la section
+ *             `pro`, le bloc passe sous le champ RPPS du formulaire, le champ se
+ *             verrouille (le numéro ne change que par la recherche), puis le bloc
+ *             retourne à sa place dans la lecture.
  */
 (function() {
   'use strict';
@@ -382,17 +387,26 @@
     if (text) container.appendChild(message(text, kind));
   }
 
+  // État affiché (hidden, collapsed, panel, done) et mode modification de la carte.
+  var state = 'hidden';
+  var editing = false;
+
   // --- Replié -------------------------------------------------------------------------------------
 
   function renderCollapsed() {
     clear(root);
     showRoot(true);
+    state = 'collapsed';
     var line = el('div', C['finder-cta']);
     var hasNumber = !!normalizeRpps(fields()['n-rpps']);
-    line.appendChild(el('span', C['finder-note'], hasNumber
-      ? 'Votre numéro RPPS n’est pas encore vérifié dans l’Annuaire santé.'
-      : 'Retrouvez votre numéro RPPS dans l’Annuaire santé : il sera vérifié immédiatement.'));
-    var open = button(C['finder-lien'], hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
+    // Numéro déjà vérifié : seulement en modification, pour pouvoir en changer.
+    var verified = editing && isVerified();
+    line.appendChild(el('span', C['finder-note'], verified
+      ? 'Votre numéro RPPS est vérifié. Pour en changer, recherchez votre nouvelle fiche.'
+      : hasNumber
+        ? 'Votre numéro RPPS n’est pas encore vérifié dans l’Annuaire santé.'
+        : 'Retrouvez votre numéro RPPS dans l’Annuaire santé : il sera vérifié immédiatement.'));
+    var open = button(C['finder-lien'], verified ? 'Changer de numéro' : hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
     open.addEventListener('click', function() {
       track('open');
       renderPanel();
@@ -409,6 +423,7 @@
   function renderPanel() {
     clear(root);
     showRoot(true);
+    state = 'panel';
     var panel = el('div', C['finder-panneau']);
     panel.appendChild(el('strong', C['finder-titre'], 'Vérifier mon numéro RPPS'));
     panel.appendChild(el('span', C['finder-note'], 'Recherchez votre fiche dans l’Annuaire santé, puis confirmez-la. Rien n’est enregistré sans votre confirmation.'));
@@ -644,6 +659,7 @@
   function renderDone(body) {
     clear(root);
     showRoot(true);
+    state = 'done';
     var box = el('div', C['finder-fait']);
     var who = [displayName(body), body.profession].filter(Boolean).join(', ');
     box.appendChild(el('div', null, 'Numéro RPPS vérifié dans l’Annuaire santé : ' + body.rpps + (who ? ' (' + who + ')' : '') + '.'));
@@ -653,20 +669,102 @@
   // --- Init --------------------------------------------------------------------------------------
 
   function render() {
-    if (isVerified()) {
+    // En lecture, un numéro vérifié n'a besoin de rien : la coche « Vérifié » suffit.
+    if (isVerified() && !editing) {
       clear(root);
       showRoot(false);
+      state = 'hidden';
       return;
     }
     renderCollapsed();
   }
 
+  // --- Mode modification de la carte -----------------------------------------------------------------
+
+  var PLACEHOLDER = 'ex. : 10000668540';
+  // Cellule pleine largeur du formulaire (mêmes classes que la cellule SIRET du gabarit Webflow).
+  var CELLULE = 'form-field-wrapper is-short is-pleine-largeur';
+  var home = null;
+  var host = null;
+  var lockNote = null;
+
+  function inputCell() {
+    return input.closest('.form-field-wrapper') || input.parentNode;
+  }
+
+  /**
+   * Le numéro ne se saisit plus à la main pendant la modification : lecture seule, avec le dessin
+   * natif de Webflow (.w-input[readonly] : fond gris, curseur interdit), et une mention sous le champ.
+   */
+  function lockInput(on) {
+    input.readOnly = on;
+    if (on) {
+      input.setAttribute('aria-readonly', 'true');
+      if (!lockNote) {
+        // Trait d'union insécable : la cellule est étroite, « ci- » restait seul en bout de ligne.
+        lockNote = el('div', C['finder-note-haut'], 'Modifiable uniquement par la recherche dans l’Annuaire santé ci\u2011dessous.');
+        lockNote.id = 'ordo-rpps-verrou';
+        lockNote.setAttribute('data-ordo-rpps-verrou', '1');
+      }
+      var cell = inputCell();
+      if (cell) cell.appendChild(lockNote);
+      input.setAttribute('aria-describedby', lockNote.id);
+      return;
+    }
+    input.removeAttribute('aria-readonly');
+    if (input.getAttribute('aria-describedby') === 'ordo-rpps-verrou') input.removeAttribute('aria-describedby');
+    if (lockNote && lockNote.parentNode) lockNote.parentNode.removeChild(lockNote);
+  }
+
+  /**
+   * « Modifier » sur la carte professionnelle : le bloc quitte la lecture (masquée) pour une cellule
+   * pleine largeur juste sous le champ RPPS. Écart avec les boutons : celui entre deux lignes du
+   * formulaire, soit la marge de cellule (1rem) plus l'écart de la grille des champs, relu sur la page
+   * (1.5rem sur ordinateur, 0 sur mobile où les boutons ont déjà 1rem au-dessus). Avec la seule marge
+   * de cellule, la recherche collait aux boutons.
+   */
+  function onEditOpen(e) {
+    if (!e || !e.detail || e.detail.section !== 'pro') return;
+    var cell = inputCell();
+    if (!cell || !cell.parentNode) return;
+    if (!editing) home = { parent: root.parentNode, next: root.nextSibling };
+    editing = true;
+    if (!host) {
+      host = el('div', CELLULE);
+      host.setAttribute('data-ordo-rpps-hote', '1');
+    }
+    var gap = window.getComputedStyle(cell.parentNode).rowGap;
+    host.style.paddingBottom = gap && gap !== 'normal' && parseFloat(gap) > 0 ? gap : '';
+    cell.parentNode.insertBefore(host, cell.nextSibling);
+    host.appendChild(root);
+    lockInput(true);
+    // Une recherche en cours reste ouverte ; sinon le bloc se redessine pour la modification.
+    if (state !== 'panel') render();
+  }
+
+  /** Annuler, enregistrement ou autre carte ouverte : le bloc retourne dans la lecture. */
+  function onEditClose(e) {
+    if (!e || !e.detail || e.detail.section !== 'pro' || !editing) return;
+    editing = false;
+    lockInput(false);
+    if (home && home.parent) {
+      home.parent.insertBefore(root, home.next && home.next.parentNode === home.parent ? home.next : null);
+    }
+    if (host && host.parentNode) host.parentNode.removeChild(host);
+    home = null;
+    searchSeq++;
+    render();
+  }
+
   function init() {
     if (!DESSIN) injectStyles();
-    var cell = input.closest('.form-field-wrapper') || input.parentNode;
+    input.placeholder = PLACEHOLDER;
+    var cell = inputCell();
     if (cell && cell.parentNode) cell.parentNode.insertBefore(root, cell.nextSibling);
     render();
     if (!root.hidden) track('shown');
+    document.addEventListener('ordo:edit-open', onEditOpen);
+    document.addEventListener('ordo:edit-close', onEditClose);
     console.log(PREFIX, 'Initialized', isVerified() ? '(verified)' : '(not verified)');
   }
 

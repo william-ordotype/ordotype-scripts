@@ -457,6 +457,8 @@
     show(c.lecture, false);
     show(c.button, false);
     show(c.slot, true, 'block');
+    ouvertes[section] = true;
+    announce('ordo:edit-open', section, c.slot);
     var focus = c.slot.querySelector('input:not([type=hidden]):not([type=checkbox]), select');
     if (focus && typeof focus.focus === 'function') focus.focus();
     track('edit', section, 'open');
@@ -492,6 +494,22 @@
     // Statut remis à sa valeur : les scripts qui en dépendent (mode d'exercice, finder SIREN) doivent le savoir.
     var statut = c.slot.querySelector('select[data-ms-member="statut"]');
     if (statut) statut.dispatchEvent(new Event('change', { bubbles: true }));
+    if (ouvertes[section]) {
+      delete ouvertes[section];
+      announce('ordo:edit-close', section, c.slot);
+    }
+  }
+
+  /**
+   * Ouverture et fermeture d'une carte, annoncées aux scripts qui y placent un bloc : le finder RPPS
+   * passe sous le champ RPPS du formulaire pendant la modification de `pro`, puis revient à la lecture.
+   * Une fermeture n'est annoncée qu'après une ouverture (closeOthers referme aussi des cartes jamais ouvertes).
+   */
+  var ouvertes = {};
+  function announce(name, section, slot) {
+    try {
+      document.dispatchEvent(new CustomEvent(name, { detail: { section: section, slot: slot } }));
+    } catch (e) { /* no-op */ }
   }
 
   function closeOthers(except) {

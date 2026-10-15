@@ -298,6 +298,23 @@ async function test(name, fn) {
     assert.ok(visible(w, d.querySelector('[data-ordo-edit="email"]')), '« Modifier » de nouveau là');
   });
 
+  await test('ouverture et fermeture des cartes annoncées (ordo:edit-open / ordo:edit-close, detail.section et slot)', async () => {
+    const vus = [];
+    const { d } = await page({ before: (w) => {
+      for (const name of ['ordo:edit-open', 'ordo:edit-close']) {
+        w.document.addEventListener(name, (e) => vus.push([name.slice(10), e.detail.section, e.detail.slot && e.detail.slot.getAttribute('data-ordo-form-slot')]));
+      }
+    } });
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    const slot = d.querySelector('[data-ordo-form-slot="pro"]');
+    assert.deepStrictEqual(vus, [['open', 'pro', 'pro']]);
+    [...slot.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Annuler').click();
+    assert.deepStrictEqual(vus.pop(), ['close', 'pro', 'pro'], '« Annuler »');
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    d.querySelector('[data-ordo-edit="perso"]').click();
+    assert.deepStrictEqual(vus.slice(-3), [['open', 'pro', 'pro'], ['close', 'pro', 'pro'], ['open', 'perso', 'perso']], 'autre carte ouverte : pro refermée d’abord');
+  });
+
   await test('« Annuler » après un changement de statut prévient les autres scripts', async () => {
     const { w, d } = await page();
     d.querySelector('[data-ordo-edit="pro"]').click();
