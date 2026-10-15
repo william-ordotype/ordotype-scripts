@@ -20,6 +20,7 @@ const FINDER = fs.readFileSync(path.join(ROOT, 'account/rpps-finder.js'), 'utf8'
 const OVERVIEW = fs.readFileSync(path.join(ROOT, 'account/profile-overview.js'), 'utf8');
 const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8');
 const API = 'https://webhooks.ordotype.fr/.netlify/functions/account-rpps';
+const STATUS = 'https://webhooks.ordotype.fr/.netlify/functions/annuaire-status';
 
 function luhn(s) {
   let t = 0;
@@ -64,7 +65,7 @@ function sansDesigner(d) {
   if (groupe) groupe.remove();
 }
 
-async function page({ member = MEMBRE, overview = true, server = {}, token = 'jeton-test', noV2 = false, mode = MODE, avant, fastPoll = false } = {}) {
+async function page({ member = MEMBRE, overview = true, server = {}, token = 'jeton-test', noV2 = false, mode = MODE, avant, fastPoll = false, delais = false } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -81,6 +82,7 @@ async function page({ member = MEMBRE, overview = true, server = {}, token = 'je
   const pushed = [];
   const reports = [];
   const events = [];
+  const statusCalls = [];
   w.dataLayer = [];
   w.dataLayer.push = (p) => { pushed.push(p); return 0; };
   w.OrdoErrorReporter = {
@@ -96,6 +98,11 @@ async function page({ member = MEMBRE, overview = true, server = {}, token = 'je
     getCurrentMember: () => Promise.resolve({ data: clone(w.OrdoAccount.member) })
   };
   w.fetch = (url, opts) => {
+    // État de l'Annuaire : GET sans corps ; sans réponse prévue, le point d'accès est injoignable.
+    if (url === STATUS) {
+      statusCalls.push({ url, method: opts.method, headers: opts.headers, credentials: opts.credentials });
+      return server.status ? server.status() : Promise.reject(new TypeError('Failed to fetch'));
+    }
     const body = JSON.parse(opts.body);
     calls.push({ url, method: opts.method, headers: opts.headers, body });
     const handler = server[body.action];
@@ -105,12 +112,13 @@ async function page({ member = MEMBRE, overview = true, server = {}, token = 'je
   w.document.addEventListener('ordo:member-updated', (e) => events.push(e.detail));
   w.console.log = () => {};
   w.console.warn = () => {};
-  w.eval(FINDER);
+  // delais : délais de 20 ms au lieu de 2 s (état de l'Annuaire) et 15 s (recherche).
+  w.eval(delais ? FINDER.replace('STATUS_TIMEOUT_MS = 2000', 'STATUS_TIMEOUT_MS = 20').replace('API_TIMEOUT_MS = 15000', 'API_TIMEOUT_MS = 20') : FINDER);
   // fastPoll : relectures de l'enregistrement du formulaire toutes les 5 ms au lieu de 1,5 s.
   if (overview) w.eval(fastPoll ? OVERVIEW.replace('SAVE_POLL_MS = 1500', 'SAVE_POLL_MS = 5') : OVERVIEW);
   if (w.document.readyState === 'loading') await new Promise((r) => w.document.addEventListener('DOMContentLoaded', r));
   await tick();
-  return { w, d: w.document, calls, pushed, reports, erreurs, events, member: m };
+  return { w, d: w.document, calls, statusCalls, pushed, reports, erreurs, events, member: m };
 }
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -135,7 +143,8 @@ async function test(name, fn) {
   for (const mode of ['designer', 'ancienne']) {
   MODE = mode;
   await test('non vérifié : invitation discrète sous la ligne RPPS de la carte, aucun appel', async () => {
-    const { w, d, calls, erreurs, pushed } = await page();
+    const ctx0 = await page();
+    const { w, d, calls, erreurs, pushed } = ctx0;
     assert.deepStrictEqual(erreurs, []);
     const root = d.querySelector(ROOT_SEL);
     assert.ok(root, 'bloc créé');
@@ -146,6 +155,7 @@ async function test(name, fn) {
     assert.ok(/pas encore vérifié/.test(root.textContent));
     assert.ok(byText(root, 'button', /Vérifier maintenant/));
     assert.strictEqual(calls.length, 0, 'aucune requête sans intention');
+    assert.strictEqual(ctx0.statusCalls.length, 0, 'état de l’Annuaire jamais lu au chargement');
     assert.deepStrictEqual(steps(pushed), ['rpps:pro:shown']);
     assert.ok(!/[—]/.test(root.textContent), 'pas de tiret long');
   });
@@ -605,6 +615,258 @@ async function test(name, fn) {
     assert.deepStrictEqual(steps(pushed), ['rpps:pro:shown', 'rpps:pro:open', 'rpps:pro:search', 'rpps:pro:close'], 'la réponse tardive n’est ni affichée ni comptée');
   });
 
+
+  // --- Repli quand l'Annuaire santé est en panne --------------------------------------------------
+
+  const NOTE_PANNE = 'L’Annuaire santé ne répond pas en ce moment : vous pouvez saisir votre numéro, il sera vérifié automatiquement dès son retour.';
+  const MSG_REPLI = 'L’Annuaire santé ne répond pas en ce moment : saisissez votre numéro dans le champ ci‑dessus puis « Sauvegarder ».';
+  const jamais = () => new Promise(() => {});
+  const ouvrir = (d) => d.querySelector('[data-ordo-edit="pro"]').click();
+
+  /** Champ verrouillé normalement : lecture seule, mention d'origine. */
+  function verrouille(d) {
+    const rpps = d.getElementById('RPPS');
+    assert.ok(rpps.readOnly, 'lecture seule');
+    assert.strictEqual(rpps.getAttribute('aria-readonly'), 'true');
+    assert.strictEqual(d.querySelector('[data-ordo-rpps-verrou]').textContent, NOTE_VERROU);
+  }
+
+  /** Champ libéré par le repli : saisissable, mention de panne toujours lue avec le champ. */
+  function libere(d) {
+    const rpps = d.getElementById('RPPS');
+    assert.ok(!rpps.readOnly, 'champ saisissable');
+    assert.ok(!rpps.hasAttribute('aria-readonly'));
+    const note = d.querySelector('[data-ordo-rpps-verrou]');
+    assert.strictEqual(note.textContent, NOTE_PANNE);
+    assert.ok(rpps.closest('.form-field-wrapper').contains(note), 'mention dans la cellule du champ');
+    assert.strictEqual(rpps.getAttribute('aria-describedby'), note.id);
+    assert.ok(!/[—]/.test(note.textContent));
+  }
+
+  /** En modification : ouvre la recherche et lance une recherche par nom. */
+  async function chercherEnModification(d) {
+    ouvrir(d);
+    const root = d.querySelector(ROOT_SEL);
+    byText(root, 'button', /Vérifier maintenant/).click();
+    byText(root, 'button', /^Rechercher$/).click();
+    await settle();
+    return root;
+  }
+
+  /** En modification : saisit un numéro dans la recherche et lance « Vérifier ». */
+  async function verifierEnModification(d, numero) {
+    ouvrir(d);
+    const root = d.querySelector(ROOT_SEL);
+    byText(root, 'button', /Vérifier maintenant/).click();
+    const num = root.querySelectorAll('input')[2];
+    num.value = numero;
+    num.dispatchEvent(new d.defaultView.Event('input'));
+    byText(root, 'button', /^Vérifier$/).click();
+    await settle();
+    return root;
+  }
+
+  await test('repli : 503 à la recherche en modification, champ libéré, mention et message de panne, le numéro tapé part à « Sauvegarder », rien de vérifié', async () => {
+    const ctx = await page({ fastPoll: true, server: { search: () => reply(503, { error: 'upstream_unavailable' }) } });
+    const { w, d, pushed, reports, member } = ctx;
+    const rpps = d.getElementById('RPPS');
+    const root = await chercherEnModification(d);
+    libere(d);
+    const msg = root.querySelector('[data-ordo-message="erreur"]');
+    assert.strictEqual(msg.textContent, MSG_REPLI, 'le message du finder dit quoi faire');
+    assert.ok(!/[—]/.test(msg.textContent));
+    const repli = pushed.filter((p) => p.profile_outcome === 'repli-panne');
+    assert.strictEqual(repli.length, 1);
+    assert.strictEqual(repli[0].profile_step, 'rpps:pro:repli-panne:erreur', 'cause dans profile_step, aucune nouvelle dimension');
+    assert.deepStrictEqual(Object.keys(repli[0]).sort(), ['event', 'profile_action', 'profile_outcome', 'profile_section', 'profile_step']);
+    assert.ok(steps(pushed).includes('rpps:pro:search-unavailable'));
+    assert.deepStrictEqual(reports, [], 'panne de l’Annuaire : pas de signalement navigateur');
+    // Une seconde panne pendant la même modification ne recompte pas.
+    byText(root, 'button', /^Rechercher$/).click();
+    await settle();
+    assert.strictEqual(pushed.filter((p) => p.profile_outcome === 'repli-panne').length, 1);
+    // Le membre tape son numéro puis « Sauvegarder » ; Memberstack enregistre ce que porte le formulaire.
+    rpps.value = N2;
+    rpps.dispatchEvent(new w.Event('input', { bubbles: true }));
+    const form = d.querySelector('[data-ordo-form-slot="pro"] form');
+    let envoye = null;
+    form.addEventListener('submit', () => {
+      envoye = rpps.value;
+      member.customFields['n-rpps'] = rpps.value;
+    });
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    for (let i = 0; i < 100 && !pushed.some((p) => p.profile_step === 'edit:pro:saved'); i++) await tick(10);
+    assert.strictEqual(envoye, N2, 'le nouveau numéro part à « Sauvegarder »');
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:pro:saved'), 'enregistrement constaté');
+    assert.strictEqual(member.customFields['n-rpps'], N2);
+    assert.strictEqual(member.customFields['statut-rpps'], undefined, 'rien de marqué vérifié');
+    assert.deepStrictEqual(member.metaData, {});
+    assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-verifie]').length, 0, 'aucune coche');
+    // Fermeture (enregistrement) : retour au verrou normal à la prochaine ouverture.
+    enLecture(d, root);
+    assert.ok(/pas encore vérifié/.test(root.textContent), 'lecture : numéro à vérifier');
+    ouvrir(d);
+    verrouille(d);
+    await settle();
+    verrouille(d);
+  });
+
+  await test('repli : 503 ou délai dépassé à la vérification du numéro, puis « Annuler » remet le verrou', async () => {
+    let ctx = await page({ server: { lookup: () => reply(503, { error: 'upstream_unavailable' }) } });
+    let root = await verifierEnModification(ctx.d, N2);
+    libere(ctx.d);
+    assert.strictEqual(root.querySelector('[data-ordo-message="erreur"]').textContent, MSG_REPLI);
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:lookup-unavailable'));
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:repli-panne:erreur'));
+    // Quota : une seule lecture de l'état, à l'ouverture ; aucune après le 503 de la même ouverture.
+    assert.strictEqual(ctx.statusCalls.length, 1);
+    ctx.d.dispatchEvent(new ctx.w.CustomEvent('ordo:edit-open', { detail: { section: 'pro' } }));
+    byText(root, 'button', /^Vérifier$/).click();
+    await settle();
+    assert.strictEqual(ctx.statusCalls.length, 1);
+    libere(ctx.d);
+    annuler(ctx.d);
+    enLecture(ctx.d, root);
+    ouvrir(ctx.d);
+    verrouille(ctx.d);
+
+    ctx = await page({ delais: true, server: { lookup: jamais } });
+    root = await verifierEnModification(ctx.d, N2);
+    verrouille(ctx.d);
+    await tick(40);
+    await settle();
+    libere(ctx.d);
+    assert.strictEqual(root.querySelector('[data-ordo-message="erreur"]').textContent, MSG_REPLI);
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:lookup-timeout'), 'délai compté à part');
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:repli-panne:erreur'));
+    assert.ok(!byText(root, 'button', /^Vérifier$/).disabled, 'bouton réactivé');
+
+    // 504 de la passerelle : même chose que le délai.
+    ctx = await page({ server: { search: () => reply(504, {}) } });
+    await chercherEnModification(ctx.d);
+    libere(ctx.d);
+    assert.ok(steps(ctx.pushed).includes('rpps:pro:search-timeout'));
+  });
+
+  await test('pas de repli sur 401, 404, 409, 422, 429, 502 ni panne réseau : champ toujours verrouillé', async () => {
+    const cas = [
+      { server: { search: () => reply(401, { error: 'unauthorized' }) }, via: 'search' },
+      { server: { lookup: () => reply(404, { error: 'unknown_rpps' }) }, via: 'lookup' },
+      { server: { search: () => reply(200, { results: [CLAIRE], total: 1 }), select: () => reply(409, { error: 'name_mismatch' }) }, via: 'select' },
+      { server: { search: () => reply(200, { results: [CLAIRE], total: 1 }), select: () => reply(422, { error: 'unverifiable' }) }, via: 'select' },
+      { server: { search: () => reply(429, { error: 'rate_limited' }) }, via: 'search' },
+      { server: { search: () => reply(502, { error: 'upstream_error' }) }, via: 'search' },
+      { server: {}, via: 'search' }
+    ];
+    for (const c of cas) {
+      const ctx = await page({ server: c.server });
+      let root;
+      if (c.via === 'lookup') root = await verifierEnModification(ctx.d, N2);
+      else root = await chercherEnModification(ctx.d);
+      if (c.via === 'select') {
+        byText(root, 'button', /C’est moi/).click();
+        await settle();
+      }
+      verrouille(ctx.d);
+      assert.ok(root.querySelector('[data-ordo-message]'), 'message d’erreur habituel');
+      assert.ok(!root.textContent.includes(MSG_REPLI));
+      assert.ok(!steps(ctx.pushed).some((s) => /repli-panne/.test(s)), 'aucun repli compté');
+    }
+  });
+
+  await test('repli : 503 à la confirmation de la fiche, champ libéré', async () => {
+    const ctx = await page({ server: { search: () => reply(200, { results: [CLAIRE], total: 1 }), select: () => reply(503, { error: 'upstream_unavailable' }) } });
+    const root = await chercherEnModification(ctx.d);
+    byText(root, 'button', /C’est moi/).click();
+    await settle();
+    libere(ctx.d);
+    assert.ok(root.textContent.includes(MSG_REPLI));
+    assert.strictEqual(ctx.member.customFields['statut-rpps'], undefined);
+  });
+
+  await test('hors modification : un 503 garde le message habituel, rien à libérer', async () => {
+    const ctx = await page({ server: { search: () => reply(503, { error: 'upstream_unavailable' }) } });
+    const root = ctx.d.querySelector(ROOT_SEL);
+    byText(root, 'button', /Vérifier maintenant/).click();
+    byText(root, 'button', /^Rechercher$/).click();
+    await settle();
+    assert.strictEqual(root.querySelector('[data-ordo-message="erreur"]').textContent, 'L’Annuaire santé ne répond pas en ce moment. Réessayez un peu plus tard.');
+    assert.ok(!steps(ctx.pushed).some((s) => /repli-panne/.test(s)));
+    assert.strictEqual(ctx.statusCalls.length, 0, 'état lu seulement à l’ouverture de la modification');
+  });
+
+  await test('état de l’Annuaire « down » à l’ouverture : champ libéré d’emblée, une lecture par ouverture', async () => {
+    let state = 'down';
+    const ctx = await page({ server: { status: () => reply(200, { state, since: '2026-10-15T08:00:00Z', checkedAt: '2026-10-15T09:00:00Z' }) } });
+    const { d, statusCalls, calls, pushed, reports } = ctx;
+    const root = d.querySelector(ROOT_SEL);
+    ouvrir(d);
+    verrouille(d);
+    await settle();
+    libere(d);
+    assert.strictEqual(statusCalls.length, 1);
+    assert.strictEqual(statusCalls[0].method, 'GET');
+    assert.strictEqual(statusCalls[0].credentials, 'omit');
+    assert.strictEqual(statusCalls[0].headers, undefined, 'point d’accès public : ni jeton ni en-tête');
+    assert.strictEqual(calls.length, 0, 'aucun appel à la recherche');
+    assert.ok(!root.querySelector('[data-ordo-message]'), 'pas de message dans le finder');
+    assert.deepStrictEqual(steps(pushed), ['rpps:pro:shown', 'rpps:pro:repli-panne:status']);
+    assert.deepStrictEqual(reports, []);
+    // Annonce répétée sans fermeture : ni nouvelle lecture, ni retour au verrou.
+    d.dispatchEvent(new d.defaultView.CustomEvent('ordo:edit-open', { detail: { section: 'pro' } }));
+    await settle();
+    assert.strictEqual(statusCalls.length, 1);
+    libere(d);
+    // Fermeture : verrou normal ; réouverture : nouvelle lecture.
+    annuler(d);
+    enLecture(d, root);
+    state = 'up';
+    ouvrir(d);
+    await settle();
+    assert.strictEqual(statusCalls.length, 2);
+    verrouille(d);
+  });
+
+  await test('état « up », « unknown », point d’accès en 404, en échec, illisible ou trop lent : verrou, sans bruit', async () => {
+    const cas = {
+      up: () => reply(200, { state: 'up' }),
+      unknown: () => reply(200, { state: 'unknown' }),
+      '404': () => reply(404, { error: 'not_found' }),
+      '500 down': () => reply(500, { state: 'down' }),
+      injoignable: () => Promise.reject(new TypeError('Failed to fetch')),
+      illisible: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('JSON')) }),
+      lent: jamais
+    };
+    for (const nom of Object.keys(cas)) {
+      const ctx = await page({ delais: true, server: { status: cas[nom] } });
+      ouvrir(ctx.d);
+      await tick(40);
+      await settle();
+      try {
+        verrouille(ctx.d);
+        assert.strictEqual(ctx.statusCalls.length, 1);
+        assert.deepStrictEqual(ctx.reports, [], 'pas de signalement');
+        assert.deepStrictEqual(steps(ctx.pushed), ['rpps:pro:shown'], 'pas de mesure');
+        assert.ok(!ctx.d.querySelector(ROOT_SEL).querySelector('[data-ordo-message]'), 'pas de message');
+      } catch (e) {
+        e.message = `[état ${nom}] ` + e.message;
+        throw e;
+      }
+    }
+  });
+
+  await test('état « down » reçu après « Annuler » : ignoré', async () => {
+    let release;
+    const ctx = await page({ server: { status: () => new Promise((r) => { release = () => r({ ok: true, status: 200, json: () => Promise.resolve({ state: 'down' }) }); }) } });
+    const root = ctx.d.querySelector(ROOT_SEL);
+    ouvrir(ctx.d);
+    annuler(ctx.d);
+    release();
+    await settle();
+    enLecture(ctx.d, root);
+    assert.ok(!steps(ctx.pushed).some((s) => /repli-panne/.test(s)));
+  });
+
   }
   MODE = 'designer';
   await test('[designer] classes reprises des gabarits du Designer, aucune feuille injectée, aucun style en ligne', async () => {
@@ -727,6 +989,10 @@ async function test(name, fn) {
     assert.ok(!root.hasAttribute('data-ordo-dessin'));
     assert.ok(d.getElementById('ordo-rpps-styles'));
     assert.deepStrictEqual(reports, [], 'page pas encore republiée : rien à signaler');
+    byText(root, 'button', /Vérifier maintenant/).click();
+    // Bouton principal en bleu plein, comme les gabarits finder-bouton et finder-confirmer du Designer.
+    assert.strictEqual(byText(root, 'button', /^Rechercher$/).className, 'button no-full-width w-button ordo-rpps-btn');
+    assert.strictEqual(byText(root, 'button', /^Vérifier$/).className, 'button no-full-width w-button ordo-rpps-btn');
   });
   console.log(`rpps-finder : ${passed} tests OK`);
 })();

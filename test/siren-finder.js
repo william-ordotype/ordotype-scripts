@@ -321,6 +321,8 @@ async function test(name, fn) {
     assert.ok(d.getElementById('ordo-siren-styles'));
     assert.ok(d.getElementById('SIRET').parentNode.classList.contains('ordo-siren-host'));
     assert.deepStrictEqual(reports, []);
+    // Bouton principal en bleu plein, comme les gabarits finder-bouton et finder-confirmer du Designer.
+    assert.strictEqual(byText(root, 'button', /^Rechercher$/).className, 'button no-full-width w-button ordo-siren-btn');
   });
 
   console.log(`siren-finder : ${passed} tests OK`);
