@@ -302,9 +302,10 @@
   // UI
   // ---------------------------------------------------------------------------
 
-  // Boutons = classes Webflow du site (« Sauvegarder » = button is-gradient,
-  // « Annuler » = button is-grey) : ordo-siren-btn ne porte que l'état disabled.
-  var BTN_PRIMARY = 'button is-gradient w-button ordo-siren-btn';
+  // Boutons = classes Webflow du site (bouton principal en bleu plein = button no-full-width, comme
+  // les gabarits finder-bouton et finder-confirmer ; « Annuler » = button is-grey) : ordo-siren-btn ne
+  // porte que l'état disabled.
+  var BTN_PRIMARY = 'button no-full-width w-button ordo-siren-btn';
   var BTN_SECONDARY = 'button is-grey w-button ordo-siren-btn';
   var BTN_SMALL = 'button is-grey is-small w-button ordo-siren-btn';
 

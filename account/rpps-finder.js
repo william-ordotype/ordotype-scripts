@@ -15,12 +15,22 @@
  *             `pro`, le bloc passe sous le champ RPPS du formulaire, le champ se
  *             verrouille (le numéro ne change que par la recherche), puis le bloc
  *             retourne à sa place dans la lecture.
+ * Repli quand l'Annuaire santé est en panne : état lu à l'ouverture (STATUS_URL, `down`), ou
+ *             recherche, vérification ou confirmation en échec faute de réponse de l'Annuaire
+ *             (503, 504, délai dépassé). Le champ redevient saisissable jusqu'à la fermeture :
+ *             le membre tape son numéro puis « Sauvegarder », et le serveur le vérifiera au retour
+ *             de l'Annuaire. Rien n'est marqué vérifié par le navigateur.
  */
 (function() {
   'use strict';
 
   var PREFIX = '[RppsFinder]';
   var API_URL = 'https://webhooks.ordotype.fr/.netlify/functions/account-rpps';
+  // État public de l'Annuaire santé ({ state: 'up' | 'down' | 'unknown', since, checkedAt }, cache 60 s).
+  // Quota Netlify serré : lu seulement à l'ouverture de la modification `pro`, jamais au chargement.
+  var STATUS_URL = 'https://webhooks.ordotype.fr/.netlify/functions/annuaire-status';
+  var STATUS_TIMEOUT_MS = 2000; // au-delà, comportement normal : champ verrouillé
+  var API_TIMEOUT_MS = 15000; // le serveur répond avant 10 s ; au-delà, l'Annuaire est tenu pour en panne
   var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
   var CONTACT = 'contact@ordotype.fr';
   // Statuts pour lesquels la recherche porte d'emblée sur toutes les professions de santé.
@@ -140,10 +150,11 @@
     } catch (e) { /* no-op */ }
   }
 
-  function track(outcome) {
+  /** `detail` (facultatif) précise l'issue dans profile_step seulement : rpps:pro:<issue>:<detail>. */
+  function track(outcome, detail) {
     if (!window.dataLayer || typeof window.dataLayer.push !== 'function') return;
     var payload = { event: 'profile_action', profile_action: 'rpps', profile_section: 'pro', profile_outcome: outcome };
-    payload.profile_step = 'rpps:pro:' + outcome;
+    payload.profile_step = 'rpps:pro:' + outcome + (detail ? ':' + detail : '');
     var rollout = window.OrdoRollout && window.OrdoRollout['rpps-finder.js'];
     if (rollout) {
       payload.rollout_percent = rollout.percent;
@@ -193,6 +204,37 @@
     });
   }
 
+  /**
+   * Requête bornée dans le temps : au-delà de `ms`, elle est abandonnée et l'échec porte le code
+   * `timeout` (sans statut HTTP).
+   */
+  function fetchWithin(url, options, ms) {
+    var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    if (ctrl) options.signal = ctrl.signal;
+    return new Promise(function(resolve, reject) {
+      var timer = setTimeout(function() {
+        if (ctrl) {
+          try { ctrl.abort(); } catch (e) { /* no-op */ }
+        }
+        var err = new Error('timeout ' + url);
+        err.code = 'timeout';
+        reject(err);
+      }, ms);
+      fetch(url, options).then(function(res) {
+        // Le corps compte dans le délai : des en-têtes reçus ne disent pas que la réponse arrivera.
+        return res.json().catch(function() { return {}; }).then(function(body) {
+          return { res: res, body: body };
+        });
+      }).then(function(r) {
+        clearTimeout(timer);
+        resolve(r);
+      }, function(e) {
+        clearTimeout(timer);
+        reject(e);
+      });
+    });
+  }
+
   function api(payload) {
     return memberToken().then(function(token) {
       if (!token) {
@@ -200,28 +242,53 @@
         e.status = 401;
         throw e;
       }
-      return fetch(API_URL, {
+      return fetchWithin(API_URL, {
         method: 'POST',
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify(payload)
-      });
-    }).then(function(res) {
-      return res.json().catch(function() { return {}; }).then(function(body) {
-        if (!res.ok) {
-          var err = new Error('account-rpps ' + res.status + ' ' + (body && body.error ? body.error : ''));
-          err.status = res.status;
-          err.code = body && body.error;
-          throw err;
-        }
-        return body;
-      });
+      }, API_TIMEOUT_MS);
+    }).then(function(r) {
+      var res = r.res;
+      var body = r.body;
+      if (!res.ok) {
+        var err = new Error('account-rpps ' + res.status + ' ' + (body && body.error ? body.error : ''));
+        err.status = res.status;
+        err.code = body && body.error;
+        throw err;
+      }
+      return body;
     });
+  }
+
+  /**
+   * État de l'Annuaire santé, lu sans jeton : 'up', 'down', 'unknown', ou '' si le point d'accès
+   * ne répond pas (absent, en erreur, délai dépassé). Jamais signalé : sans état, rien ne change.
+   */
+  function readStatus() {
+    if (typeof fetch !== 'function') return Promise.resolve('');
+    return fetchWithin(STATUS_URL, { method: 'GET', credentials: 'omit' }, STATUS_TIMEOUT_MS).then(function(r) {
+      var state = r.res.ok && r.body && r.body.state;
+      return typeof state === 'string' ? state : '';
+    }).catch(function() { return ''; });
+  }
+
+  /** L'Annuaire ne répond pas (le serveur le dit par un 503, ou la réponse n'arrive pas) : repli possible. */
+  function isOutage(err) {
+    var outcome = failureOutcome(err);
+    return outcome === 'unavailable' || outcome === 'timeout';
   }
 
   function messageFor(err) {
     var status = err && err.status;
     var code = err && err.code;
+    // En modification, le champ vient d'être libéré : le message dit quoi faire. Espaces insécables
+    // dans les guillemets : sinon « restait seul en bout de ligne.
+    if (isOutage(err)) {
+      return repli
+        ? 'L’Annuaire santé ne répond pas en ce moment : saisissez votre numéro dans le champ ci\u2011dessus puis «\u00a0Sauvegarder\u00a0».'
+        : 'L’Annuaire santé ne répond pas en ce moment. Réessayez un peu plus tard.';
+    }
     if (status === 401) return 'Votre session a expiré : reconnectez-vous puis réessayez.';
     if (code === 'unknown_rpps') return 'Ce numéro est introuvable dans l’Annuaire santé. Vérifiez les chiffres.';
     if (code === 'name_mismatch') return 'Cette fiche ne porte pas le nom de votre profil. S’il s’agit bien de vous (nom d’usage, par exemple), écrivez-nous à ' + CONTACT + '.';
@@ -230,15 +297,15 @@
     if (code === 'invalid_number') return 'Numéro invalide : le RPPS compte 11 chiffres.';
     if (code === 'invalid_name') return 'Indiquez au moins 2 lettres du nom.';
     if (status === 429) return 'Trop de recherches à la suite : patientez une minute avant de réessayer.';
-    if (status === 503) return 'L’Annuaire santé ne répond pas en ce moment. Réessayez un peu plus tard.';
     if (!status) return 'Connexion impossible. Vérifiez votre réseau puis réessayez.';
     return 'Une erreur est survenue. Réessayez dans un instant.';
   }
 
-  /** Issue d'un échec pour GA4 : panne de l'annuaire, limite, session, réseau ou autre. */
+  /** Issue d'un échec pour GA4 : panne de l'annuaire, délai dépassé, limite, session, réseau ou autre. */
   function failureOutcome(err) {
     var status = err && err.status;
     if (status === 503) return 'unavailable';
+    if (status === 504 || (!status && err && err.code === 'timeout')) return 'timeout';
     if (status === 429) return 'rate-limited';
     if (status === 401) return 'session';
     if (status === 404) return 'unknown';
@@ -262,7 +329,7 @@
   // UI
   // ---------------------------------------------------------------------------
 
-  var BTN_PRIMARY = 'button is-gradient w-button ordo-rpps-btn';
+  var BTN_PRIMARY = 'button no-full-width w-button ordo-rpps-btn';
   var BTN_SMALL = 'button is-grey is-small w-button ordo-rpps-btn';
 
   // Présentation d'origine : classes propres au script et leur feuille de style injectée.
@@ -401,12 +468,16 @@
     var hasNumber = !!normalizeRpps(fields()['n-rpps']);
     // Numéro déjà vérifié : seulement en modification, pour pouvoir en changer.
     var verified = editing && isVerified();
-    line.appendChild(el('span', C['finder-note'], verified
+    // Annuaire en panne (repli) : ne pas promettre une vérification immédiate sous la mention de panne.
+    var enPanne = editing && repli;
+    line.appendChild(el('span', C['finder-note'], enPanne
+      ? 'La recherche dans l’Annuaire santé est momentanément indisponible.'
+      : verified
       ? 'Votre numéro RPPS est vérifié. Pour en changer, recherchez votre nouvelle fiche.'
       : hasNumber
         ? 'Votre numéro RPPS n’est pas encore vérifié dans l’Annuaire santé.'
         : 'Retrouvez votre numéro RPPS dans l’Annuaire santé : il sera vérifié immédiatement.'));
-    var open = button(C['finder-lien'], verified ? 'Changer de numéro' : hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
+    var open = button(C['finder-lien'], enPanne ? 'Réessayer' : verified ? 'Changer de numéro' : hasNumber ? 'Vérifier maintenant' : 'Rechercher mon RPPS');
     open.addEventListener('click', function() {
       track('open');
       renderPanel();
@@ -501,6 +572,7 @@
       }).catch(function(err) {
         if (seq !== searchSeq) return;
         clear(results);
+        if (isOutage(err)) repliPanne('erreur');
         setMessage(results, messageFor(err));
         track('search-' + failureOutcome(err));
         reportIfActionable('RppsFinder.search', err);
@@ -607,6 +679,7 @@
         out.appendChild(card);
       }).catch(function(err) {
         clear(out);
+        if (isOutage(err)) repliPanne('erreur');
         setMessage(container, messageFor(err));
         track('lookup-' + failureOutcome(err));
         reportIfActionable('RppsFinder.lookup', err);
@@ -651,6 +724,7 @@
     }).catch(function(err) {
       for (var j = 0; j < buttons.length; j++) buttons[j].disabled = false;
       track(err && err.code === 'name_mismatch' ? 'mismatch' : 'failed');
+      if (isOutage(err)) repliPanne('erreur');
       setMessage(node, messageFor(err));
       reportIfActionable('RppsFinder.select', err);
     });
@@ -684,9 +758,17 @@
   var PLACEHOLDER = 'ex. : 10000668540';
   // Cellule pleine largeur du formulaire (mêmes classes que la cellule SIRET du gabarit Webflow).
   var CELLULE = 'form-field-wrapper is-short is-pleine-largeur';
+  // Trait d'union insécable : la cellule est étroite, « ci- » restait seul en bout de ligne.
+  var NOTE_VERROU = 'Modifiable uniquement par la recherche dans l’Annuaire santé ci\u2011dessous.';
+  // Espace insécable avant « : » : il ne commence jamais une ligne de la cellule étroite.
+  var NOTE_PANNE = 'Annuaire santé indisponible\u00a0: saisissez votre numéro, il sera vérifié dès son retour.';
   var home = null;
   var host = null;
   var lockNote = null;
+  // Champ libéré pendant cette modification parce que l'Annuaire santé est en panne.
+  var repli = false;
+  // Numéro de l'ouverture en cours : un état lu pour une ouverture déjà refermée est ignoré.
+  var openSeq = 0;
 
   function inputCell() {
     return input.closest('.form-field-wrapper') || input.parentNode;
@@ -698,14 +780,15 @@
    */
   function lockInput(on) {
     input.readOnly = on;
+    repli = false;
     if (on) {
       input.setAttribute('aria-readonly', 'true');
       if (!lockNote) {
-        // Trait d'union insécable : la cellule est étroite, « ci- » restait seul en bout de ligne.
-        lockNote = el('div', C['finder-note-haut'], 'Modifiable uniquement par la recherche dans l’Annuaire santé ci\u2011dessous.');
+        lockNote = el('div', C['finder-note-haut']);
         lockNote.id = 'ordo-rpps-verrou';
         lockNote.setAttribute('data-ordo-rpps-verrou', '1');
       }
+      lockNote.textContent = NOTE_VERROU;
       var cell = inputCell();
       if (cell) cell.appendChild(lockNote);
       input.setAttribute('aria-describedby', lockNote.id);
@@ -714,6 +797,35 @@
     input.removeAttribute('aria-readonly');
     if (input.getAttribute('aria-describedby') === 'ordo-rpps-verrou') input.removeAttribute('aria-describedby');
     if (lockNote && lockNote.parentNode) lockNote.parentNode.removeChild(lockNote);
+  }
+
+  /**
+   * Annuaire santé en panne pendant la modification : le champ redevient saisissable, comme avant le
+   * verrou, et la mention le dit. Le membre enregistre par « Sauvegarder » ; le serveur vérifiera le
+   * numéro au retour de l'Annuaire. Une fois par ouverture ; la fermeture remet le verrou normal.
+   * `cause` : `status` (état lu à l'ouverture) ou `erreur` (recherche, vérification ou confirmation).
+   */
+  function repliPanne(cause) {
+    if (!editing || repli || !input.readOnly) return;
+    repli = true;
+    input.readOnly = false;
+    input.removeAttribute('aria-readonly');
+    if (lockNote) lockNote.textContent = NOTE_PANNE;
+    if (state === 'collapsed') renderCollapsed();
+    track('repli-panne', cause);
+    console.log(PREFIX, 'Annuaire en panne : champ RPPS saisissable', 'cause=' + cause);
+  }
+
+  /**
+   * Une lecture de l'état de l'Annuaire par ouverture, au début : un 503 de la recherche arrive donc
+   * toujours après, et aucune autre lecture ne suit dans la même ouverture. Seul `down` change
+   * quelque chose ; 404 (point d'accès pas encore en ligne), erreur ou délai : verrou normal.
+   */
+  function checkStatus() {
+    var seq = openSeq;
+    readStatus().then(function(state) {
+      if (state === 'down' && seq === openSeq && editing) repliPanne('status');
+    });
   }
 
   /**
@@ -727,7 +839,8 @@
     if (!e || !e.detail || e.detail.section !== 'pro') return;
     var cell = inputCell();
     if (!cell || !cell.parentNode) return;
-    if (!editing) home = { parent: root.parentNode, next: root.nextSibling };
+    var opening = !editing;
+    if (opening) home = { parent: root.parentNode, next: root.nextSibling };
     editing = true;
     if (!host) {
       host = el('div', CELLULE);
@@ -737,7 +850,12 @@
     host.style.paddingBottom = gap && gap !== 'normal' && parseFloat(gap) > 0 ? gap : '';
     cell.parentNode.insertBefore(host, cell.nextSibling);
     host.appendChild(root);
-    lockInput(true);
+    // Annonce répétée sans fermeture : le champ garde son état (repli compris), pas de nouvelle lecture.
+    if (opening) {
+      openSeq++;
+      lockInput(true);
+      checkStatus();
+    }
     // Une recherche en cours reste ouverte ; sinon le bloc se redessine pour la modification.
     if (state !== 'panel') render();
   }
@@ -746,6 +864,7 @@
   function onEditClose(e) {
     if (!e || !e.detail || e.detail.section !== 'pro' || !editing) return;
     editing = false;
+    openSeq++;
     lockInput(false);
     if (home && home.parent) {
       home.parent.insertBefore(root, home.next && home.next.parentNode === home.parent ? home.next : null);
