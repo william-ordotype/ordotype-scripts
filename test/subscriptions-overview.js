@@ -45,7 +45,14 @@ const CARDS = [
   { label: 'Essai daté', status: 'free', price: null, discount: null, offeredUntil: null, next: null, endsOn: '2026-10-07', resumesOn: null },
 ];
 
-function page({ visible = true, prefilled = false, portal = true, whitespace = false, pause = null, confirmAnswer = true } = {}) {
+// The two links of the warning window: Memberstack hides the one that does not apply to the member.
+const MODAL_LINKS = {
+  offres: '<a href="/membership/offre-annulation" class="button is-grey">Confirmer le désabonnement</a><a href="/membership/annulation-abonnement" class="button is-grey" style="display:none">Confirmer le désabonnement</a>',
+  sansOffre: '<a href="/membership/offre-annulation" class="button is-grey" style="display:none">Confirmer le désabonnement</a><a href="/membership/annulation-abonnement" class="button is-grey">Confirmer le désabonnement</a>',
+  aucun: '',
+};
+
+function page({ visible = true, prefilled = false, portal = true, whitespace = false, pause = null, confirmAnswer = true, modalLinks = 'offres' } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -56,7 +63,7 @@ function page({ visible = true, prefilled = false, portal = true, whitespace = f
         <div class="inner-block-wraper" id="payment-method-block">Ajouter un moyen de paiement</div>
         <div class="inner-block-wraper" id="invoices-block">Mes factures</div>
       </div>
-      <div id="cancellation-warning-modal" style="display:none">Êtes-vous sûr ?</div>
+      <div id="cancellation-warning-modal" style="display:none">Êtes-vous sûr ?${MODAL_LINKS[modalLinks]}</div>
     </body></html>`,
     { url: 'https://www.ordotype.fr/membership/compte', runScripts: 'outside-only', virtualConsole }
   );
@@ -781,12 +788,53 @@ async function main() {
     const btn = cards(t.w)[0].querySelector('.ordo-subs-actions button');
     assert.strictEqual(btn.textContent, 'Résilier');
     btn.click();
-    assert.strictEqual(t.w.document.getElementById('cancellation-warning-modal').style.display, 'block');
+    // The question shows in the card, the warning window stays closed.
+    assert.strictEqual(t.w.document.getElementById('cancellation-warning-modal').style.display, 'none');
+    const note = cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]');
+    assert.strictEqual(note.textContent, 'Résilier cet abonnement ? La page suivante vous propose d’autres options avant de confirmer.');
+    assert.strictEqual(note.nextElementSibling, cards(t.w)[0].querySelector('.ordo-subs-actions'));
+    const row = cards(t.w)[0].querySelector('.ordo-subs-actions');
+    assert.deepStrictEqual([...row.children].map((n) => [n.tagName, n.textContent, n.getAttribute('href')]),
+      [['BUTTON', 'Garder mon abonnement', null], ['A', 'Continuer la résiliation', '/membership/offre-annulation']]);
+    assert.strictEqual(t.w.document.activeElement, row.children[0]);
+    // « Garder » puts the card back as it was.
+    row.children[0].click();
+    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]'), null);
+    assert.deepStrictEqual([...row.children].map((n) => n.textContent), ['Résilier']);
+    assert.strictEqual(t.w.document.activeElement, row.children[0]);
+    assert.strictEqual(t.reported.length, 0);
     const link = cards(t.w)[1].querySelector('.ordo-subs-actions a');
     assert.strictEqual(link.textContent, 'Voir les offres');
     assert.strictEqual(link.getAttribute('href'), '/nos-offres');
     assert.strictEqual(cards(t.w)[2].querySelector('.ordo-subs-actions'), null);
     assert.strictEqual(cards(t.w)[3].querySelector('.ordo-subs-actions'), null);
+    t.dom.window.close();
+  }
+
+  // Member without departure offers: the other link, and no promise of options
+  {
+    const t = page({ modalLinks: 'sansOffre' });
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[1], { action: { label: 'Résilier', href: '#cancellation-warning-modal' } })] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
+    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]').textContent,
+      'Résilier cet abonnement ? La page suivante vous demande de confirmer.');
+    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions a').getAttribute('href'), '/membership/annulation-abonnement');
+    t.dom.window.close();
+  }
+
+  // No visible link in the window: the old window opens, and it is reported
+  {
+    const t = page({ modalLinks: 'aucun' });
+    installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[0], { action: { label: 'Résilier', href: '#cancellation-warning-modal' } })] } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
+    assert.strictEqual(t.w.document.getElementById('cancellation-warning-modal').style.display, 'block');
+    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]'), null);
+    assert.strictEqual(t.reported.length, 1);
+    assert.strictEqual(t.reported[0].err.name, 'SubscriptionsOverviewCancelLink');
     t.dom.window.close();
   }
 
