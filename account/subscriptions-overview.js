@@ -202,6 +202,9 @@
       var p = el('p', 'ordo-subs-flash', text);
       p.setAttribute('role', 'status');
       return p;
+    },
+    note: function(text) {
+      return el('p', 'ordo-subs-muted', text);
     }
   };
   var ui = legacyUi;
@@ -621,6 +624,59 @@
     return row;
   }
 
+  // « Résilier » ne passe plus par la fenêtre d'avertissement : la question s'affiche dans la carte, avec la
+  // date de fin d'accès. La suite est la page que la fenêtre aurait ouverte : Memberstack y masque le lien
+  // qui ne concerne pas le membre (offres de départ ou non), on prend celui qui reste affiché.
+  var CANCEL_WARNING = '#cancellation-warning-modal';
+  var OFFERS_PAGE = '/membership/offre-annulation';
+
+  function cancelUrl() {
+    var modal = document.getElementById(CANCEL_WARNING.slice(1));
+    var links = modal ? modal.querySelectorAll('a[href^="/membership/"]') : [];
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href');
+      if (SITE_LINK.test(href) && window.getComputedStyle(links[i]).display !== 'none') return href;
+    }
+    return null;
+  }
+
+  function cancelInCard(c, label, row) {
+    var start = mark(button(label, false), label, c.status);
+    start.addEventListener('click', function() {
+      var href = cancelUrl();
+      if (!href) {
+        // Page de suite introuvable : l'ancienne fenêtre sait encore où aller.
+        reportProblem('SubscriptionsOverviewCancelLink', 'no visible link in ' + CANCEL_WARNING);
+        showElement(CANCEL_WARNING.slice(1));
+        return;
+      }
+      // Pas de date de fin d'accès : selon l'abonnement (essai, peu de factures payées), la résiliation est
+      // immédiate ou en fin de période, et seul le scénario de résiliation le sait.
+      var text = 'Résilier cet abonnement ? ' +
+        (href.indexOf(OFFERS_PAGE) === 0
+          ? 'La page suivante vous propose d’autres options avant de confirmer.'
+          : 'La page suivante vous demande de confirmer.');
+      var note = ui.note(text);
+      note.setAttribute('role', 'status');
+      var keep = mark(button('Garder mon abonnement', true), 'garder_abonnement', c.status);
+      var go = mark(ui.anchor('bouton', 'Continuer la résiliation', href), 'continuer_resiliation', c.status);
+      keep.addEventListener('click', function() {
+        row.parentNode.removeChild(note);
+        row.removeChild(keep);
+        row.removeChild(go);
+        row.appendChild(start);
+        start.focus();
+      });
+      row.parentNode.insertBefore(note, row);
+      row.removeChild(start);
+      row.appendChild(keep);
+      row.appendChild(go);
+      keep.focus();
+    });
+    row.appendChild(start);
+    return row;
+  }
+
   function actionsOf(c) {
     if (c.status === 'canceling' && typeof c.reactivation === 'string' && REF.test(c.reactivation)) {
       return reactivateActions(c);
@@ -632,6 +688,7 @@
     var action = c.action;
     if (!action || !action.label || typeof action.href !== 'string') return null;
     var row = ui.actions();
+    if (action.href === CANCEL_WARNING) return cancelInCard(c, action.label, row);
     if (ELEMENT_LINK.test(action.href)) {
       var b = mark(button(action.label, false), action.label, c.status);
       b.addEventListener('click', function() { showElement(action.href.slice(1)); });
@@ -2225,6 +2282,11 @@
       f.textContent = text;
       f.setAttribute('role', 'status');
       return f;
+    },
+    note: function(text) {
+      var n = copie('vide');
+      n.textContent = text;
+      return n;
     },
     pdfButton: function() {
       var holder = document.createElement('div');
