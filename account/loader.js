@@ -91,7 +91,7 @@
       'ordotype.webflow.io': 100,
       // 10 % du 2026-10-12 au 2026-10-15 (bucket commun : mêmes membres que la photo et le RPPS) : 118 membres,
       // 164 affichages de la liste, 0 échec (témoin 0,51 %), 0 designer-absent, actions abouties, Sentry propre.
-      'www.ordotype.fr': 50 // 50 % depuis le 2026-10-15
+      'www.ordotype.fr': 100 // 50 % du 2026-10-15 au 2026-10-19, 100 % depuis le 2026-10-19
     },
     // Live members only, like invoice-emails.js: verified on www with the override.
     'subscriptions-overview.js': {
