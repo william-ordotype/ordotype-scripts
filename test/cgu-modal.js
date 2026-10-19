@@ -6,7 +6,8 @@
  * Elle couvre toute la page : affichée sans son bouton « J'ai compris », rien
  * ne pourrait la fermer. Le script doit alors la laisser cachée et le signaler.
  *
- * Mesure : cgu_modal_view / cgu_modal_accept / cgu_modal_leave /
+ * Mesure : cgu_modal_view (fenêtre ouverte 1 s sur une page visible, ou
+ * répondue avant) / cgu_modal_accept / cgu_modal_leave /
  * cgu_modal_masquee / cgu_modal_contournee (GA4), et un signalement si le
  * bouton est entièrement recouvert alors que la fenêtre est au premier plan
  * (« recouvert »), ou si la fenêtre n'est pas au premier plan (sans ce mot).
@@ -32,10 +33,13 @@ const fenetre = (bouton = BOUTON) => '<div id="modale-info-indicative" ms-code-e
 /**
  * Page chargée, script exécuté (il attend DOMContentLoaded).
  * `membre` : contenu de _ms-mem ; `jsonMembre` : ce que rend getMemberJSON()
- * (une Error = la promesse est rejetée).
+ * (une Error = la promesse est rejetée). `resteUneSeconde` : le visiteur est
+ * encore là 1 s après l'ouverture (faux = page partie avant) ; `visible` : onglet
+ * au premier plan.
  */
 async function page({
     corps = fenetre(), stockage = {}, membre = null, jsonMembre = {}, stockageInterdit = false, reporter = true,
+    resteUneSeconde = true, visible = true,
 } = {}) {
     const dom = new JSDOM(`<!doctype html><body>${corps}</body>`, {
         url: 'https://www.ordotype.fr/', runScripts: 'outside-only', virtualConsole: new VirtualConsole(),
@@ -46,6 +50,12 @@ async function page({
     w.Date.now = () => horloge.t;
     const minuteries = [];
     w.setTimeout = (fn, ms) => { minuteries.push({ fn, ms }); return minuteries.length; };
+    // Chaque minuterie ne part qu'une fois.
+    const lancer = (ms) => minuteries.filter((m) => m.ms === ms && !m.fait).forEach((m) => { m.fait = true; m.fn(); });
+    const onglet = { visible };
+    Object.defineProperty(w.document, 'visibilityState', {
+        configurable: true, get: () => (onglet.visible ? 'visible' : 'hidden'),
+    });
 
     const signalements = [];
     const evenements = [];
@@ -86,6 +96,7 @@ async function page({
         await new Promise((r) => w.document.addEventListener('DOMContentLoaded', r));
     }
     await new Promise((r) => setImmediate(r)); // réponse de getMemberJSON()
+    if (resteUneSeconde) { horloge.t += 1000; lancer(1000); }
     const el = w.document.querySelector('#modale-info-indicative');
     const bouton = () => w.document.querySelector('#cgu-accepted');
     return {
@@ -105,7 +116,10 @@ async function page({
             w.innerHeight = 800;
             w.document.elementFromPoint = (x, y) => (y > 600 && y < 644 ? recouvre((x - 100) / 400) : coins);
         },
-        controlerAccessibilite: () => minuteries.filter((m) => m.ms === 3000).forEach((m) => m.fn()),
+        // 3 s après l'ouverture : 1 s avant la vue, puis 2 s.
+        controlerAccessibilite: () => lancer(2000),
+        uneSeconde: () => { horloge.t += 1000; lancer(1000); },
+        mettreAuPremierPlan: () => { onglet.visible = true; w.document.dispatchEvent(new w.Event('visibilitychange')); },
     };
 }
 
@@ -301,6 +315,13 @@ async function cas(avecReporter) {
     verifier('JSON illisible, déjà signalé aujourd’hui : affichée, pas resignalé' + suffixe,
         p.affichee() && p.signalements.length === 0);
 
+    // 11f. 🔴 Session Memberstack morte (Unauthorized : déconnecté ailleurs, expirée) : un
+    // visiteur comme un autre. Affichée, mesurée, rien de signalé (Sentry 1MH / 1MQ).
+    p = await P({ membre: { id: 'mem_test' }, jsonMembre: new Error('Unauthorized') });
+    verifier('session morte : affichée' + suffixe, p.affichee());
+    verifier('session morte : rien de signalé' + suffixe, p.signalements.length === 0);
+    verifier('session morte : vue mesurée' + suffixe, p.evenements.join() === 'cgu_modal_view');
+
     // 12. Membre sans acceptation : le clic met Memberstack à jour sans perdre ses autres clés.
     p = await P({ membre: { id: 'mem_test' }, jsonMembre: { autre: 'garde' } });
     verifier('membre sans acceptation : affichée' + suffixe, p.affichee());
@@ -328,6 +349,55 @@ async function cas(avecReporter) {
     p = await P({ corps: '<p>accueil</p>' });
     verifier('bloc retiré : aucun signalement ni événement' + suffixe,
         p.signalements.length === 0 && p.evenements.length === 0);
+
+    // 16. 🔴 Page qui s'en va avant 1 s : réseau lent, « Se connecter » cliqué avant l'arrivée
+    // du script, la fenêtre s'ouvre pendant le départ. Personne ne l'a vue : rien de mesuré.
+    p = await P({ resteUneSeconde: false });
+    verifier('partie avant 1 s : affichée quand même (CGU présentées)' + suffixe, p.affichee());
+    p.horloge.t += 400;
+    p.quitter();
+    verifier('partie avant 1 s : ni vue ni départ' + suffixe, p.evenements.length === 0);
+    p.poserBouton(() => crisp);
+    p.controlerAccessibilite();
+    verifier('partie avant 1 s : aucun contrôle ni signalement' + suffixe, p.signalements.length === 0);
+
+    // 16b. JSON illisible (Network Error) sur une page qui s'en va avant 1 s : pas signalé.
+    p = await P({ membre: { id: 'mem_test' }, jsonMembre: new Error('Network Error'), resteUneSeconde: false });
+    p.quitter();
+    verifier('JSON illisible, partie avant 1 s : pas signalé' + suffixe, p.signalements.length === 0);
+    p = await P({ membre: { id: 'mem_test' }, jsonMembre: new Error('Network Error') });
+    verifier('JSON illisible, fenêtre vue : signalé une fois' + suffixe, !r || (p.signalements.length === 1
+        && /illisible.*Network Error/.test(p.signalements[0][1])));
+
+    // 17. Onglet en arrière-plan : vue quand il passe au premier plan, contrôle 2 s après.
+    p = await P({ visible: false });
+    verifier('onglet en arrière-plan : affichée, pas encore vue' + suffixe, p.affichee() && p.evenements.length === 0);
+    p.horloge.t += 60000;
+    p.mettreAuPremierPlan();
+    verifier('onglet mis au premier plan : vue mesurée' + suffixe, p.evenements.join() === 'cgu_modal_view');
+    p.poserBouton(() => crisp);
+    p.controlerAccessibilite();
+    verifier('onglet mis au premier plan : contrôle fait (recouvert signalé)' + suffixe, !r
+        || (p.signalements.length === 1 && recouvert(p.signalements[0])));
+    p = await P({ visible: false });
+    p.horloge.t += 60000;
+    p.quitter();
+    verifier('onglet resté en arrière-plan puis fermé : ni vue ni départ' + suffixe, p.evenements.length === 0);
+
+    // 18. « J’ai compris » avant 1 s : vue puis acceptation, une seule vue.
+    p = await P({ resteUneSeconde: false });
+    p.cliquer();
+    p.uneSeconde();
+    verifier('acceptée avant 1 s : vue puis acceptation' + suffixe,
+        p.evenements.join() === 'cgu_modal_view,cgu_modal_accept');
+
+    // 19. Contournée avant 1 s : vue puis contournée.
+    p = await P({ resteUneSeconde: false });
+    p.poserBouton(() => page1, page1);
+    p.clicReel(page1);
+    p.uneSeconde();
+    verifier('contournée avant 1 s : vue puis contournée' + suffixe,
+        p.evenements.join() === 'cgu_modal_view,cgu_modal_contournee');
 }
 
 (async () => {
