@@ -5,13 +5,15 @@
  * Depends on: Memberstack ($memberstackDom)
  *
  * Is anyone stuck behind it?
- *   GA4 (consented visitors): cgu_modal_view, cgu_modal_accept, and
+ *   GA4 (consented visitors): cgu_modal_view = modal open 1 s on a visible
+ *   page (or answered sooner), cgu_modal_accept, and
  *   cgu_modal_leave = page left after 3 s+ with the modal still open.
  *   cgu_modal_masquee = modal not rendered in front of the page;
  *   cgu_modal_contournee = page clicked through the open modal.
  *   Sentry + Discord (everyone): button missing, or entirely covered 3 s
  *   after the modal opened while the modal is in front. A modal that is
- *   not in front is reported apart, once a day per browser.
+ *   not in front is reported apart, once a day per browser. Nothing is
+ *   reported for a modal nobody saw, nor for a dead Memberstack session.
  */
 (function() {
   'use strict';
@@ -82,6 +84,13 @@
     }
 
     var memberJson = null; // member's Memberstack JSON, once read
+    var jsonError = null;  // why it could not be read, reported once the modal is seen
+
+    // Unauthorized = the session in _ms-mem is dead (logged out elsewhere,
+    // expired): a visitor like any other, not an error.
+    function isLoggedOut(err) {
+      return /unauthori[sz]ed/i.test(String((err && err.message) || err));
+    }
 
     // On load: this browser's date, else the member's Memberstack JSON.
     // No ES2020 syntax (?. / ??) in this file: it must parse on old
@@ -106,9 +115,7 @@
           showModal();
         }
       }, function(err) {
-        if (firstToday('cgu-modal-json-signale')) {
-          report('JSON Memberstack illisible, fenêtre affichée par défaut : ' + ((err && err.message) || err));
-        }
+        if (!isLoggedOut(err)) jsonError = (err && err.message) || String(err);
         showModal();
       });
     }
@@ -122,6 +129,7 @@
     }
 
     var openedAt = 0;      // 0 = modal not open
+    var seen = false;      // cgu_modal_view sent for this opening
     var leftForCgu = false;
     var bypassed = false;  // page clicked through the modal
     var masked = false;    // modal found not in front of the page
@@ -184,7 +192,7 @@
     // rest still works.
     function checkReachable() {
       try {
-        if (!openedAt || !document.elementFromPoint) return;
+        if (!openedAt || !seen || !document.elementFromPoint) return;
         var corners = probeCorners();
         if (!inFront(corners)) {
           reportMasked(corners);
@@ -214,6 +222,7 @@
         var t = e.target;
         if (!t || t === document.documentElement || inModal(t)) return;
         if (inFront(probeCorners())) return;
+        markSeen();
         bypassed = true;
         track('cgu_modal_contournee');
       } catch (err) {
@@ -227,9 +236,32 @@
         el.classList.add('show');
       });
       openedAt = Date.now();
-      track('cgu_modal_view');
-      setTimeout(checkReachable, 3000);
+      seen = false;
+      setTimeout(function() { if (isVisible()) markSeen(); }, 1000);
     }
+
+    function isVisible() {
+      return document.visibilityState !== 'hidden' && !document.prerendering;
+    }
+
+    // Seen = open 1 s on a visible page. A page already leaving (slow
+    // network: "Se connecter" clicked before this script arrived) or a
+    // background tab opens it without anyone seeing it.
+    function markSeen() {
+      if (!openedAt || seen) return;
+      seen = true;
+      track('cgu_modal_view');
+      if (jsonError && firstToday('cgu-modal-json-signale')) {
+        report('JSON Memberstack illisible, fenêtre affichée par défaut : ' + jsonError);
+      }
+      setTimeout(checkReachable, 2000); // 3 s after opening on a visible page
+    }
+
+    function onVisible() {
+      if (openedAt && isVisible() && Date.now() - openedAt >= 1000) markSeen();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    document.addEventListener('prerenderingchange', onVisible);
 
     function hideModal() {
       modalEls.forEach(function(el) {
@@ -247,7 +279,7 @@
     // Under 3 s it is a redirect or a bounce, not someone stuck. Nor is
     // someone the modal never stopped.
     window.addEventListener('pagehide', function() {
-      if (openedAt && !leftForCgu && !bypassed && !masked && Date.now() - openedAt >= 3000) {
+      if (openedAt && seen && !leftForCgu && !bypassed && !masked && Date.now() - openedAt >= 3000) {
         openedAt = 0;
         track('cgu_modal_leave');
       }
@@ -256,6 +288,7 @@
     // On "Accept" click: hide modal, save to localStorage, update Memberstack if connected
     if (acceptBtn) {
       acceptBtn.addEventListener('click', function() {
+        markSeen(); // answered before 1 s
         hideModal();
 
         var nowISO = new Date().toISOString();
