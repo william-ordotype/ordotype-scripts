@@ -8,3 +8,11 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://webhooks.ordotype.fr" crossorigin>
 <script>(function(){try{var k='',b=null,m=/(?:^#|&)c=([A-Za-z0-9]{22})(?:&|$)/.exec(location.hash);if(m){k=m[1];try{sessionStorage.setItem('ordo-email-prefs-key',k);}catch(e){}try{history.replaceState(history.state,'',location.pathname+location.search);}catch(e){}}else{try{k=sessionStorage.getItem('ordo-email-prefs-key')||'';}catch(e){}}if(/^[A-Za-z0-9]{22}$/.test(k)){b={key:k};}else{var t='';try{t=localStorage.getItem('_ms-mid')||'';}catch(e){}if(!t){var c=/(?:^|;\s*)_ms-mid=([^;]*)/.exec(document.cookie||'');if(c&&c[1]){try{t=decodeURIComponent(c[1]);}catch(e){t=c[1];}}}if(t)b={token:t};}if(b&&window.fetch){window.__ordoPrefsPrefetch={body:b,promise:fetch('https://webhooks.ordotype.fr/.netlify/functions/email-preferences',{method:'POST',credentials:'omit',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return{};}).then(function(p){return{status:r.status,payload:p};});})};}}catch(e){}})();</script>
+<style>
+/* Préférences e-mail, petit mobile : « Toujours actifs » sous le titre, la description reprend toute la largeur (audit design 20/10/2026, #68). */
+@media screen and (max-width: 479px) {
+  .ordo-prefs .compte-v2_ligne:has(> .ordo-prefs__badge) { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .ordo-prefs .compte-v2_ligne:has(> .ordo-prefs__badge) > .compte-v2_ligne-texte { display: contents; }
+  .ordo-prefs .compte-v2_ligne:has(> .ordo-prefs__badge) .compte-v2_muted { order: 1; }
+}
+</style>

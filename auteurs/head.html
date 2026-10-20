@@ -10,3 +10,9 @@
 <style>[data-fa-cache]{display:none!important}[data-fa-trop]{color:var(--error-700,#ba1b1b);font-weight:600}</style>
 <link rel="preconnect" href="https://webhooks.ordotype.fr" crossorigin>
 <script>(function(){try{var m=/[#&]d=([A-Za-z0-9_-]+)/.exec(location.hash);if(m){try{sessionStorage.setItem('ordo-auteur-brouillon',m[1]);}catch(e){}try{history.replaceState(history.state,'',location.pathname+location.search);}catch(e){}}}catch(e){}})();</script>
+<style>
+/* Votre page auteur : cases à cocher au style des consentements de Mes informations (16 px, angle 2 px, cochée gris foncé), bord contrasté 3,6:1, Safari compris (audit design 20/10/2026, #58). */
+.w-checkbox > input.w-checkbox-input[type="checkbox"] { -webkit-appearance: none; appearance: none; width: 1rem; height: 1rem; margin-top: 0; border: 1px solid var(--base-500); border-radius: 2px; background-color: #fff; cursor: pointer; }
+.w-checkbox > input.w-checkbox-input[type="checkbox"]:checked { border-color: var(--neutral-500); background: var(--neutral-500) url("https://d3e54v103j8qbb.cloudfront.net/static/custom-checkbox-checkmark.589d534424.svg") 50% / cover no-repeat; }
+.w-checkbox > input.w-checkbox-input[type="checkbox"]:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+</style>
