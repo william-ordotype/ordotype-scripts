@@ -13,7 +13,35 @@
     if (window.getComputedStyle(el).display === 'none') el.style.display = 'block';
   }
 
+  function clean(text) {
+    return text.replace(/[\s​-‍﻿]+/g, ' ').trim();
+  }
+
+  // Auteur d'une source : l'infobulle montre sa description, le lien son url.
+  // Sans description (surtout des personnes : « Konstantinos G. Kyriakoulis,
+  // et al. »), une bulle noire vide s'affichait au survol ; sans url, href=""
+  // rouvrait la fiche dans un nouvel onglet. On retire la bulle vide ou qui
+  // répète le nom, et le lien vide.
+  function cleanAuthors() {
+    document.querySelectorAll('.auteur-ref-html').forEach(function(author) {
+      const link = author.querySelector('a');
+      if (link && !link.getAttribute('href')) {
+        link.removeAttribute('href');
+        link.removeAttribute('target');
+      }
+
+      const tooltip = author.querySelector('.tooltip');
+      const tip = tooltip && tooltip.querySelector('.tooltiptext');
+      if (!tip) return;
+      const text = clean(tip.textContent);
+      const name = clean(tooltip.textContent.replace(tip.textContent, ''));
+      if (!text || text === name) tip.remove();
+    });
+  }
+
   function init() {
+    cleanAuthors();
+
     const list = document.querySelector('.collection-list.w-dyn-items');
     const items = Array.prototype.slice
       .call(document.querySelectorAll('.collection-item-11.w-dyn-item'))
