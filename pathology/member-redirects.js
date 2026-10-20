@@ -13,9 +13,10 @@
     const ms = window.OrdoMemberstack || {};
     const BANNER_DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Délai de grâce (24 h), posé par les pages de paiement et d'après paiement :
-    // aucune redirection ni bandeau de facturation, seulement les bandeaux
-    // d'information. Même règle que homepage/member-redirects.js, qui l'explique.
+    // Délai de grâce (24 h), posé seulement après un vrai paiement : aucune
+    // redirection ni bandeau de facturation, seulement les bandeaux d'information.
+    // Le bandeau « paiement échoué », que Memberstack affiche seul, est masqué dès
+    // pathology/loader.js. Même règle que homepage/member-redirects.js, qui l'explique.
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
     const inGracePeriod = Boolean(justPaidTs) && (Date.now() - justPaidTs) < GRACE_PERIOD;
@@ -75,8 +76,6 @@
     const isNotRemplacant = ms.customFields['mode-dexercice'] !== 'Remplacant';
     const isRemplacant = ms.customFields['mode-dexercice'] === 'Remplacant';
 
-    const isPastDueBrique = ms.hasPlan('pln_brique-past-due-os1c808ai');
-    const isSepaTemporary = ms.hasPlan('pln_sepa-temporary-lj4w0oky');
     // Account plans, i.e. the ones a failed payment must be signalled for. Add-ons
     // (modules, extra storage) are deliberately absent: losing an add-on must not lock
     // the whole site. Listed explicitly rather than matched on a prefix, because naming
@@ -147,10 +146,13 @@
         window.location.replace("/membership/mes-informations-internes");
         return;
     }
-    // Impayé avant tout bandeau, comme sur la page d'accueil.
-    else if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary) {
-        window.location.replace("/membership/probleme-de-paiement");
-        return;
+    // Impayé avant tout bandeau, comme sur la page d'accueil. Plus de redirection
+    // vers la page de paiement (décision du 20/10/2026) : Memberstack coupe seul le
+    // contenu payant (premium-pages) et affiche seul le bandeau « paiement échoué »
+    // (`#pathologie-banner-payment-failed`, masqué par son bloc `!sepa-temp` quand
+    // un prélèvement SEPA est en route). Aucun autre bandeau.
+    else if (hasPastDuePlan) {
+        console.log(PREFIX, 'Payment failed: Memberstack shows the banner, no other banner');
     }
     else if (hasAllowedPlanId && isInterne && isSemesterAllowed) {
         window.location.replace('/membership/conserver-ses-acces');

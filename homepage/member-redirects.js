@@ -77,13 +77,17 @@
         }
     });
 
-    // Délai de grâce (24 h), posé par les pages de paiement et d'après paiement.
-    // Memberstack peut avoir du retard sur un paiement qui vient de passer (plan
-    // encore en REQUIRES_PAYMENT, nouveau plan pas encore rattaché). Pendant ce
-    // délai : aucune redirection et aucun bandeau de facturation ou d'abonnement,
-    // c'est ce qui évite la boucle « paiement échoué → page de paiement → retour
-    // → paiement échoué ». Les bandeaux d'information (showInformationBanner) ne
-    // dépendent pas du paiement et restent affichés.
+    // Délai de grâce (24 h), à poser seulement après un vrai paiement : bouton de
+    // paiement (shared/stripe-setup-session.js), page de succès, confirmations de
+    // pause et de reprise. Les pages de paiement le posaient aussi à l'affichage,
+    // pour casser une boucle de redirection vers /membership/probleme-de-paiement
+    // qui n'existe plus depuis le 20/10/2026. Memberstack peut avoir du retard sur
+    // un paiement qui vient de passer (plan encore en REQUIRES_PAYMENT, nouveau
+    // plan pas encore rattaché).
+    // Pendant ce délai : aucune redirection et aucun bandeau de facturation ou
+    // d'abonnement. Le bandeau « paiement échoué », que Memberstack affiche seul,
+    // est masqué dès homepage/loader.js. Les bandeaux d'information
+    // (showInformationBanner) ne dépendent pas du paiement et restent affichés.
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
     const inGracePeriod = Boolean(justPaidTs) && (Date.now() - justPaidTs) < GRACE_PERIOD;
@@ -116,7 +120,18 @@
 
     if (inGracePeriod) {
         console.log(PREFIX, 'Within grace period: no redirect, no billing banner');
-        jQuery('#banner-to-hide-payment-failed').css({ display: 'none' });
+    }
+
+    // Masque le bandeau « paiement échoué ». Memberstack l'affiche seul
+    // (`data-ms-bind:style` sur `has-failed-payment`) et peut le réafficher à
+    // chaque mise à jour du membre : un style posé par jQuery ne tient pas, une
+    // règle !important si. Même identifiant que dans homepage/loader.js.
+    function hidePaymentFailedBanner() {
+        if (document.getElementById('ordo-hide-payment-failed')) return;
+        const style = document.createElement('style');
+        style.id = 'ordo-hide-payment-failed';
+        style.textContent = '#banner-to-hide-payment-failed{display:none!important}';
+        document.head.appendChild(style);
     }
 
     (function() {
@@ -209,7 +224,6 @@
         const isSemesterAllowed = [undefined, null, 'Autre', ''].indexOf(semestreValue) !== -1;
 
         const isEssaiGratuit = ms.hasPlan('pln_essai-gratuit-5e4s0o0r');
-        const isPastDueBrique = ms.hasPlan('pln_brique-past-due-os1c808ai');
         const isSepaTemporary = ms.hasPlan('pln_sepa-temporary-lj4w0oky');
         // Account plans, i.e. the ones a failed payment must be signalled for. Add-ons
         // (modules, extra storage) are deliberately absent: losing an add-on must not
@@ -359,18 +373,15 @@
         }
 
         // Display various banners based on member conditions.
-        // Payment-failed is checked FIRST in this chain — it's the most urgent billing
-        // state (active dunning / imminent access loss), so it outranks every other banner
-        // here, including cb-expired. (Profile-completeness redirects above still run first.)
+        // Impayé d'abord : c'est l'état de facturation le plus urgent, il passe avant
+        // tout autre bandeau, carte expirée comprise. (Les redirections de profil
+        // ci-dessus passent encore avant.) Plus de redirection vers la page de
+        // paiement (décision du 20/10/2026) : Memberstack coupe seul le contenu payant
+        // (groupe premium-pages) et affiche seul le bandeau « paiement échoué ».
+        // Prélèvement SEPA en route (plan sepa-temporary) : pas de bandeau d'échec,
+        // comme sur les fiches, où il est dans un bloc `!sepa-temp`.
         if (hasPastDuePlan) {
-            if (!isPastDueBrique && !isSepaTemporary) {
-                window.location.replace("/membership/probleme-de-paiement");
-                return;
-            }
-            // Grace access (brique-past-due / sepa-temporary) but the special-500 payment
-            // still failed → show the payment-failed banner. JS-controlled (banner is
-            // display:none by default in Webflow); mutually exclusive with the others.
-            $('#banner-to-hide-payment-failed').css({ display: 'flex' });
+            if (isSepaTemporary) hidePaymentFailedBanner();
         } else if (isEssaiGratuit && isNotRemplacant && date_since_switch !== null && date_since_switch < 8) {
             $('#banner-to-hide-essai-gratuit-blue').css({ display: 'flex' });
         } else if (isEssaiGratuit && isNotRemplacant) {

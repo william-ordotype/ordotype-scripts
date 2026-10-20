@@ -9,14 +9,17 @@
  * Ce qui doit tenir :
  *   - pause en cours, sans délai de grâce : bandeau affiché, date de reprise écrite ;
  *   - pause en cours, PENDANT le délai de grâce : bandeau affiché aussi ;
- *   - pendant le délai de grâce, le bandeau « paiement échoué » reste masqué ;
+ *   - pendant le délai de grâce, le bandeau « paiement échoué » n'est plus touché
+ *     ici : Memberstack l'affiche seul et homepage/loader.js le masque dès le
+ *     chargement (test/just-paid-ts.js) ;
  *   - pause terminée (date passée) ou date illisible : pas de bandeau ;
  *   - pas de membre connecté : pas de bandeau.
- *   - 🔴 PENDANT le délai de grâce, AUCUNE redirection (pause ou pas) : c'est ce
- *     délai qui évite les boucles infinies « paiement échoué → page de mise à jour
- *     de la carte → retour → paiement encore échoué ». Mesuré sur un membre en
- *     impayé, avec la vraie memberstack-utils : sans délai, il est redirigé (témoin).
- *     Les bandeaux d'information, eux, restent affichés (test/bandeaux-priorite.js).
+ *   - 🔴 PENDANT le délai de grâce, AUCUNE redirection (pause ou pas) : Memberstack
+ *     peut avoir du retard sur un paiement qui vient de passer. Mesuré avec la vraie
+ *     memberstack-utils sur un essai gratuit sans prénom : sans délai, il est
+ *     redirigé vers le formulaire (témoin). Un impayé, lui, n'est plus jamais
+ *     redirigé vers la page de paiement (20/10/2026). Les bandeaux d'information
+ *     restent affichés (test/bandeaux-priorite.js).
  *
  * Usage : node test/member-redirects-pause.js
  */
@@ -76,7 +79,7 @@ console.log('pause en cours, pendant le délai de grâce (justPaidTs il y a 1 h)
 {
     const { doc } = load({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000 });
     check('bandeau pause affiché', shown(doc, 'banner-to-hide-paused') === 'flex', shown(doc, 'banner-to-hide-paused'));
-    check('bandeau « paiement échoué » masqué', shown(doc, 'banner-to-hide-payment-failed') === 'none', shown(doc, 'banner-to-hide-payment-failed'));
+    check('bandeau « paiement échoué » laissé au chargeur (pas touché ici)', shown(doc, 'banner-to-hide-payment-failed') === 'flex', shown(doc, 'banner-to-hide-payment-failed'));
 }
 
 console.log('pas en pause, pendant le délai de grâce');
@@ -106,14 +109,16 @@ console.log('pas de membre connecté');
 // Page réelle : vraie memberstack-utils, membre dans `_ms-mem`, redirections relevées.
 const UTILS = fs.readFileSync(path.join(ROOT, 'shared', 'memberstack-utils.js'), 'utf8');
 const SRC_NAV = SRC.split('window.location.replace(').join('window.__navigate(');
-function pageReelle({ justPaidAgo, pauseEnd }) {
+const IMPAYE = [{ planId: 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60', status: 'REQUIRES_PAYMENT', type: 'SUBSCRIPTION' }];
+const ESSAI_SANS_PRENOM = [{ planId: 'pln_essai-gratuit-5e4s0o0r', status: 'ACTIVE', type: 'SUBSCRIPTION' }];
+function pageReelle({ justPaidAgo, pauseEnd, plans = IMPAYE, prnom = 'Test' }) {
     const dom = new JSDOM(HTML, { url: 'https://www.ordotype.fr/', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
     const win = dom.window;
     const doc = win.document;
     win.localStorage.setItem('_ms-mem', JSON.stringify({
         id: 'mem_test', createdAt: '2025-01-01T00:00:00Z',
-        planConnections: [{ planId: 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60', status: 'REQUIRES_PAYMENT', type: 'SUBSCRIPTION' }],
-        customFields: { statut: 'Medecin', specialite: 'Médecine générale', prnom: 'Test', phone: '+33600000000', country: 'France' },
+        planConnections: plans,
+        customFields: { statut: 'Medecin', specialite: 'Médecine générale', prnom, phone: '+33600000000', country: 'France' },
         metaData: pauseEnd === undefined ? {} : { 'pause-end-date': pauseEnd },
     }));
     if (justPaidAgo !== undefined) win.localStorage.setItem('justPaidTs', String(Date.now() - justPaidAgo));
@@ -129,16 +134,19 @@ function pageReelle({ justPaidAgo, pauseEnd }) {
     return { doc, redirections };
 }
 
-console.log('délai de grâce = aucune redirection (anti-boucle paiement échoué)');
+console.log('délai de grâce = aucune redirection');
 {
     const pasPause = pageReelle({ justPaidAgo: 60 * 60 * 1000 });
-    check('pas en pause : aucune redirection', pasPause.redirections.length === 0, pasPause.redirections.join(', '));
-    check('pas en pause : bandeau « paiement échoué » masqué', shown(pasPause.doc, 'banner-to-hide-payment-failed') === 'none', shown(pasPause.doc, 'banner-to-hide-payment-failed'));
+    check('impayé, pas en pause : aucune redirection', pasPause.redirections.length === 0, pasPause.redirections.join(', '));
     const enPause = pageReelle({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000 });
     check('en pause : aucune redirection', enPause.redirections.length === 0, enPause.redirections.join(', '));
     check('en pause : bandeau pause affiché', shown(enPause.doc, 'banner-to-hide-paused') === 'flex', shown(enPause.doc, 'banner-to-hide-paused'));
-    const expiree = pageReelle({ justPaidAgo: 25 * 60 * 60 * 1000 });
-    check('témoin : grâce expirée (25 h), redirection vers le paiement', expiree.redirections[0] === '/membership/probleme-de-paiement', expiree.redirections.join(', ') || 'aucune : le témoin ne mesure rien');
+    const essaiGrace = pageReelle({ justPaidAgo: 60 * 60 * 1000, plans: ESSAI_SANS_PRENOM, prnom: '' });
+    check('essai gratuit sans prénom, pendant le délai : aucune redirection', essaiGrace.redirections.length === 0, essaiGrace.redirections.join(', '));
+    const essaiExpire = pageReelle({ justPaidAgo: 25 * 60 * 60 * 1000, plans: ESSAI_SANS_PRENOM, prnom: '' });
+    check('témoin : grâce expirée (25 h), redirection vers le formulaire', essaiExpire.redirections[0] === '/membership/mes-informations', essaiExpire.redirections.join(', ') || 'aucune : le témoin ne mesure rien');
+    const impayeExpire = pageReelle({ justPaidAgo: 25 * 60 * 60 * 1000 });
+    check('impayé, grâce expirée (25 h) : toujours aucune redirection vers le paiement', impayeExpire.redirections.length === 0, impayeExpire.redirections.join(', '));
 }
 
 if (fail) { console.log(fail + ' échec(s)'); process.exit(1); }

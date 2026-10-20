@@ -24,6 +24,21 @@
   const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/pathology';
   const SHARED = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
+  // Délai de grâce après un vrai paiement (`justPaidTs`, 24 h, voir
+  // member-redirects.js) : le bandeau « paiement échoué », que Memberstack affiche
+  // seul, est masqué ici, avant que Memberstack ne l'affiche.
+  (function hidePaymentFailedDuringGrace() {
+    try {
+      var ts = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
+      if (!ts || Date.now() - ts >= 24 * 60 * 60 * 1000) return;
+      if (document.getElementById('ordo-hide-payment-failed')) return;
+      var style = document.createElement('style');
+      style.id = 'ordo-hide-payment-failed';
+      style.textContent = '#pathologie-banner-payment-failed{display:none!important}';
+      document.head.appendChild(style);
+    } catch (e) {}
+  })();
+
   // Configure opacity reveal for pathology selectors. Reveal on
   // DOMContentLoaded (not window.load): the content is decoded by
   // global-utils.js (a defer script, done before DCL), so waiting for full

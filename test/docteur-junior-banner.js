@@ -209,9 +209,9 @@ CAS.push(
         const { vus } = page('accueil', membre({ phone: '' }), PENDANT, { stockage: { [FERME]: String(PENDANT) } });
         return [[vus.includes(BANDEAU), false, 'docteur junior'], [vus.includes('#banner-to-hide-phone-missing'), true, 'téléphone']];
     }],
-    ['[pathologie] compte payant impayé : redirection vers le paiement, pas de bandeau', () => {
+    ['[pathologie] compte payant impayé : pas de redirection, pas de bandeau Docteur Junior (l\'impayé passe avant)', () => {
         const { vus, redirections } = page('pathologie', membre({ plans: [ASSO, { planId: SPECIAL_500, status: 'REQUIRES_PAYMENT' }] }));
-        return [[redirections[0], '/membership/probleme-de-paiement', 'redirection'], [vus.includes(BANDEAU), false, 'bandeau']];
+        return [[redirections.length, 0, 'redirections'], [vus.includes(BANDEAU), false, 'bandeau']];
     }],
 );
 

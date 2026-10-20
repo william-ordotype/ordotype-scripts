@@ -24,6 +24,22 @@
   }
   var ROOT = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + detectVersion();
 
+  // Délai de grâce après un vrai paiement (`justPaidTs`, 24 h, voir
+  // member-redirects.js) : le bandeau « paiement échoué », que Memberstack affiche
+  // seul, est masqué ici, avant que Memberstack ne l'affiche. Plus tard, dans
+  // member-redirects.js, il apparaissait quelques secondes puis disparaissait.
+  (function hidePaymentFailedDuringGrace() {
+    try {
+      var ts = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
+      if (!ts || Date.now() - ts >= 24 * 60 * 60 * 1000) return;
+      if (document.getElementById('ordo-hide-payment-failed')) return;
+      var style = document.createElement('style');
+      style.id = 'ordo-hide-payment-failed';
+      style.textContent = '#banner-to-hide-payment-failed{display:none!important}';
+      document.head.appendChild(style);
+    } catch (e) {}
+  })();
+
   // Scripts to run, in order
   var scripts = [
     ROOT + '/shared/memberstack-utils.js',
