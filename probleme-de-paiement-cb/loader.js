@@ -18,11 +18,11 @@
     // Store URL for tracking
     localStorage.setItem('locat', location.href);
 
-    // Anti-loop protection: set justPaidTs on page load so the homepage
-    // redirect (member-redirects.js) doesn't bounce the user back here
-    // on every visit while their subscription is in REQUIRES_PAYMENT state.
-    // Paired with 24h GRACE_PERIOD in member-redirects.js.
-    localStorage.setItem('justPaidTs', Date.now());
+    // Plus de `justPaidTs` à l'affichage (20/10/2026) : il servait à casser une
+    // boucle de redirection depuis l'accueil et les fiches, qui ne redirigent plus
+    // un impayé vers la page de paiement. Afficher cette page n'est pas un
+    // paiement : le délai de grâce n'est posé qu'au clic sur le bouton de
+    // paiement (shared/stripe-setup-session.js) et sur la page de succès.
 
     // Set config for shared stripe-setup-session.js
     window.STRIPE_SETUP_CONFIG = {
