@@ -13,13 +13,12 @@
     const ms = window.OrdoMemberstack || {};
     const BANNER_DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Grace period check for payment redirect prevention (24 hours)
+    // Délai de grâce (24 h), posé par les pages de paiement et d'après paiement :
+    // aucune redirection ni bandeau de facturation, seulement les bandeaux
+    // d'information. Même règle que homepage/member-redirects.js, qui l'explique.
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
-    if (justPaidTs && (Date.now() - justPaidTs) < GRACE_PERIOD) {
-        console.log(PREFIX, 'Within grace period, skipping redirect logic');
-        return;
-    }
+    const inGracePeriod = Boolean(justPaidTs) && (Date.now() - justPaidTs) < GRACE_PERIOD;
 
     const member = ms.member;
     if (!member || !member.id) return;
@@ -112,6 +111,30 @@
     // End of internship: fin-internat-paywall.js locks the content.
     var endOfInternship = ms.getEndOfInternship();
 
+    const isFinInternatBanner = ms.isFinInternatBannerPeriod() &&
+        isInterne &&
+        ms.isInFinalSemester(semestreValue, specialite) &&
+        !planConnections.some(plan =>
+            plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
+            plan.status !== 'CANCELED'
+        );
+
+    function showDocteurJuniorBanner() {
+        if (!ms.isDocteurJuniorBannerPeriod() || !ms.isDocteurJuniorAudience(ACCOUNT_PLAN_IDS) || ms.isDocteurJuniorBannerClosed()) return;
+        ms.watchDocteurJuniorBannerClose();
+        if ($) $('#banner-to-hide-docteur-junior').css({ 'display': 'flex' });
+    }
+
+    if (inGracePeriod) {
+        console.log(PREFIX, 'Within grace period: no redirect, no billing banner');
+        if (isFinInternatBanner) {
+            if ($) $('#banner-to-hide-fin-internat').css({ 'display': 'flex' });
+        } else {
+            showDocteurJuniorBanner();
+        }
+        return;
+    }
+
     // Combined redirection if required member information is missing
     if (
         (hasAllowedPlanId && (!ms.customFields["prnom"] || !ms.customFields["semestre"])) ||
@@ -124,19 +147,16 @@
         window.location.replace("/membership/mes-informations-internes");
         return;
     }
+    // Impayé avant tout bandeau, comme sur la page d'accueil.
+    else if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary) {
+        window.location.replace("/membership/probleme-de-paiement");
+        return;
+    }
     else if (hasAllowedPlanId && isInterne && isSemesterAllowed) {
         window.location.replace('/membership/conserver-ses-acces');
         return;
     }
-    else if (
-        ms.isFinInternatBannerPeriod() &&
-        isInterne &&
-        ms.isInFinalSemester(semestreValue, specialite) &&
-        !planConnections.some(plan =>
-            plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-            plan.status !== 'CANCELED'
-        )
-    ) {
+    else if (isFinInternatBanner) {
         if ($) $('#banner-to-hide-fin-internat').css({ 'display': 'flex' });
     }
     else if (endOfInternship.redirect) {
@@ -199,13 +219,8 @@
     ) {
         if ($) $('#essai-gratuit-banner-rempla').css({ 'display': 'flex' });
     }
-    else if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary) {
-        window.location.replace("/membership/probleme-de-paiement");
-        return;
-    }
-    else if (ms.isDocteurJuniorBannerPeriod() && ms.isDocteurJuniorAudience(ACCOUNT_PLAN_IDS) && !ms.isDocteurJuniorBannerClosed()) {
-        ms.watchDocteurJuniorBannerClose();
-        if ($) $('#banner-to-hide-docteur-junior').css({ 'display': 'flex' });
+    else {
+        showDocteurJuniorBanner();
     }
 
     console.log(PREFIX, 'Member redirects initialized');

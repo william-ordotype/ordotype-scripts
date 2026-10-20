@@ -193,9 +193,13 @@ for (const nom of Object.keys(PAGES)) {
 
 // Priorités propres à chaque page.
 CAS.push(
-    ['[accueil] RPPS manquant : le bandeau RPPS passe avant', () => {
+    ['[accueil] RPPS manquant : le bandeau Docteur Junior passe avant', () => {
         const { vus } = page('accueil', membre({ rpps: '' }));
-        return [[vus.includes('#banner-to-hide-rpps-interne'), true, 'RPPS'], [vus.includes(BANDEAU), false, 'docteur junior']];
+        return [[vus.includes(BANDEAU), true, 'docteur junior'], [vus.includes('#banner-to-hide-rpps-interne'), false, 'RPPS']];
+    }],
+    ['[accueil] RPPS manquant, bandeau Docteur Junior fermé : le bandeau RPPS reprend sa place', () => {
+        const { vus } = page('accueil', membre({ rpps: '' }), PENDANT, { stockage: { [FERME]: String(PENDANT) } });
+        return [[vus.includes(BANDEAU), false, 'docteur junior'], [vus.includes('#banner-to-hide-rpps-interne'), true, 'RPPS']];
     }],
     ['[accueil] téléphone manquant : le bandeau Docteur Junior passe avant', () => {
         const { vus } = page('accueil', membre({ phone: '' }));
