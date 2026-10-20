@@ -8,6 +8,9 @@
  *
  * Required DOM elements:
  * - Time display: [ms-code-time-hour], [ms-code-time-minute], [ms-code-time-second], [ms-code-time-millisecond]
+ * - Optional unit label: <span> inside `.spacing-left` in the same `.time` box as the number
+ *   (heures / minutes / secondes). When present, the number has no leading zero and the label
+ *   agrees with it (1 minute, 2 minutes). Without it, the number keeps two digits (00:15:00).
  * - Optional: [ms-code-countdown="hide-on-end"] - elements removed when countdown ends
  * - Optional: [ms-code-countdown="show-on-end"] - elements shown (display:flex) when countdown ends
  *
@@ -75,8 +78,29 @@
     return num < 10 ? '0' + num : num.toString();
   }
 
+  // Libellé Webflow de l'unité : le <span> du bloc .spacing-left voisin, dans la même case .time
+  // que le chiffre (page /membership/gerer-son-offre-de-stockage). null s'il n'y en a pas.
+  function findLabel(el) {
+    var box = el && el.closest ? el.closest('.time') : null;
+    return box ? box.querySelector('.spacing-left span') : null;
+  }
+
+  // Avec un libellé : chiffre sans zéro devant et libellé accordé (« 1 minute », « 2 minutes »,
+  // 0 et 1 au singulier). Sans libellé (affichage « 00:15:00 ») : deux chiffres, comme avant.
+  function setUnit(el, label, value, singular, plural) {
+    if (!el) return;
+    if (!label) {
+      el.textContent = pad(value);
+      return;
+    }
+    el.textContent = String(value);
+    var text = value > 1 ? plural : singular;
+    if (label.textContent !== text) label.textContent = text;
+  }
+
   function updateCountdown(targetDate, elements) {
     var diff = targetDate - new Date();
+    var labels = elements.labels;
 
     if (diff > 0) {
       var hours = Math.floor(diff / (1000 * 60 * 60)) % 24;
@@ -84,16 +108,16 @@
       var seconds = Math.floor(diff / 1000) % 60;
       var milliseconds = Math.floor(diff) % 1000;
 
-      if (elements.hour) elements.hour.innerText = pad(hours);
-      if (elements.minute) elements.minute.innerText = pad(minutes);
-      if (elements.second) elements.second.innerText = pad(seconds);
+      setUnit(elements.hour, labels.hour, hours, 'heure', 'heures');
+      setUnit(elements.minute, labels.minute, minutes, 'minute', 'minutes');
+      setUnit(elements.second, labels.second, seconds, 'seconde', 'secondes');
       if (elements.millisecond) elements.millisecond.innerText = milliseconds.toString().padStart(3, '0').slice(0, 2);
 
       setTimeout(function() { updateCountdown(targetDate, elements); }, UPDATE_INTERVAL);
     } else {
-      if (elements.hour) elements.hour.innerText = '00';
-      if (elements.minute) elements.minute.innerText = '00';
-      if (elements.second) elements.second.innerText = '00';
+      setUnit(elements.hour, labels.hour, 0, 'heure', 'heures');
+      setUnit(elements.minute, labels.minute, 0, 'minute', 'minutes');
+      setUnit(elements.second, labels.second, 0, 'seconde', 'secondes');
       if (elements.millisecond) elements.millisecond.innerText = '00';
 
       document.querySelectorAll('[ms-code-countdown="hide-on-end"]').forEach(function(el) {
@@ -120,6 +144,12 @@
       console.log(PREFIX, 'No countdown elements found');
       return;
     }
+
+    elements.labels = {
+      hour: findLabel(elements.hour),
+      minute: findLabel(elements.minute),
+      second: findLabel(elements.second)
+    };
 
     var targetDate = getTargetDate();
     updateCountdown(targetDate, elements);

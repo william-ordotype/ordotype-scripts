@@ -554,6 +554,7 @@ node test/geo-redirect-reveal.js       # la page de tarifs ne reste jamais invis
 node test/preferences-email.js         # préférences e-mail : clé, requête simple, échappement
 node test/preferences-email-head.js    # préférences e-mail : en-tête, lecture anticipée
 node test/email-preferences-card.js    # carte « E-mails » de Mon compte, sans appel réseau
+node test/countdown-accord.js          # compte à rebours : « 1 minute », sans zéro devant
 ```
 
 ✅ `tests.yml` lance **tout** `test/` à chaque push sur
@@ -1933,6 +1934,11 @@ are rebuilt server-side.
 <div ms-code-countdown="hide-on-end">This will be removed when timer ends</div>
 <div ms-code-countdown="show-on-end" style="display: none;">This will show when timer ends</div>
 ```
+
+With a unit label (`/membership/gerer-son-offre-de-stockage`: `<span>` inside `.spacing-left`, in the
+same `.time` box as the number), `shared/countdown.js` drops the leading zero and makes the label agree
+(« 1 minute 53 secondes », 0 and 1 singular). Without a label the number keeps two digits, as above.
+Test: `node test/countdown-accord.js`
 
 ### Console Prefixes
 

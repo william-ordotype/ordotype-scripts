@@ -174,6 +174,8 @@ async function test(name, fn) {
       const { d, root, calls } = await page({ search: (p) => reply(200, p.mode === 'number' ? { results: [CABINET] } : { results: [] }) });
       const num = root.querySelectorAll('input')[2];
       const check = byText(root, 'button', /^Vérifier$/);
+      assert.strictEqual(num.placeholder, 'SIREN ou SIRET', 'invite courte : entière sur mobile');
+      assert.strictEqual(num.getAttribute('aria-label'), 'SIREN ou SIRET');
       num.value = SIREN.slice(0, 8) + String((Number(SIREN[8]) + 1) % 10);
       num.dispatchEvent(new d.defaultView.Event('input'));
       assert.ok(check.disabled, 'clé fausse : bouton inactif');
