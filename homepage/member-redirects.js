@@ -80,10 +80,10 @@
     // Délai de grâce (24 h), à poser seulement après un vrai paiement : bouton de
     // paiement (shared/stripe-setup-session.js), page de succès, confirmations de
     // pause et de reprise. Les pages de paiement le posaient aussi à l'affichage,
-    // pour casser une boucle de redirection vers /membership/probleme-de-paiement
-    // qui n'existe plus depuis le 20/10/2026. Memberstack peut avoir du retard sur
-    // un paiement qui vient de passer (plan encore en REQUIRES_PAYMENT, nouveau
-    // plan pas encore rattaché).
+    // pour qu'un impayé ne soit pas renvoyé sur la page à chaque clic ; c'est
+    // désormais le rôle du repère paymentPageSeenTs (plus bas), qui ne masque pas
+    // le bandeau. Memberstack peut avoir du retard sur un paiement qui vient de
+    // passer (plan encore en REQUIRES_PAYMENT, nouveau plan pas encore rattaché).
     // Pendant ce délai : aucune redirection et aucun bandeau de facturation ou
     // d'abonnement. Le bandeau « paiement échoué », que Memberstack affiche seul,
     // est masqué dès homepage/loader.js. Les bandeaux d'information
@@ -132,6 +132,29 @@
         style.id = 'ordo-hide-payment-failed';
         style.textContent = '#banner-to-hide-payment-failed{display:none!important}';
         document.head.appendChild(style);
+    }
+
+    // Repère « déjà envoyé sur la page de paiement » (24 h) : la redirection d'un
+    // impayé ne se fait qu'au premier coup, puis il navigue avec le bandeau. Posé
+    // AVANT de rediriger : si le stockage refuse, on ne redirige pas (sinon chaque
+    // page le renverrait sur la page de paiement). Même règle dans
+    // pathology/member-redirects.js et dans les chargeurs des pages de paiement.
+    const PAYMENT_PAGE_SEEN_KEY = 'paymentPageSeenTs';
+    function paymentPageSeenRecently() {
+        try {
+            const ts = parseInt(localStorage.getItem(PAYMENT_PAGE_SEEN_KEY) || '0', 10);
+            return Boolean(ts) && (Date.now() - ts) < GRACE_PERIOD;
+        } catch (e) {
+            return false;
+        }
+    }
+    function markPaymentPageSeen() {
+        try {
+            localStorage.setItem(PAYMENT_PAGE_SEEN_KEY, String(Date.now()));
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     (function() {
@@ -224,6 +247,7 @@
         const isSemesterAllowed = [undefined, null, 'Autre', ''].indexOf(semestreValue) !== -1;
 
         const isEssaiGratuit = ms.hasPlan('pln_essai-gratuit-5e4s0o0r');
+        const isPastDueBrique = ms.hasPlan('pln_brique-past-due-os1c808ai');
         const isSepaTemporary = ms.hasPlan('pln_sepa-temporary-lj4w0oky');
         // Account plans, i.e. the ones a failed payment must be signalled for. Add-ons
         // (modules, extra storage) are deliberately absent: losing an add-on must not
@@ -375,12 +399,19 @@
         // Display various banners based on member conditions.
         // Impayé d'abord : c'est l'état de facturation le plus urgent, il passe avant
         // tout autre bandeau, carte expirée comprise. (Les redirections de profil
-        // ci-dessus passent encore avant.) Plus de redirection vers la page de
-        // paiement (décision du 20/10/2026) : Memberstack coupe seul le contenu payant
+        // ci-dessus passent encore avant.) Memberstack coupe seul le contenu payant
         // (groupe premium-pages) et affiche seul le bandeau « paiement échoué ».
-        // Prélèvement SEPA en route (plan sepa-temporary) : pas de bandeau d'échec,
-        // comme sur les fiches, où il est dans un bloc `!sepa-temp`.
+        // Redirection vers la page de paiement au premier coup seulement : pas si le
+        // membre a choisi « Perdre mes accès » (brique), ni si un prélèvement SEPA
+        // est en route, ni s'il y a été envoyé depuis moins de 24 h (repère
+        // paymentPageSeenTs, qui ne masque aucun bandeau, contrairement à justPaidTs).
+        // Prélèvement SEPA en route : pas de bandeau d'échec non plus, comme sur les
+        // fiches, où il est dans un bloc `!sepa-temp`.
         if (hasPastDuePlan) {
+            if (!isPastDueBrique && !isSepaTemporary && !paymentPageSeenRecently() && markPaymentPageSeen()) {
+                window.location.replace("/membership/probleme-de-paiement");
+                return;
+            }
             if (isSepaTemporary) hidePaymentFailedBanner();
         } else if (isEssaiGratuit && isNotRemplacant && date_since_switch !== null && date_since_switch < 8) {
             $('#banner-to-hide-essai-gratuit-blue').css({ display: 'flex' });
