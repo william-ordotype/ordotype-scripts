@@ -200,9 +200,10 @@
                     .catch(err => console.error(PREFIX, 'webhook fetch error:', err));
                 }
 
-                // Set justPaidTs for grace period (prevents redirect loop after payment)
-                localStorage.setItem('justPaidTs', Date.now());
-                console.log(PREFIX, 'Set justPaidTs for grace period');
+                // Pas de justPaidTs ici (20/10/2026) : le clic n'est pas un paiement.
+                // Posé avant Stripe, il masquait le bandeau « paiement échoué » pendant
+                // 24 h même si le membre annulait ou si sa carte était refusée. La page
+                // de succès (moyen-de-paiement-ajoute/success.js) le pose.
 
                 // Redirect to Stripe
                 console.log(PREFIX, 'Redirecting to Stripe Checkout');

@@ -18,11 +18,17 @@
     // Store URL for tracking
     localStorage.setItem('locat', location.href);
 
-    // Anti-loop protection: set justPaidTs on page load so the homepage
-    // redirect (member-redirects.js) doesn't bounce the user back here
-    // on every visit while their subscription is in REQUIRES_PAYMENT state.
-    // Paired with 24h GRACE_PERIOD in member-redirects.js.
-    localStorage.setItem('justPaidTs', Date.now());
+    // Page vue : l'accueil et les fiches ne renvoient plus ici pendant 24 h. Repère
+    // « id du membre:horodatage », lu par isPaymentPageSeenRecently
+    // (shared/memberstack-utils.js) : sur un poste partagé, un autre membre n'en
+    // hérite pas. Plus de `justPaidTs` à l'affichage (20/10/2026) : afficher cette
+    // page n'est pas un paiement, et il masquait le bandeau « paiement échoué »
+    // pendant 24 h. La page de succès (moyen-de-paiement-ajoute) le pose.
+    try {
+        var cachedMember = JSON.parse(localStorage.getItem('_ms-mem') || 'null');
+        var cachedMemberId = cachedMember && (cachedMember.id || cachedMember.userId);
+        if (cachedMemberId) localStorage.setItem('paymentPageSeenTs', cachedMemberId + ':' + Date.now());
+    } catch (e) {}
 
     // Set config for shared stripe-setup-session.js
     window.STRIPE_SETUP_CONFIG = {
