@@ -580,16 +580,32 @@ ul {
     }
 }
 
-/* Téléphones (max 479px) : un titre de fiche fait d'un mot très long
-   (« Hypergammaglobulinémie… ») ne passait pas à la ligne et dépassait de
-   l'écran à 360px (page qui bouge de côté). La page est en français
-   (lang="fr") : le navigateur coupe le mot avec un trait d'union, et
-   break-word coupe en dernier recours si la césure n'est pas disponible. */
+/* Téléphones (max 479px) : titre de la fiche, sans césure automatique.
+   La césure (hyphens: auto, #206) coupait aussi des mots ordinaires pour
+   remplir la ligne : « Contraceptions fé- / minines », « d'orien- / tation »,
+   « trauma- / tique » (84 titres sur 455 à 360px, 115 sur Safari 390px, au
+   20/10). La césure automatique reste réservée aux cellules de tableau (plus
+   haut). Seul un mot plus large que le titre (« Hypergammaglobulinémie »,
+   « Bronchopneumopathie ») est encore coupé, au bord et sans trait d'union :
+   3 titres sur Chrome 360px, 1 sur Safari 390px, 16 à 320px.
+   anywhere et pas break-word seul : break-word ne compte pas dans la largeur
+   minimale du titre, qui s'élargissait alors au mot le plus long (page de
+   423px à 360px sur hypergammaglobulinemie). break-word reste en repli, et
+   les navigateurs sans anywhere (Safari < 15.4, Chrome < 80) gardent la
+   césure, sinon le mot long dépasserait de l'écran. */
 @media only screen and (max-width: 479px) {
     .path_header .heading-style-h1 {
-        -webkit-hyphens: auto;
-        hyphens: auto;
+        -webkit-hyphens: manual;
+        hyphens: manual;
         overflow-wrap: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    @supports not (overflow-wrap: anywhere) {
+        .path_header .heading-style-h1 {
+            -webkit-hyphens: auto;
+            hyphens: auto;
+        }
     }
 }
 
