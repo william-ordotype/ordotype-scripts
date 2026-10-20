@@ -12,10 +12,11 @@
  *   - pendant le délai de grâce, le bandeau « paiement échoué » reste masqué ;
  *   - pause terminée (date passée) ou date illisible : pas de bandeau ;
  *   - pas de membre connecté : pas de bandeau.
- *   - 🔴 PENDANT le délai de grâce, la logique de redirection ne tourne JAMAIS (pause
- *     ou pas) : c'est ce délai qui évite les boucles infinies « paiement échoué →
- *     page de mise à jour de la carte → retour → paiement encore échoué ». Mesuré
- *     par les appels à ms.safeDate, que seule cette logique fait.
+ *   - 🔴 PENDANT le délai de grâce, AUCUNE redirection (pause ou pas) : c'est ce
+ *     délai qui évite les boucles infinies « paiement échoué → page de mise à jour
+ *     de la carte → retour → paiement encore échoué ». Mesuré sur un membre en
+ *     impayé, avec la vraie memberstack-utils : sans délai, il est redirigé (témoin).
+ *     Les bandeaux d'information, eux, restent affichés (test/bandeaux-priorite.js).
  *
  * Usage : node test/member-redirects-pause.js
  */
@@ -43,16 +44,14 @@ function load({ pauseEnd, justPaidAgo, member = { id: 'mem_test', createdAt: '20
         const els = typeof sel === 'string' ? Array.from(doc.querySelectorAll(sel)) : [];
         return { css(o) { els.forEach((el) => Object.assign(el.style, o)); return this; } };
     };
-    const appels = { redirections: 0 };
     win.OrdoMemberstack = {
         member,
         metaData: pauseEnd === undefined ? {} : { 'pause-end-date': pauseEnd },
-        // Seule la logique de redirection lit ces dates : chaque appel prouve qu'elle a tourné.
-        safeDate: () => { appels.redirections++; return null; },
-        safeDateFromValue: () => { appels.redirections++; return null; },
+        safeDate: () => null,
+        safeDateFromValue: () => null,
     };
     try { win.eval(SRC); } catch (e) { /* la suite du script (hors pause) n'est pas l'objet de ce test */ }
-    return { doc, appels };
+    return { doc };
 }
 
 const shown = (doc, id) => doc.getElementById(id).style.display;
@@ -104,14 +103,42 @@ console.log('pas de membre connecté');
     check('pas de bandeau pause', shown(doc, 'banner-to-hide-paused') === 'none', shown(doc, 'banner-to-hide-paused'));
 }
 
+// Page réelle : vraie memberstack-utils, membre dans `_ms-mem`, redirections relevées.
+const UTILS = fs.readFileSync(path.join(ROOT, 'shared', 'memberstack-utils.js'), 'utf8');
+const SRC_NAV = SRC.split('window.location.replace(').join('window.__navigate(');
+function pageReelle({ justPaidAgo, pauseEnd }) {
+    const dom = new JSDOM(HTML, { url: 'https://www.ordotype.fr/', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
+    const win = dom.window;
+    const doc = win.document;
+    win.localStorage.setItem('_ms-mem', JSON.stringify({
+        id: 'mem_test', createdAt: '2025-01-01T00:00:00Z',
+        planConnections: [{ planId: 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60', status: 'REQUIRES_PAYMENT', type: 'SUBSCRIPTION' }],
+        customFields: { statut: 'Medecin', specialite: 'Médecine générale', prnom: 'Test', phone: '+33600000000', country: 'France' },
+        metaData: pauseEnd === undefined ? {} : { 'pause-end-date': pauseEnd },
+    }));
+    if (justPaidAgo !== undefined) win.localStorage.setItem('justPaidTs', String(Date.now() - justPaidAgo));
+    win.eval(UTILS);
+    const redirections = [];
+    win.__navigate = (u) => redirections.push(u);
+    win.jQuery = function (sel) {
+        const els = typeof sel === 'string' ? Array.from(doc.querySelectorAll(sel)) : [];
+        return { css(o) { els.forEach((el) => Object.assign(el.style, o)); return this; } };
+    };
+    win.dataLayer = [];
+    win.eval(SRC_NAV);
+    return { doc, redirections };
+}
+
 console.log('délai de grâce = aucune redirection (anti-boucle paiement échoué)');
 {
-    const pasPause = load({ justPaidAgo: 60 * 60 * 1000 });
-    check('pas en pause : logique de redirection non exécutée', pasPause.appels.redirections === 0, pasPause.appels.redirections + ' appel(s)');
-    const enPause = load({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000 });
-    check('en pause : logique de redirection non exécutée', enPause.appels.redirections === 0, enPause.appels.redirections + ' appel(s)');
-    const expiree = load({ justPaidAgo: 25 * 60 * 60 * 1000 });
-    check('témoin : grâce expirée (25 h), la logique tourne', expiree.appels.redirections > 0, 'jamais appelée : le témoin ne mesure rien');
+    const pasPause = pageReelle({ justPaidAgo: 60 * 60 * 1000 });
+    check('pas en pause : aucune redirection', pasPause.redirections.length === 0, pasPause.redirections.join(', '));
+    check('pas en pause : bandeau « paiement échoué » masqué', shown(pasPause.doc, 'banner-to-hide-payment-failed') === 'none', shown(pasPause.doc, 'banner-to-hide-payment-failed'));
+    const enPause = pageReelle({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000 });
+    check('en pause : aucune redirection', enPause.redirections.length === 0, enPause.redirections.join(', '));
+    check('en pause : bandeau pause affiché', shown(enPause.doc, 'banner-to-hide-paused') === 'flex', shown(enPause.doc, 'banner-to-hide-paused'));
+    const expiree = pageReelle({ justPaidAgo: 25 * 60 * 60 * 1000 });
+    check('témoin : grâce expirée (25 h), redirection vers le paiement', expiree.redirections[0] === '/membership/probleme-de-paiement', expiree.redirections.join(', ') || 'aucune : le témoin ne mesure rien');
 }
 
 if (fail) { console.log(fail + ' échec(s)'); process.exit(1); }

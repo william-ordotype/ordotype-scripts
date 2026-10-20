@@ -77,9 +77,16 @@
         }
     });
 
-    // Grace period check for payment redirect prevention (24 hours)
+    // Délai de grâce (24 h), posé par les pages de paiement et d'après paiement.
+    // Memberstack peut avoir du retard sur un paiement qui vient de passer (plan
+    // encore en REQUIRES_PAYMENT, nouveau plan pas encore rattaché). Pendant ce
+    // délai : aucune redirection et aucun bandeau de facturation ou d'abonnement,
+    // c'est ce qui évite la boucle « paiement échoué → page de paiement → retour
+    // → paiement échoué ». Les bandeaux d'information (showInformationBanner) ne
+    // dépendent pas du paiement et restent affichés.
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
+    const inGracePeriod = Boolean(justPaidTs) && (Date.now() - justPaidTs) < GRACE_PERIOD;
     // Bandeau « abonnement en pause » : il doit apparaître même pendant le délai
     // de grâce. Sans ça, un membre qui vient de mettre son abonnement en pause ne
     // le voyait pas pendant 24 h (justPaidTs coupait tout ce qui suit).
@@ -101,19 +108,15 @@
         return true;
     }
 
-    if (justPaidTs && (Date.now() - justPaidTs) < GRACE_PERIOD) {
-        console.log(PREFIX, 'Within grace period, skipping redirect logic');
-        if (typeof jQuery !== 'undefined') {
-            jQuery('#banner-to-hide-payment-failed').css({ display: 'none' });
-            showPauseBanner(jQuery);
-        }
-        return;
-    }
-
     // Member state and redirection logic (requires jQuery)
     if (typeof jQuery === 'undefined') {
         console.warn(PREFIX, 'jQuery not found, skipping member redirects');
         return;
+    }
+
+    if (inGracePeriod) {
+        console.log(PREFIX, 'Within grace period: no redirect, no billing banner');
+        jQuery('#banner-to-hide-payment-failed').css({ display: 'none' });
     }
 
     (function() {
@@ -256,6 +259,75 @@
             return plan.type === SUBSCRIPTION && (plan.status === ACTIVE || plan.status === TRIALING);
         }
 
+        // Le bandeau SAU propose une offre que ces membres ont déjà.
+        const SAU_PLAN_IDS = ['pln_sau-praticien-ln1x0ovn', 'pln_sau-interne-811d0aht'];
+        const hasSauPlan = planConnections.some(plan =>
+            SAU_PLAN_IDS.indexOf(plan.planId) !== -1 && plan.status !== 'CANCELED'
+        );
+
+        // Bandeaux d'information : ils ne dépendent pas du paiement. C'est la fin
+        // de la chaîne ci-dessous, et les seuls affichés pendant le délai de grâce.
+        // Les campagnes datées passent en premier (fin d'internat, puis Docteur
+        // Junior, qui se ferme par sa croix), avant les demandes permanentes.
+        function showInformationBanner() {
+            if (
+                ms.isFinInternatBannerPeriod() &&
+                isInterne &&
+                ms.isInFinalSemester(semestreValue, specialite) &&
+                !planConnections.some(plan =>
+                    plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
+                    plan.status !== 'CANCELED'
+                )
+            ) {
+                $('#banner-to-hide-fin-internat').css({ display: 'flex' });
+            }
+            else if (ms.isDocteurJuniorBannerPeriod() && ms.isDocteurJuniorAudience(ACCOUNT_PLAN_IDS) && !ms.isDocteurJuniorBannerClosed()) {
+                ms.watchDocteurJuniorBannerClose();
+                $('#banner-to-hide-docteur-junior').css({ display: 'flex' });
+            }
+            else if (
+                isInterne && noRPPS && date_since_signup !== null && date_since_signup > SIGNUP_DAYS && parseInt(semestreValue, 10) >= 2
+            ) {
+                $('#banner-to-hide-rpps-interne').css({ display: 'flex' });
+            }
+            // SAU signup prompt for emergency-medicine members (snooze-gated).
+            else if (
+                !hasSauPlan &&
+                specialite === "Médecine d'urgence" &&
+                !sauBannerSnoozed()
+            ) {
+                showSauSignupBanner('specialite');
+            }
+            // Same prompt for first-year general-practice residents, but only during
+            // the night window: that is when they are on call, and an emergency
+            // department is where a large share of those shifts happen.
+            // `semestre` is parseInt of a self-declared field, so "Internat terminé"
+            // yields NaN and fails the test, while "6 (FST)" would yield 6.
+            else if (
+                !hasSauPlan &&
+                isInterne &&
+                specialite === 'Médecine générale' &&
+                (semestre === 1 || semestre === 2) &&
+                sauNightWindow() &&
+                !sauBannerSnoozed()
+            ) {
+                showSauSignupBanner('interne_mg_nuit');
+            }
+            else if (noPhone) {
+                $('#banner-to-hide-phone-missing').css({ display: 'flex' });
+            }
+            // Rennes (MG) partnership image, super low importance: kept last so any other
+            // banner (incl. phone-missing) wins for a Rennes member.
+            else if (partnershipCity === 'Rennes (MG)' && srpImg) {
+                srpImg.style.display = 'flex';
+            }
+        }
+
+        if (inGracePeriod) {
+            showInformationBanner();
+            return;
+        }
+
         // Redirect if any of the plans require updating the "prnom" field and that field is empty
         if (planConnections.some(plan =>
             ['pln_essai-gratuit-5e4s0o0r', 'pln_eipa-b22kq009o', 'pln_padhue-mo12g06h7'].indexOf(plan.planId) !== -1 &&
@@ -333,55 +405,8 @@
             date_till_expired !== null && date_till_expired < EXPIRE_SOON_DAYS
         ) {
             $('#banner-to-hide-cb-expires-soon').css({ display: 'flex' });
-        } else if (
-            isInterne && noRPPS && date_since_signup !== null && date_since_signup > SIGNUP_DAYS && parseInt(semestreValue, 10) >= 2
-        ) {
-            $('#banner-to-hide-rpps-interne').css({ display: 'flex' });
-        }
-        else if (
-            ms.isFinInternatBannerPeriod() &&
-            isInterne &&
-            ms.isInFinalSemester(semestreValue, specialite) &&
-            !planConnections.some(plan =>
-                plan.planId === 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60' &&
-                plan.status !== 'CANCELED'
-            )
-        ) {
-            $('#banner-to-hide-fin-internat').css({ display: 'flex' });
-        }
-        else if (ms.isDocteurJuniorBannerPeriod() && ms.isDocteurJuniorAudience(ACCOUNT_PLAN_IDS) && !ms.isDocteurJuniorBannerClosed()) {
-            ms.watchDocteurJuniorBannerClose();
-            $('#banner-to-hide-docteur-junior').css({ display: 'flex' });
-        }
-        // SAU signup prompt for all emergency-medicine members (snooze-gated).
-        // Low priority: any billing/profile banner above wins.
-        else if (
-            specialite === "Médecine d'urgence" &&
-            !sauBannerSnoozed()
-        ) {
-            showSauSignupBanner('specialite');
-        }
-        // Same prompt for first-year general-practice residents, but only during
-        // the night window: that is when they are on call, and an emergency
-        // department is where a large share of those shifts happen.
-        // `semestre` is parseInt of a self-declared field, so "Internat terminé"
-        // yields NaN and fails the test, while "6 (FST)" would yield 6.
-        else if (
-            isInterne &&
-            specialite === 'Médecine générale' &&
-            (semestre === 1 || semestre === 2) &&
-            sauNightWindow() &&
-            !sauBannerSnoozed()
-        ) {
-            showSauSignupBanner('interne_mg_nuit');
-        }
-        else if (noPhone) {
-            $('#banner-to-hide-phone-missing').css({ display: 'flex' });
-        }
-        // Rennes (MG) partnership image — super low importance, kept last so any other
-        // banner (incl. phone-missing) wins for a Rennes member.
-        else if (partnershipCity === 'Rennes (MG)' && srpImg) {
-            srpImg.style.display = 'flex';
+        } else {
+            showInformationBanner();
         }
 
         console.log(PREFIX, 'Member redirects initialized');
