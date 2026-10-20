@@ -83,6 +83,9 @@ function jouer({ statut, specialite, semestre, heure, snoozeMs }) {
         isDocteurJuniorAudience() { return false; },
         getEndOfInternship() { return { ended: false, hasPaidModule: false, lockContent: false, redirect: false, banner: false }; },
         markFinInternatSeen() {},
+        hasFailedPayment() { return false; },
+        isPaymentPageSeenRecently() { return false; },
+        markPaymentPageSeen() { return true; },
     };
 
     const win = {

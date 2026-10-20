@@ -77,16 +77,16 @@
         }
     });
 
-    // Délai de grâce (24 h), à poser seulement après un vrai paiement : bouton de
-    // paiement (shared/stripe-setup-session.js), page de succès, confirmations de
-    // pause et de reprise. Les pages de paiement le posaient aussi à l'affichage,
-    // pour qu'un impayé ne soit pas renvoyé sur la page à chaque clic ; c'est
-    // désormais le rôle du repère paymentPageSeenTs (plus bas), qui ne masque pas
-    // le bandeau. Memberstack peut avoir du retard sur un paiement qui vient de
+    // Délai de grâce (24 h) après un vrai paiement : page de succès
+    // (moyen-de-paiement-ajoute), confirmations de pause et de reprise. Les pages
+    // de paiement le posaient aussi à l'affichage, et le bouton de paiement au clic
+    // avant Stripe ; la PR #248 retire ces deux poses (le repère « page de
+    // paiement vue », ms.isPaymentPageSeenRecently, prend le relais sans masquer
+    // le bandeau). Memberstack peut avoir du retard sur un paiement qui vient de
     // passer (plan encore en REQUIRES_PAYMENT, nouveau plan pas encore rattaché).
     // Pendant ce délai : aucune redirection et aucun bandeau de facturation ou
     // d'abonnement. Le bandeau « paiement échoué », que Memberstack affiche seul,
-    // est masqué dès homepage/loader.js. Les bandeaux d'information
+    // est masqué dès homepage/loader.js (même durée). Les bandeaux d'information
     // (showInformationBanner) ne dépendent pas du paiement et restent affichés.
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
@@ -118,43 +118,17 @@
         return;
     }
 
-    if (inGracePeriod) {
-        console.log(PREFIX, 'Within grace period: no redirect, no billing banner');
-    }
-
     // Masque le bandeau « paiement échoué ». Memberstack l'affiche seul
     // (`data-ms-bind:style` sur `has-failed-payment`) et peut le réafficher à
     // chaque mise à jour du membre : un style posé par jQuery ne tient pas, une
-    // règle !important si. Même identifiant que dans homepage/loader.js.
+    // règle !important si. homepage/loader.js pose la même règle plus tôt quand
+    // il le peut ; celle-ci est le filet si le membre en cache manquait alors.
     function hidePaymentFailedBanner() {
         if (document.getElementById('ordo-hide-payment-failed')) return;
-        const style = document.createElement('style');
+        var style = document.createElement('style');
         style.id = 'ordo-hide-payment-failed';
         style.textContent = '#banner-to-hide-payment-failed{display:none!important}';
         document.head.appendChild(style);
-    }
-
-    // Repère « déjà envoyé sur la page de paiement » (24 h) : la redirection d'un
-    // impayé ne se fait qu'au premier coup, puis il navigue avec le bandeau. Posé
-    // AVANT de rediriger : si le stockage refuse, on ne redirige pas (sinon chaque
-    // page le renverrait sur la page de paiement). Même règle dans
-    // pathology/member-redirects.js et dans les chargeurs des pages de paiement.
-    const PAYMENT_PAGE_SEEN_KEY = 'paymentPageSeenTs';
-    function paymentPageSeenRecently() {
-        try {
-            const ts = parseInt(localStorage.getItem(PAYMENT_PAGE_SEEN_KEY) || '0', 10);
-            return Boolean(ts) && (Date.now() - ts) < GRACE_PERIOD;
-        } catch (e) {
-            return false;
-        }
-    }
-    function markPaymentPageSeen() {
-        try {
-            localStorage.setItem(PAYMENT_PAGE_SEEN_KEY, String(Date.now()));
-            return true;
-        } catch (e) {
-            return false;
-        }
     }
 
     (function() {
@@ -362,6 +336,7 @@
         }
 
         if (inGracePeriod) {
+            console.log(PREFIX, 'Within grace period: no redirect, no billing banner');
             showInformationBanner();
             return;
         }
@@ -397,18 +372,21 @@
         }
 
         // Display various banners based on member conditions.
-        // Impayé d'abord : c'est l'état de facturation le plus urgent, il passe avant
-        // tout autre bandeau, carte expirée comprise. (Les redirections de profil
-        // ci-dessus passent encore avant.) Memberstack coupe seul le contenu payant
-        // (groupe premium-pages) et affiche seul le bandeau « paiement échoué ».
-        // Redirection vers la page de paiement au premier coup seulement : pas si le
-        // membre a choisi « Perdre mes accès » (brique), ni si un prélèvement SEPA
-        // est en route, ni s'il y a été envoyé depuis moins de 24 h (repère
-        // paymentPageSeenTs, qui ne masque aucun bandeau, contrairement à justPaidTs).
+        // Paiement échoué d'abord : c'est l'état de facturation le plus urgent, il
+        // passe avant tout autre bandeau, carte expirée comprise. (Les redirections
+        // de profil ci-dessus passent encore avant.) Même règle que Memberstack, qui
+        // affiche seul le bandeau « paiement échoué » pour TOUT plan en échec
+        // (modules compris) et coupe seul le contenu payant (premium-pages) : sans
+        // ça, un module impayé affichait ce bandeau ET un autre.
+        // Redirection vers la page de paiement au premier coup seulement, et pour
+        // un plan de compte seulement : pas si le membre a choisi « Perdre mes
+        // accès » (brique), ni si un prélèvement SEPA est en route, ni s'il y a été
+        // envoyé depuis moins de 24 h (repère partagé, voir memberstack-utils).
         // Prélèvement SEPA en route : pas de bandeau d'échec non plus, comme sur les
         // fiches, où il est dans un bloc `!sepa-temp`.
-        if (hasPastDuePlan) {
-            if (!isPastDueBrique && !isSepaTemporary && !paymentPageSeenRecently() && markPaymentPageSeen()) {
+        if (ms.hasFailedPayment()) {
+            if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary &&
+                !ms.isPaymentPageSeenRecently() && ms.markPaymentPageSeen()) {
                 window.location.replace("/membership/probleme-de-paiement");
                 return;
             }

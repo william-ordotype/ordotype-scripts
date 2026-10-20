@@ -11,7 +11,9 @@
  *   - `justPaidTs` posé il y a 1 h : une règle !important masque le bandeau de la page
  *     (accueil `#banner-to-hide-payment-failed`, fiche `#pathologie-banner-payment-failed`) ;
  *   - témoins : posé il y a 25 h, ou absent : aucune règle ;
- *   - la règle l'emporte sur le style que Memberstack pose sur le bandeau.
+ *   - la règle l'emporte sur le style que Memberstack pose sur le bandeau ;
+ *   - accueil : prélèvement SEPA en route (plan sepa-temporary dans le membre en cache
+ *     `_ms-mem`) = règle posée aussi, sans justPaidTs ; témoin : membre sans ce plan.
  *
  * Usage : node test/just-paid-ts.js
  */
@@ -30,7 +32,7 @@ const PAGES = {
 };
 
 /** Charge le chargeur de `nom` ; `paye` = il y a combien de temps `justPaidTs` a été posé. */
-function charge(nom, paye, source) {
+function charge(nom, paye, source, cache) {
     const { chargeur, bandeau } = PAGES[nom];
     const html = '<!doctype html><html><head>'
         + `<script src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@abc1234/${chargeur}"></script>`
@@ -38,6 +40,7 @@ function charge(nom, paye, source) {
     const dom = new JSDOM(html, { url: 'https://www.ordotype.fr/', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
     const w = dom.window;
     if (paye !== undefined) w.localStorage.setItem('justPaidTs', String(Date.now() - paye));
+    if (cache) w.localStorage.setItem('_ms-mem', JSON.stringify(cache));
     try { w.eval(source || lire(chargeur)); } catch (e) { /* la file de chargement n'est pas l'objet de ce test */ }
     // Ce que fait Memberstack quand le membre est en échec de paiement.
     w.document.getElementById(bandeau).setAttribute('style', 'display:flex');
@@ -65,18 +68,36 @@ function cas(source = {}) {
     return resultats;
 }
 
+const SEPA_TEMP = 'pln_sepa-temporary-lj4w0oky';
+const IMPAYE_SEPA = { id: 'mem_test', planConnections: [{ planId: 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60', status: 'REQUIRES_PAYMENT' }, { planId: SEPA_TEMP, status: 'ACTIVE' }] };
+const IMPAYE_SEUL = { id: 'mem_test', planConnections: [{ planId: 'pln_compte-praticien-offre-speciale-500-premiers--893z0o60', status: 'REQUIRES_PAYMENT' }] };
+function casSepa(source) {
+    const avec = charge('accueil', undefined, source, IMPAYE_SEPA);
+    const sans = charge('accueil', undefined, source, IMPAYE_SEUL);
+    return [
+        ['[accueil] prélèvement SEPA en route (membre en cache) : bandeau masqué dès le chargeur', avec.cible && !avec.visible],
+        ['[accueil] témoin, impayé sans SEPA en route : aucune règle, bandeau visible', sans.regle === null && sans.visible],
+    ];
+}
+
 let echecs = 0;
-for (const [nom, ok] of cas()) {
+for (const [nom, ok] of cas().concat(casSepa())) {
     console.log((ok ? '  ok     ' : '  ECHEC  ') + nom);
     if (!ok) echecs += 1;
 }
 
 // Témoins négatifs : le test doit casser si le code casse.
 const MUTANTS = [
-    ['délai porté à 48 h (le cas 25 h doit échouer)', (s) => s.replace('>= 24 * 60 * 60 * 1000', '>= 48 * 60 * 60 * 1000')],
+    ['délai porté à 48 h (le cas 25 h doit échouer)', (s) => s.replace('< 24 * 60 * 60 * 1000', '< 48 * 60 * 60 * 1000')],
     ['règle sans !important (le style de Memberstack doit gagner)', (s) => s.replace('{display:none!important}', '{display:none}')],
     ['masquage retiré (le cas 1 h doit échouer)', (s) => s.replace('document.head.appendChild(style);', '')],
 ];
+{
+    const muté = lire('homepage/loader.js').replace("plan.planId === 'pln_sepa-temporary-lj4w0oky'", 'false');
+    const tues = casSepa(muté).filter(([, ok]) => !ok).length;
+    console.log((tues ? '  ok     ' : '  ECHEC  ') + `mutant « SEPA en route ignoré » détecté par ${tues} cas`);
+    if (!tues) echecs += 1;
+}
 for (const [quoi, muter] of MUTANTS) {
     const source = {};
     for (const [nom, { chargeur }] of Object.entries(PAGES)) {

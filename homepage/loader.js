@@ -24,14 +24,24 @@
   }
   var ROOT = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + detectVersion();
 
-  // Délai de grâce après un vrai paiement (`justPaidTs`, 24 h, voir
-  // member-redirects.js) : le bandeau « paiement échoué », que Memberstack affiche
-  // seul, est masqué ici, avant que Memberstack ne l'affiche. Plus tard, dans
-  // member-redirects.js, il apparaissait quelques secondes puis disparaissait.
-  (function hidePaymentFailedDuringGrace() {
+  // Bandeau « paiement échoué », que Memberstack affiche seul : masqué ici, avant
+  // que Memberstack ne l'affiche (plus tard, dans member-redirects.js, il
+  // apparaissait quelques secondes puis disparaissait), dans deux cas :
+  //   - délai de grâce après un vrai paiement (`justPaidTs`, 24 h : même durée
+  //     que GRACE_PERIOD de member-redirects.js) ;
+  //   - prélèvement SEPA en route (plan sepa-temporary, lu dans le membre que
+  //     Memberstack garde en cache, `_ms-mem`), comme le bloc `!sepa-temp` des
+  //     fiches. member-redirects.js repose la même règle si le cache manquait.
+  (function hidePaymentFailedEarly() {
     try {
       var ts = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
-      if (!ts || Date.now() - ts >= 24 * 60 * 60 * 1000) return;
+      var justPaid = !!ts && Date.now() - ts < 24 * 60 * 60 * 1000;
+      var cached = JSON.parse(localStorage.getItem('_ms-mem') || 'null');
+      var plans = cached && Array.isArray(cached.planConnections) ? cached.planConnections : [];
+      var sepaEnRoute = plans.some(function(plan) {
+        return plan && plan.planId === 'pln_sepa-temporary-lj4w0oky';
+      });
+      if (!justPaid && !sepaEnRoute) return;
       if (document.getElementById('ordo-hide-payment-failed')) return;
       var style = document.createElement('style');
       style.id = 'ordo-hide-payment-failed';

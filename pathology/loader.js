@@ -27,10 +27,13 @@
   // Délai de grâce après un vrai paiement (`justPaidTs`, 24 h, voir
   // member-redirects.js) : le bandeau « paiement échoué », que Memberstack affiche
   // seul, est masqué ici, avant que Memberstack ne l'affiche.
+  // Même durée que GRACE_PERIOD de member-redirects.js. Prélèvement SEPA en route :
+  // rien à faire ici, le bandeau des fiches est dans un bloc `!sepa-temp`.
   (function hidePaymentFailedDuringGrace() {
     try {
       var ts = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
-      if (!ts || Date.now() - ts >= 24 * 60 * 60 * 1000) return;
+      var justPaid = !!ts && Date.now() - ts < 24 * 60 * 60 * 1000;
+      if (!justPaid) return;
       if (document.getElementById('ordo-hide-payment-failed')) return;
       var style = document.createElement('style');
       style.id = 'ordo-hide-payment-failed';

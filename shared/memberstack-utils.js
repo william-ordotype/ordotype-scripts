@@ -337,6 +337,49 @@
         }
     }
 
+    // --- Paiement échoué ---
+    // Même règle que l'attribut Memberstack `has-failed-payment`, qui affiche seul le
+    // bandeau « paiement échoué » : un plan, quel qu'il soit (modules compris), en
+    // REQUIRES_PAYMENT ou REQUIRES_AUTHENTICATION. Les scripts de redirection s'en
+    // servent pour que ce bandeau passe avant tous les autres.
+    function hasFailedPayment() {
+        return planConnections.some(function(plan) {
+            return plan && (plan.status === 'REQUIRES_PAYMENT' || plan.status === 'REQUIRES_AUTHENTICATION');
+        });
+    }
+
+    // Repère « déjà envoyé sur la page de paiement » : un impayé n'y est redirigé
+    // qu'au premier coup, puis plus pendant 24 h. Il ne masque aucun bandeau.
+    // Valeur « <id du membre>:<horodatage> » : sur un poste partagé (hôpital), un
+    // autre membre du même navigateur n'en hérite pas. Un horodatage dans le futur
+    // (horloge déréglée) ne compte pas. Posé AVANT de rediriger : si le stockage
+    // refuse, markPaymentPageSeen rend false et l'appelant ne redirige pas, sinon
+    // chaque page renverrait le membre sur la page de paiement.
+    var PAYMENT_PAGE_SEEN_KEY = 'paymentPageSeenTs';
+    var PAYMENT_PAGE_SEEN_PERIOD_MS = 24 * 60 * 60 * 1000;
+
+    function isPaymentPageSeenRecently() {
+        var id = member.id || member.userId;
+        var raw = safeGetItem(PAYMENT_PAGE_SEEN_KEY) || '';
+        var sep = raw.lastIndexOf(':');
+        if (!id || sep <= 0 || raw.slice(0, sep) !== id) return false;
+        var ts = parseInt(raw.slice(sep + 1), 10);
+        var now = Date.now();
+        return !!ts && ts <= now && (now - ts) < PAYMENT_PAGE_SEEN_PERIOD_MS;
+    }
+
+    function markPaymentPageSeen() {
+        var id = member.id || member.userId;
+        if (!id) return false;
+        try {
+            localStorage.setItem(PAYMENT_PAGE_SEEN_KEY, id + ':' + Date.now());
+            return true;
+        } catch (e) {
+            console.warn(PREFIX, 'localStorage not available:', e.message);
+            return false;
+        }
+    }
+
     /**
      * End of internship, whatever the declared statut.
      * - lockContent: pathology paywall (no offer chosen in the last hour).
@@ -514,6 +557,9 @@
         getEndOfInternship: getEndOfInternship,
         markFinInternatSeen: markFinInternatSeen,
         watchFinInternatActions: watchFinInternatActions,
+        hasFailedPayment: hasFailedPayment,
+        isPaymentPageSeenRecently: isPaymentPageSeenRecently,
+        markPaymentPageSeen: markPaymentPageSeen,
 
         // Shared constants
         FRENCH_TERRITORIES: FRENCH_TERRITORIES,

@@ -13,33 +13,13 @@
     const ms = window.OrdoMemberstack || {};
     const BANNER_DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Délai de grâce (24 h), posé seulement après un vrai paiement : aucune
-    // redirection ni bandeau de facturation, seulement les bandeaux d'information.
-    // Le bandeau « paiement échoué », que Memberstack affiche seul, est masqué dès
-    // pathology/loader.js. Même règle que homepage/member-redirects.js, qui l'explique.
+    // Délai de grâce (24 h) après un vrai paiement : aucune redirection ni bandeau
+    // de facturation, seulement les bandeaux d'information. Le bandeau « paiement
+    // échoué », que Memberstack affiche seul, est masqué dès pathology/loader.js
+    // (même durée). Même règle que homepage/member-redirects.js, qui l'explique.
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
     const inGracePeriod = Boolean(justPaidTs) && (Date.now() - justPaidTs) < GRACE_PERIOD;
-
-    // Repère « déjà envoyé sur la page de paiement » (24 h), posé avant de
-    // rediriger. Voir homepage/member-redirects.js.
-    const PAYMENT_PAGE_SEEN_KEY = 'paymentPageSeenTs';
-    function paymentPageSeenRecently() {
-        try {
-            const ts = parseInt(localStorage.getItem(PAYMENT_PAGE_SEEN_KEY) || '0', 10);
-            return Boolean(ts) && (Date.now() - ts) < GRACE_PERIOD;
-        } catch (e) {
-            return false;
-        }
-    }
-    function markPaymentPageSeen() {
-        try {
-            localStorage.setItem(PAYMENT_PAGE_SEEN_KEY, String(Date.now()));
-            return true;
-        } catch (e) {
-            return false;
-        }
-    }
 
     const member = ms.member;
     if (!member || !member.id) return;
@@ -168,14 +148,16 @@
         window.location.replace("/membership/mes-informations-internes");
         return;
     }
-    // Impayé avant tout bandeau, comme sur la page d'accueil. Memberstack coupe seul
-    // le contenu payant (premium-pages) et affiche seul le bandeau « paiement échoué »
+    // Paiement échoué avant tout bandeau, comme sur la page d'accueil, avec la même
+    // règle que Memberstack (tout plan en échec, modules compris), qui coupe seul le
+    // contenu payant (premium-pages) et affiche seul le bandeau « paiement échoué »
     // (`#pathologie-banner-payment-failed`, masqué par son bloc `!sepa-temp` quand un
     // prélèvement SEPA est en route). Redirection vers la page de paiement au premier
-    // coup seulement, même règle que homepage/member-redirects.js (brique, SEPA en
-    // route, repère paymentPageSeenTs de 24 h posé avant de rediriger).
-    else if (hasPastDuePlan) {
-        if (!isPastDueBrique && !isSepaTemporary && !paymentPageSeenRecently() && markPaymentPageSeen()) {
+    // coup et pour un plan de compte seulement, même règle que
+    // homepage/member-redirects.js (brique, SEPA en route, repère de 24 h).
+    else if (ms.hasFailedPayment()) {
+        if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary &&
+            !ms.isPaymentPageSeenRecently() && ms.markPaymentPageSeen()) {
             window.location.replace("/membership/probleme-de-paiement");
             return;
         }
