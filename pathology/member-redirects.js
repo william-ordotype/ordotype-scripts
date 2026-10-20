@@ -13,9 +13,10 @@
     const ms = window.OrdoMemberstack || {};
     const BANNER_DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Délai de grâce (24 h), posé par les pages de paiement et d'après paiement :
-    // aucune redirection ni bandeau de facturation, seulement les bandeaux
-    // d'information. Même règle que homepage/member-redirects.js, qui l'explique.
+    // Délai de grâce (24 h) après un vrai paiement : aucune redirection ni bandeau
+    // de facturation, seulement les bandeaux d'information. Le bandeau « paiement
+    // échoué », que Memberstack affiche seul, est masqué dès pathology/loader.js
+    // (même durée). Même règle que homepage/member-redirects.js, qui l'explique.
     const GRACE_PERIOD = 24 * 60 * 60 * 1000;
     const justPaidTs = parseInt(localStorage.getItem('justPaidTs') || '0', 10);
     const inGracePeriod = Boolean(justPaidTs) && (Date.now() - justPaidTs) < GRACE_PERIOD;
@@ -147,10 +148,19 @@
         window.location.replace("/membership/mes-informations-internes");
         return;
     }
-    // Impayé avant tout bandeau, comme sur la page d'accueil.
-    else if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary) {
-        window.location.replace("/membership/probleme-de-paiement");
-        return;
+    // Paiement échoué avant tout bandeau, comme sur la page d'accueil, avec la même
+    // règle que Memberstack (tout plan en échec, modules compris), qui coupe seul le
+    // contenu payant (premium-pages) et affiche seul le bandeau « paiement échoué »
+    // (`#pathologie-banner-payment-failed`, masqué par son bloc `!sepa-temp` quand un
+    // prélèvement SEPA est en route). Redirection vers la page de paiement au premier
+    // coup et pour un plan de compte seulement, même règle que
+    // homepage/member-redirects.js (brique, SEPA en route, repère de 24 h).
+    else if (ms.hasFailedPayment()) {
+        if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary &&
+            !ms.isPaymentPageSeenRecently() && ms.markPaymentPageSeen()) {
+            window.location.replace("/membership/probleme-de-paiement");
+            return;
+        }
     }
     else if (hasAllowedPlanId && isInterne && isSemesterAllowed) {
         window.location.replace('/membership/conserver-ses-acces');

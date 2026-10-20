@@ -8,6 +8,19 @@
  *   - accueil : l'invitation SAU n'est pas montrée à un membre qui a déjà une offre
  *     SAU vivante (praticien ou interne) ; une offre SAU résiliée ne compte pas ;
  *   - fiches : l'impayé passe avant tout bandeau, comme sur l'accueil ;
+ *   - impayé, sur les deux pages : redirection vers la page de paiement au premier
+ *     coup seulement. Repère `paymentPageSeenTs` (« id du membre:horodatage ») posé
+ *     avant de rediriger ; s'il a moins de 24 h, pas de redirection et aucun autre
+ *     bandeau (Memberstack affiche seul le bandeau d'impayé) ; témoin à 25 h : la
+ *     redirection revient. Repère d'un autre membre ou daté dans le futur : ne
+ *     compte pas. Stockage qui refuse le repère : pas de redirection. Brique ou
+ *     prélèvement SEPA en route : pas de redirection ;
+ *   - tout plan en échec (module, REQUIRES_AUTHENTICATION) passe avant les autres
+ *     bandeaux, comme la règle Memberstack `has-failed-payment` ; redirection
+ *     réservée aux plans de compte ;
+ *   - accueil, prélèvement SEPA en route : bandeau d'impayé masqué par une règle
+ *     !important (sur les fiches, bloc `!sepa-temp` de Webflow) ; témoin : brique
+ *     sans SEPA, aucune règle ;
  *   - délai de grâce (`justPaidTs` < 24 h), sur les deux pages : aucune redirection,
  *     aucun bandeau de facturation ou d'abonnement, mais les bandeaux d'information
  *     restent affichés ; témoin à 25 h : la redirection revient.
@@ -47,6 +60,9 @@ const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 const B = (id) => '#banner-to-hide-' + id;
 const IMPAYE = '/membership/probleme-de-paiement';
+const SEPA_TEMP = 'pln_sepa-temporary-lj4w0oky';
+const VU = 'paymentPageSeenTs';
+const REGLE = 'ordo-hide-payment-failed';
 
 const plan = (p) => (typeof p === 'string' ? { planId: p, status: 'ACTIVE' } : p);
 const membre = ({
@@ -63,7 +79,7 @@ const membre = ({
 });
 
 /** Page jouée pour `m` à `maintenant` ; `paye` = il y a combien de temps `justPaidTs` a été posé. */
-function page(nom, m, { maintenant = MIDI, paye, stockage = {} } = {}) {
+function page(nom, m, { maintenant = MIDI, paye, stockage = {}, refusRepere = false } = {}) {
     const dom = new JSDOM('<!doctype html><head></head><body></body>', {
         url: 'https://www.ordotype.fr/', runScripts: 'outside-only', virtualConsole: new VirtualConsole(),
     });
@@ -76,6 +92,14 @@ function page(nom, m, { maintenant = MIDI, paye, stockage = {} } = {}) {
     w.localStorage.setItem('_ms-mem', JSON.stringify(m));
     if (paye !== undefined) w.localStorage.setItem('justPaidTs', String(maintenant - paye));
     for (const [k, v] of Object.entries(stockage)) w.localStorage.setItem(k, v);
+    if (refusRepere) {
+        // Stockage qui refuse l'écriture du repère (quota plein, navigation privée stricte).
+        const ecrire = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = function (k, v) {
+            if (k === VU) throw new Error('QuotaExceededError');
+            return ecrire.call(this, k, v);
+        };
+    }
     w.eval(UTILS);
     const vus = [];
     const redirections = [];
@@ -83,7 +107,7 @@ function page(nom, m, { maintenant = MIDI, paye, stockage = {} } = {}) {
     w.jQuery = w.$ = (sel) => ({ css(r) { if (r && r.display === 'flex') vus.push(sel); return this; } });
     w.dataLayer = [];
     w.eval(PAGES[nom]);
-    return { vus, redirections };
+    return { vus, redirections, vu: w.localStorage.getItem(VU), regle: w.document.getElementById(REGLE) };
 }
 
 const S8_SANS_RPPS = { semestre: '8', rpps: '' };
@@ -139,6 +163,65 @@ const CAS = [
     ['[fiche] impayé avec accès de secours : pas de redirection', () => {
         const { redirections } = page('fiche', membre({ ...IMPAYE_PRATICIEN, plans: [{ planId: SPECIAL_500, status: 'REQUIRES_PAYMENT' }, BRIQUE] }));
         return [[redirections.length, 0, 'redirections']];
+    }],
+    // Redirection d'impayé au premier coup seulement.
+    ['[accueil] impayé : redirection vers le paiement, repère posé avant', () => {
+        const { redirections, vu } = page('accueil', membre({ ...IMPAYE_PRATICIEN, phone: '' }));
+        return [[redirections[0], IMPAYE, 'redirection'], [vu, 'mem_test:' + MIDI, 'repère lié au membre']];
+    }],
+    ['[accueil] impayé déjà envoyé il y a 1 h : pas de redirection, aucun bandeau par script, pas de règle', () => {
+        const { vus, redirections, regle } = page('accueil', membre({ ...IMPAYE_PRATICIEN, phone: '' }), { stockage: { [VU]: 'mem_test:' + (MIDI - UNE_HEURE) } });
+        return [[redirections.length, 0, 'redirections'], [vus.length, 0, 'aucun bandeau par script'], [regle, null, 'règle de masquage']];
+    }],
+    ['[accueil] témoin : envoyé il y a 25 h, la redirection revient', () => {
+        const { redirections } = page('accueil', membre({ ...IMPAYE_PRATICIEN, phone: '' }), { stockage: { [VU]: 'mem_test:' + (MIDI - 25 * UNE_HEURE) } });
+        return [[redirections[0], IMPAYE, 'redirection']];
+    }],
+    ['[accueil] impayé avec brique : pas de redirection, pas de règle de masquage', () => {
+        const { redirections, regle } = page('accueil', membre({ ...IMPAYE_PRATICIEN, plans: [{ planId: SPECIAL_500, status: 'REQUIRES_PAYMENT' }, BRIQUE] }));
+        return [[redirections.length, 0, 'redirections'], [regle, null, 'règle de masquage']];
+    }],
+    ['[accueil] impayé avec prélèvement SEPA en route : pas de redirection, bandeau masqué par une règle !important', () => {
+        const { redirections, regle } = page('accueil', membre({ ...IMPAYE_PRATICIEN, plans: [{ planId: SPECIAL_500, status: 'REQUIRES_PAYMENT' }, SEPA_TEMP] }));
+        return [[redirections.length, 0, 'redirections'], [Boolean(regle && regle.textContent.includes('#banner-to-hide-payment-failed{display:none!important}')), true, 'règle !important']];
+    }],
+    ['[fiche] impayé déjà envoyé il y a 1 h : pas de redirection, aucun bandeau', () => {
+        const { vus, redirections } = page('fiche', membre({ semestre: '8', plans: [ASSO, { planId: 'pln_compte-interne-sy4j0oft', status: 'REQUIRES_PAYMENT' }] }), { stockage: { [VU]: 'mem_test:' + (MIDI - UNE_HEURE) } });
+        return [[redirections.length, 0, 'redirections'], [vus.length, 0, 'aucun bandeau']];
+    }],
+    ['[fiche] témoin : envoyé il y a 25 h, la redirection revient, repère reposé', () => {
+        const { redirections, vu } = page('fiche', membre(IMPAYE_PRATICIEN), { stockage: { [VU]: 'mem_test:' + (MIDI - 25 * UNE_HEURE) } });
+        return [[redirections[0], IMPAYE, 'redirection'], [vu, 'mem_test:' + MIDI, 'repère']];
+    }],
+    ['[accueil] repère d\'un AUTRE membre sur ce navigateur (poste partagé) : la redirection a lieu', () => {
+        const { redirections } = page('accueil', membre({ ...IMPAYE_PRATICIEN, phone: '' }), { stockage: { [VU]: 'mem_autre:' + (MIDI - UNE_HEURE) } });
+        return [[redirections[0], IMPAYE, 'redirection']];
+    }],
+    ['[accueil] repère daté dans le futur (horloge déréglée) : ne compte pas, la redirection a lieu', () => {
+        const { redirections } = page('accueil', membre({ ...IMPAYE_PRATICIEN, phone: '' }), { stockage: { [VU]: 'mem_test:' + (MIDI + 2 * JOUR) } });
+        return [[redirections[0], IMPAYE, 'redirection']];
+    }],
+    ['[accueil] stockage qui refuse le repère : PAS de redirection (sinon à chaque page)', () => {
+        const { redirections, vus } = page('accueil', membre({ ...IMPAYE_PRATICIEN, phone: '' }), { refusRepere: true });
+        return [[redirections.length, 0, 'redirections'], [vus.length, 0, 'aucun bandeau par script']];
+    }],
+    ['[fiche] stockage qui refuse le repère : PAS de redirection', () => {
+        const { redirections } = page('fiche', membre(IMPAYE_PRATICIEN), { refusRepere: true });
+        return [[redirections.length, 0, 'redirections']];
+    }],
+    ['[accueil] module impayé seul : ni redirection ni autre bandeau (Memberstack montre l\'échec) ; témoin module payé : bandeau téléphone', () => {
+        const impaye = page('accueil', membre({ statut: 'Medecin', semestre: '', phone: '', plans: [SPECIAL_500, { planId: MODULE_RHUMATO, status: 'REQUIRES_PAYMENT' }] }));
+        const paye = page('accueil', membre({ statut: 'Medecin', semestre: '', phone: '', plans: [SPECIAL_500, MODULE_RHUMATO] }));
+        return [[impaye.redirections.length, 0, 'redirections'], [impaye.vus.length, 0, 'aucun bandeau par script'], [paye.vus.includes(B('phone-missing')), true, 'témoin téléphone']];
+    }],
+    ['[fiche] module impayé seul : ni redirection ni Docteur Junior ; témoin module payé : Docteur Junior', () => {
+        const impaye = page('fiche', membre({ semestre: '6', plans: [ASSO, { planId: MODULE_RHUMATO, status: 'REQUIRES_PAYMENT' }] }));
+        const paye = page('fiche', membre({ semestre: '6', plans: [ASSO, MODULE_RHUMATO] }));
+        return [[impaye.redirections.length, 0, 'redirections'], [impaye.vus.length, 0, 'aucun bandeau'], [paye.vus.includes(B('docteur-junior')), true, 'témoin Docteur Junior']];
+    }],
+    ['[accueil] compte en REQUIRES_AUTHENTICATION : pas de redirection, aucun autre bandeau', () => {
+        const { redirections, vus } = page('accueil', membre({ statut: 'Medecin', semestre: '', phone: '', plans: [{ planId: SPECIAL_500, status: 'REQUIRES_AUTHENTICATION' }] }));
+        return [[redirections.length, 0, 'redirections'], [vus.length, 0, 'aucun bandeau par script']];
     }],
     // Délai de grâce : ni redirection ni bandeau de facturation, les bandeaux d'information restent.
     ['[accueil, grâce] impayé sans téléphone : pas de redirection, bandeau téléphone', () => {

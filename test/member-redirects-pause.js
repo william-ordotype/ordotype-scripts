@@ -9,7 +9,9 @@
  * Ce qui doit tenir :
  *   - pause en cours, sans délai de grâce : bandeau affiché, date de reprise écrite ;
  *   - pause en cours, PENDANT le délai de grâce : bandeau affiché aussi ;
- *   - pendant le délai de grâce, le bandeau « paiement échoué » reste masqué ;
+ *   - pendant le délai de grâce, le bandeau « paiement échoué » n'est plus touché
+ *     ici : Memberstack l'affiche seul et homepage/loader.js le masque dès le
+ *     chargement (test/just-paid-ts.js) ;
  *   - pause terminée (date passée) ou date illisible : pas de bandeau ;
  *   - pas de membre connecté : pas de bandeau.
  *   - 🔴 PENDANT le délai de grâce, AUCUNE redirection (pause ou pas) : c'est ce
@@ -76,7 +78,7 @@ console.log('pause en cours, pendant le délai de grâce (justPaidTs il y a 1 h)
 {
     const { doc } = load({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000 });
     check('bandeau pause affiché', shown(doc, 'banner-to-hide-paused') === 'flex', shown(doc, 'banner-to-hide-paused'));
-    check('bandeau « paiement échoué » masqué', shown(doc, 'banner-to-hide-payment-failed') === 'none', shown(doc, 'banner-to-hide-payment-failed'));
+    check('bandeau « paiement échoué » laissé au chargeur (pas touché ici)', shown(doc, 'banner-to-hide-payment-failed') === 'flex', shown(doc, 'banner-to-hide-payment-failed'));
 }
 
 console.log('pas en pause, pendant le délai de grâce');
@@ -133,7 +135,7 @@ console.log('délai de grâce = aucune redirection (anti-boucle paiement échou�
 {
     const pasPause = pageReelle({ justPaidAgo: 60 * 60 * 1000 });
     check('pas en pause : aucune redirection', pasPause.redirections.length === 0, pasPause.redirections.join(', '));
-    check('pas en pause : bandeau « paiement échoué » masqué', shown(pasPause.doc, 'banner-to-hide-payment-failed') === 'none', shown(pasPause.doc, 'banner-to-hide-payment-failed'));
+    check('pas en pause : bandeau « paiement échoué » laissé au chargeur', shown(pasPause.doc, 'banner-to-hide-payment-failed') === 'flex', shown(pasPause.doc, 'banner-to-hide-payment-failed'));
     const enPause = pageReelle({ pauseEnd: futur, justPaidAgo: 60 * 60 * 1000 });
     check('en pause : aucune redirection', enPause.redirections.length === 0, enPause.redirections.join(', '));
     check('en pause : bandeau pause affiché', shown(enPause.doc, 'banner-to-hide-paused') === 'flex', shown(enPause.doc, 'banner-to-hide-paused'));
