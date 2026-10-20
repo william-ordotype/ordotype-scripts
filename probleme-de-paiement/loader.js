@@ -17,11 +17,13 @@
     // Store URL for tracking
     localStorage.setItem('locat', location.href);
 
-    // Plus de `justPaidTs` à l'affichage (20/10/2026) : il servait à casser une
-    // boucle de redirection depuis l'accueil et les fiches, qui ne redirigent plus
-    // un impayé vers la page de paiement. Afficher cette page n'est pas un
-    // paiement : le délai de grâce n'est posé qu'au clic sur le bouton de
-    // paiement (shared/stripe-setup-session.js) et sur la page de succès.
+    // Page vue : l'accueil et les fiches ne renvoient plus ici pendant 24 h
+    // (repère paymentPageSeenTs, voir homepage/member-redirects.js). Plus de
+    // `justPaidTs` à l'affichage (20/10/2026) : afficher cette page n'est pas un
+    // paiement, et il masquait le bandeau « paiement échoué » pendant 24 h. Il
+    // reste posé au clic sur le bouton de paiement (shared/stripe-setup-session.js)
+    // et sur la page de succès.
+    try { localStorage.setItem('paymentPageSeenTs', String(Date.now())); } catch (e) {}
 
     // Set config for shared stripe-setup-session.js
     window.STRIPE_SETUP_CONFIG = {
