@@ -7,7 +7,7 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | Page | Key features |
 |------|-------------|
 | `mes-informations` | Full form: RPPS, statut selectors, sync 5 fields |
-| `mes-informations-praticien` | Forces statut=Medecin, justPaidTs |
+| `mes-informations-praticien` | Forces statut=Medecin, justPaidTs au retour d'un paiement |
 | `mes-informations-praticien-sepa` | Same as praticien + Stripe checkout redirect |
 | `mes-informations-internes` | Forces statut=Interne, different RPPS text |
 | `mes-informations-internes-assos` | Partnership city from sessionStorage/cookie, no RPPS |
@@ -74,7 +74,7 @@ window.MES_INFOS_CONFIG = {
   forceStatut: null,              // 'Medecin' | 'Interne' | 'Paramédical' | null
   syncFields: [],                 // [{ key: 'localStorage-key', msField: 'memberstack-field' }]
   fillOnlyFields: [],             // same shape; only fills an empty field on an account < 24 h old
-  setJustPaidTs: false,           // set justPaidTs in localStorage for 60s
+  setJustPaidTs: false,           // justPaidTs (24 h), seulement au retour d'un paiement (ordo_checkout=cs_… ou fromCheckout=true)
   showStatutSelectors: false,     // show semestre/mode-exercice/specialite visibility logic
   showRequiredIfVisible: true,    // conditional required attr on visible inputs
   enableCheckout: false,          // load checkout.js (Stripe redirect)

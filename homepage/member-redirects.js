@@ -78,7 +78,8 @@
     });
 
     // Délai de grâce (24 h) après un vrai paiement : page de succès
-    // (moyen-de-paiement-ajoute), confirmations de pause et de reprise. Les pages
+    // (moyen-de-paiement-ajoute), retour de paiement sur mes-informations-praticien
+    // (mes-informations/core.js), confirmations de pause et de reprise. Les pages
     // de paiement le posaient aussi à l'affichage, et le bouton de paiement au clic
     // avant Stripe ; la PR #248 retire ces deux poses (le repère « page de
     // paiement vue », ms.isPaymentPageSeenRecently, prend le relais sans masquer

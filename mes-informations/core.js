@@ -44,8 +44,25 @@
     enablePartnershipCity: Boolean(pageConfig.enablePartnershipCity)
   };
 
-  // Set justPaidTs if configured (praticien pages) — 24h grace period
-  if (config.setJustPaidTs) {
+  // Délai de grâce de 24 h (justPaidTs), posé seulement au retour d'un vrai
+  // paiement (20/10/2026). Ces pages s'ouvrent aussi hors paiement : la page
+  // praticien-sepa s'affiche AVANT le paiement, et la page praticien peut être
+  // rouverte plus tard. La pose à l'affichage donnait 24 h sans redirection ni
+  // bandeau de facturation à un membre qui n'avait rien payé. Deux marqueurs de
+  // retour d'un paiement réussi :
+  // - `ordo_checkout=cs_…` : nos fonctions Stripe (checkout.ordotype.fr,
+  //   pricing.ordotype.fr), où Stripe écrit l'id de la session ;
+  // - `fromCheckout=true` : le paiement Memberstack.
+  function isPaymentReturn() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      return /^cs_/.test(params.get('ordo_checkout') || '') || params.get('fromCheckout') === 'true';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  if (config.setJustPaidTs && isPaymentReturn()) {
     safeSetItem('justPaidTs', Date.now().toString());
     setTimeout(function() {
       try { localStorage.removeItem('justPaidTs'); } catch (e) {}
