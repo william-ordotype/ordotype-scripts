@@ -801,7 +801,7 @@
     var numInput = el('input', C['finder-champ']);
     numInput.type = 'text';
     numInput.inputMode = 'numeric';
-    numInput.placeholder = 'SIREN (9 chiffres) ou SIRET (14 chiffres)';
+    numInput.placeholder = 'SIREN ou SIRET';
     numInput.setAttribute('aria-label', 'SIREN ou SIRET');
     numInput.maxLength = 20;
     var btn = el('button', C['finder-bouton'], 'Vérifier');
