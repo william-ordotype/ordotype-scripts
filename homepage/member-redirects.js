@@ -182,6 +182,44 @@
             }
         }
 
+        // Bandeau « numéro de téléphone » : la croix le masque 30 jours, dans ce
+        // navigateur et pour ce membre seulement. Valeur « <id du membre>:<horodatage> » :
+        // sur un poste partagé (hôpital), un autre membre n'en hérite pas. Un
+        // horodatage dans le futur (horloge déréglée) ne compte pas. Stockage
+        // inaccessible : la croix ferme quand même, le bandeau revient à la page suivante.
+        const PHONE_BANNER_ID = 'banner-to-hide-phone-missing';
+        const PHONE_BANNER_CLOSED_KEY = 'phoneBannerClosedTs';
+        const PHONE_SNOOZE_MS = 30 * DAY_MS;
+
+        function phoneBannerSnoozed() {
+            let raw = '';
+            try {
+                raw = localStorage.getItem(PHONE_BANNER_CLOSED_KEY) || '';
+            } catch (e) {
+                return false;
+            }
+            const sep = raw.lastIndexOf(':');
+            if (sep <= 0 || raw.slice(0, sep) !== member.id) return false;
+            const ts = parseInt(raw.slice(sep + 1), 10);
+            const now = Date.now();
+            return !!ts && ts <= now && (now - ts) < PHONE_SNOOZE_MS;
+        }
+
+        // La croix (nfc_close-button) masque déjà le bandeau via le gestionnaire
+        // commun en haut de ce fichier ; ici on retient seulement la fermeture.
+        function showPhoneBanner() {
+            $('#' + PHONE_BANNER_ID).css({ display: 'flex' });
+            document.addEventListener('click', function(event) {
+                if (!event.target.closest('#' + PHONE_BANNER_ID + ' .nfc_close-button')) return;
+                try {
+                    localStorage.setItem(PHONE_BANNER_CLOSED_KEY, member.id + ':' + Date.now());
+                    console.log(PREFIX, 'Phone banner closed, snoozed ' + (PHONE_SNOOZE_MS / DAY_MS) + ' days');
+                } catch (e) {
+                    console.warn(PREFIX, 'Phone banner close not persisted (storage unavailable)');
+                }
+            });
+        }
+
         // Paused subscription — show dedicated pause banner, skip all other banner logic
         if (showPauseBanner($)) return;
         const SUBSCRIPTION = 'SUBSCRIPTION';
@@ -325,8 +363,8 @@
             ) {
                 showSauSignupBanner('interne_mg_nuit');
             }
-            else if (noPhone) {
-                $('#banner-to-hide-phone-missing').css({ display: 'flex' });
+            else if (noPhone && !phoneBannerSnoozed()) {
+                showPhoneBanner();
             }
             // Rennes (MG) partnership image, super low importance: kept last so any other
             // banner (incl. phone-missing) wins for a Rennes member.
