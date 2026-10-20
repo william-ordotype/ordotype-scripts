@@ -182,19 +182,23 @@
             }
         }
 
-        // Bandeau « numéro de téléphone » : la croix le masque 30 jours, dans ce
-        // navigateur et pour ce membre seulement. Valeur « <id du membre>:<horodatage> » :
+        // Bandeaux dont la croix est retenue : « numéro de téléphone » et « moyen de
+        // paiement qui expire bientôt ». La croix masque le bandeau 30 jours, dans ce
+        // navigateur et pour ce membre seulement ; au chargement suivant, le bandeau
+        // d'après dans l'ordre peut s'afficher. Valeur « <id du membre>:<horodatage> » :
         // sur un poste partagé (hôpital), un autre membre n'en hérite pas. Un
         // horodatage dans le futur (horloge déréglée) ne compte pas. Stockage
         // inaccessible : la croix ferme quand même, le bandeau revient à la page suivante.
-        const PHONE_BANNER_ID = 'banner-to-hide-phone-missing';
-        const PHONE_BANNER_CLOSED_KEY = 'phoneBannerClosedTs';
-        const PHONE_SNOOZE_MS = 30 * DAY_MS;
+        // « Carte expirée » (moins de 31 jours) n'a pas de croix : la fermeture de
+        // « expire bientôt » ne le masque pas.
+        const CLOSABLE_SNOOZE_MS = 30 * DAY_MS;
+        const PHONE_BANNER = { id: 'banner-to-hide-phone-missing', key: 'phoneBannerClosedTs' };
+        const CB_EXPIRES_SOON_BANNER = { id: 'banner-to-hide-cb-expires-soon', key: 'cbExpiresSoonBannerClosedTs' };
 
-        function phoneBannerSnoozed() {
+        function bannerSnoozed(banner) {
             let raw = '';
             try {
-                raw = localStorage.getItem(PHONE_BANNER_CLOSED_KEY) || '';
+                raw = localStorage.getItem(banner.key) || '';
             } catch (e) {
                 return false;
             }
@@ -202,20 +206,20 @@
             if (sep <= 0 || raw.slice(0, sep) !== member.id) return false;
             const ts = parseInt(raw.slice(sep + 1), 10);
             const now = Date.now();
-            return !!ts && ts <= now && (now - ts) < PHONE_SNOOZE_MS;
+            return !!ts && ts <= now && (now - ts) < CLOSABLE_SNOOZE_MS;
         }
 
         // La croix (nfc_close-button) masque déjà le bandeau via le gestionnaire
         // commun en haut de ce fichier ; ici on retient seulement la fermeture.
-        function showPhoneBanner() {
-            $('#' + PHONE_BANNER_ID).css({ display: 'flex' });
+        function showClosableBanner(banner) {
+            $('#' + banner.id).css({ display: 'flex' });
             document.addEventListener('click', function(event) {
-                if (!event.target.closest('#' + PHONE_BANNER_ID + ' .nfc_close-button')) return;
+                if (!event.target.closest('#' + banner.id + ' .nfc_close-button')) return;
                 try {
-                    localStorage.setItem(PHONE_BANNER_CLOSED_KEY, member.id + ':' + Date.now());
-                    console.log(PREFIX, 'Phone banner closed, snoozed ' + (PHONE_SNOOZE_MS / DAY_MS) + ' days');
+                    localStorage.setItem(banner.key, member.id + ':' + Date.now());
+                    console.log(PREFIX, banner.id + ' closed, snoozed ' + (CLOSABLE_SNOOZE_MS / DAY_MS) + ' days');
                 } catch (e) {
-                    console.warn(PREFIX, 'Phone banner close not persisted (storage unavailable)');
+                    console.warn(PREFIX, banner.id + ' close not persisted (storage unavailable)');
                 }
             });
         }
@@ -363,8 +367,8 @@
             ) {
                 showSauSignupBanner('interne_mg_nuit');
             }
-            else if (noPhone && !phoneBannerSnoozed()) {
-                showPhoneBanner();
+            else if (noPhone && !bannerSnoozed(PHONE_BANNER)) {
+                showClosableBanner(PHONE_BANNER);
             }
             // Rennes (MG) partnership image, super low importance: kept last so any other
             // banner (incl. phone-missing) wins for a Rennes member.
@@ -460,9 +464,10 @@
             $('#banner-to-hide-cb-expired').css({ display: 'flex' });
         } else if (
             planConnections.some(isSubscriptionActiveOrTrialing) &&
-            date_till_expired !== null && date_till_expired < EXPIRE_SOON_DAYS
+            date_till_expired !== null && date_till_expired < EXPIRE_SOON_DAYS &&
+            !bannerSnoozed(CB_EXPIRES_SOON_BANNER)
         ) {
-            $('#banner-to-hide-cb-expires-soon').css({ display: 'flex' });
+            showClosableBanner(CB_EXPIRES_SOON_BANNER);
         } else {
             showInformationBanner();
         }
