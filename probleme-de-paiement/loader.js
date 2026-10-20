@@ -17,13 +17,17 @@
     // Store URL for tracking
     localStorage.setItem('locat', location.href);
 
-    // Page vue : l'accueil et les fiches ne renvoient plus ici pendant 24 h
-    // (repère paymentPageSeenTs, voir homepage/member-redirects.js). Plus de
-    // `justPaidTs` à l'affichage (20/10/2026) : afficher cette page n'est pas un
-    // paiement, et il masquait le bandeau « paiement échoué » pendant 24 h. Il
-    // reste posé au clic sur le bouton de paiement (shared/stripe-setup-session.js)
-    // et sur la page de succès.
-    try { localStorage.setItem('paymentPageSeenTs', String(Date.now())); } catch (e) {}
+    // Page vue : l'accueil et les fiches ne renvoient plus ici pendant 24 h. Repère
+    // « id du membre:horodatage », lu par isPaymentPageSeenRecently
+    // (shared/memberstack-utils.js) : sur un poste partagé, un autre membre n'en
+    // hérite pas. Plus de `justPaidTs` à l'affichage (20/10/2026) : afficher cette
+    // page n'est pas un paiement, et il masquait le bandeau « paiement échoué »
+    // pendant 24 h. La page de succès (moyen-de-paiement-ajoute) le pose.
+    try {
+        var cachedMember = JSON.parse(localStorage.getItem('_ms-mem') || 'null');
+        var cachedMemberId = cachedMember && (cachedMember.id || cachedMember.userId);
+        if (cachedMemberId) localStorage.setItem('paymentPageSeenTs', cachedMemberId + ':' + Date.now());
+    } catch (e) {}
 
     // Set config for shared stripe-setup-session.js
     window.STRIPE_SETUP_CONFIG = {
