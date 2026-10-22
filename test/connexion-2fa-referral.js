@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Formulaire d'invitation de la page 2FA : envoi, confirmation, erreur, retour au formulaire, aperçu restreint
- * et variante « bloqué » (délai sans validation du code, clic sur un renvoi du code).
+ * Formulaire d'invitation de la page 2FA : envoi avec le jeton de pré-connexion seul, confirmation, erreur,
+ * retour au formulaire, aperçu restreint et variante « bloqué » (délai sans validation du code, clic sur un
+ * renvoi du code).
  *
  * Usage : node test/connexion-2fa-referral.js
  */
@@ -117,12 +118,11 @@ test("envoi réussi : adresse transmise, confirmation affichée avec l'adresse",
   assert.strictEqual(calls[0].options.method, 'POST');
   assert.deepStrictEqual(JSON.parse(calls[0].options.body), {
     invitee_email: 'confrere@example.test',
-    referrer_member_id: 'mem_parrain',
-    referrer_email: 'parrain@example.test',
     pre_auth_token: TOKEN,
     variant: 'default',
   });
   assert.ok(!calls[0].options.body.includes('*'), "l'e-mail masqué de la session ne part jamais");
+  assert.ok(!calls[0].options.body.includes('parrain'), "ni l'identifiant ni l'adresse du parrain ne partent");
   assert.ok(!JSON.stringify(w.dataLayer || []).includes(TOKEN), 'le jeton ne part pas dans la mesure');
   assertHidden(w, 'referral-invitation');
   assertShown(w, 'referral-confirmation');
@@ -134,16 +134,89 @@ test("envoi réussi : adresse transmise, confirmation affichée avec l'adresse",
   assert.deepStrictEqual(erreurs, []);
 });
 
-test('jeton de pré-connexion : transmis tel quel, champ vide s\'il manque ou n\'est pas une chaîne', async () => {
-  for (const [donnees, attendu] of [[{}, TOKEN], [{ preAuthToken: undefined }, ''], [{ preAuthToken: 42 }, ''], [{ preAuthToken: { a: 1 } }, '']]) {
-    const { w } = page({ sessionValue: session(donnees) });
-    const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
-    w.eval(SCRIPT);
-    submitInvite(w, 'confrere@example.test');
-    await tick();
-    assert.strictEqual(calls.length, 1, JSON.stringify(donnees));
-    assert.strictEqual(JSON.parse(calls[0].options.body).pre_auth_token, attendu, JSON.stringify(donnees));
+// --- Jeton seul (connexion Google : ms_email masqué, 22/10/2026) ---------------------------------
+const JETON = 'a'.repeat(64);
+const sessionJeton = (data) => JSON.stringify({ data: { memberId: 'mem_test', preAuthToken: JETON, ...data } });
+
+// Envoi d'une invitation ; rend les appels, la mesure et les erreurs signalées à la page.
+async function envoyer(options) {
+  const { w } = page(options);
+  const signalements = [];
+  w.addEventListener('error', (e) => signalements.push(e.message));
+  const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+  w.eval(SCRIPT);
+  submitInvite(w, 'confrere@exemple.fr');
+  await tick();
+  return { w, calls, evenements: JSON.parse(JSON.stringify(w.dataLayer || [])), signalements };
+}
+
+test('connexion Google : ms_email masqué, jeton valide, l’invitation part avec le jeton seul', async () => {
+  const { w, calls, evenements, signalements } = await envoyer({ sessionValue: sessionJeton(), loginEmail: 'ab****cd@exemple.fr' });
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].url, ENDPOINT);
+  const corps = JSON.parse(calls[0].options.body);
+  assert.deepStrictEqual(Object.keys(corps).sort(), ['invitee_email', 'pre_auth_token', 'variant']);
+  assert.deepStrictEqual(corps, { invitee_email: 'confrere@exemple.fr', pre_auth_token: JETON, variant: 'default' });
+  assert.ok(!calls[0].options.body.includes('*'), "l'e-mail masqué ne part pas");
+  assertShown(w, 'referral-confirmation');
+  assert.deepStrictEqual(evenements, [{ event: 'referral_invite_sent', option: 'default' }]);
+  assert.deepStrictEqual(signalements, []);
+});
+
+test('ms_email absent, ou session sans memberId : l’invitation part quand même', async () => {
+  for (const options of [
+    { sessionValue: sessionJeton(), loginEmail: null },
+    { sessionValue: JSON.stringify({ data: { preAuthToken: JETON } }), loginEmail: null },
+  ]) {
+    const { w, calls } = await envoyer(options);
+    assert.strictEqual(calls.length, 1, JSON.stringify(options));
+    assert.deepStrictEqual(JSON.parse(calls[0].options.body), { invitee_email: 'confrere@exemple.fr', pre_auth_token: JETON, variant: 'default' });
+    assertShown(w, 'referral-confirmation');
   }
+});
+
+test('sans session ou sans jeton conforme : rien ne part, raison fine mesurée et signalée, message d’erreur affiché', async () => {
+  const temoins = [
+    ['no_session', { sessionValue: null }],
+    ['no_session', { sessionValue: 'pas du JSON' }],
+    ['no_session', { sessionValue: JSON.stringify({}) }],
+    ['no_session', { sessionValue: JSON.stringify({ data: null }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: undefined }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: '' }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: 'a'.repeat(63) }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: 'a'.repeat(65) }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: 'A'.repeat(64) }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: 'g'.repeat(64) }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: ' ' + 'a'.repeat(64) }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: 42 }) }],
+    ['no_token', { sessionValue: sessionJeton({ preAuthToken: { a: 1 } }) }],
+  ];
+  for (const [raison, options] of temoins) {
+    const label = `${raison} ${options.sessionValue}`;
+    // ms_email en clair : il ne suffit plus à rien pour l'envoi.
+    const { w, calls, evenements, signalements } = await envoyer({ loginEmail: 'parrain@exemple.fr', ...options });
+    assert.strictEqual(calls.length, 0, label);
+    assert.strictEqual(w.document.querySelector('.w-form-fail').style.display, 'block', label);
+    assertHidden(w, 'referral-confirmation');
+    assert.deepStrictEqual(evenements, [{ event: 'referral_invite_failed', failure_reason: raison, option: 'default' }], label);
+    assert.deepStrictEqual(signalements, ['Referral invite failed: ' + raison], label);
+  }
+});
+
+test('aperçu : s’ouvre avec un ms_email en clair, reste fermé avec un ms_email masqué (l’envoi part quand même)', async () => {
+  let { w } = page({ invitationHidden: true, preview: '@exemple.fr', sessionValue: sessionJeton(), loginEmail: 'parrain@exemple.fr' });
+  w.eval(SCRIPT);
+  await tick();
+  assertShown(w, 'referral-invitation');
+
+  ({ w } = page({ invitationHidden: true, preview: '@exemple.fr, ab****cd@exemple.fr', sessionValue: sessionJeton(), loginEmail: 'ab****cd@exemple.fr' }));
+  const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
+  w.eval(SCRIPT);
+  await tick();
+  assertHidden(w, 'referral-invitation');
+  submitInvite(w, 'confrere@exemple.fr');
+  await tick();
+  assert.strictEqual(calls.length, 1, 'aperçu fermé, mais le jeton suffit à l’envoi');
 });
 
 test('masquage fiable même si la classe hidden seule ne masque pas le bloc', async () => {
@@ -226,8 +299,8 @@ test("adresse d'envoi lue dans data-referral-endpoint, formulaire Webflow sans a
   assertShown(w, 'referral-confirmation');
 });
 
-test("sans session 2FA, sans e-mail de connexion lisible (absent, masqué) ou sans adresse d'envoi valide : rien n'est envoyé", async () => {
-  for (const options of [{ sessionValue: null }, { loginEmail: null }, { loginEmail: 'pa****in@example.test' }, { loginEmail: 'unknown' }, { action: '' }, { action: 'http://hook.example.test/referral' }, { action: '', endpointAttr: 'http://hook.example.test/attribut' }]) {
+test("sans session 2FA, sans jeton ou sans adresse d'envoi valide : rien n'est envoyé", async () => {
+  for (const options of [{ sessionValue: null }, { sessionValue: session({ preAuthToken: undefined }) }, { action: '' }, { action: 'http://hook.example.test/referral' }, { action: '', endpointAttr: 'http://hook.example.test/attribut' }]) {
     const { w } = page(options);
     const calls = installFetch(w, () => Promise.resolve({ ok: true, status: 200 }));
     w.eval(SCRIPT);
@@ -264,7 +337,8 @@ test('mesure et signalement : envoi réussi mesuré, chaque échec mesuré avec 
     ['timeout', {}, (options) => new Promise((resolve, reject) => {
       options.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); });
     })],
-    ['no_referrer', { loginEmail: null }, succes],
+    ['no_session', { sessionValue: null }, succes],
+    ['no_token', { sessionValue: session({ preAuthToken: 'f0'.repeat(31) + 'f' }) }, succes],
     ['no_endpoint', { action: '' }, succes],
   ];
   for (const [raison, options, repondre] of echecs) {
