@@ -130,3 +130,46 @@ body > div:has(> .page-wrapper) {
     min-height: 100vh;
 }
 .page-wrapper { flex: 1 0 auto; }
+
+/* FAQ : une seule apparence, celle de /faq (composant faq-page_*), audit design
+ * #25 du 22/10/2026. Deux autres composants restent dans le Designer et gardent
+ * leur fonctionnement : le menu déroulant Webflow drop_faq (/nos-offres-belgique,
+ * /abonnement/*, Académie, demande de démo), ouvert = classe w--open, et
+ * l'accordéon faq02_* des partenariats, ouvert = interaction qui pose
+ * height: auto sur la réponse. Les états ouverts et les titres imbriqués ne
+ * s'écrivent pas en classes du Designer, d'où ces règles. */
+.dropdown-toggle-faq { padding: 1.25rem 1rem; column-gap: 1.5rem; transition: background-color .2s; }
+.dropdown-toggle-faq.w--open { background-color: var(--primary-50, #f0f3ff); }
+.dropdown-toggle-faq .heading-h2-docs { font-size: 1.125rem; font-weight: 600; line-height: 1.4; color: var(--base-900, #0c0e16); white-space: normal; }
+.dropdown-toggle-faq .cross-wrapper { width: 1.75rem; height: 1.75rem; border: 1px solid var(--base-200, #0c0e1633); background-color: #fff; margin-left: 0; }
+.dropdown-toggle-faq .line-horiz { background-color: var(--base-900, #0c0e16); width: .625rem; height: 1.5px; border-radius: 1px; }
+.dropdown-toggle-faq .line-vertic { background-color: var(--base-900, #0c0e16); width: 1.5px; height: .625rem; border-radius: 1px; transition: opacity .2s; }
+.dropdown-toggle-faq.w--open .line-vertic { opacity: 0; }
+.dropdown-list-faq.w--open { background-color: var(--primary-50, #f0f3ff); padding: 0 1rem 1.25rem; }
+.dropdown-list-faq .w-richtext { max-width: 44rem; color: var(--base-900, #0c0e16); font-size: 1rem; line-height: 1.6; }
+.dropdown-list-faq .w-richtext p,
+.dropdown-list-faq .w-richtext ul { margin-bottom: .75rem; }
+
+.faq_list-grid { row-gap: 0; }
+.faq02_accordion { border-radius: 0; border-bottom: 1px solid var(--base-200, #0c0e1633); }
+.faq02_accordion:first-child { border-top: 1px solid var(--base-200, #0c0e1633); }
+.faq02_accordion:has(.faq02_answer[style*="height: auto"]) { background-color: var(--primary-50, #f0f3ff); }
+.faq02_accordion:has(.faq02_answer[style*="height: auto"]) .accordion-icon_vertical-line { opacity: 0; }
+.faq02_question { padding: 1.25rem 1rem; column-gap: 1.5rem; transition: background-color .2s; }
+.faq02_question:hover { background-color: var(--base-50, #0c0e160d); }
+.faq02_question .heading-style-sub-main { font-size: 1.125rem; font-weight: 600; line-height: 1.4; color: var(--base-900, #0c0e16); }
+.faq02_answer { border-bottom: 0; padding: 0 1rem; }
+.faq02_answer .w-richtext { color: var(--base-900, #0c0e16); font-size: 1rem; line-height: 1.6; }
+.faq02_answer .margin-bottom-4.margin-small { margin-bottom: 1.25rem; }
+.faq02_question .accordion-icon_component { width: 1.75rem; height: 1.75rem; border: 1px solid var(--base-200, #0c0e1633); background-color: #fff; align-self: center; }
+.faq02_question .accordion-icon_horizontal-line { background-color: var(--base-900, #0c0e16); width: .625rem; height: 1.5px; }
+.faq02_question .accordion-icon_vertical-line { background-color: var(--base-900, #0c0e16); width: 1.5px; height: .625rem; transition: opacity .2s; }
+
+@media screen and (max-width: 767px) {
+    .dropdown-toggle-faq,
+    .faq02_question { column-gap: 1rem; padding-left: .75rem; padding-right: .75rem; }
+    .dropdown-toggle-faq .heading-h2-docs,
+    .faq02_question .heading-style-sub-main { font-size: 1rem; }
+    .dropdown-list-faq.w--open,
+    .faq02_answer { padding-left: .75rem; padding-right: .75rem; }
+}
