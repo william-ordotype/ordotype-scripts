@@ -2,13 +2,14 @@
 // Variante « bloqué » : si le code n'est pas validé après data-referral-stuck-after secondes, ou dès
 // un clic sur un renvoi du code, le bloc prend les textes posés dans le Designer
 // (data-referral-stuck-text, -placeholder, -value) et une barre y mène s'il est hors de l'écran.
-// Le jeton de pré-connexion de la session 2FA part avec l'invitation : le serveur en déduit le parrain.
+// Le jeton de pré-connexion de la session 2FA suffit : le serveur en déduit le parrain et son adresse.
 // Après la confirmation, la page demande pendant 30 s si l'adresse a été refusée par son serveur (ticket
 // rendu par le relais, fonction parrainage-statut) ; si oui, le formulaire revient avec un message.
 (function () {
   var SESSION_KEY = "_ms-2fa-session";
   var EMAIL_KEY = "ms_email";
   var EMAIL_PATTERN = /^[^\s@*]+@[^\s@*]+\.[^\s@*]+$/;
+  var TOKEN_PATTERN = /^[a-f0-9]{64}$/;
   var HIDDEN_CLASS = "hidden";
   var TIMEOUT_MS = 10000;
   var RESEND_SELECTOR = "#resend-otp-by-email, #send-otp-by-sms";
@@ -49,18 +50,32 @@
     return "network";
   }
 
-  function getReferrer() {
+  function getSessionData() {
     try {
       var session = JSON.parse(sessionStorage.getItem(SESSION_KEY));
       var data = session && session.data;
-      var memberId = data && data.memberId;
-      var email = String(sessionStorage.getItem(EMAIL_KEY) || "").trim();
-      var token = data && typeof data.preAuthToken === "string" ? data.preAuthToken : "";
-      if (memberId && EMAIL_PATTERN.test(email)) {
-        return { memberId: memberId, email: email, preAuthToken: token };
-      }
+      if (data && typeof data === "object") return data;
     } catch (e) {}
     return null;
+  }
+
+  // Le jeton seul suffit (ms_email est masqué sur une connexion Google). Sinon, la raison de l'échec.
+  function getToken() {
+    var data = getSessionData();
+    if (!data) return { reason: "no_session" };
+    var token = data.preAuthToken;
+    if (typeof token === "string" && TOKEN_PATTERN.test(token)) return { token: token };
+    return { reason: "no_token" };
+  }
+
+  // Adresse de connexion en clair, pour l'aperçu seulement.
+  function previewEmail() {
+    try {
+      var data = getSessionData();
+      var email = String(sessionStorage.getItem(EMAIL_KEY) || "").trim();
+      if (data && data.memberId && EMAIL_PATTERN.test(email)) return email;
+    } catch (e) {}
+    return "";
   }
 
   function setVisible(el, visible) {
@@ -75,10 +90,10 @@
     }
   }
 
-  function previewAllowed(invitation, referrer) {
+  function previewAllowed(invitation, loginEmail) {
     var list = invitation.getAttribute("data-referral-preview");
-    if (!list || !referrer) return false;
-    var email = String(referrer.email).trim().toLowerCase();
+    if (!list || !loginEmail) return false;
+    var email = loginEmail.toLowerCase();
     return list.split(",").some(function (entry) {
       var rule = entry.trim().toLowerCase();
       if (!rule) return false;
@@ -89,7 +104,7 @@
 
   function applyPreview() {
     var invitation = document.getElementById("referral-invitation");
-    if (invitation && previewAllowed(invitation, getReferrer())) setVisible(invitation, true);
+    if (invitation && previewAllowed(invitation, previewEmail())) setVisible(invitation, true);
   }
 
   // Le code validé, la page part : rien ne doit plus changer sous les yeux du membre.
@@ -298,7 +313,7 @@
     var input = form.querySelector('input[type="email"]');
     var invitee = input ? input.value.trim() : "";
     var endpoint = form.getAttribute("data-referral-endpoint") || form.getAttribute("action") || "";
-    var referrer = getReferrer();
+    var auth = getToken();
     showFail(form, false);
 
     if (!invitee) {
@@ -311,8 +326,8 @@
       track("referral_invite_failed", { failure_reason: "bounced_again", option: variant });
       return;
     }
-    // Sans parrain ou sans adresse d'envoi, c'est une panne, pas une erreur de saisie.
-    var blocked = !referrer ? "no_referrer" : endpoint.indexOf("https://") !== 0 ? "no_endpoint" : "";
+    // Sans jeton ou sans adresse d'envoi, c'est une panne, pas une erreur de saisie.
+    var blocked = auth.reason || (endpoint.indexOf("https://") !== 0 ? "no_endpoint" : "");
     if (blocked) {
       showFail(form, true);
       track("referral_invite_failed", { failure_reason: blocked, option: variant });
@@ -324,9 +339,7 @@
     setBusy(form, true);
     postInvitation(endpoint, {
       invitee_email: invitee,
-      referrer_member_id: referrer.memberId,
-      referrer_email: referrer.email,
-      pre_auth_token: referrer.preAuthToken,
+      pre_auth_token: auth.token,
       variant: variant,
     }).then(function (body) {
       pending = false;
