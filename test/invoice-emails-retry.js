@@ -121,6 +121,8 @@ function run(outcomes, { panneauOuvert = true, ouvrirApres = false } = {}) {
         addEventListener() {},
         removeEventListener() {},
         getElementById: (id) => (id === 'ordotype-invoice-emails' ? anchor : null),
+        // Pas de Facturation du Designer sur cette page : la case est construite par le module.
+        querySelector: () => null,
         createElement: (tag) => { const e = element(tag); crees.push(e); return e; },
     };
     global.console = { log() {}, warn() {}, error() {}, info() {} };

@@ -2,6 +2,10 @@
 /**
  * « Mes abonnements » list on the account page: rendering of each status, formats, loading and errors.
  *
+ * The page is the Facturation tab as Webflow publishes it (test/fixtures/compte-facturation.html): the
+ * script fills the Facturation drawn in the Designer ([data-ordo-facturation]) from its templates, and the
+ * page's own blocks (SECOURS) are the fallback. test/facturation-designer.js covers the drawing itself.
+ *
  * Usage : node test/subscriptions-overview.js
  */
 const fs = require('fs');
@@ -13,6 +17,12 @@ const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'account/subscriptions-overview.js'), 'utf8');
 // jsdom cannot navigate: the redirections are captured instead (same approach as test/fin-internat.js).
 const NAV_SCRIPT = SCRIPT.split('window.location.assign(').join('window.__navigate(');
+const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.html'), 'utf8');
+// The page head rule that hides the Facturation until it is filled (account/compte-head.html), and the base
+// rules Webflow publishes for its classes.
+const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
+const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
+const SITE_CSS = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.css'), 'utf8');
 
 const CARDS = [
   { label: 'Médecine Générale', status: 'active', price: { amount: 3000, current: 1500, currency: 'eur', interval: 'month', intervalCount: 1 },
@@ -52,22 +62,18 @@ const MODAL_LINKS = {
   aucun: '',
 };
 
-function page({ visible = true, prefilled = false, portal = true, whitespace = false, pause = null, confirmAnswer = true, modalLinks = 'offres' } = {}) {
+function page({ visible = true, portal = true, pause = null, confirmAnswer = true, modalLinks = 'offres' } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
   const dom = new JSDOM(
-    `<!doctype html><html><head></head><body>
-      <div class="tab-pane"><div class="w-embed"><div id="ordotype-subscriptions">${prefilled ? '<p>x</p>' : ''}${whitespace ? '\n  ' : ''}</div></div>
-        <div class="inner-block-wraper" id="old-section"><div class="abonnement-wrapper">Ancien bloc</div></div>
-        <div class="inner-block-wraper" id="payment-method-block">Ajouter un moyen de paiement</div>
-        <div class="inner-block-wraper" id="invoices-block">Mes factures</div>
-      </div>
-      <div id="cancellation-warning-modal" style="display:none">Êtes-vous sûr ?${MODAL_LINKS[modalLinks]}</div>
-    </body></html>`,
+    `<!doctype html><html><head><style>${SITE_CSS}</style><style>${HEAD_STYLE}</style></head><body><div class="w-tabs">${FIXTURE}</div></body></html>`,
     { url: 'https://www.ordotype.fr/membership/compte', runScripts: 'outside-only', virtualConsole }
   );
   const w = dom.window;
+  const modal = w.document.getElementById('cancellation-warning-modal');
+  modal.innerHTML = 'Êtes-vous sûr ?' + MODAL_LINKS[modalLinks];
+  modal.style.display = 'none';
   const reported = [];
   const network = [];
   const opened = [];
@@ -129,9 +135,16 @@ function text(node) {
   while (walker.nextNode()) parts.push(walker.currentNode.nodeValue.replace(/[  ]/g, ' ').trim());
   return parts.filter(Boolean).join(' ');
 }
-const anchor = (w) => w.document.getElementById('ordotype-subscriptions');
-const cards = (w) => Array.from(w.document.querySelectorAll('.ordo-subs-card'));
+const root = (w) => w.document.querySelector('[data-ordo-facturation]');
+const sectionOf = (w, name) => root(w).querySelector('[data-ordo-section="' + name + '"]');
+// Shown by the script: neither hidden nor display:none (the Designer's classes set `display`, so both are set).
+const shown = (node) => !!node && !node.hidden && node.style.display !== 'none';
+const filled = (w) => w.document.documentElement.classList.contains('ordo-subs-v2') && shown(root(w));
+// The subscription cards: copies of the template, not the empty message or the placeholders.
+const cards = (w) => Array.from(root(w).querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu][role="listitem"]'));
 const cardText = (w, i) => text(cards(w)[i]);
+const badge = (card) => card.querySelector('.compte-v2_abo-head > .compte-v2_badge');
+const oldSection = (w) => w.document.querySelector('[data-w-tab="billing"] .inner-block-wraper[data-ms-content="!no-plans"]');
 
 async function main() {
   // Rendering of every status
@@ -142,9 +155,8 @@ async function main() {
     await wait(60);
     assert.strictEqual(calls.length, 1);
     assertSimple(calls[0].options, { action: 'list' });
-    assert.strictEqual(anchor(t.w).style.display, '');
-    assert.strictEqual(anchor(t.w).parentElement.style.display, '');
-    assert.ok(text(anchor(t.w)).startsWith('Mes abonnements'));
+    assert.ok(filled(t.w), 'the Facturation is shown');
+    assert.ok(text(sectionOf(t.w, 'abonnements')).startsWith('Mes abonnements'));
     assert.strictEqual(cards(t.w).length, CARDS.length);
 
     assert.strictEqual(cardText(t.w, 0),
@@ -154,7 +166,7 @@ async function main() {
     assert.strictEqual(cardText(t.w, 2),
       'Offert Actif 0 € / mois au lieu de 30 € Offert jusqu’au 20 mars 2027 Puis 30 € / mois Prochain prélèvement 30 € le 20 mars 2027');
     assert.strictEqual(cardText(t.w, 3), 'Module Soins palliatifs Gratuit');
-    assert.strictEqual(cards(t.w)[3].querySelector('.ordo-subs-amount'), null);
+    assert.strictEqual(cards(t.w)[3].querySelector('[data-ordo-champ="prix"]'), null);
     assert.strictEqual(cardText(t.w, 4), 'Stockage Résiliation programmée 2 € / mois Se termine le 30 septembre 2026');
     assert.strictEqual(cardText(t.w, 5), 'Impayé Paiement à régulariser 30 € / mois Paiement en échec Modifier le moyen de paiement');
     assert.strictEqual(cardText(t.w, 6), 'En pause En pause Reprise automatique le 17 mars 2027');
@@ -167,23 +179,22 @@ async function main() {
     assert.strictEqual(cardText(t.w, 12), 'Essai terminé Terminé');
     assert.strictEqual(cardText(t.w, 13), 'Essai gratuit Gratuit Valable 15 jours à partir de votre inscription.');
     assert.strictEqual(cardText(t.w, 14), 'Essai daté Gratuit Se termine le 7 octobre 2026');
-    assert.ok(cards(t.w)[12].querySelector('.ordo-subs-tone-muted'));
+    assert.strictEqual(badge(cards(t.w)[12]).className, 'compte-v2_badge');
 
     // Labels are text, never markup
     assert.strictEqual(cards(t.w)[11].querySelector('img'), null);
     assert.ok(cardText(t.w, 11).startsWith('<img src=x onerror=alert(1)>'));
 
     // A failed payment links to the payment method page, which also retries the unpaid invoice
-    const fix = cards(t.w)[5].querySelector('a.ordo-subs-link');
+    const fix = cards(t.w)[5].querySelector('a.compte-v2_lien');
     assert.strictEqual(fix.getAttribute('href'), '/membership/moyen-de-paiement');
     assert.strictEqual(cards(t.w)[5].querySelector('button'), null);
 
-    // Status tags follow the status
-    assert.ok(cards(t.w)[0].querySelector('.ordo-subs-tag.ordo-subs-tone-ok'));
-    assert.ok(cards(t.w)[3].querySelector('.ordo-subs-tone-free'));
-    assert.ok(cards(t.w)[5].querySelector('.ordo-subs-tone-alert'));
-    assert.ok(cards(t.w)[4].querySelector('.ordo-subs-tone-muted'));
-    assert.strictEqual(t.w.document.querySelectorAll('#ordo-subs-style').length, 1);
+    // Status tags follow the status: a copy of the Designer's template for each
+    assert.strictEqual(badge(cards(t.w)[0]).className, 'compte-v2_badge is-actif');
+    assert.strictEqual(badge(cards(t.w)[3]).className, 'compte-v2_badge is-succes');
+    assert.strictEqual(badge(cards(t.w)[5]).className, 'compte-v2_badge is-a-regulariser');
+    assert.strictEqual(badge(cards(t.w)[4]).className, 'compte-v2_badge');
     assert.deepStrictEqual(t.erreurs, []);
     assert.strictEqual(t.reported.length + t.network.length, 0);
   }
@@ -194,7 +205,7 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(t.w.document.getElementById('old-section').style.display, 'none');
+    assert.strictEqual(oldSection(t.w).style.display, 'none');
     assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
     assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '');
     t.dom.window.close();
@@ -222,7 +233,8 @@ async function main() {
   }
 
   // Payment method section: the method Stripe will charge, replacing the page's own block
-  const pmSection = (w) => w.document.querySelector('.ordo-pm');
+  const pmSection = (w) => sectionOf(w, 'moyen-de-paiement');
+  const pmRows = (w) => pmSection(w).querySelectorAll('.compte-v2_moyen[data-ordo-rendu]');
   const VISA = { type: 'card', brand: 'visa', last4: '4242', expMonth: 8, expYear: 2027, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
   async function withPms(list, pms, others, { portal = true } = {}) {
     const t = page({ portal });
@@ -234,17 +246,16 @@ async function main() {
   {
     const t = await withPms([CARDS[0]], [VISA]);
     const s = pmSection(t.w);
-    assert.ok(s, 'section rendered');
+    assert.ok(shown(s), 'section rendered');
     assert.strictEqual(text(s), 'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Médecine Générale. Modifier');
     // "Modifier" opens the billing portal, where another saved method can be made the default
-    const edit = s.querySelector('button.ordo-subs-btn');
+    const edit = s.querySelector('button.compte-v2_btn');
     assert.strictEqual(edit.textContent, 'Modifier');
-    assert.ok(!edit.classList.contains('is-primary'));
-    assert.strictEqual(s.querySelector('a.ordo-subs-btn'), null);
+    assert.ok(!edit.classList.contains('is-principal'));
+    assert.strictEqual(s.querySelector('a.compte-v2_btn'), null);
     edit.click();
     assert.strictEqual(t.opened.length, 1);
-    assert.ok(s.querySelector('svg path'), 'card icon drawn');
-    assert.strictEqual(anchor(t.w).lastElementChild, s, 'after the subscriptions box');
+    assert.ok(s.querySelector('.compte-v2_picto svg path'), 'card icon drawn');
     assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
     assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
     t.dom.window.close();
@@ -252,7 +263,7 @@ async function main() {
   {
     // Without the portal, "Modifier" falls back to the payment method page
     const t = await withPms([CARDS[0]], [VISA], [], { portal: false });
-    const link = pmSection(t.w).querySelector('a.ordo-subs-btn');
+    const link = pmSection(t.w).querySelector('a.compte-v2_btn');
     assert.strictEqual(link.textContent, 'Modifier');
     assert.strictEqual(link.getAttribute('href'), '/membership/moyen-de-paiement');
     t.dom.window.close();
@@ -261,16 +272,16 @@ async function main() {
     const expired = Object.assign({}, VISA, { expMonth: 6, expYear: 2026, expired: true });
     const t = await withPms([CARDS[0]], [expired]);
     assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Visa •••• 4242 Expirée A expiré en juin 2026. Utilisée pour : Médecine Générale. Mettre à jour');
-    assert.ok(pmSection(t.w).querySelector('.ordo-pm-tone-expired'));
-    assert.ok(pmSection(t.w).querySelector('.ordo-pm-icon.is-alert'));
-    assert.ok(pmSection(t.w).querySelector('a.ordo-subs-btn.is-primary'));
+    assert.ok(pmSection(t.w).querySelector('.compte-v2_badge.is-a-regler'));
+    assert.ok(pmSection(t.w).querySelector('.compte-v2_picto.is-expiree'));
+    assert.ok(pmSection(t.w).querySelector('a.compte-v2_btn.is-principal'));
     t.dom.window.close();
   }
   {
     const soon = Object.assign({}, VISA, { brand: 'mastercard', expMonth: 10, expYear: 2026, expiresSoon: true });
     const t = await withPms([CARDS[0]], [soon]);
     assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Mastercard •••• 4242 Expire bientôt Expire en octobre 2026. Utilisée pour : Médecine Générale. Mettre à jour');
-    assert.ok(pmSection(t.w).querySelector('.ordo-pm-tone-soon'));
+    assert.ok(pmSection(t.w).querySelector('.compte-v2_badge.is-expire-bientot'));
     t.dom.window.close();
   }
   {
@@ -285,11 +296,11 @@ async function main() {
     const card = Object.assign({}, VISA, { usedBy: ['Module Rhumatologie', 'Stockage'] });
     const t = await withPms([CARDS[0], CARDS[1]], [sepa, card]);
     const s = pmSection(t.w);
-    assert.strictEqual(s.querySelectorAll('.ordo-pm-row').length, 2);
+    assert.strictEqual(pmRows(t.w).length, 2);
     assert.strictEqual(text(s),
       'Moyen de paiement Prélèvement SEPA •••• 4521 Utilisé pour : Médecine Générale. Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Module Rhumatologie et Stockage. Modifier');
-    assert.strictEqual(s.querySelectorAll('.ordo-subs-btn').length, 1);
-    assert.ok(s.querySelector('.ordo-subs-actions button.ordo-subs-btn'));
+    assert.strictEqual(s.querySelectorAll('.compte-v2_btn').length, 1);
+    assert.ok(s.querySelector('.compte-v2_actions button.compte-v2_btn'));
     t.dom.window.close();
   }
   {
@@ -307,9 +318,9 @@ async function main() {
     assert.strictEqual(text(s), 'Moyen de paiement Prélèvement SEPA •••• 4521 Utilisé pour : Médecine Générale. Modifier '
       + 'Aussi enregistrée : carte •••• 4444, non utilisée Aussi enregistré : prélèvement SEPA •••• 0012, non utilisé '
       + 'Aussi enregistré : paiement via Link, non utilisé');
-    assert.strictEqual(s.querySelectorAll('.ordo-pm-others .ordo-subs-muted').length, 3, 'unknown type and null skipped');
+    assert.strictEqual(s.querySelectorAll('.compte-v2_moyen-autres .compte-v2_muted').length, 3, 'unknown type and null skipped');
     assert.strictEqual(s.querySelectorAll('a, button').length, 1, 'no action on a saved method');
-    assert.strictEqual(s.lastElementChild.className, 'ordo-pm-others', 'below the charged method and its button');
+    assert.ok(s.lastElementChild.classList.contains('compte-v2_moyen-autres'), 'below the charged method and its button');
     assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }
@@ -319,14 +330,14 @@ async function main() {
     const t = await withPms([CARDS[0], CARDS[1]], [sepa, VISA], [{ type: 'card', brand: 'visa', last4: '4444', expMonth: 7, expYear: 2028 }]);
     const s = pmSection(t.w);
     const kids = Array.from(s.children).map((n) => n.className);
-    assert.deepStrictEqual(kids, ['ordo-subs-title', 'ordo-pm-row', 'ordo-pm-row', 'ordo-pm-others', 'ordo-subs-actions']);
+    assert.deepStrictEqual(kids, ['compte-v2_card-title', 'compte-v2_moyen', 'compte-v2_moyen', 'compte-v2_moyen-autres', 'compte-v2_actions']);
     t.dom.window.close();
   }
   {
     // Nothing charged on file: no "also saved" line under "no payment method"
     const none = { type: 'none', brand: null, last4: null, expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
     const t = await withPms([CARDS[0]], [none], [{ type: 'card', brand: 'visa', last4: '4444', expMonth: 7, expYear: 2028 }]);
-    assert.strictEqual(pmSection(t.w).querySelector('.ordo-pm-others'), null);
+    assert.strictEqual(pmSection(t.w).querySelector('.compte-v2_moyen-autres'), null);
     t.dom.window.close();
   }
   {
@@ -340,12 +351,12 @@ async function main() {
     const ok = 'https://cdn.prod.website-files.com/604b/66695dd3_ModuleIcon.svg';
     const pm = Object.assign({}, VISA, { usedBy: ['Module de Médecine générale', 'Module Rhumatologie', 'Stockage'], usedByIcons: [ok, null, 'https://exemple.com/x.svg'] });
     const t = await withPms([CARDS[0]], [pm]);
-    const detail = pmSection(t.w).querySelector('.ordo-pm-detail');
+    const detail = pmSection(t.w).querySelector('[data-ordo-champ="detail"]');
     assert.strictEqual(text(detail), 'Expire en août 2027. Utilisée pour : Module de Médecine générale, Module Rhumatologie et Stockage.');
     const imgs = detail.querySelectorAll('img');
     assert.strictEqual(imgs.length, 1);
     assert.strictEqual(imgs[0].getAttribute('src'), ok);
-    assert.strictEqual(imgs[0].getAttribute('width'), '16');
+    assert.strictEqual(imgs[0].getAttribute('alt'), '');
     assert.strictEqual(imgs[0].parentElement.textContent, 'Module de Médecine générale,');
     t.dom.window.close();
   }
@@ -354,14 +365,14 @@ async function main() {
     const none = { type: 'none', brand: null, last4: null, expMonth: null, expYear: null, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
     const t = await withPms([CARDS[0]], [none]);
     assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Aucun moyen de paiement enregistré Ajouter un moyen de paiement');
-    assert.ok(pmSection(t.w).querySelector('a.ordo-subs-btn.is-primary'));
+    assert.ok(pmSection(t.w).querySelector('a.compte-v2_btn.is-principal'));
     t.dom.window.close();
   }
   {
     // A failed payment makes the update the primary action, even on a valid card
     const t = await withPms([CARDS[5]], [VISA]);
-    assert.strictEqual(pmSection(t.w).querySelector('a.ordo-subs-btn').textContent, 'Mettre à jour');
-    assert.ok(pmSection(t.w).querySelector('a.ordo-subs-btn.is-primary'));
+    assert.strictEqual(pmSection(t.w).querySelector('a.compte-v2_btn').textContent, 'Mettre à jour');
+    assert.ok(pmSection(t.w).querySelector('a.compte-v2_btn.is-principal'));
     t.dom.window.close();
   }
   {
@@ -384,7 +395,7 @@ async function main() {
   {
     // No payment method in the response (free account): no section, and the block goes too
     const t = await withPms([CARDS[3]], []);
-    assert.strictEqual(pmSection(t.w), null);
+    assert.ok(!shown(pmSection(t.w)));
     assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
     t.dom.window.close();
   }
@@ -400,9 +411,9 @@ async function main() {
     await wait(60);
     cards(t.w)[0].querySelector('button').click();
     await wait(60);
-    assert.strictEqual(t.w.document.querySelectorAll('.ordo-pm').length, 1);
-    assert.strictEqual(t.w.document.querySelectorAll('.ordo-pm-others').length, 1, 'saved methods kept after the re-render');
-    assert.ok(text(anchor(t.w)).includes('C’est fait'));
+    assert.strictEqual(pmRows(t.w).length, 1);
+    assert.strictEqual(root(t.w).querySelectorAll('.compte-v2_moyen-autres').length, 1, 'saved methods kept after the re-render');
+    assert.ok(text(root(t.w)).includes('C’est fait'));
     t.dom.window.close();
   }
 
@@ -429,7 +440,7 @@ async function main() {
   };
   {
     const s = await withSetup([{ status: 200, body: CHECKOUT }], { memberstack: { stripeCustomerId: 'cus_ms', memberId: 'mem_ms', email: 'dr@example.fr' } });
-    const link = pmSection(s.t.w).querySelector('a.ordo-subs-btn');
+    const link = pmSection(s.t.w).querySelector('a.compte-v2_btn');
     assert.strictEqual(link.getAttribute('href'), '/membership/moyen-de-paiement', 'the page stays the address');
     const ev = click(s.t.w, link);
     assert.ok(ev.defaultPrevented);
@@ -456,7 +467,7 @@ async function main() {
   {
     // Without the shared member utilities, the account snapshot provides the Stripe customer
     const s = await withSetup([{ status: 200, body: CHECKOUT }]);
-    click(s.t.w, pmSection(s.t.w).querySelector('a.ordo-subs-btn'));
+    click(s.t.w, pmSection(s.t.w).querySelector('a.compte-v2_btn'));
     await wait(60);
     assert.strictEqual(JSON.parse(s.calls[1].options.body).stripeCustomerId, 'cus_test');
     assert.deepStrictEqual(s.navigations, [CHECKOUT.url]);
@@ -465,7 +476,7 @@ async function main() {
   {
     // A double click creates one session only
     const s = await withSetup([{ status: 200, body: CHECKOUT, delay: 40 }]);
-    const link = pmSection(s.t.w).querySelector('a.ordo-subs-btn');
+    const link = pmSection(s.t.w).querySelector('a.compte-v2_btn');
     click(s.t.w, link);
     const second = click(s.t.w, link);
     assert.ok(second.defaultPrevented);
@@ -478,7 +489,7 @@ async function main() {
   for (const failure of [{ status: 500, body: { error: 'boom' } }, { status: 200, body: { url: 'javascript:alert(1)' } }, { status: 200, body: { url: 'http://checkout.stripe.com/g/pay/cs_live_x' } }, { status: 200, body: {} }, { transport: 'Failed to fetch' }]) {
     // Any failure lands on the payment method page, and says so
     const s = await withSetup([failure]);
-    const link = pmSection(s.t.w).querySelector('a.ordo-subs-btn');
+    const link = pmSection(s.t.w).querySelector('a.compte-v2_btn');
     click(s.t.w, link);
     await wait(60);
     assert.deepStrictEqual(s.navigations, ['/membership/moyen-de-paiement'], JSON.stringify(failure));
@@ -490,14 +501,14 @@ async function main() {
   {
     // A new-tab click keeps the browser's own behaviour, and so does a member without a Stripe customer
     const s = await withSetup([{ status: 200, body: CHECKOUT }]);
-    const ev = click(s.t.w, pmSection(s.t.w).querySelector('a.ordo-subs-btn'), { ctrlKey: true });
+    const ev = click(s.t.w, pmSection(s.t.w).querySelector('a.compte-v2_btn'), { ctrlKey: true });
     assert.ok(!ev.defaultPrevented);
     await wait(30);
     assert.strictEqual(s.calls.length, 1);
     s.t.dom.window.close();
     const n = await withSetup([{ status: 200, body: CHECKOUT }]);
     n.t.w.OrdoAccount.member.stripeCustomerId = '';
-    const ev2 = click(n.t.w, pmSection(n.t.w).querySelector('a.ordo-subs-btn'));
+    const ev2 = click(n.t.w, pmSection(n.t.w).querySelector('a.compte-v2_btn'));
     assert.ok(!ev2.defaultPrevented);
     await wait(30);
     assert.strictEqual(n.calls.length, 1);
@@ -507,7 +518,7 @@ async function main() {
     // Stripe serves the same page under other paths than /c/pay/: all of them open, none falls back
     const url = 'https://checkout.stripe.com/' + path + '/pay/cs_live_a1B2c3#fragment';
     const s = await withSetup([{ status: 200, body: { url } }]);
-    click(s.t.w, pmSection(s.t.w).querySelector('a.ordo-subs-btn'));
+    click(s.t.w, pmSection(s.t.w).querySelector('a.compte-v2_btn'));
     await wait(60);
     assert.deepStrictEqual(s.navigations, [url], path);
     assert.strictEqual(JSON.parse(await s.beacons[0].blob.text()).checkoutSessionId, 'cs_live_a1B2c3', 'id read from the address when the body has none');
@@ -517,7 +528,7 @@ async function main() {
   {
     // The failed-payment link on a card opens Stripe the same way
     const s = await withSetup([{ status: 200, body: CHECKOUT }], { list: [CARDS[5]] });
-    click(s.t.w, cards(s.t.w)[0].querySelector('a.ordo-subs-link'));
+    click(s.t.w, cards(s.t.w)[0].querySelector('a.compte-v2_lien'));
     await wait(60);
     assert.strictEqual(s.calls[1].url, 'https://billing.ordotype.fr/.netlify/functions/create-checkout');
     assert.deepStrictEqual(s.navigations, [CHECKOUT.url]);
@@ -531,13 +542,14 @@ async function main() {
     { ref: 'bbbbbbbbbbbbbbbbbbbb', date: '2026-09-01', label: 'Module Rhumatologie', amount: 500, currency: 'eur', status: 'processing', pdf: true },
     { ref: 'cccccccccccccccccccc', date: '2026-08-14', label: null, amount: 3000, currency: 'eur', status: 'due', pdf: true },
   ];
-  const invSection = (w) => w.document.querySelector('.ordo-inv');
-  const helpBox = (w) => w.document.querySelector('.ordo-help');
+  const invSection = (w) => sectionOf(w, 'factures');
+  const invRows = (w) => Array.from(invSection(w).querySelectorAll('.compte-v2_facture[data-ordo-rendu]'));
+  const helpBox = (w) => root(w).querySelector('[data-ordo-aide-bloc]');
+  const toggleSlot = (w) => invSection(w).querySelector('[data-ordo-slot="factures-email"]');
   async function withInvoices(invoices, { outcomes = [], portal = true, toggle = false, list = [CARDS[0]] } = {}) {
     const t = page({ portal });
     if (toggle) {
-      t.w.document.getElementById('invoices-block').innerHTML = '<div class="w-embed"><div id="ordotype-invoice-emails">Recevoir mes factures par e-mail</div></div>';
-      // Like the real toggle, it keeps its own node: once detached, getElementById no longer finds it.
+      // The page's own toggle Embed, in its invoices block. Like the real toggle, it keeps its own node.
       const node = t.w.document.getElementById('ordotype-invoice-emails').parentElement;
       t.relocated = [];
       t.w.OrdoInvoiceEmails = {
@@ -557,72 +569,68 @@ async function main() {
   {
     const { t } = await withInvoices(INVOICES, { toggle: true });
     const s = invSection(t.w);
-    assert.ok(s, 'invoices section rendered');
-    const rows = Array.from(s.querySelectorAll('.ordo-inv-row:not(.ordo-inv-head)')).map((r) => text(r));
+    assert.ok(shown(s), 'invoices section rendered');
+    const rows = invRows(t.w).map((r) => text(r));
     assert.deepStrictEqual(rows, [
       '14 sept. 2026 Médecine Générale 15 € Payée PDF',
       '1er sept. 2026 Module Rhumatologie 5 € Prélèvement en cours PDF',
       '14 août 2026 Abonnement 30 € À régler Régler',
     ]);
-    assert.strictEqual(text(s.querySelector('.ordo-inv-head')), 'Date Abonnement Montant Statut Factures');
-    assert.strictEqual(s.querySelectorAll('[role="row"]').length, 4);
-    assert.ok(s.querySelector('.ordo-inv-tone-paid') && s.querySelector('.ordo-inv-tone-pending') && s.querySelector('.ordo-inv-tone-due'));
-    assert.strictEqual(s.querySelectorAll('.ordo-inv-row')[3].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
-    assert.strictEqual(s.querySelector('button.ordo-inv-pdf').getAttribute('aria-label'), 'Télécharger la facture du 14 septembre 2026');
-    // Order: subscriptions, payment method, invoices, help
-    const order = Array.from(anchor(t.w).children).map((n) => n.className);
-    assert.deepStrictEqual(order, ['ordo-subs', 'ordo-subs ordo-pm', 'ordo-subs ordo-inv', 'ordo-help']);
+    assert.strictEqual(s.querySelectorAll('[role="row"]').length, 4, 'the Designer\'s header row, then one row per invoice');
+    assert.ok(s.querySelector('.compte-v2_badge.is-paye') && s.querySelector('.compte-v2_badge.is-en-cours') && s.querySelector('.compte-v2_badge.is-a-regler'));
+    assert.strictEqual(invRows(t.w)[2].querySelector('a.compte-v2_lien').getAttribute('href'), '/membership/moyen-de-paiement');
+    assert.strictEqual(s.querySelector('button.compte-v2_pdf').getAttribute('aria-label'), 'Télécharger la facture du 14 septembre 2026');
     // The page's invoices block gives way, and its invoice emails toggle moves into the section
     assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, 'none');
     assert.strictEqual(t.relocated.length, 1);
-    assert.ok(s.querySelector('.ordo-inv-emails #ordotype-invoice-emails'));
+    assert.ok(toggleSlot(t.w).querySelector('#ordotype-invoice-emails'));
     // The billing portal stays one click away
-    const more = Array.from(s.querySelectorAll('button.ordo-subs-link')).find((b) => b.textContent === 'Toutes mes factures et mes informations de facturation');
+    const more = s.querySelector('button[data-subs-action="portail"]');
+    assert.strictEqual(text(more), 'Toutes mes factures et mes informations de facturation');
+    assert.ok(shown(more));
     more.click();
     assert.strictEqual(t.opened.length, 1);
-    // Help box with icons: email, phone, videos
+    // Help box shown, each of its links named for the measurement
     const help = helpBox(t.w);
-    assert.strictEqual(text(help), 'Une question sur votre abonnement ou vos factures ? comptabilite@ordotype.fr +33 (0)6 76 52 00 55 Appel non surtaxé Vidéo : ajouter un moyen de paiement Vidéo : obtenir mes factures');
-    assert.strictEqual(help.querySelector('a[href="mailto:comptabilite@ordotype.fr"]').querySelectorAll('svg').length, 1);
-    assert.ok(help.querySelector('a[href="tel:+33676520055"] svg'));
-    assert.strictEqual(help.querySelectorAll('a.ordo-help-video svg').length, 2);
+    assert.ok(shown(help));
+    assert.deepStrictEqual(Array.from(help.querySelectorAll('a')).map((a) => a.getAttribute('data-subs-action')),
+      ['aide_email', 'aide_telephone', 'video_moyen_de_paiement', 'video_factures']);
     assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }
   {
     // The invoice emails script can run after the list is rendered: the toggle still moves in
     const t2 = page();
-    t2.w.document.getElementById('invoices-block').innerHTML = '<div class="w-embed"><div id="ordotype-invoice-emails">Recevoir mes factures par e-mail</div></div>';
     const node = t2.w.document.getElementById('ordotype-invoice-emails').parentElement;
     installFetch(t2.w, [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES } }]);
     t2.w.eval(SCRIPT);
     await wait(60);
-    assert.ok(invSection(t2.w), 'list rendered first');
+    assert.ok(shown(invSection(t2.w)), 'list rendered first');
     assert.strictEqual(node.parentElement.id, 'invoices-block', 'toggle not moved yet');
     t2.w.OrdoInvoiceEmails = { relocate(container) { container.appendChild(node); return true; } };
     await wait(260);
-    assert.ok(invSection(t2.w).querySelector('.ordo-inv-emails #ordotype-invoice-emails'), 'moved once the script is there');
+    assert.ok(toggleSlot(t2.w).querySelector('#ordotype-invoice-emails'), 'moved once the script is there');
     t2.dom.window.close();
   }
   {
     // Without the portal hook, no dead link
     const { t } = await withInvoices(INVOICES, { portal: false });
-    assert.ok(!text(invSection(t.w)).includes('Toutes mes factures'));
+    assert.ok(!shown(invSection(t.w).querySelector('button[data-subs-action="portail"]')));
     t.dom.window.close();
   }
   {
     // Invoices unknown (the function could not read them): the page's block stays, no help box
     const { t } = await withInvoices(null);
-    assert.strictEqual(invSection(t.w), null);
-    assert.strictEqual(helpBox(t.w), null);
+    assert.ok(!shown(invSection(t.w)));
+    assert.ok(!shown(helpBox(t.w)));
     assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
     t.dom.window.close();
   }
   {
     // No invoice at all: no section, the help box replaces the block
     const { t } = await withInvoices([]);
-    assert.strictEqual(invSection(t.w), null);
-    assert.ok(helpBox(t.w));
+    assert.ok(!shown(invSection(t.w)));
+    assert.ok(shown(helpBox(t.w)));
     assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, 'none');
     t.dom.window.close();
   }
@@ -635,7 +643,7 @@ async function main() {
     t.w.URL.createObjectURL = (b) => { blobs.push(b); return 'blob:facture'; };
     t.w.URL.revokeObjectURL = () => {};
     t.w.HTMLAnchorElement.prototype.click = function() { saved.push({ href: this.getAttribute('href'), download: this.download }); };
-    invSection(t.w).querySelector('button.ordo-inv-pdf').click();
+    invSection(t.w).querySelector('button.compte-v2_pdf').click();
     await wait(60);
     assert.strictEqual(calls.length, 2);
     assertSimple(calls[1].options, { action: 'invoice_pdf', ref: 'aaaaaaaaaaaaaaaaaaaa' });
@@ -656,7 +664,7 @@ async function main() {
     t.w.URL.createObjectURL = () => 'blob:facture';
     t.w.URL.revokeObjectURL = () => {};
     t.w.HTMLAnchorElement.prototype.click = function() {};
-    const btn = invSection(t.w).querySelector('button.ordo-inv-pdf');
+    const btn = invSection(t.w).querySelector('button.compte-v2_pdf');
     btn.click();
     await wait(60);
     assert.strictEqual(btn.lastChild.textContent, 'Réessayer');
@@ -677,9 +685,9 @@ async function main() {
     const navs = [];
     t.w.__navigate = (u) => navs.push(u);
     const s = invSection(t.w);
-    assert.strictEqual(text(s.querySelector('.ordo-inv-row:not(.ordo-inv-head)')), '2 juin 2026 Médecine Générale 30 € Impayée Régler');
+    assert.strictEqual(text(invRows(t.w)[0]), '2 juin 2026 Médecine Générale 30 € Impayée Régler');
     assert.strictEqual(s.querySelector('a[href="/membership/moyen-de-paiement"]'), null, 'not the payment method page');
-    const btn = s.querySelector('button.ordo-subs-link[aria-label="Régler la facture du 2 juin 2026"]');
+    const btn = s.querySelector('button.compte-v2_lien[aria-label="Régler la facture du 2 juin 2026"]');
     btn.click();
     assert.strictEqual(btn.textContent, 'Patientez…');
     await wait(60);
@@ -696,7 +704,7 @@ async function main() {
     ] });
     const navs = [];
     t.w.__navigate = (u) => navs.push(u);
-    const btn = invSection(t.w).querySelector('button.ordo-subs-link');
+    const btn = invSection(t.w).querySelector('button[data-subs-action="regler"]');
     btn.click();
     await wait(60);
     assert.deepStrictEqual(navs, []);
@@ -716,7 +724,7 @@ async function main() {
       { ref: 'not-a-ref', date: '2026-07-14', label: null, amount: 3000, currency: 'eur', status: 'uncollectible', pdf: true, pay: 'invoice' },
     ];
     const { t } = await withInvoices(due);
-    assert.strictEqual(invSection(t.w).querySelectorAll('a.ordo-subs-link[href="/membership/moyen-de-paiement"]').length, 3);
+    assert.strictEqual(invSection(t.w).querySelectorAll('a.compte-v2_lien[href="/membership/moyen-de-paiement"]').length, 3);
     t.dom.window.close();
   }
   {
@@ -725,7 +733,7 @@ async function main() {
     const { t } = await withInvoices(odd);
     assert.strictEqual(invSection(t.w).querySelector('img'), null);
     assert.ok(text(invSection(t.w)).includes('<img src=x onerror=alert(1)>'));
-    assert.strictEqual(invSection(t.w).querySelector('button.ordo-inv-pdf'), null);
+    assert.strictEqual(invSection(t.w).querySelector('button.compte-v2_pdf'), null);
     t.dom.window.close();
   }
   {
@@ -739,9 +747,9 @@ async function main() {
     });
     cards(t.w)[0].querySelector('button').click();
     await wait(60);
-    assert.strictEqual(t.w.document.querySelectorAll('.ordo-inv').length, 1);
-    assert.strictEqual(t.w.document.querySelectorAll('.ordo-help').length, 1);
-    assert.ok(invSection(t.w).querySelector('#ordotype-invoice-emails'), 'toggle moved into the new section');
+    assert.strictEqual(invRows(t.w).length, INVOICES.length);
+    assert.ok(shown(helpBox(t.w)));
+    assert.ok(toggleSlot(t.w).querySelector('#ordotype-invoice-emails'), 'toggle still in the section');
     t.dom.window.close();
   }
   {
@@ -758,7 +766,7 @@ async function main() {
     const block = t.w.document.getElementById('invoices-block');
     assert.strictEqual(block.style.display, '');
     assert.ok(block.querySelector('#ordotype-invoice-emails'), 'toggle back in the block');
-    assert.strictEqual(invSection(t.w), null);
+    assert.ok(!shown(invSection(t.w)));
     t.dom.window.close();
   }
 
@@ -768,7 +776,7 @@ async function main() {
     installFetch(t.w, [{ status: 502, body: { error: 'upstream_error' } }]);
     t.w.eval(SCRIPT);
     await wait(100);
-    assert.strictEqual(t.w.document.getElementById('old-section').style.display, '');
+    assert.strictEqual(oldSection(t.w).style.display, '');
     assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '');
     t.dom.window.close();
   }
@@ -785,29 +793,29 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: withActions } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    const btn = cards(t.w)[0].querySelector('.ordo-subs-actions button');
+    const btn = cards(t.w)[0].querySelector('.compte-v2_actions button');
     assert.strictEqual(btn.textContent, 'Résilier');
     btn.click();
     // The question shows in the card, the warning window stays closed.
     assert.strictEqual(t.w.document.getElementById('cancellation-warning-modal').style.display, 'none');
-    const note = cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]');
+    const note = cards(t.w)[0].querySelector('.compte-v2_muted[role="status"]');
     assert.strictEqual(note.textContent, 'Résilier cet abonnement ? La page suivante vous propose d’autres options avant de confirmer.');
-    assert.strictEqual(note.nextElementSibling, cards(t.w)[0].querySelector('.ordo-subs-actions'));
-    const row = cards(t.w)[0].querySelector('.ordo-subs-actions');
+    assert.strictEqual(note.nextElementSibling, cards(t.w)[0].querySelector('.compte-v2_actions'));
+    const row = cards(t.w)[0].querySelector('.compte-v2_actions');
     assert.deepStrictEqual([...row.children].map((n) => [n.tagName, n.textContent, n.getAttribute('href')]),
       [['BUTTON', 'Garder mon abonnement', null], ['A', 'Continuer la résiliation', '/membership/offre-annulation']]);
     assert.strictEqual(t.w.document.activeElement, row.children[0]);
     // « Garder » puts the card back as it was.
     row.children[0].click();
-    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]'), null);
+    assert.strictEqual(cards(t.w)[0].querySelector('.compte-v2_muted[role="status"]'), null);
     assert.deepStrictEqual([...row.children].map((n) => n.textContent), ['Résilier']);
     assert.strictEqual(t.w.document.activeElement, row.children[0]);
     assert.strictEqual(t.reported.length, 0);
-    const link = cards(t.w)[1].querySelector('.ordo-subs-actions a');
+    const link = cards(t.w)[1].querySelector('.compte-v2_actions a');
     assert.strictEqual(link.textContent, 'Voir les offres');
     assert.strictEqual(link.getAttribute('href'), '/nos-offres');
-    assert.strictEqual(cards(t.w)[2].querySelector('.ordo-subs-actions'), null);
-    assert.strictEqual(cards(t.w)[3].querySelector('.ordo-subs-actions'), null);
+    assert.strictEqual(cards(t.w)[2].querySelector('.compte-v2_actions'), null);
+    assert.strictEqual(cards(t.w)[3].querySelector('.compte-v2_actions'), null);
     t.dom.window.close();
   }
 
@@ -817,10 +825,10 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[1], { action: { label: 'Résilier', href: '#cancellation-warning-modal' } })] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
-    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]').textContent,
+    cards(t.w)[0].querySelector('.compte-v2_actions button').click();
+    assert.strictEqual(cards(t.w)[0].querySelector('.compte-v2_muted[role="status"]').textContent,
       'Résilier cet abonnement ? La page suivante vous demande de confirmer.');
-    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions a').getAttribute('href'), '/membership/annulation-abonnement');
+    assert.strictEqual(cards(t.w)[0].querySelector('.compte-v2_actions a').getAttribute('href'), '/membership/annulation-abonnement');
     t.dom.window.close();
   }
 
@@ -830,9 +838,9 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[0], { action: { label: 'Résilier', href: '#cancellation-warning-modal' } })] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
+    cards(t.w)[0].querySelector('.compte-v2_actions button').click();
     assert.strictEqual(t.w.document.getElementById('cancellation-warning-modal').style.display, 'block');
-    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-muted[role="status"]'), null);
+    assert.strictEqual(cards(t.w)[0].querySelector('.compte-v2_muted[role="status"]'), null);
     assert.strictEqual(t.reported.length, 1);
     assert.strictEqual(t.reported[0].err.name, 'SubscriptionsOverviewCancelLink');
     t.dom.window.close();
@@ -844,7 +852,7 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[0], { action: { label: 'Résilier', href: '#absent' } })] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
+    cards(t.w)[0].querySelector('.compte-v2_actions button').click();
     assert.strictEqual(t.reported.length, 1);
     t.dom.window.close();
   }
@@ -857,8 +865,8 @@ async function main() {
     await wait(60);
     const [paused, scheduled] = cards(t.w);
     assert.ok(cardText(t.w, 0).endsWith('Annuler définitivement Reprendre mon abonnement'));
-    assert.ok(scheduled.querySelector('.ordo-subs-actions'));
-    paused.querySelector('.is-primary').click();
+    assert.ok(scheduled.querySelector('.compte-v2_actions'));
+    paused.querySelector('.is-principal').click();
     await wait(20);
     assert.deepStrictEqual(t.pauseCalls, ['resume']);
     assert.ok(text(paused).includes('Votre abonnement a été réactivé !'));
@@ -893,7 +901,7 @@ async function main() {
     ]);
     t.w.eval(SCRIPT);
     await wait(60);
-    const btn = cards(t.w)[0].querySelector('.ordo-subs-actions button');
+    const btn = cards(t.w)[0].querySelector('.compte-v2_actions button');
     assert.strictEqual(btn.textContent, 'Me réabonner');
     btn.click();
     await wait(20);
@@ -903,9 +911,9 @@ async function main() {
     await wait(60);
     assert.strictEqual(calls.length, 2);
     assertSimple(calls[1].options, { action: 'reactivate', ref: REF });
-    assert.ok(text(anchor(t.w)).includes('C’est fait : votre abonnement continue.'));
+    assert.ok(text(root(t.w)).includes('C’est fait : votre abonnement continue.'));
     assert.ok(cardText(t.w, 0).startsWith('Stockage Actif'));
-    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions'), null);
+    assert.strictEqual(cards(t.w)[0].querySelector('.compte-v2_actions'), null);
     t.dom.window.close();
   }
   {
@@ -916,7 +924,7 @@ async function main() {
     ]);
     t.w.eval(SCRIPT);
     await wait(60);
-    const btn = cards(t.w)[0].querySelector('.ordo-subs-actions button');
+    const btn = cards(t.w)[0].querySelector('.compte-v2_actions button');
     btn.click();
     await wait(60);
     assert.ok(text(cards(t.w)[0]).includes('Ce réabonnement n’est pas possible depuis cette page : écrivez-nous.'));
@@ -929,7 +937,7 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [Object.assign({}, CARDS[4], { reactivation: 'sub_123' })] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions'), null);
+    assert.strictEqual(cards(t.w)[0].querySelector('.compte-v2_actions'), null);
     t.dom.window.close();
   }
 
@@ -939,7 +947,7 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[6]] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(cards(t.w)[0].querySelector('.ordo-subs-actions'), null);
+    assert.strictEqual(cards(t.w)[0].querySelector('.compte-v2_actions'), null);
     t.dom.window.close();
   }
 
@@ -949,12 +957,12 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[5]] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(cards(t.w)[0].querySelector('a.ordo-subs-link').getAttribute('href'), '/membership/moyen-de-paiement');
+    assert.strictEqual(cards(t.w)[0].querySelector('a.compte-v2_lien').getAttribute('href'), '/membership/moyen-de-paiement');
     assert.ok(cardText(t.w, 0).endsWith('Paiement en échec Modifier le moyen de paiement'));
     assert.strictEqual(t.opened.length, 0);
   }
 
-  // Logo from the collection (Webflow files only), and the whole offer in one blue chip
+  // Logo from the collection (Webflow files only), and the whole offer in one chip
   {
     const t = page();
     const withLogo = Object.assign({}, CARDS[0], { icon: 'https://cdn.prod.website-files.com/604b/66695dd3_ModuleIcon.svg' });
@@ -962,12 +970,13 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [withLogo, badLogo] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    const img = cards(t.w)[0].querySelector('.ordo-subs-head .ordo-subs-name img.ordo-subs-logo');
+    const img = cards(t.w)[0].querySelector('[data-ordo-champ="nom"] img');
     assert.ok(img, 'logo before the name');
+    assert.strictEqual(img.nextElementSibling, cards(t.w)[0].querySelector('[data-ordo-champ="libelle"]'));
     assert.strictEqual(img.getAttribute('src'), withLogo.icon);
     assert.strictEqual(img.getAttribute('alt'), '');
     assert.strictEqual(cards(t.w)[1].querySelector('img'), null, 'a logo from elsewhere is not shown');
-    const chip = cards(t.w)[0].querySelector('.ordo-subs-offer .ordo-subs-badge');
+    const chip = cards(t.w)[0].querySelector('[data-ordo-champ="offre"]');
     assert.strictEqual(text(chip), '-50 % jusqu’au 21 décembre 2026');
     assert.strictEqual(text(chip.querySelector('strong')), '-50 %');
     t.dom.window.close();
@@ -979,7 +988,7 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [] } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.ok(text(anchor(t.w)).endsWith('Vous n’avez pas d’abonnement en cours.'));
+    assert.ok(text(sectionOf(t.w, 'abonnements')).endsWith('Vous n’avez pas d’abonnement en cours.'));
   }
 
   // The list is requested with the page, before its tab is open, and is already there when it opens
@@ -990,11 +999,11 @@ async function main() {
     await wait(60);
     assert.strictEqual(calls.length, 1, 'requested at load');
     assert.strictEqual(cards(t.w).length, CARDS.length, 'rendered while the tab is closed');
-    assert.strictEqual(t.observer.target.className, 'tab-pane');
+    assert.strictEqual(t.observer.target, root(t.w).parentElement, 'the tab\'s content, never the Facturation it hides');
     t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
     await wait(260);
     assert.strictEqual(calls.length, 1, 'not requested again');
-    assert.strictEqual(t.w.document.querySelector('.ordo-subs-skel'), null, 'no placeholder over the list');
+    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null, 'no placeholder over the list');
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
   {
@@ -1004,32 +1013,14 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS }, delay: 500 }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(anchor(t.w).style.display, 'none');
-    assert.strictEqual(anchor(t.w).parentElement.style.display, 'none');
+    assert.ok(!filled(t.w), 'hidden while the tab is closed');
+    assert.strictEqual(root(t.w).style.display, 'none');
     t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
     await wait(260);
-    assert.ok(t.w.document.querySelector('.ordo-subs-skel'));
+    assert.ok(root(t.w).querySelector('.compte-v2_squelette'));
+    assert.ok(filled(t.w));
     await wait(300);
-    assert.strictEqual(t.w.document.querySelector('.ordo-subs-skel'), null);
-    assert.strictEqual(cards(t.w).length, CARDS.length);
-  }
-
-  // A second copy of the script leaves an already filled block alone
-  {
-    const t = page({ prefilled: true });
-    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
-    t.w.eval(SCRIPT);
-    await wait(60);
-    assert.strictEqual(calls.length, 0);
-  }
-
-  // Whitespace left in the embed is not a rendered block
-  {
-    const t = page({ whitespace: true });
-    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
-    t.w.eval(SCRIPT);
-    await wait(60);
-    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null);
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
 
@@ -1051,8 +1042,8 @@ async function main() {
     t.w.eval(SCRIPT);
     await wait(600);
     assert.strictEqual(calls.length, 2);
-    assert.strictEqual(anchor(t.w).style.display, 'none');
-    assert.strictEqual(anchor(t.w).childNodes.length, 0);
+    assert.ok(!filled(t.w));
+    assert.strictEqual(root(t.w).querySelectorAll('[data-ordo-rendu]').length, 0);
     assert.strictEqual(t.network.length, 1);
   }
 
@@ -1063,7 +1054,7 @@ async function main() {
     t.w.eval(SCRIPT);
     await wait(100);
     assert.strictEqual(calls.length, 1);
-    assert.strictEqual(anchor(t.w).style.display, 'none');
+    assert.ok(!filled(t.w));
     assert.strictEqual(t.reported.length, 1);
   }
 
@@ -1090,10 +1081,10 @@ async function main() {
     assert.deepStrictEqual(ev('subscriptions_list').map((e) => [e.subs_outcome, e.subs_status, e.rollout_percent, e.rollout_bucket]),
       [['shown', 'active+canceling+free', 100, 7]]);
     cards(t.w)[0].querySelector('button').click();
-    const help = t.w.document.querySelector('.ordo-help a[href^="mailto:"]');
+    const help = helpBox(t.w).querySelector('a[href^="mailto:"]');
     help.addEventListener('click', (e) => e.preventDefault());
     help.dispatchEvent(new t.w.MouseEvent('click', { bubbles: true, cancelable: true }));
-    invSection(t.w).querySelector('button.ordo-inv-pdf').click();
+    invSection(t.w).querySelector('button.compte-v2_pdf').click();
     await wait(60);
     cards(t.w)[1].querySelector('button').click();
     await wait(60);
@@ -1135,9 +1126,9 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: [withButton, CARDS[5], CARDS[6]], paymentMethods: [VISA], invoices: INV } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    const named = Array.from(anchor(t.w).querySelectorAll('a, button')).filter((n) => !n.hasAttribute('data-subs-action'));
+    const named = Array.from(root(t.w).querySelectorAll('a, button')).filter((n) => !n.hasAttribute('data-subs-action'));
     assert.deepStrictEqual(named.map((n) => n.textContent), [], 'no anonymous button or link');
-    const names = Array.from(anchor(t.w).querySelectorAll('[data-subs-action]')).map((n) => n.getAttribute('data-subs-action'));
+    const names = Array.from(root(t.w).querySelectorAll('[data-subs-action]')).map((n) => n.getAttribute('data-subs-action'));
     for (const want of ['gerer_mon_offre', 'impaye_modifier_moyen', 'reprendre_pause', 'annuler_pause', 'mettre_a_jour_moyen', 'regler', 'portail', 'aide_email', 'aide_telephone', 'video_moyen_de_paiement', 'video_factures']) {
       assert.ok(names.includes(want), want);
     }
@@ -1178,16 +1169,6 @@ async function main() {
     assert.ok(t.w.document.documentElement.classList.contains('ordo-subs-fallback'), `status ${status}`);
     t.dom.window.close();
   }
-  {
-    // No place for the list on the page: the page blocks stay
-    const t = page();
-    t.w.document.getElementById('ordotype-subscriptions').remove();
-    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
-    t.w.eval(SCRIPT);
-    await wait(60);
-    assert.ok(t.w.document.documentElement.classList.contains('ordo-subs-fallback'));
-    t.dom.window.close();
-  }
 
   // A misconfigured function (503) is an outage: hidden, and reported
   {
@@ -1195,7 +1176,7 @@ async function main() {
     installFetch(t.w, [{ status: 503, body: { error: 'not_configured' } }]);
     t.w.eval(SCRIPT);
     await wait(100);
-    assert.strictEqual(anchor(t.w).style.display, 'none');
+    assert.ok(!filled(t.w));
     assert.strictEqual(t.reported.length, 1);
   }
 
@@ -1205,7 +1186,7 @@ async function main() {
     installFetch(t.w, [{ status, body: { error: 'x' } }]);
     t.w.eval(SCRIPT);
     await wait(100);
-    assert.strictEqual(anchor(t.w).style.display, 'none', `status ${status}`);
+    assert.ok(!filled(t.w), `status ${status}`);
     assert.strictEqual(t.reported.length + t.network.length, 0, `status ${status}`);
   }
 
@@ -1215,7 +1196,7 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { ok: true } }]);
     t.w.eval(SCRIPT);
     await wait(100);
-    assert.strictEqual(anchor(t.w).style.display, 'none');
+    assert.ok(!filled(t.w));
     assert.strictEqual(t.reported.length, 1);
   }
 
@@ -1225,10 +1206,10 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS }, delay: 400 }]);
     t.w.eval(SCRIPT);
     await wait(300);
-    assert.ok(t.w.document.querySelector('.ordo-subs-skel'));
-    assert.strictEqual(anchor(t.w).style.display, '');
+    assert.ok(root(t.w).querySelector('.compte-v2_squelette'));
+    assert.ok(filled(t.w));
     await wait(300);
-    assert.strictEqual(t.w.document.querySelector('.ordo-subs-skel'), null);
+    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null);
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
 
@@ -1237,7 +1218,8 @@ async function main() {
     const ADRESSE = { name: 'Dr Claire Martin', line1: '12 rue de la République', line2: '', postalCode: '69002', city: 'Lyon', country: 'FR' };
     const PM = [{ type: 'card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2028, expired: false, expiresSoon: false, usedBy: [] }];
     const corps = (adresse) => ({ subscriptions: CARDS.slice(0, 1), paymentMethods: PM, invoices: [], billingAddress: adresse });
-    const section = (w) => w.document.querySelector('.ordo-addr');
+    const section = (w) => sectionOf(w, 'adresse');
+    const editAdresse = (w) => section(w).querySelector('[data-ordo-zone="adresse"] button.compte-v2_btn');
 
     // Lecture : après le moyen de paiement, avant l'aide ; pays en toutes lettres
     let t = page();
@@ -1245,8 +1227,7 @@ async function main() {
     t.w.eval(SCRIPT);
     await wait(60);
     const s1 = section(t.w);
-    assert.ok(s1, 'section adresse affichée');
-    assert.ok(t.w.document.querySelector('.ordo-pm').compareDocumentPosition(s1) & 4, 'après le moyen de paiement');
+    assert.ok(shown(s1), 'section adresse affichée');
     assert.ok(text(s1).includes('Dr Claire Martin'));
     assert.ok(text(s1).includes('69002 Lyon'));
     assert.ok(text(s1).includes('France'));
@@ -1257,37 +1238,38 @@ async function main() {
     installFetch(t.w, [{ status: 200, body: corps(null) }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(section(t.w), null);
+    assert.ok(!shown(section(t.w)));
     t = page();
     installFetch(t.w, [{ status: 200, body: corps({ name: '', line1: '', line2: '', postalCode: '', city: '', country: '' }) }]);
     t.w.eval(SCRIPT);
     await wait(60);
     assert.ok(text(section(t.w)).includes('Non renseigné'));
-    assert.ok(section(t.w).querySelector('.ordo-subs-btn.is-primary'), '« Ajouter » en bouton principal');
+    assert.ok(editAdresse(t.w).classList.contains('is-principal'), '« Ajouter » en bouton principal');
+    assert.strictEqual(editAdresse(t.w).textContent, 'Ajouter');
 
     // Modifier : champs préremplis ; Annuler revient à la lecture
     t = page();
     let calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    section(t.w).querySelector('.ordo-subs-btn').click();
+    editAdresse(t.w).click();
     let form = section(t.w).querySelector('form');
     assert.strictEqual(form.elements.line1.value, '12 rue de la République');
     assert.strictEqual(form.elements.country.value, 'FR');
     assert.ok(!form.elements.country.disabled, 'pays modifiable');
-    assert.ok(text(form).includes('Le pays ou la collectivité d\'outre-mer détermine la TVA'), 'phrase TVA sous le pays');
+    assert.ok(text(form).includes('Le pays ou la collectivité d’outre-mer détermine la TVA'), 'phrase TVA sous le pays');
     assert.ok(text(form).includes('Pays (outre-mer inclus)'), 'libellé du pays');
     [...form.querySelectorAll('button')].find((b) => b.textContent === 'Annuler').click();
     assert.strictEqual(section(t.w).querySelector('form'), null);
-    assert.strictEqual(t.w.document.activeElement, section(t.w).querySelector('.ordo-subs-btn'), 'focus rendu au bouton');
+    assert.strictEqual(t.w.document.activeElement, editAdresse(t.w), 'focus rendu au bouton');
 
     // Champ obligatoire manquant : message, aucun appel
-    section(t.w).querySelector('.ordo-subs-btn').click();
+    editAdresse(t.w).click();
     form = section(t.w).querySelector('form');
     form.elements.city.value = '  ';
     form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
     assert.strictEqual(calls.length, 1, 'pas d\'appel');
-    assert.ok(!form.querySelector('.ordo-addr-error').hidden);
+    assert.ok(!form.querySelector('[data-ordo-champ="erreur"]').hidden);
 
     // Enregistrement : corps envoyé, puis lecture à jour et confirmation
     t = page();
@@ -1295,7 +1277,7 @@ async function main() {
     calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 200, body: { ok: true, billingAddress: nouvelle } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    section(t.w).querySelector('.ordo-subs-btn').click();
+    editAdresse(t.w).click();
     form = section(t.w).querySelector('form');
     form.elements.line1.value = ' 3 place Bellecour ';
     form.elements.line2.value = 'Bât. B';
@@ -1314,7 +1296,7 @@ async function main() {
     calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 200, body: { ok: true, billingAddress: { ...ADRESSE, country: 'RE' } } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    section(t.w).querySelector('.ordo-subs-btn').click();
+    editAdresse(t.w).click();
     form = section(t.w).querySelector('form');
     form.elements.name.value = '';
     form.elements.country.value = 'RE';
@@ -1330,7 +1312,7 @@ async function main() {
     calls = installFetch(t.w, [{ status: 200, body: corps({ name: '', line1: '', line2: '', postalCode: '', city: '', country: '' }) }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    section(t.w).querySelector('.ordo-subs-btn').click();
+    editAdresse(t.w).click();
     form = section(t.w).querySelector('form');
     assert.strictEqual(form.elements.country.value, '');
     assert.ok(!form.elements.country.disabled);
@@ -1345,12 +1327,12 @@ async function main() {
     calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 400, body: { error: 'invalid_body' } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    section(t.w).querySelector('.ordo-subs-btn').click();
+    editAdresse(t.w).click();
     form = section(t.w).querySelector('form');
     form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
     await wait(60);
     assert.ok(text(section(t.w)).includes('Vérifiez les champs'));
-    assert.ok(![...form.querySelectorAll('button')].some((b) => b.disabled));
+    assert.ok(![...form.querySelectorAll('button, input[type="submit"]')].some((b) => b.disabled));
 
     // Valeurs rendues comme du texte
     t = page();
@@ -1366,7 +1348,8 @@ async function main() {
     const VIDE = { name: '', line1: '', line2: '', postalCode: '', city: '', country: '' };
     const INV = [{ ref: 'aaaaaaaaaaaaaaaaaaaa', date: '2026-09-14', label: 'Médecine Générale', amount: 1500, currency: 'eur', status: 'paid', pdf: true }];
     const GRATUIT = { subscriptions: [CARDS[3]], paymentMethods: [], otherPaymentMethods: [], invoices: [], billingAddress: VIDE, taxId: null, taxIdAllowed: true };
-    const section = (w) => w.document.querySelector('.ordo-addr');
+    const section = (w) => sectionOf(w, 'adresse');
+    const editAdresse = (w) => section(w).querySelector('[data-ordo-zone="adresse"] button.compte-v2_btn');
     async function ouvrir(body) {
       const t = page();
       installFetch(t.w, [{ status: 200, body }]);
@@ -1377,7 +1360,7 @@ async function main() {
     // Plans gratuits seuls, accès terminé seul, aucun plan : pas de carte
     for (const subscriptions of [[CARDS[3]], [CARDS[12]], [CARDS[3], CARDS[13]], []]) {
       const t = await ouvrir({ ...GRATUIT, subscriptions });
-      assert.strictEqual(section(t.w), null, subscriptions.map((c) => c.status).join('+') || 'aucun');
+      assert.ok(!shown(section(t.w)), subscriptions.map((c) => c.status).join('+') || 'aucun');
       assert.strictEqual(cards(t.w).length, subscriptions.length, 'la liste reste affichée');
       t.dom.window.close();
     }
@@ -1399,14 +1382,14 @@ async function main() {
     };
     for (const [nom, extra] of Object.entries(SIGNES)) {
       const t = await ouvrir({ ...GRATUIT, ...extra });
-      assert.ok(section(t.w), nom);
+      assert.ok(shown(section(t.w)), nom);
       assert.deepStrictEqual(t.erreurs, [], nom);
       t.dom.window.close();
     }
     // Sans adresse dans la réponse (pas de client Stripe) : jamais de carte, même avec des signes
     {
       const t = await ouvrir({ ...GRATUIT, billingAddress: null, paymentMethods: [VISA], invoices: INV, taxId: { value: 'FR12345678901', status: '' } });
-      assert.strictEqual(section(t.w), null);
+      assert.ok(!shown(section(t.w)));
       t.dom.window.close();
     }
   }
@@ -1419,11 +1402,15 @@ async function main() {
     const LIGNE = 'Numéro de TVA intracommunautaire FR12345678901';
     const LIEN = 'Vous avez un numéro de TVA intracommunautaire ? L’ajouter';
     const corps = (extra = {}) => ({ subscriptions: CARDS.slice(0, 1), paymentMethods: [VISA], invoices: [], billingAddress: ADRESSE, ...extra });
-    const section = (w) => w.document.querySelector('.ordo-addr');
-    const tva = (w) => w.document.querySelector('.ordo-addr-tva');
-    const tvaVisible = (w) => !!tva(w) && !tva(w).hidden && !!tva(w).firstChild;
-    const boutons = (node) => [...node.querySelectorAll('button')].map((b) => b.textContent);
-    const bouton = (node, label) => [...node.querySelectorAll('button')].find((b) => b.textContent === label);
+    const section = (w) => sectionOf(w, 'adresse');
+    const editAdresse = (w) => section(w).querySelector('[data-ordo-zone="adresse"] button.compte-v2_btn');
+    const tva = (w) => section(w).querySelector('[data-ordo-zone="tva"]');
+    const tvaVisible = (w) => shown(tva(w)) && !!tva(w).firstChild;
+    // Les formulaires du Designer envoient par un <input type="submit"> : son libellé est dans `value`.
+    const libelle = (n) => (n.tagName === 'INPUT' ? n.value : n.textContent);
+    const cliquables = (node) => [...node.querySelectorAll('button, input[type="submit"]')];
+    const boutons = (node) => cliquables(node).map(libelle);
+    const bouton = (node, label) => cliquables(node).find((b) => libelle(b) === label);
     const envoyer = (w, form) => form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     const mesures = (w) => w.dataLayer.filter((e) => e.event === 'subscriptions_action' && /^tva_/.test(e.subs_action))
       .map((e) => [e.subs_action, e.subs_outcome]);
@@ -1444,7 +1431,7 @@ async function main() {
       assert.strictEqual(tva(t.w).querySelector('input'), null, 'pas de champ');
       assert.ok(!text(section(t.w)).includes('Non renseigné'), 'pas de « Non renseigné »');
       assert.deepStrictEqual([...tva(t.w).querySelectorAll('button, a')].map((b) => b.textContent), ['L’ajouter'], 'seul « L’ajouter » est cliquable');
-      assert.ok(tva(t.w).querySelector('button.ordo-subs-link'), 'lien, pas bouton');
+      assert.ok(tva(t.w).querySelector('button.compte-v2_lien'), 'lien, pas bouton');
       assert.strictEqual(section(t.w).lastElementChild, tva(t.w), 'sous l\'adresse');
       assert.deepStrictEqual(t.erreurs, []);
       t.dom.window.close();
@@ -1465,14 +1452,13 @@ async function main() {
       const { t, calls } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [
         { status: 200, body: { ok: true, taxId: NUMERO }, delay: 40 },
       ]);
-      tva(t.w).querySelector('button.ordo-subs-link').click();
+      tva(t.w).querySelector('button.compte-v2_lien').click();
       const form = tva(t.w).querySelector('form');
       const input = form.querySelector('input');
       assert.strictEqual(text(form.querySelector('label')), 'Numéro de TVA intracommunautaire');
       assert.strictEqual(form.querySelector('label').getAttribute('for'), input.id);
       assert.strictEqual(input.type, 'text');
       assert.strictEqual(input.getAttribute('placeholder'), 'FR12345678901');
-      assert.strictEqual(input.maxLength, 20);
       assert.strictEqual(input.getAttribute('autocomplete'), 'off');
       assert.strictEqual(input.getAttribute('spellcheck'), 'false');
       assert.strictEqual(input.value, '');
@@ -1481,7 +1467,7 @@ async function main() {
       assert.deepStrictEqual(boutons(form), ['Annuler', 'Enregistrer']);
       input.value = '   ';
       envoyer(t.w, form);
-      const erreur = form.querySelector('.ordo-addr-error');
+      const erreur = form.querySelector('[data-ordo-champ="erreur"]');
       assert.strictEqual(erreur.getAttribute('role'), 'alert');
       assert.ok(!erreur.hidden);
       assert.strictEqual(erreur.textContent, 'Saisissez votre numéro de TVA.');
@@ -1496,8 +1482,8 @@ async function main() {
       assert.strictEqual(calls.length, 2);
       assertSimple(calls[1].options, { action: 'tax_id_update', value: 'FR 12 345 678 901' });
       assert.strictEqual(text(tva(t.w)), 'Numéro de TVA enregistré. ' + LIGNE + ' Modifier Retirer');
-      assert.strictEqual(tva(t.w).querySelector('.ordo-subs-flash').getAttribute('role'), 'status');
-      assert.strictEqual(tva(t.w).querySelector('.ordo-subs-btn.is-primary'), null, 'boutons secondaires');
+      assert.strictEqual(tva(t.w).querySelector('.compte-v2_flash').getAttribute('role'), 'status');
+      assert.strictEqual(tva(t.w).querySelector('.compte-v2_btn.is-principal'), null, 'boutons secondaires');
       assert.strictEqual(t.w.document.activeElement, bouton(tva(t.w), 'Modifier'), 'focus rendu à « Modifier »');
       assert.deepStrictEqual(mesures(t.w), [['tva_ajouter', 'click'], ['tva_enregistrer', 'click'], ['tva_enregistrer', 'ok']]);
       // Aucun paramètre de mesure nouveau
@@ -1542,13 +1528,13 @@ async function main() {
     ]) {
       const cas = String(reponse.status || reponse.transport);
       const { t } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [reponse]);
-      tva(t.w).querySelector('button.ordo-subs-link').click();
+      tva(t.w).querySelector('button.compte-v2_lien').click();
       const form = tva(t.w).querySelector('form');
       const input = form.querySelector('input');
       input.value = 'FR00';
       envoyer(t.w, form);
       await wait(60);
-      const erreur = form.querySelector('.ordo-addr-error');
+      const erreur = form.querySelector('[data-ordo-champ="erreur"]');
       assert.ok(!erreur.hidden, cas);
       assert.strictEqual(erreur.textContent, message, cas);
       assert.ok(tva(t.w).contains(form), 'saisie gardée ' + cas);
@@ -1580,8 +1566,8 @@ async function main() {
       assert.strictEqual(calls.length, 2);
       assertSimple(calls[1].options, { action: 'tax_id_remove' });
       assert.strictEqual(text(tva(t.w)), 'Numéro de TVA retiré. ' + LIEN);
-      assert.strictEqual(tva(t.w).querySelector('.ordo-subs-flash').getAttribute('role'), 'status');
-      assert.strictEqual(t.w.document.activeElement, tva(t.w).querySelector('button.ordo-subs-link'));
+      assert.strictEqual(tva(t.w).querySelector('.compte-v2_flash').getAttribute('role'), 'status');
+      assert.strictEqual(t.w.document.activeElement, tva(t.w).querySelector('button.compte-v2_lien'));
       assert.deepStrictEqual(mesures(t.w), [
         ['tva_retirer', 'click'], ['tva_annuler', 'click'], ['tva_retirer', 'click'], ['tva_retirer', 'click'], ['tva_retirer', 'ok'],
       ]);
@@ -1597,7 +1583,7 @@ async function main() {
       bouton(tva(t.w), 'Retirer').click();
       bouton(tva(t.w), 'Retirer').click();
       await wait(60);
-      const erreur = tva(t.w).querySelector('.ordo-addr-error');
+      const erreur = tva(t.w).querySelector('[data-ordo-champ="erreur"]');
       assert.strictEqual(erreur.getAttribute('role'), 'alert');
       assert.strictEqual(erreur.textContent, message);
       assert.ok(text(tva(t.w)).includes('FR12345678901'));
@@ -1626,8 +1612,8 @@ async function main() {
       ]);
       bouton(tva(t.w), 'Modifier').click();
       tva(t.w).querySelector('input').value = 'FR98765432109';
-      section(t.w).querySelector('.ordo-subs-btn').click();
-      const formAdresse = section(t.w).querySelector('form');
+      editAdresse(t.w).click();
+      const formAdresse = section(t.w).querySelector('[data-ordo-zone="adresse"] form');
       assert.ok(formAdresse.elements.line1, 'saisie de l\'adresse ouverte');
       assert.ok(!tva(t.w).contains(formAdresse));
       assert.strictEqual(tva(t.w).querySelector('input').value, 'FR98765432109', 'saisie TVA intacte');
@@ -1644,10 +1630,10 @@ async function main() {
     }
     {
       const { t } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [{ status: 200, body: { ok: true, taxId: NUMERO } }]);
-      section(t.w).querySelector('.ordo-subs-btn').click();
-      const formAdresse = section(t.w).querySelector('form');
+      editAdresse(t.w).click();
+      const formAdresse = section(t.w).querySelector('[data-ordo-zone="adresse"] form');
       formAdresse.elements.city.value = 'Villeurbanne';
-      tva(t.w).querySelector('button.ordo-subs-link').click();
+      tva(t.w).querySelector('button.compte-v2_lien').click();
       const formTva = tva(t.w).querySelector('form');
       formTva.querySelector('input').value = 'FR12345678901';
       envoyer(t.w, formTva);
@@ -1662,11 +1648,11 @@ async function main() {
       const { t } = await ouvrir(corps({ taxId: NUMERO, taxIdAllowed: true }), [
         { status: 200, body: { ok: true, billingAddress: ADRESSE, taxId: NUMERO, taxIdAllowed: true } },
       ]);
-      section(t.w).querySelector('.ordo-subs-btn').click();
-      envoyer(t.w, section(t.w).querySelector('form'));
+      editAdresse(t.w).click();
+      envoyer(t.w, section(t.w).querySelector('[data-ordo-zone="adresse"] form'));
       await wait(60);
       assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer');
-      assert.strictEqual(t.w.document.activeElement, section(t.w).querySelector('.ordo-subs-btn'), 'focus sur l\'adresse');
+      assert.strictEqual(t.w.document.activeElement, editAdresse(t.w), 'focus sur l\'adresse');
       t.dom.window.close();
     }
 
@@ -1674,8 +1660,8 @@ async function main() {
     async function apresAdresse(depart, reponse) {
       const { t } = await ouvrir(corps({ billingAddress: VIDE, ...depart }), [{ status: 200, body: { ok: true, billingAddress: ADRESSE, ...reponse } }]);
       const avant = tvaVisible(t.w) ? text(tva(t.w)) : '';
-      section(t.w).querySelector('.ordo-subs-btn').click();
-      const form = section(t.w).querySelector('form');
+      editAdresse(t.w).click();
+      const form = section(t.w).querySelector('[data-ordo-zone="adresse"] form');
       form.elements.line1.value = ADRESSE.line1;
       form.elements.postalCode.value = ADRESSE.postalCode;
       form.elements.city.value = ADRESSE.city;
@@ -1718,10 +1704,10 @@ async function main() {
       const { t } = await ouvrir(corps({ taxId: null, taxIdAllowed: true }), [
         { status: 200, body: { ok: true, billingAddress: { ...ADRESSE, country: 'BE' }, taxId: null, taxIdAllowed: false } },
       ]);
-      tva(t.w).querySelector('button.ordo-subs-link').click();
+      tva(t.w).querySelector('button.compte-v2_lien').click();
       tva(t.w).querySelector('input').value = 'FR12345678901';
-      section(t.w).querySelector('.ordo-subs-btn').click();
-      const form = section(t.w).querySelector('form');
+      editAdresse(t.w).click();
+      const form = section(t.w).querySelector('[data-ordo-zone="adresse"] form');
       form.elements.country.value = 'BE';
       envoyer(t.w, form);
       await wait(60);
@@ -1738,10 +1724,10 @@ async function main() {
       const { t } = await ouvrir(corps({ subscriptions: [canceling], taxId: NUMERO, taxIdAllowed: true }), [
         { status: 200, body: { ok: true, subscriptions: [after], paymentMethods: [VISA], invoices: [], billingAddress: ADRESSE, taxId: NUMERO, taxIdAllowed: true } },
       ]);
-      cards(t.w)[0].querySelector('.ordo-subs-actions button').click();
+      cards(t.w)[0].querySelector('.compte-v2_actions button').click();
       await wait(60);
-      assert.ok(text(anchor(t.w)).includes('C’est fait'));
-      assert.strictEqual(t.w.document.querySelectorAll('.ordo-addr-tva').length, 1);
+      assert.ok(text(root(t.w)).includes('C’est fait'));
+      assert.strictEqual(tva(t.w).querySelectorAll('[data-ordo-champ="valeur"]').length, 1, 'un seul numéro affiché');
       assert.strictEqual(text(tva(t.w)), LIGNE + ' Modifier Retirer');
       t.dom.window.close();
     }
@@ -1753,7 +1739,7 @@ async function main() {
       assert.ok(text(tva(t.w)).includes('<img src=x onerror=alert(1)>'));
       const noms = new Set();
       const releve = () => {
-        for (const b of tva(t.w).querySelectorAll('button, a')) {
+        for (const b of tva(t.w).querySelectorAll('button, a, input[type="submit"]')) {
           assert.ok(b.hasAttribute('data-subs-action'), b.textContent);
           noms.add(b.getAttribute('data-subs-action'));
         }

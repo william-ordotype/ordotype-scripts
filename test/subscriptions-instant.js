@@ -23,6 +23,8 @@
  *   - the skeleton has one placeholder per plan that is not cancelled (1 to 3) and says when the
  *     wait is long; a timeout on a section never on screen is `timeout-unseen`, not reported.
  *
+ * The page is the Facturation tab as Webflow publishes it (test/fixtures/compte-facturation.html).
+ *
  * Usage: node test/subscriptions-instant.js
  */
 const fs = require('fs');
@@ -31,6 +33,7 @@ const assert = require('assert');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const REAL = fs.readFileSync(path.resolve(__dirname, '..', 'account/subscriptions-overview.js'), 'utf8');
+const FIXTURE = fs.readFileSync(path.resolve(__dirname, 'fixtures/compte-facturation.html'), 'utf8');
 function shorten(src, from, to) {
   const out = src.replace(from, to);
   assert.notStrictEqual(out, src, from + ' not found: the test would not shorten it');
@@ -38,7 +41,8 @@ function shorten(src, from, to) {
 }
 let SOURCE = shorten(REAL, 'var LIST_TIMEOUT_MS = 8000;', 'var LIST_TIMEOUT_MS = 160;');
 SOURCE = shorten(SOURCE, 'var HEDGE_MS = 4000;', 'var HEDGE_MS = 80;');
-SOURCE = shorten(SOURCE, 'var SLOW_MS = 3000;', 'var SLOW_MS = 40;');
+const SLOW_SHORT_MS = 80;
+SOURCE = shorten(SOURCE, 'var SLOW_MS = 3000;', 'var SLOW_MS = ' + SLOW_SHORT_MS + ';');
 SOURCE = shorten(SOURCE, 'var SKELETON_DELAY_MS = 200;', 'var SKELETON_DELAY_MS = 5;');
 const PLANS_SHORT_MS = 50;
 SOURCE = shorten(SOURCE, 'var PLANS_TIMEOUT_MS = 2500;', 'var PLANS_TIMEOUT_MS = ' + PLANS_SHORT_MS + ';');
@@ -81,12 +85,7 @@ const deferred = () => { let resolve; const promise = new Promise((r) => { resol
 
 function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(200, LIST_FREE, 30), plansReply = reply(200, { plans: PUBLIC }, 10), visible = true } = {}) {
   const dom = new JSDOM(
-    `<!doctype html><html><body>
-      <div class="tab-pane"><div class="w-embed"><div id="ordotype-subscriptions"></div></div>
-        <div class="inner-block-wraper" id="old-section"><div class="abonnement-wrapper">Ancien bloc</div></div>
-        <div class="inner-block-wraper" id="payment-method-block">Ajouter un moyen de paiement</div>
-        <div class="inner-block-wraper" id="invoices-block">Mes factures</div>
-      </div></body></html>`,
+    `<!doctype html><html><body><div class="w-tabs">${FIXTURE}</div></body></html>`,
     { url: 'https://www.ordotype.fr/membership/compte', runScripts: 'outside-only', virtualConsole: new VirtualConsole() }
   );
   const w = dom.window;
@@ -109,13 +108,17 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
   };
   w.eval(SOURCE);
   const doc = w.document;
+  const root = doc.querySelector('[data-ordo-facturation]');
+  const cards = () => Array.from(root.querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu]'));
   return {
     w, calls, reports,
     events: () => w.dataLayer.filter((e) => e.event === 'subscriptions_list').map((e) => e.subs_outcome),
-    labels: () => Array.from(doc.querySelectorAll('.ordo-subs-card .ordo-subs-label')).map((n) => n.textContent),
-    statuses: () => Array.from(doc.querySelectorAll('.ordo-subs-card .ordo-subs-tag')).map((n) => n.textContent),
-    text: () => doc.getElementById('ordotype-subscriptions').textContent,
-    skeletons: () => doc.querySelectorAll('.ordo-subs-skel').length,
+    labels: () => cards().map((n) => n.querySelector('[data-ordo-champ="libelle"]')).filter(Boolean).map((n) => n.textContent),
+    statuses: () => cards().map((n) => n.querySelector('.compte-v2_abo-head > .compte-v2_badge')).filter(Boolean).map((n) => n.textContent),
+    logo: () => cards().map((n) => n.querySelector('img')).filter(Boolean)[0] || null,
+    text: () => root.querySelector('[data-ordo-section="abonnements"]').textContent,
+    skeletons: () => root.querySelectorAll('.compte-v2_squelette').length,
+    oldSection: () => doc.querySelector('[data-w-tab="billing"] .inner-block-wraper[data-ms-content="!no-plans"]'),
     fallback: () => doc.documentElement.classList.contains('ordo-subs-fallback'),
   };
 }
@@ -143,8 +146,8 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.deepStrictEqual(p.labels(), ['Interne MG'], 'rendered at start, from the stored copy');
     assert.deepStrictEqual(p.events(), ['instant']);
     assert.ok(/Voir les offres/.test(p.text()) && /Accès pendant l’internat\./.test(p.text()), 'button and note of the plan');
-    assert.ok(p.w.document.querySelector('.ordo-subs-logo'), 'logo of the plan');
-    assert.strictEqual(p.w.document.getElementById('old-section').style.display, 'none', 'the page\'s own blocks give way');
+    assert.strictEqual(p.logo().getAttribute('src'), PUBLIC.pln_interne.icon, 'logo of the plan');
+    assert.strictEqual(p.oldSection().style.display, 'none', 'the page\'s own blocks give way');
     await wait(120);
     assert.deepStrictEqual(p.labels(), ['Interne MG'], 'then replaced by the list');
     assert.deepStrictEqual(p.events(), ['instant'], 'ONE list event per page');
@@ -365,7 +368,7 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     await wait(20);
     assert.strictEqual(two.skeletons(), 2);
     assert.ok(!/plus de temps/.test(two.text()));
-    await wait(40);
+    await wait(SLOW_SHORT_MS);
     assert.ok(/Le chargement prend plus de temps que d’habitude…/.test(two.text()), 'the long wait is said');
     const many = await open({ plans: [paid('a'), paid('b'), paid('c'), paid('d')], list: hang });
     const none = await open({ plans: [paid('a', 'CANCELED')], list: hang });

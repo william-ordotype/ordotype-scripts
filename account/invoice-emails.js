@@ -46,18 +46,14 @@
   var slot = null;
   var busy = false;
 
-  // Palier facturation-designer.js : la ligne (libellé, aide, interrupteur, zone d'état) est dessinée
-  // dans le Designer ([data-ordo-factures-email]) ; ce fichier la place dans l'ancrage et la pilote.
+  // La ligne (libellé, aide, interrupteur, zone d'état) est dessinée dans la Facturation du Designer
+  // ([data-ordo-factures-email]) ; ce fichier la place dans l'ancrage et la pilote.
   // L'interrupteur y est un élément role="switch" : l'état se lit dans aria-checked, et la combo
   // « is-coche » (posée sur l'interrupteur et sur son bouton) le dessine ; « is-chargement » dessine
   // l'attente. Renommer ces combos dans le Designer demande de les renommer ici.
-  var DESIGNER_GATE = 'facturation-designer.js';
   var designer = null; // { row, sw, knob, statusClass, errorClass }
 
   function designerRow() {
-    var d = null;
-    try { d = window.OrdoRollout && window.OrdoRollout[DESIGNER_GATE]; } catch (e) { d = null; }
-    if (!d || !d.enabled) return null;
     return document.querySelector('[data-ordo-factures-email]');
   }
 
@@ -352,7 +348,9 @@
       return false;
     }
     var drawn = designerRow();
-    if (drawn) return takeDesignerRow(drawn);
+    if (drawn && takeDesignerRow(drawn)) return true;
+    // Sans ligne du Designer utilisable, la case construite ici : sans elle, un membre qui a coché ne
+    // pourrait plus retirer son consentement depuis sa page.
     injectStyle();
 
     var row = document.createElement('div');
@@ -401,6 +399,7 @@
   /**
    * La ligne dessinée dans le Designer, placée dans l'ancrage : `relocate` la déplace ensuite
    * avec lui, comme la ligne construite ici. Rien n'est créé, seuls des repères sont posés.
+   * Sans interrupteur ou sans zone d'état : signalé, false, et `buildShell` construit la case.
    */
   function takeDesignerRow(row) {
     var sw = row.querySelector('[data-ordo-champ="interrupteur"]');
