@@ -1,6 +1,7 @@
 /**
  * Ordotype Account - Mes abonnements
  * Read-only list of the member's subscriptions, discounts and next payment dates.
+ * Fills the Facturation tab drawn in the Webflow Designer ([data-ordo-facturation]).
  * Depends on: core.js (window.OrdoAccount), shared/error-reporter.js
  */
 (function() {
@@ -8,7 +9,6 @@
 
   var PREFIX = '[SubscriptionsOverview]';
   var API_URL = 'https://webhooks.ordotype.fr/.netlify/functions/account-subscriptions';
-  var ANCHOR_ID = 'ordotype-subscriptions';
   var PAYMENT_URL = '/membership/moyen-de-paiement';
   var MS_MAX_ATTEMPTS = 50;
   var SKELETON_DELAY_MS = 200;
@@ -50,164 +50,13 @@
     ended: { text: 'Terminé', tone: 'muted' }
   };
 
-  var STYLE_ID = 'ordo-subs-style';
-  var CSS = [
-    '.ordo-subs{display:flex;flex-direction:column;gap:1rem;margin-bottom:2.5rem;padding:1rem;border:1px solid var(--base-200,#0c0e1633);border-radius:.25rem;color:var(--base-900,#0c0e16)}',
-    '.ordo-subs-title{margin:0;font-size:1rem;line-height:1.5;font-weight:600}',
-    '.ordo-subs-flash{margin:0;font-size:.875rem;line-height:1.5;font-weight:600;color:var(--success-700,#106820)}',
-    '.ordo-subs-list{display:flex;flex-direction:column;gap:1rem}',
-    '.ordo-subs-card{background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);border-radius:.25rem;padding:1.5rem;display:flex;flex-direction:column;gap:.75rem}',
-    '.ordo-subs-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem 1rem}',
-    '.ordo-subs-label{font-size:1rem;line-height:1.5;font-weight:600}',
-    '.ordo-subs-tag{flex:none;height:1.5rem;padding:0 .5rem;border-radius:.25rem;font-size:.75rem;font-weight:600;line-height:1.5rem;white-space:nowrap}',
-    '.ordo-subs-tone-ok{background:var(--primary-500,#3454f6);color:var(--inverted-900,#ffffffe6)}',
-    '.ordo-subs-tone-free{background:var(--success-700,#106820);color:#fff}',
-    '.ordo-subs-tone-alert{background:var(--error-500,#ee4343);color:var(--inverted-900,#ffffffe6)}',
-    '.ordo-subs-tone-muted{background:var(--inverted-900,#ffffffe6);color:var(--base-900,#0c0e16)}',
-    '.ordo-subs-body{display:flex;flex-direction:column;gap:.5rem}',
-    '.ordo-subs-price{display:flex;flex-wrap:wrap;align-items:baseline;gap:.25rem .5rem}',
-    '.ordo-subs-amount{font-size:1.25rem;line-height:1.4;font-weight:600}',
-    '.ordo-subs-period,.ordo-subs-old,.ordo-subs-muted,.ordo-subs-note{color:var(--neutral-500,#47505c)}',
-    '.ordo-subs-period,.ordo-subs-old{font-size:.875rem}',
-    '.ordo-subs-offer{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}',
-    '.ordo-subs-badge{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:0 .375rem;min-height:1.5rem;box-sizing:border-box;padding:.1875rem .5rem;border-radius:.25rem;background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3);font-size:.8125rem;font-weight:500;line-height:1.125rem}',
-    '.ordo-subs-badge strong{font-weight:700;white-space:nowrap}',
-    '.ordo-subs-name{flex:1 1 auto;display:flex;align-items:center;gap:.75rem;min-width:0;overflow-wrap:anywhere}',
-    '.ordo-subs-logo{flex:none;width:40px;height:40px;object-fit:contain}',
-    '.ordo-subs-logo.is-small{width:16px;height:16px;vertical-align:-3px;margin-right:.25rem}',
-    '.ordo-pm-use{white-space:nowrap}',
-    '.ordo-subs-note,.ordo-subs-muted{font-size:.875rem;line-height:1.5}',
-    '.ordo-subs-foot{border-top:1px solid var(--base-100,#0c0e161a);padding-top:.75rem;display:flex;flex-wrap:wrap;justify-content:space-between;gap:.125rem 1rem;font-size:.875rem;line-height:1.5}',
-    '.ordo-subs-foot-label{color:var(--neutral-500,#47505c)}',
-    '.ordo-subs-foot-value{font-weight:600}',
-    '.ordo-subs-link{background:none;border:0;padding:0;font:inherit;font-weight:600;text-align:left;align-self:flex-start;color:var(--primary-1,#153cf5);text-decoration:underline;cursor:pointer}',
-    '.ordo-subs-link:hover{color:var(--primary-600,#263fd3)}',
-    '.ordo-subs-empty{margin:0;font-size:.875rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
-    '.ordo-subs-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}',
-    '.ordo-subs-btn{display:inline-flex;align-items:center;justify-content:center;padding:.5rem 1rem;border-radius:.25rem;border:1px solid var(--base-500,#0c0e1680);background:transparent;color:var(--base-900,#0c0e16);font:inherit;font-size:.875rem;font-weight:600;line-height:1.2;text-align:center;text-decoration:none;cursor:pointer;transition:background-color .2s}',
-    '.ordo-subs-btn:hover{background:var(--base-100,#0c0e161a);color:var(--base-900,#0c0e16)}',
-    '.ordo-subs-btn.is-primary{background:var(--primary-500,#3454f6);border-color:var(--primary-500,#3454f6);color:#fff}',
-    '.ordo-subs-btn.is-primary:hover{background:var(--primary-600,#263fd3);border-color:var(--primary-600,#263fd3);color:#fff}',
-    '.ordo-subs-btn[disabled]{opacity:.5;cursor:default}',
-    '.ordo-subs-msg{flex-basis:100%;text-align:right}',
-    '.ordo-pm-row{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem 1rem}',
-    '.ordo-addr-sub{margin:-.75rem 0 0;font-size:.875rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
-    '.ordo-addr-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:.75rem 1rem}',
-    '.ordo-addr-grid{flex:1 1 20rem;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem 1.5rem}',
-    '.ordo-addr-label{font-size:.875rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
-    '.ordo-addr-value{font-size:1rem;line-height:1.5;font-weight:500;overflow-wrap:anywhere}',
-    '.ordo-addr-value.is-empty{font-weight:400;color:var(--neutral-500,#47505c)}',
-    '.ordo-addr-form{display:flex;flex-direction:column;gap:1rem}',
-    '.ordo-addr-line{display:flex;flex-wrap:wrap;gap:1rem}',
-    '.ordo-addr-field{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:.375rem}',
-    '.ordo-addr-field.is-short{flex:0 1 10rem}',
-    '.ordo-addr-field label{font-size:.875rem;line-height:1.5;font-weight:600}',
-    '.ordo-addr-field label span{font-weight:400;color:var(--neutral-500,#47505c)}',
-    '.ordo-addr-input{width:100%;min-height:44px;box-sizing:border-box;margin:0;padding:.5rem .75rem;border:1px solid var(--base-500,#0c0e1680);border-radius:.25rem;background:#fff;color:var(--base-900,#0c0e16);font:inherit;font-size:1rem}',
-    '.ordo-addr-input:focus{outline:2px solid var(--primary-500,#3454f6);outline-offset:1px}',
-    'select.ordo-addr-input{-webkit-appearance:none;appearance:none;padding-right:2.75rem;background:#fff url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%230c0e16\' stroke-width=\'1.8\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E") no-repeat right .875rem center}',
-    '.ordo-addr-error{margin:0;font-size:.875rem;line-height:1.5;color:var(--error-700,#ba1b1b)}',
-    '.ordo-addr-tva{display:flex;flex-direction:column;gap:.75rem;border-top:1px solid var(--base-100,#0c0e161a);padding-top:1rem}',
-    '.ordo-addr-tva[hidden]{display:none}',
-    '.ordo-addr-tva p{margin:0}',
-    '.ordo-addr-tva .ordo-addr-field{flex:none;max-width:20rem}',
-    '.ordo-addr-main{flex:1 1 16rem;min-width:0}',
-    '.ordo-addr-ask{font-size:.875rem;line-height:1.5;font-weight:600}',
-    '.ordo-pm-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:48px;height:32px;box-sizing:border-box;border:1px solid var(--base-200,#0c0e1633);border-radius:.25rem;color:var(--base-900,#0c0e16)}',
-    '.ordo-pm-icon.is-alert{border-color:var(--error-300,#fca6a6);color:var(--error-700,#ba1b1b)}',
-    '.ordo-pm-text{flex:1 1 12rem;min-width:0;display:flex;flex-direction:column;gap:2px}',
-    '.ordo-pm-name{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;font-size:1rem;line-height:1.5;font-weight:600}',
-    '.ordo-pm-others{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--base-100,#0c0e161a);padding-top:.75rem}',
-    '.ordo-pm-tone-expired{background:var(--error-100,#fee1e1);color:var(--error-700,#ba1b1b)}',
-    '.ordo-pm-tone-soon{background:var(--warning-100,#fef9c3);color:var(--warning-800,#864e0e)}',
-    '.ordo-inv-table{display:flex;flex-direction:column}',
-    '.ordo-inv-row{display:grid;grid-template-columns:7.5rem minmax(0,1fr) 6rem 10rem 6.5rem;gap:.25rem 1rem;align-items:center;padding:.75rem 0;border-bottom:1px solid var(--base-100,#0c0e161a);font-size:.875rem;line-height:1.5}',
-    '.ordo-inv-row:last-child{border-bottom:0}',
-    '.ordo-inv-head{padding-top:0;color:var(--neutral-500,#47505c);font-weight:500}',
-    '.ordo-inv-amount,.ordo-inv-head .ordo-inv-cell:nth-child(3){text-align:right}',
-    '.ordo-inv-amount{font-weight:600}',
-    '.ordo-inv-action,.ordo-inv-head .ordo-inv-cell:nth-child(5){text-align:right}',
-    '.ordo-inv-pdf{display:inline-flex;align-items:center;gap:.375rem;background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--base-900,#0c0e16);text-decoration:underline;cursor:pointer}',
-    '.ordo-inv-pdf:hover{color:var(--primary-600,#263fd3)}',
-    '.ordo-inv-pdf[disabled]{opacity:.5;cursor:default}',
-    '.ordo-inv-tone-paid{background:var(--success-100,#defce9);color:var(--success-700,#106820)}',
-    '.ordo-inv-tone-pending{background:var(--primary-50,#f0f3ff);color:var(--primary-600,#263fd3)}',
-    '.ordo-inv-tone-due{background:var(--error-100,#fee1e1);color:var(--error-700,#ba1b1b)}',
-    '.ordo-inv-emails:empty{display:none}',
-    '.ordo-help{margin-bottom:2.5rem;padding:1.5rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);border-radius:.25rem;display:flex;flex-direction:column;align-items:center;gap:1rem;text-align:center;color:var(--base-900,#0c0e16)}',
-    '.ordo-help-title{margin:0;font-size:1rem;line-height:1.5}',
-    '.ordo-help-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:.75rem 2.5rem}',
-    '.ordo-help-contact{display:inline-flex;align-items:center;gap:.625rem;min-height:1.75rem;font-size:1rem;font-weight:600;color:var(--base-900,#0c0e16);text-decoration:none}',
-    '.ordo-help-contact:hover{color:var(--primary-600,#263fd3)}',
-    '.ordo-help-phone{display:flex;flex-direction:column;align-items:center;gap:2px}',
-    '.ordo-help-note{font-size:.75rem;line-height:1.5;color:var(--neutral-500,#47505c)}',
-    '.ordo-help-divider{align-self:stretch;border-top:1px solid var(--base-100,#0c0e161a)}',
-    '.ordo-help-video{display:inline-flex;align-items:center;gap:.5rem;min-height:1.75rem;font-size:.875rem;font-weight:600;color:var(--primary-500,#3454f6);text-decoration:none}',
-    '.ordo-help-video:hover{color:var(--primary-600,#263fd3)}',
-    '@media (max-width:767px){.ordo-inv-head{display:none}.ordo-inv-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"date amount" "label status" "label action"}.ordo-inv-date{grid-area:date}.ordo-inv-amount{grid-area:amount}.ordo-inv-label{grid-area:label;color:var(--neutral-500,#47505c)}.ordo-inv-status{grid-area:status;text-align:right}.ordo-inv-action{grid-area:action}.ordo-help-row{flex-direction:column;align-items:center}}',
-    '.ordo-subs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-    '.ordo-subs-skel{height:132px;border-radius:.25rem;background:#0c0e1608;border:1px solid var(--base-100,#0c0e161a);animation:ordo-subs-pulse 1.2s ease-in-out infinite}',
-    '.ordo-subs-skels{display:flex;flex-direction:column;gap:1rem}',
-    '@keyframes ordo-subs-pulse{0%,100%{opacity:.5}50%{opacity:1}}',
-    '@media (prefers-reduced-motion:reduce){.ordo-subs-skel{animation:none}}',
-    '@media (max-width:767px){.ordo-addr-grid{grid-template-columns:minmax(0,1fr)}.ordo-addr-field.is-short{flex:1 1 12rem}}',
-    '@media (max-width:479px){.ordo-subs-card{padding:1rem}.ordo-subs-amount{font-size:1.125rem}.ordo-subs-foot{flex-direction:column}.ordo-subs-btn{width:100%}.ordo-subs-msg{text-align:left}.ordo-addr-row>.ordo-subs-actions{flex:1 1 100%}}'
-  ].join('');
-
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    var s = document.createElement('style');
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
-
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text !== undefined && text !== null) e.textContent = text;
-    return e;
-  }
-
-  // --- Deux présentations, une seule logique ---------------------------------------------------
-  // Héritée : ce script construit les sections et leur feuille de style dans #ordotype-subscriptions.
-  // Designer (palier facturation-designer.js du chargeur) : les sections, leurs classes et leurs textes
-  // fixes sont dessinés dans Webflow ([data-ordo-facturation]) ; les états à recopier vivent dans le bloc
-  // [data-ordo-gabarits="facturation"], visible seulement dans le Designer. Le script n'y met que les
-  // données et les actions. `ui` porte ce qui diffère entre les deux présentations.
-  var DESIGNER_GATE = 'facturation-designer.js';
+  // --- Facturation dessinée dans le Designer --------------------------------------------------
+  // Les sections, leurs classes et leurs textes fixes sont dessinés dans Webflow ([data-ordo-facturation]) ;
+  // les états à recopier vivent dans le bloc [data-ordo-gabarits="facturation"], visible seulement dans le
+  // Designer. Le script n'y met que les données et les actions ; `ui`, défini avec la présentation plus bas,
+  // en fabrique les éléments. Designer incomplet ou liste impossible à charger : les blocs SECOURS de la page
+  // restent seuls (classe `ordo-subs-fallback`, règle de l'en-tête de page), comme pour Profil et Sécurité.
   var D = null;
-
-  var KIND_CLASS = { bouton: 'ordo-subs-btn', 'bouton-primaire': 'ordo-subs-btn is-primary', lien: 'ordo-subs-link' };
-
-  var legacyUi = {
-    actions: function() { return el('div', 'ordo-subs-actions'); },
-    // kind : 'bouton', 'bouton-primaire' ou 'lien'.
-    button: function(kind, label) {
-      var b = el('button', KIND_CLASS[kind], label);
-      b.type = 'button';
-      return b;
-    },
-    anchor: function(kind, label, href) {
-      var a = el('a', KIND_CLASS[kind], label);
-      a.setAttribute('href', href);
-      return a;
-    },
-    message: function() {
-      var m = el('div', 'ordo-subs-note ordo-subs-msg');
-      m.setAttribute('role', 'status');
-      return m;
-    },
-    flash: function(text) {
-      var p = el('p', 'ordo-subs-flash', text);
-      p.setAttribute('role', 'status');
-      return p;
-    },
-    note: function(text) {
-      return el('p', 'ordo-subs-muted', text);
-    }
-  };
-  var ui = legacyUi;
 
   // Le libellé d'un bouton d'envoi : un <input type="submit"> (formulaire Webflow) le porte dans `value`.
   function setLabel(node, text) {
@@ -276,28 +125,7 @@
     return '';
   }
 
-  // The whole offer (amount and end date) in one blue chip.
-  function offerRow(badge, note) {
-    var row = el('div', 'ordo-subs-offer');
-    var chip = el('span', 'ordo-subs-badge');
-    chip.appendChild(el('strong', null, badge));
-    if (note) chip.appendChild(el('span', null, note));
-    row.appendChild(chip);
-    return row;
-  }
-
   var LOGO_URL = /^https:\/\/(cdn\.prod\.website-files\.com|uploads-ssl\.webflow\.com|assets\.website-files\.com)\//;
-
-  function logo(src, size) {
-    if (typeof src !== 'string' || !LOGO_URL.test(src)) return null;
-    var px = String(size || 40);
-    var img = el('img', size ? 'ordo-subs-logo is-small' : 'ordo-subs-logo');
-    img.setAttribute('src', src);
-    img.setAttribute('alt', '');
-    img.setAttribute('width', px);
-    img.setAttribute('height', px);
-    return img;
-  }
 
   // The price line: what is charged now, and the full price struck through when it is lower.
   function priceInfo(c) {
@@ -307,20 +135,6 @@
       period: period(c.price),
       old: shown < c.price.amount ? money(c.price.amount, c.price.currency) : null
     };
-  }
-
-  function priceRow(c) {
-    var info = priceInfo(c);
-    var row = el('div', 'ordo-subs-price');
-    row.appendChild(el('span', 'ordo-subs-amount', info.amount));
-    row.appendChild(el('span', 'ordo-subs-period', info.period));
-    if (info.old) {
-      var old = el('s', 'ordo-subs-old');
-      old.appendChild(el('span', 'ordo-subs-sr', 'au lieu de '));
-      old.appendChild(document.createTextNode(info.old));
-      row.appendChild(old);
-    }
-    return row;
   }
 
   // The lines under a card's title, in order: { price }, { badge, note } (offer chip) or { text }.
@@ -340,14 +154,6 @@
     return lines;
   }
 
-  function footRow(label, value) {
-    var foot = el('div', 'ordo-subs-foot');
-    foot.appendChild(el('span', 'ordo-subs-foot-label', label));
-    if (typeof value === 'string') foot.appendChild(el('span', 'ordo-subs-foot-value', value));
-    else foot.appendChild(value);
-    return foot;
-  }
-
   // The card's last line: { label, value }, or { label, link } for the payment method link; null when none.
   function footInfo(c) {
     if (c.status === 'past_due') {
@@ -365,12 +171,6 @@
     }
     if ((c.status === 'canceling' || c.status === 'free') && c.endsOn) return { label: 'Se termine le', value: day(c.endsOn) };
     return null;
-  }
-
-  function footOf(c) {
-    var f = footInfo(c);
-    if (!f) return null;
-    return footRow(f.label, f.link ? paymentLink('lien', f.link, c.status) : f.value);
   }
 
   function reportProblem(name, detail) {
@@ -702,36 +502,6 @@
     return row;
   }
 
-  function card(c) {
-    var root = el('div', 'ordo-subs-card');
-    root.setAttribute('role', 'listitem');
-
-    var head = el('div', 'ordo-subs-head');
-    var name = el('div', 'ordo-subs-name');
-    var img = logo(c.icon);
-    if (img) name.appendChild(img);
-    name.appendChild(el('div', 'ordo-subs-label', c.label || 'Abonnement'));
-    head.appendChild(name);
-    var st = STATUS[c.status] || STATUS.active;
-    head.appendChild(el('span', 'ordo-subs-tag ordo-subs-tone-' + st.tone, st.text));
-    root.appendChild(head);
-
-    var body = el('div', 'ordo-subs-body');
-    var lines = bodyLines(c);
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].price) body.appendChild(priceRow(c));
-      else if (lines[i].badge) body.appendChild(offerRow(lines[i].badge, lines[i].note));
-      else body.appendChild(el('div', 'ordo-subs-muted', lines[i].text));
-    }
-    if (body.firstChild) root.appendChild(body);
-
-    var foot = footOf(c);
-    if (foot) root.appendChild(foot);
-    var actions = actionsOf(c);
-    if (actions) root.appendChild(actions);
-    return root;
-  }
-
   function closestSection(node) {
     while (node && node !== document.body) {
       if (node.classList && node.classList.contains('inner-block-wraper')) return node;
@@ -790,42 +560,6 @@
     unionpay: 'UnionPay',
     cartes_bancaires: 'CB'
   };
-  var SVG_NS = 'http://www.w3.org/2000/svg';
-  var ICON_PATHS = {
-    card: ['M4.5 5h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M2.5 9.5h19', 'M6 15h4'],
-    bank: ['M3 9.5 12 4l9 5.5', 'M5 10v8M9.5 10v8M14.5 10v8M19 10v8', 'M3 20h18'],
-    mail: ['M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'm3.5 6.5 8.5 6.5 8.5-6.5'],
-    phone: ['M5.5 3.5h3l1.5 4.5-2 1.5a11.5 11.5 0 0 0 6.5 6.5l1.5-2 4.5 1.5v3a1.5 1.5 0 0 1-1.6 1.5A16.5 16.5 0 0 1 4 5.1a1.5 1.5 0 0 1 1.5-1.6z'],
-    play: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M10 8.8v6.4l5.2-3.2z'],
-    download: ['M12 4v11', 'M7.5 10.5 12 15l4.5-4.5', 'M5 19h14']
-  };
-
-  function svgIcon(name, size) {
-    var svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('width', String(size || 20));
-    svg.setAttribute('height', String(size || 20));
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '1.5');
-    svg.setAttribute('stroke-linecap', 'round');
-    svg.setAttribute('stroke-linejoin', 'round');
-    svg.setAttribute('aria-hidden', 'true');
-    var paths = ICON_PATHS[name];
-    for (var i = 0; i < paths.length; i++) {
-      var p = document.createElementNS(SVG_NS, 'path');
-      p.setAttribute('d', paths[i]);
-      svg.appendChild(p);
-    }
-    return svg;
-  }
-
-  function pmIcon(pm) {
-    var box = el('span', 'ordo-pm-icon' + (pm.expired ? ' is-alert' : ''));
-    box.setAttribute('aria-hidden', 'true');
-    box.appendChild(svgIcon(pm.type === 'sepa_debit' ? 'bank' : 'card', 22));
-    return box;
-  }
 
   function pmName(pm) {
     var dots = pm.last4 ? ' •••• ' + pm.last4 : '';
@@ -841,21 +575,13 @@
 
   // "A.", "A et B.", "A, B et C.", each subscription with its logo when it has one; the punctuation
   // stays with the name so that a line never starts with it.
-  // `makeItem(text, icon)` draws one subscription of the list (legacy span, or the Designer's « usage »).
+  // `makeItem(text, icon)` draws one subscription of the list (the Designer's « usage », see usageD).
   function usedList(box, used, icons, makeItem) {
     var last = used.length - 1;
     for (var i = 0; i < used.length; i++) {
       if (i) box.appendChild(document.createTextNode(i === last ? ' et ' : ' '));
       box.appendChild(makeItem(used[i] + (i === last ? '.' : (i === last - 1 ? '' : ',')), icons[i]));
     }
-  }
-
-  function legacyUsage(text, icon) {
-    var item = el('span', 'ordo-pm-use');
-    var img = logo(icon, 16);
-    if (img) item.appendChild(img);
-    item.appendChild(document.createTextNode(text));
-    return item;
   }
 
   // Expiry and "Utilisée pour : …" in `box`; false when there is nothing to say.
@@ -873,11 +599,6 @@
       usedList(box, used, icons, makeItem);
     }
     return Boolean(box.firstChild);
-  }
-
-  function pmDetail(pm, several) {
-    var box = el('div', 'ordo-subs-muted ordo-pm-detail');
-    return fillDetail(box, pm, several, legacyUsage) ? box : null;
   }
 
   // Saved methods nothing charges: named, never offered.
@@ -926,43 +647,6 @@
     return m.portal ? portalButton('bouton', m.label) : paymentLink(m.primary ? 'bouton-primaire' : 'bouton', m.label);
   }
 
-  function paymentSection(list, pms, others) {
-    var root = el('div', 'ordo-subs ordo-pm');
-    root.appendChild(el('h3', 'ordo-subs-title', 'Moyen de paiement'));
-    var m = pmModel(list, pms, others);
-    var rows = [];
-    for (var i = 0; i < pms.length; i++) {
-      var pm = pms[i];
-      var row = el('div', 'ordo-pm-row');
-      row.appendChild(pmIcon(pm));
-      var text = el('div', 'ordo-pm-text');
-      var name = el('div', 'ordo-pm-name');
-      name.appendChild(el('span', null, pmName(pm)));
-      if (pm.expired) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-expired', 'Expirée'));
-      else if (pm.expiresSoon) name.appendChild(el('span', 'ordo-subs-tag ordo-pm-tone-soon', 'Expire bientôt'));
-      text.appendChild(name);
-      var detail = pmDetail(pm, m.several);
-      if (detail) text.appendChild(detail);
-      row.appendChild(text);
-      rows.push(row);
-      root.appendChild(row);
-    }
-    if (m.saved.length) {
-      var box = el('div', 'ordo-pm-others');
-      for (var k = 0; k < m.saved.length; k++) box.appendChild(el('div', 'ordo-subs-muted', m.saved[k]));
-      root.appendChild(box);
-    }
-    var link = pmAction(m);
-    if (m.several) {
-      var actions = ui.actions();
-      actions.appendChild(link);
-      root.appendChild(actions);
-    } else {
-      rows[0].appendChild(link);
-    }
-    return root;
-  }
-
   // --- Adresse de facturation --------------------------------------------------------------
 
   // Pays proposés : France et outre-mer d'abord (codes ISO propres à Stripe), puis les autres.
@@ -984,19 +668,6 @@
     return !!(a && a.line1);
   }
 
-  function addressValue(label, lines) {
-    var box = el('div');
-    box.appendChild(el('div', 'ordo-addr-label', label));
-    var value = el('div', 'ordo-addr-value' + (lines.length ? '' : ' is-empty'));
-    if (!lines.length) value.textContent = 'Non renseigné';
-    for (var i = 0; i < lines.length; i++) {
-      if (i) value.appendChild(document.createElement('br'));
-      value.appendChild(document.createTextNode(lines[i]));
-    }
-    box.appendChild(value);
-    return box;
-  }
-
   function addressLines(a) {
     var lines = [];
     if (a.line1) lines.push(a.line1);
@@ -1005,46 +676,6 @@
     if (city) lines.push(city);
     if (a.country) lines.push(countryName(a.country));
     return lines;
-  }
-
-  function addressField(name, label, value, opts) {
-    opts = opts || {};
-    var field = el('div', 'ordo-addr-field' + (opts.short ? ' is-short' : ''));
-    var id = 'ordo-addr-' + name;
-    var lab = el('label', null, label);
-    if (opts.optional) lab.appendChild(el('span', null, ' (facultatif)'));
-    lab.setAttribute('for', id);
-    field.appendChild(lab);
-    var input;
-    if (opts.options) {
-      input = el('select', 'ordo-addr-input');
-      var codes = opts.options.slice();
-      if (value && codes.indexOf(value) === -1) codes.unshift(value);
-      if (!value) {
-        var none = el('option', null, 'Choisir un pays');
-        none.value = '';
-        input.appendChild(none);
-      }
-      for (var i = 0; i < codes.length; i++) {
-        var o = el('option', null, countryName(codes[i]));
-        o.value = codes[i];
-        input.appendChild(o);
-      }
-      input.value = value || '';
-    } else {
-      input = el('input', 'ordo-addr-input');
-      input.type = 'text';
-      input.value = value || '';
-      if (opts.placeholder) input.placeholder = opts.placeholder;
-      if (opts.autocomplete) input.setAttribute('autocomplete', opts.autocomplete);
-      if (opts.required) input.required = true;
-      input.maxLength = opts.max || 200;
-    }
-    input.id = id;
-    input.name = name;
-    field.appendChild(input);
-    if (opts.hint) field.appendChild(el('span', 'ordo-subs-muted', opts.hint));
-    return field;
   }
 
   // La carte s'affiche dès qu'un élément de facturation existe : adresse remplie, moyen de paiement,
@@ -1060,7 +691,6 @@
 
   // --- Numéro de TVA intracommunautaire ------------------------------------------------------
 
-  var TAX_LABEL = 'Numéro de TVA intracommunautaire';
   var SESSION_EXPIRED = 'Votre session a expiré : reconnectez-vous puis réessayez.';
 
   function taxIdOf(t) {
@@ -1074,136 +704,6 @@
     if (status === 401) return SESSION_EXPIRED;
     return 'Le numéro n’a pas pu être enregistré. Réessayez dans un instant.';
   }
-
-  function errorLine() {
-    var error = el('p', 'ordo-addr-error');
-    error.setAttribute('role', 'alert');
-    error.hidden = true;
-    return error;
-  }
-
-  // --- Vues de l'adresse et du numéro de TVA, présentation héritée --------------------------------
-  // Chaque vue rend ses éléments et les poignées dont la logique a besoin ; la logique (envois, erreurs,
-  // focus, mesure) est commune aux deux présentations (voir taxIdBlock et addressSection).
-
-  function legacyValueRow(value) {
-    var row = el('div', 'ordo-addr-row');
-    var box = addressValue(TAX_LABEL, [value]);
-    box.className = 'ordo-addr-main';
-    row.appendChild(box);
-    return row;
-  }
-
-  legacyUi.addressShell = function() {
-    var root = el('div', 'ordo-subs ordo-addr');
-    root.appendChild(el('h3', 'ordo-subs-title', 'Adresse de facturation'));
-    root.appendChild(el('p', 'ordo-addr-sub', 'Elle figure sur vos factures.'));
-    var body = el('div');
-    root.appendChild(body);
-    var taxBox = el('div', 'ordo-addr-tva');
-    root.appendChild(taxBox);
-    return { root: root, body: body, taxBox: taxBox };
-  };
-
-  legacyUi.addressRead = function(addr) {
-    var row = el('div', 'ordo-addr-row');
-    var grid = el('div', 'ordo-addr-grid');
-    grid.appendChild(addressValue('Nom sur les factures', addr.name ? [addr.name] : []));
-    grid.appendChild(addressValue('Adresse', addressFilled(addr) ? addressLines(addr) : []));
-    row.appendChild(grid);
-    var edit = button(addressFilled(addr) ? 'Modifier' : 'Ajouter', !addressFilled(addr));
-    row.appendChild(edit);
-    return { root: row, edit: edit };
-  };
-
-  legacyUi.addressForm = function(addr) {
-    var form = el('form', 'ordo-addr-form');
-    form.noValidate = true;
-    var l1 = el('div', 'ordo-addr-line');
-    l1.appendChild(addressField('name', 'Nom sur les factures', addr.name, { placeholder: 'Nom et prénom, ou raison sociale', autocomplete: 'name', optional: true, max: 100 }));
-    form.appendChild(l1);
-    var l2 = el('div', 'ordo-addr-line');
-    l2.appendChild(addressField('line1', 'Adresse', addr.line1, { autocomplete: 'address-line1', required: true }));
-    l2.appendChild(addressField('line2', 'Complément', addr.line2, { placeholder: 'Bâtiment, étage…', autocomplete: 'address-line2', optional: true }));
-    form.appendChild(l2);
-    var l3 = el('div', 'ordo-addr-line');
-    l3.appendChild(addressField('postalCode', 'Code postal', addr.postalCode, { autocomplete: 'postal-code', required: true, short: true, max: 20 }));
-    l3.appendChild(addressField('city', 'Ville', addr.city, { autocomplete: 'address-level2', required: true, max: 100 }));
-    l3.appendChild(addressField('country', 'Pays (outre-mer inclus)', addr.country, {
-      options: COUNTRIES,
-      hint: 'Le pays ou la collectivité d\'outre-mer détermine la TVA appliquée à vos prochaines factures.'
-    }));
-    form.appendChild(l3);
-    form.appendChild(el('p', 'ordo-subs-muted', 'La nouvelle adresse s’applique à vos prochaines factures. Les factures déjà émises ne changent pas.'));
-    var error = errorLine();
-    form.appendChild(error);
-    var actions = el('div', 'ordo-subs-actions');
-    var cancel = button('Annuler', false);
-    var save = button('Enregistrer', true);
-    save.type = 'submit';
-    actions.appendChild(cancel);
-    actions.appendChild(save);
-    form.appendChild(actions);
-    return { root: form, form: form, error: error, cancel: cancel, save: save };
-  };
-
-  legacyUi.taxRead = function(value, allowed) {
-    var row = legacyValueRow(value);
-    var actions = el('div', 'ordo-subs-actions');
-    var edit = null;
-    if (allowed) {
-      edit = button('Modifier', false);
-      actions.appendChild(edit);
-    }
-    var remove = button('Retirer', false);
-    actions.appendChild(remove);
-    row.appendChild(actions);
-    return { root: row, edit: edit, remove: remove };
-  };
-
-  legacyUi.taxAsk = function() {
-    var line = el('p', 'ordo-subs-muted', 'Vous avez un numéro de TVA intracommunautaire ? ');
-    var add = el('button', 'ordo-subs-link', 'L’ajouter');
-    add.type = 'button';
-    line.appendChild(add);
-    return { root: line, add: add };
-  };
-
-  legacyUi.taxForm = function(value) {
-    var form = el('form', 'ordo-addr-form');
-    form.noValidate = true;
-    var field = addressField('taxId', TAX_LABEL, value, { placeholder: 'FR12345678901', autocomplete: 'off', max: 20 });
-    form.appendChild(field);
-    var input = field.querySelector('input');
-    input.setAttribute('spellcheck', 'false');
-    var hint = el('p', 'ordo-subs-muted', 'Il figurera sur vos prochaines factures. Les factures déjà émises ne changent pas.');
-    hint.id = 'ordo-addr-taxId-hint';
-    input.setAttribute('aria-describedby', hint.id);
-    form.appendChild(hint);
-    var error = errorLine();
-    form.appendChild(error);
-    var actions = el('div', 'ordo-subs-actions');
-    var cancel = button('Annuler', false);
-    var save = button('Enregistrer', true);
-    save.type = 'submit';
-    actions.appendChild(cancel);
-    actions.appendChild(save);
-    form.appendChild(actions);
-    return { root: form, form: form, input: input, error: error, cancel: cancel, save: save };
-  };
-
-  legacyUi.taxConfirm = function(value) {
-    var row = legacyValueRow(value);
-    var ask = el('p', 'ordo-addr-ask', 'Retirer ce numéro de vos prochaines factures ?');
-    ask.id = 'ordo-addr-tva-ask';
-    var error = errorLine();
-    var actions = el('div', 'ordo-subs-actions');
-    var cancel = button('Annuler', false);
-    var confirm = button('Retirer', true);
-    actions.appendChild(cancel);
-    actions.appendChild(confirm);
-    return { nodes: [row, ask, error, actions], ask: ask, error: error, cancel: cancel, confirm: confirm };
-  };
 
   // Sous l'adresse, dans son propre conteneur : l'adresse et le numéro se modifient chacun sans
   // toucher à l'autre. Sans numéro, un simple lien quand l'ajout est permis, rien sinon ; un numéro
@@ -1434,34 +934,6 @@
     return shell.root;
   }
 
-  function intro() {
-    return el('h3', 'ordo-subs-title', 'Mes abonnements');
-  }
-
-  function clear() {
-    if (D) return resetD();
-    while (anchor.firstChild) anchor.removeChild(anchor.firstChild);
-  }
-
-  function wrapper() {
-    var p = anchor && anchor.parentElement;
-    return p && p.classList && p.classList.contains('w-embed') ? p : null;
-  }
-
-  function hide() {
-    if (D) return hideD();
-    if (anchor) anchor.style.display = 'none';
-    var w = wrapper();
-    if (w) w.style.display = 'none';
-  }
-
-  function show() {
-    if (D) return showD();
-    if (anchor) anchor.style.display = '';
-    var w = wrapper();
-    if (w) w.style.display = '';
-  }
-
   // As many placeholders as the member has plans that are not cancelled, between one and three.
   function skeletonCount() {
     var conns = Array.isArray(member.planConnections) ? member.planConnections : [];
@@ -1470,29 +942,6 @@
       if (conns[i] && conns[i].status && conns[i].status !== 'CANCELED') n++;
     }
     return Math.max(1, Math.min(3, n));
-  }
-
-  function showSkeleton() {
-    if (D) return skeletonD();
-    injectStyle();
-    clear();
-    var root = el('div', 'ordo-subs');
-    root.setAttribute('aria-busy', 'true');
-    root.appendChild(intro());
-    var skels = el('div', 'ordo-subs-skels');
-    skels.setAttribute('aria-hidden', 'true');
-    for (var i = skeletonCount(); i > 0; i--) skels.appendChild(el('div', 'ordo-subs-skel'));
-    root.appendChild(skels);
-    root.appendChild(el('span', 'ordo-subs-sr', 'Chargement de vos abonnements…'));
-    anchor.appendChild(root);
-    show();
-    clearTimeout(slowTimer);
-    slowTimer = setTimeout(function() {
-      if (!anchor.contains(root)) return;
-      var slow = el('p', 'ordo-subs-empty', 'Le chargement prend plus de temps que d’habitude…');
-      slow.setAttribute('role', 'status');
-      root.appendChild(slow);
-    }, Math.max(0, SLOW_MS - (Date.now() - startedAt)));
   }
 
   var MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -1589,98 +1038,6 @@
     return btn;
   }
 
-  // The PDF button ends with its label: downloadInvoice writes « Réessayer » there.
-  legacyUi.pdfButton = function() {
-    var btn = el('button', 'ordo-inv-pdf');
-    btn.type = 'button';
-    btn.appendChild(svgIcon('download', 16));
-    btn.appendChild(el('span', null, 'PDF'));
-    return btn;
-  };
-
-  function invoicesSection(invoices) {
-    var root = el('div', 'ordo-subs ordo-inv');
-    root.appendChild(el('h3', 'ordo-subs-title', 'Factures'));
-    var table = el('div', 'ordo-inv-table');
-    table.setAttribute('role', 'table');
-    table.setAttribute('aria-label', 'Dernières factures');
-    var head = el('div', 'ordo-inv-row ordo-inv-head');
-    head.setAttribute('role', 'row');
-    var titles = ['Date', 'Abonnement', 'Montant', 'Statut', 'Factures'];
-    for (var h = 0; h < titles.length; h++) {
-      var th = el('span', 'ordo-inv-cell', titles[h]);
-      th.setAttribute('role', 'columnheader');
-      head.appendChild(th);
-    }
-    table.appendChild(head);
-    for (var i = 0; i < invoices.length; i++) {
-      var inv = invoices[i];
-      var st = INVOICE_STATUS[inv.status] || INVOICE_STATUS.open;
-      var row = el('div', 'ordo-inv-row');
-      row.setAttribute('role', 'row');
-      var cells = [
-        el('span', 'ordo-inv-cell ordo-inv-date', shortDay(inv.date)),
-        el('span', 'ordo-inv-cell ordo-inv-label', inv.label || 'Abonnement'),
-        el('span', 'ordo-inv-cell ordo-inv-amount', typeof inv.amount === 'number' ? money(inv.amount, inv.currency) : ''),
-        el('span', 'ordo-inv-cell ordo-inv-status'),
-        el('span', 'ordo-inv-cell ordo-inv-action')
-      ];
-      cells[3].appendChild(el('span', 'ordo-subs-tag ordo-inv-tone-' + st.tone, st.text));
-      var action = invoiceAction(inv);
-      if (action) cells[4].appendChild(action);
-      for (var c = 0; c < cells.length; c++) {
-        cells[c].setAttribute('role', 'cell');
-        row.appendChild(cells[c]);
-      }
-      table.appendChild(row);
-    }
-    root.appendChild(table);
-    if (window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function') {
-      var more = mark(el('button', 'ordo-subs-link', 'Toutes mes factures et mes informations de facturation'), 'portail');
-      more.type = 'button';
-      more.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
-      root.appendChild(more);
-    }
-    var slot = el('div', 'ordo-inv-emails');
-    root.appendChild(slot);
-    return { root: root, slot: slot };
-  }
-
-  var HELP_EMAIL = 'comptabilite@ordotype.fr';
-  var HELP_PHONE = { href: 'tel:+33676520055', text: '+33 (0)6 76 52 00 55' };
-  var HELP_VIDEOS = [
-    { href: '/academie/ajouter-moyen-paiement', text: 'Vidéo : ajouter un moyen de paiement', action: 'video_moyen_de_paiement' },
-    { href: '/academie/obtenir-factures', text: 'Vidéo : obtenir mes factures', action: 'video_factures' }
-  ];
-
-  function iconLink(cls, href, icon, text, action) {
-    var a = mark(el('a', cls), action);
-    a.setAttribute('href', href);
-    a.appendChild(svgIcon(icon, 20));
-    a.appendChild(el('span', null, text));
-    return a;
-  }
-
-  function helpSection() {
-    var root = el('aside', 'ordo-help');
-    root.setAttribute('aria-label', 'Aide');
-    root.appendChild(el('p', 'ordo-help-title', 'Une question sur votre abonnement ou vos factures ?'));
-    var contacts = el('div', 'ordo-help-row');
-    contacts.appendChild(iconLink('ordo-help-contact', 'mailto:' + HELP_EMAIL, 'mail', HELP_EMAIL, 'aide_email'));
-    var phone = el('div', 'ordo-help-phone');
-    phone.appendChild(iconLink('ordo-help-contact', HELP_PHONE.href, 'phone', HELP_PHONE.text, 'aide_telephone'));
-    phone.appendChild(el('span', 'ordo-help-note', 'Appel non surtaxé'));
-    contacts.appendChild(phone);
-    root.appendChild(contacts);
-    root.appendChild(el('div', 'ordo-help-divider'));
-    var videos = el('div', 'ordo-help-row');
-    for (var i = 0; i < HELP_VIDEOS.length; i++) {
-      videos.appendChild(iconLink('ordo-help-video', HELP_VIDEOS[i].href, 'play', HELP_VIDEOS[i].text, HELP_VIDEOS[i].action));
-    }
-    root.appendChild(videos);
-    return root;
-  }
-
   // The page's invoices block (portal button, help, invoice emails toggle) gives way to the
   // invoices section and the help box, once the invoices are known. The toggle moves into the
   // section, and back into the block whenever a later render has no section to hold it.
@@ -1701,58 +1058,6 @@
       if (++tries > MS_MAX_ATTEMPTS) return;
       setTimeout(poll, 200);
     })();
-  }
-
-  function placeInvoices(invoices) {
-    var block = document.getElementById('invoices-block');
-    if (!Array.isArray(invoices)) {
-      keepBlock(block, true);
-      if (toggleMoved && moveToggle(block)) toggleMoved = false;
-      return;
-    }
-    if (invoices.length) {
-      var section = invoicesSection(invoices);
-      anchor.appendChild(section.root);
-      whenInvoiceEmails(function() {
-        if (anchor.contains(section.slot) && moveToggle(section.slot)) toggleMoved = true;
-      });
-    } else if (toggleMoved && moveToggle(block)) {
-      toggleMoved = false;
-    }
-    anchor.appendChild(helpSection());
-    keepBlock(block, false);
-  }
-
-  function render(list, flash, pms, invoices, others, address, taxId, taxIdAllowed) {
-    pms = Array.isArray(pms) ? pms : [];
-    others = Array.isArray(others) ? others : [];
-    if (D) return renderD(list, flash, pms, invoices, others, address, taxId, taxIdAllowed);
-    injectStyle();
-    clear();
-    var root = el('div', 'ordo-subs');
-    root.appendChild(intro());
-    if (flash) {
-      var line = el('p', 'ordo-subs-flash', flash);
-      line.setAttribute('role', 'status');
-      root.appendChild(line);
-    }
-    if (!list.length) {
-      root.appendChild(el('p', 'ordo-subs-empty', 'Vous n’avez pas d’abonnement en cours.'));
-    } else {
-      var box = el('div', 'ordo-subs-list');
-      box.setAttribute('role', 'list');
-      for (var i = 0; i < list.length; i++) box.appendChild(card(list[i]));
-      root.appendChild(box);
-    }
-    anchor.appendChild(root);
-    if (pms.length) anchor.appendChild(paymentSection(list, pms, others));
-    if (address && billingCardWanted(list, pms, invoices, others, address, taxId)) {
-      anchor.appendChild(addressSection(address, taxId, taxIdAllowed));
-    }
-    placeInvoices(invoices);
-    show();
-    hideOldSection();
-    togglePaymentBlock(list, pms);
   }
 
   function memberToken() {
@@ -2051,7 +1356,7 @@
   // qui sert de gabarit : carte d'abonnement, moyen de paiement, adresse, ligne de facture) et les états
   // du bloc [data-ordo-gabarits="facturation"] (statuts, boutons, formulaires, messages). Le script les
   // recopie et n'y écrit que des données ; il ne crée d'éléments que pour des boutons, dont la classe
-  // vient alors du gabarit. Un repère manquant fait retomber sur la présentation héritée, en le signalant.
+  // vient alors du gabarit. Un repère manquant laisse les blocs SECOURS de la page à sa place, en le signalant.
 
   var GABARITS = [
     'statut-active', 'statut-free', 'statut-past_due', 'statut-pending', 'statut-canceling',
@@ -2071,12 +1376,6 @@
     'video-1': 'video_moyen_de_paiement',
     'video-2': 'video_factures'
   };
-
-  function designerWanted() {
-    var d = null;
-    try { d = window.OrdoRollout && window.OrdoRollout[DESIGNER_GATE]; } catch (e) { d = null; }
-    return Boolean(d && d.enabled);
-  }
 
   function champ(node, name) {
     return node ? node.querySelector('[data-ordo-champ="' + name + '"]') : null;
@@ -2110,14 +1409,11 @@
     return node;
   }
 
-  // Facturation du Designer incomplète : présentation construite par le script, signalée à Sentry ET
-  // comptée dans GA4 (subscriptions_list, subs_outcome « designer-absent », une fois par page), pour suivre
-  // le palier sans Sentry. Ce n'est pas un affichage de la liste : la liste suit, avec sa propre issue.
-  var designerAbsentTracked = false;
+  // Facturation du Designer incomplète : les blocs SECOURS de la page restent seuls et la liste n'est pas
+  // demandée (voir init). Signalé à Sentry ET compté dans GA4 (subscriptions_list, subs_outcome
+  // « designer-absent ») : c'est la seule issue de la liste mesurée pour cette page.
   function designerAbsent(name, detail) {
     reportProblem(name, detail);
-    if (designerAbsentTracked) return;
-    designerAbsentTracked = true;
     track('subscriptions_list', { subs_outcome: 'designer-absent' });
   }
 
@@ -2252,12 +1548,15 @@
     return { root: root, form: form, error: erreurD(champ(form, 'erreur')), cancel: cancel, save: save };
   }
 
-  var designerUi = {
+  // Les éléments que demande la logique commune (boutons, messages, vues de l'adresse et du numéro de TVA),
+  // tirés des gabarits. Appelé seulement après prepareDesigner, une fois D rempli.
+  var ui = {
     actions: function() {
       var row = document.createElement('div');
       row.className = D.actionsClass;
       return row;
     },
+    // kind : 'bouton', 'bouton-primaire' ou 'lien'.
     button: function(kind, label) {
       var b = document.createElement('button');
       b.type = 'button';
@@ -2574,7 +1873,9 @@
     keepBlock(block, false);
   }
 
-  function renderD(list, flash, pms, invoices, others, address, taxId, taxIdAllowed) {
+  function render(list, flash, pms, invoices, others, address, taxId, taxIdAllowed) {
+    pms = Array.isArray(pms) ? pms : [];
+    others = Array.isArray(others) ? others : [];
     resetD();
     var subs = D.cards.abonnements;
     if (flash) subs.insertBefore(rendu(ui.flash(flash)), D.liste);
@@ -2618,9 +1919,9 @@
     }, Math.max(0, SLOW_MS - (Date.now() - startedAt)));
   }
 
+  // Le conteneur de la Facturation, que ce script ne masque pas : il suit l'onglet.
   function observed() {
-    var w = wrapper();
-    return (w && w.parentElement) || anchor.parentElement || anchor;
+    return D.root.parentElement || D.root;
   }
 
   function whenVisible(run) {
@@ -2644,31 +1945,21 @@
   }
 
   function init() {
-    // Une seconde exécution (bundle périmé servi à côté de l'épinglé) trouverait les gabarits déjà retirés
-    // et retomberait sur la présentation héritée : la page aurait deux listes.
-    var drawn = document.querySelector('[data-ordo-facturation][data-ordo-pret]');
-    if (drawn) {
+    // Une seconde exécution (bundle périmé servi à côté de l'épinglé) trouverait les gabarits déjà retirés :
+    // elle signalerait un Designer incomplet à tort et rendrait les blocs SECOURS par-dessus la liste.
+    if (document.querySelector('[data-ordo-facturation][data-ordo-pret]')) {
       console.log(PREFIX + ' Already rendered');
       return;
     }
-    if (designerWanted()) D = prepareDesigner();
-    if (D) {
-      ui = designerUi;
-      anchor = D.root;
-    } else {
-      anchor = document.getElementById(ANCHOR_ID);
-      if (!anchor) {
-        console.log(PREFIX + ' Anchor not found');
-        fallbackToPageBlocks();
-        track('subscriptions_list', { subs_outcome: 'no-anchor' });
-        return;
-      }
-      if (anchor.firstElementChild) {
-        console.log(PREFIX + ' Already rendered');
-        return;
-      }
+    // Designer incomplet : signalé par prepareDesigner ; les blocs SECOURS restent, sans requête de liste.
+    D = prepareDesigner();
+    if (!D) {
+      console.log(PREFIX + ' Designer incomplete, page blocks kept');
+      fallbackToPageBlocks();
+      return;
     }
-    hide();
+    anchor = D.root;
+    hideD();
     listenClicks();
     // The list is requested with the page, not when its tab opens: it is usually ready (and rendered,
     // replacing the page's own blocks) before the member gets there. The skeleton only shows if not.
@@ -2731,8 +2022,8 @@
         subs_outcome: timedOut ? (unseen ? 'timeout-unseen' : 'timeout') : 'failed',
         subs_status: err && err.status ? String(err.status) : 'network'
       });
-      clear();
-      hide();
+      resetD();
+      hideD();
       fallbackToPageBlocks();
       console.error(PREFIX + ' Load error:', err && err.message);
       if (!unseen) reportIfActionable(err);
@@ -2741,7 +2032,7 @@
       seen = true;
       if (settled || instant) return;
       skeletonTimer = setTimeout(function() {
-        if (!settled && !instant) showSkeleton();
+        if (!settled && !instant) skeletonD();
       }, SKELETON_DELAY_MS);
     });
   }

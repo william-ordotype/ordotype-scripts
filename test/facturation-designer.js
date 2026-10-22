@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 /**
- * Onglet Facturation dessiné dans le Designer (palier facturation-designer.js).
+ * Onglet Facturation dessiné dans le Designer, seule présentation depuis le 22/10/2026.
  *
  * La page de test est l'onglet tel que Webflow le publie (test/fixtures/compte-facturation.html, copie du
  * domaine de recette) : la Facturation du Designer, son bloc de gabarits, et les anciens blocs en secours.
  * Ce qui est vérifié :
- *   - mêmes textes que la présentation héritée, pour chaque carte, moyen de paiement, facture et adresse ;
+ *   - mêmes textes que la présentation construite par le script avant son retrait (relevés le 22/10/2026),
+ *     pour chaque carte, moyen de paiement, facture et adresse ;
  *   - le dessin vient du Designer : classes recopiées des gabarits, aucune feuille de style injectée ;
  *   - les gabarits en place disparaissent, aucun identifiant n'est dupliqué, rien ne reste d'un rendu à l'autre ;
  *   - formulaires recopiés : identifiants, libellés, pays, envoi gardé loin de Webflow ;
- *   - squelette, secours sur erreur, palier coupé, repère manquant (retour à l'héritée, signalé) ;
- *   - l'interrupteur « factures par e-mail » piloté sur l'élément du Designer.
+ *   - squelette, secours sur erreur, repère manquant (blocs SECOURS, aucune requête de liste, signalé) ;
+ *   - l'interrupteur « factures par e-mail » piloté sur l'élément du Designer, et la case construite par
+ *     invoice-emails.js quand cet élément manque : un consentement doit toujours pouvoir se retirer.
  *
  * Usage : node test/facturation-designer.js
  */
@@ -28,7 +30,9 @@ const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturatio
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
 // Règles de base publiées par Webflow pour ces classes : une classe qui fixe `display` l'emporte sur `hidden`.
-const SITE_CSS = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.css'), 'utf8');
+// Les blocs SECOURS sont masqués par le site (combo « is-secours », comme dans test/compte-head.js).
+const SITE_CSS = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.css'), 'utf8')
+  + '.inner-block-wraper.is-secours{display:none}';
 
 const PRICE = (amount, current) => ({ amount, current, currency: 'eur', interval: 'month', intervalCount: 1 });
 const CARDS = [
@@ -62,6 +66,34 @@ const INVOICES = [
 ];
 const ADDRESS = { name: 'Dr Test', line1: '1 rue Exemple', line2: '', postalCode: '75001', city: 'Paris', country: 'FR' };
 
+// Textes relevés le 22/10/2026 sur la présentation que construisait le script, avant son retrait : ce que
+// voyaient les membres hors palier. La Facturation du Designer doit dire exactement la même chose.
+const TEXTES_CARTES = [
+  'Médecine Générale Actif 15 € / mois au lieu de 30 € -50 % jusqu’au 21 décembre 2026 Puis 30 € / mois Prochain prélèvement 15 € le 5 octobre 2026',
+  'Module Rhumatologie Actif 0 € / mois au lieu de 5 € Offert jusqu’au 1er octobre 2026 Puis 5 € / mois Prochain prélèvement 5 € le 1er octobre 2026',
+  'Module Soins palliatifs Gratuit Voir les offres',
+  'Stockage Résiliation programmée 2 € / mois Se termine le 30 septembre 2026',
+  'Impayé Paiement à régulariser 30 € / mois Paiement en échec Modifier le moyen de paiement',
+  'Pause prévue Pause programmée 30 € / mois Accès maintenu jusqu’au 17 octobre 2026, puis mise en pause. Reprise automatique le 17 mars 2027',
+  'En attente Paiement en cours 30 € / mois Votre paiement est en cours de validation.',
+  '<img src=x onerror=alert(1)> Gratuit',
+  'Essai terminé Terminé',
+  'Essai gratuit Gratuit Valable 15 jours à partir de votre inscription.',
+  'Résiliation Résiliation programmée 30 € / mois Se termine le 1er novembre 2026. Prochain prélèvement 30 € le 1er novembre 2026 Me réabonner',
+];
+const TEXTES_MOYENS = [
+  'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Médecine Générale et Module Rhumatologie. Modifier Aussi enregistrée : carte •••• 1004, non utilisée',
+  'Moyen de paiement Carte Visa •••• 4242 Expirée A expiré en juin 2026. Utilisée pour : Médecine Générale. Mettre à jour Aussi enregistrée : carte •••• 1004, non utilisée',
+  'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Médecine Générale et Module Rhumatologie. Prélèvement SEPA •••• 3000 Utilisé pour : Stockage. Aussi enregistrée : carte •••• 1004, non utilisée Modifier',
+  'Moyen de paiement Aucun moyen de paiement enregistré Ajouter un moyen de paiement',
+];
+const TEXTES_FACTURES = [
+  '14 sept. 2026 Médecine Générale 15 € Payée PDF',
+  '1er sept. 2026 Module Rhumatologie 5 € Prélèvement en cours PDF',
+  '14 août 2026 Abonnement 30 € À régler Régler',
+];
+const TEXTE_ADRESSE = 'Adresse de facturation Elle figure sur vos factures. Nom sur les factures Dr Test Adresse 1 rue Exemple 75001 Paris France Modifier Vous avez un numéro de TVA intracommunautaire ? L’ajouter';
+
 const wait = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 
 function text(node) {
@@ -72,10 +104,10 @@ function text(node) {
 }
 
 /**
- * designer : décision du palier ; outcomes : réponses successives de la fonction (liste puis actions) ;
+ * outcomes : réponses successives de la fonction (liste puis actions) ;
  * removeGabarit : retire un repère du Designer avant le chargement.
  */
-function page({ designer = true, outcomes = [], visible = true, removeGabarit = null, emails = false, emailsState = { eligible: true, enabled: false }, emailsWrite = null } = {}) {
+function page({ outcomes = [], visible = true, removeGabarit = null, emails = false, emailsState = { eligible: true, enabled: false }, emailsWrite = null } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -94,7 +126,6 @@ function page({ designer = true, outcomes = [], visible = true, removeGabarit = 
   const pushed = [];
   w.dataLayer = { push: (p) => { pushed.push(p); return 0; } };
   w.OrdoRollout = {
-    'facturation-designer.js': { enabled: designer, reason: 'bucket' },
     'subscriptions-overview.js': { enabled: true, reason: 'bucket' },
     'invoice-emails.js': { enabled: true, reason: 'bucket' }
   };
@@ -150,7 +181,7 @@ const doc = (t) => t.w.document;
 const root = (t) => doc(t).querySelector('[data-ordo-facturation]');
 const section = (t, name) => root(t).querySelector('[data-ordo-section="' + name + '"]');
 const designerCards = (t) => Array.from(root(t).querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu]'));
-const legacyCards = (t) => Array.from(doc(t).querySelectorAll('#ordotype-subscriptions .ordo-subs-card'));
+const secours = (t) => Array.from(doc(t).querySelectorAll('[data-w-tab="billing"] .inner-block-wraper.is-secours'));
 // Visible pour de vrai : ni l'élément ni un ancêtre n'est masqué. Sur le site, l'attribut `hidden` ne masque rien
 // dès qu'une classe fixe `display` (la règle de base Webflow n'est pas prioritaire) ; jsdom, lui, le fait toujours
 // gagner. On ne lui fait donc pas confiance : un élément qui n'est caché QUE par `hidden` compte comme visible.
@@ -163,29 +194,24 @@ function visibleIn(t, node) {
   return true;
 }
 
-async function both(body) {
-  const legacy = page({ designer: false, outcomes: [{ status: 200, body }] });
-  legacy.run();
-  const designer = page({ designer: true, outcomes: [{ status: 200, body }] });
-  designer.run();
+async function rendered(body) {
+  const t = page({ outcomes: [{ status: 200, body }] });
+  t.run();
   await wait(80);
-  return { legacy, designer };
+  return t;
 }
 
 async function main() {
-  // Mêmes textes que la présentation héritée, carte par carte
+  // Mêmes textes que la présentation construite par le script, carte par carte
   {
-    const { legacy, designer: t } = await both({ subscriptions: CARDS, paymentMethods: [VISA], otherPaymentMethods: OTHERS, invoices: INVOICES,
+    const t = await rendered({ subscriptions: CARDS, paymentMethods: [VISA], otherPaymentMethods: OTHERS, invoices: INVOICES,
       billingAddress: ADDRESS, taxId: null, taxIdAllowed: true });
-    const before = legacyCards(legacy).map(text);
     const after = designerCards(t).map(text);
     assert.strictEqual(after.length, CARDS.length);
-    assert.deepStrictEqual(after, before);
-    assert.strictEqual(after[0], 'Médecine Générale Actif 15 € / mois au lieu de 30 € -50 % jusqu’au 21 décembre 2026 Puis 30 € / mois Prochain prélèvement 15 € le 5 octobre 2026');
+    assert.deepStrictEqual(after, TEXTES_CARTES);
 
-    // Le dessin vient du Designer : aucune feuille injectée, classes recopiées des gabarits
-    assert.strictEqual(doc(t).getElementById('ordo-subs-style'), null);
-    assert.strictEqual(doc(t).getElementById('ordotype-subscriptions').children.length, 0);
+    // Le dessin vient du Designer : aucune feuille de style ajoutée à celles de la page, classes recopiées des gabarits
+    assert.strictEqual(doc(t).querySelectorAll('style').length, 2);
     const cards = designerCards(t);
     assert.ok(cards[0].classList.contains('compte-v2_abo'));
     assert.strictEqual(cards[0].querySelector('[data-ordo-champ="nom"] + .compte-v2_badge, .compte-v2_abo-head > .compte-v2_badge').className, 'compte-v2_badge is-actif');
@@ -230,17 +256,16 @@ async function main() {
     assert.strictEqual(root(t).querySelectorAll('[data-ordo-gabarit]').length, 0);
     assert.deepStrictEqual(t.erreurs, []);
     assert.strictEqual(t.reported.length + t.network.length, 0);
-    legacy.dom.window.close();
     t.dom.window.close();
   }
 
   // Moyen de paiement : mêmes textes, icône et classes du Designer
-  for (const [pms, list] of [[[VISA], [CARDS[0]]], [[EXPIRED], [CARDS[0]]], [[VISA, SEPA], [CARDS[0], CARDS[3]]], [[{ type: 'none', usedBy: ['Médecine Générale'] }], [CARDS[0]]]]) {
-    const { legacy, designer: t } = await both({ subscriptions: list, paymentMethods: pms, otherPaymentMethods: OTHERS, invoices: [] });
-    const legacyText = text(doc(legacy).querySelector('.ordo-pm'));
+  for (const [pms, list, attendu] of [[[VISA], [CARDS[0]], TEXTES_MOYENS[0]], [[EXPIRED], [CARDS[0]], TEXTES_MOYENS[1]],
+    [[VISA, SEPA], [CARDS[0], CARDS[3]], TEXTES_MOYENS[2]], [[{ type: 'none', usedBy: ['Médecine Générale'] }], [CARDS[0]], TEXTES_MOYENS[3]]]) {
+    const t = await rendered({ subscriptions: list, paymentMethods: pms, otherPaymentMethods: OTHERS, invoices: [] });
     const card = section(t, 'moyen-de-paiement');
     assert.strictEqual(card.hidden, false);
-    assert.strictEqual(text(card), legacyText);
+    assert.strictEqual(text(card), attendu);
     const rows = card.querySelectorAll('.compte-v2_moyen');
     assert.strictEqual(rows.length, pms.length);
     if (pms[0] === VISA && pms.length === 1) {
@@ -263,23 +288,19 @@ async function main() {
       assert.ok(card.querySelector('.compte-v2_picto.is-moyen svg path[d="M3 20h18"]'), 'icône banque pour le SEPA');
       assert.ok(card.lastElementChild.classList.contains('compte-v2_actions'), 'un seul bouton, sous les moyens');
     }
-    legacy.dom.window.close();
     t.dom.window.close();
   }
 
   // Factures : mêmes lignes, statuts et PDF du Designer, interrupteur e-mail déplacé dans la carte
   {
     const body = { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES };
-    const { legacy } = await both(body);
-    const legacyRows = Array.from(doc(legacy).querySelectorAll('.ordo-inv-row:not(.ordo-inv-head)')).map(text);
-    legacy.dom.window.close();
     const t = page({ outcomes: [{ status: 200, body }, { status: 500, body: {} }], emails: true });
     t.run();
     await wait(120);
     const card = section(t, 'factures');
     assert.ok(visibleIn(t, card));
     const rows = Array.from(card.querySelectorAll('.compte-v2_facture[data-ordo-rendu]')).map(text);
-    assert.deepStrictEqual(rows, legacyRows);
+    assert.deepStrictEqual(rows, TEXTES_FACTURES);
     assert.strictEqual(card.querySelectorAll('.compte-v2_facture').length, 1 + INVOICES.length, 'en-tête + lignes, sans le gabarit');
     assert.ok(card.querySelector('.compte-v2_badge.is-paye') && card.querySelector('.compte-v2_badge.is-en-cours') && card.querySelector('.compte-v2_badge.is-a-regler'));
     const pdf = card.querySelector('button.compte-v2_pdf');
@@ -353,9 +374,6 @@ async function main() {
   // Adresse et numéro de TVA : lecture, formulaire recopié, envoi gardé loin de Webflow
   {
     const body = { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES, billingAddress: ADDRESS, taxId: null, taxIdAllowed: true };
-    const { legacy } = await both(body);
-    const legacyAddr = text(doc(legacy).querySelector('.ordo-addr'));
-    legacy.dom.window.close();
     const saved = Object.assign({}, ADDRESS, { line1: '2 rue Neuve' });
     const t = page({ outcomes: [
       { status: 200, body },
@@ -369,7 +387,7 @@ async function main() {
     await wait(80);
     const card = section(t, 'adresse');
     assert.strictEqual(card.hidden, false);
-    assert.strictEqual(text(card), legacyAddr);
+    assert.strictEqual(text(card), TEXTE_ADRESSE);
     assert.strictEqual(text(card.querySelector('[data-ordo-zone="adresse"]')),
       'Nom sur les factures Dr Test Adresse 1 rue Exemple 75001 Paris France Modifier');
     assert.strictEqual(text(card.querySelector('[data-ordo-zone="tva"]')), 'Vous avez un numéro de TVA intracommunautaire ? L’ajouter');
@@ -520,35 +538,98 @@ async function main() {
     assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-v2'));
     assert.ok(doc(t).documentElement.classList.contains('ordo-subs-fallback'));
     assert.ok(!visibleIn(t, root(t)));
+    assert.strictEqual(secours(t).length, 3);
+    for (const b of secours(t)) assert.ok(visibleIn(t, b), 'bloc SECOURS visible : ' + (b.id || b.getAttribute('data-ms-content')));
     t.dom.window.close();
   }
 
-  // Palier coupé : présentation héritée, Facturation du Designer jamais montrée
-  {
-    const t = page({ designer: false, outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], invoices: [] } }] });
-    t.run();
-    await wait(80);
-    assert.strictEqual(legacyCards(t).length, 1);
-    assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-v2'));
-    assert.ok(!visibleIn(t, root(t)), 'cachée par la règle d\'en-tête');
-    assert.strictEqual(root(t).querySelectorAll('[data-ordo-gabarit]').length, 6, 'gabarits en place (et le PDF) laissés tels quels');
-    assert.ok(!t.pushed.some((p) => p.subs_outcome === 'designer-absent'), 'hors palier : pas de repli compté');
-    t.dom.window.close();
-  }
-
-  // Repère manquant dans le Designer : retour à l'héritée, signalé
-  for (const missing of ['[data-ordo-gabarit="statut-past_due"]', '[data-ordo-gabarit="facture"]', '[data-ordo-gabarits="facturation"]']) {
+  // Repère manquant dans le Designer : blocs SECOURS, aucune requête de liste, signalé et compté une fois
+  for (const [missing, nom] of [
+    ['[data-ordo-gabarit="statut-past_due"]', 'FacturationGabaritAbsent'],
+    ['[data-ordo-gabarit="facture"]', 'FacturationGabaritAbsent'],
+    ['[data-ordo-gabarits="facturation"]', 'FacturationDesignerAbsent'],
+    ['[data-ordo-facturation]', 'FacturationDesignerAbsent'],
+  ]) {
     const t = page({ removeGabarit: missing, outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], invoices: [] } }] });
     t.run();
     await wait(80);
-    assert.strictEqual(legacyCards(t).length, 1, missing);
-    assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-v2'));
-    const names = t.reported.map((r) => r.err.name);
-    assert.ok(names.includes('FacturationGabaritAbsent') || names.includes('FacturationDesignerAbsent'), missing + ' ' + names.join(','));
-    // Compté aussi dans GA4, une seule fois, et la liste garde sa propre issue.
+    assert.strictEqual(t.calls.length, 0, missing + ' : aucune requête de liste');
+    const html = doc(t).documentElement;
+    assert.ok(html.classList.contains('ordo-subs-fallback'), missing);
+    assert.ok(!html.classList.contains('ordo-subs-v2'), missing);
+    if (root(t)) {
+      assert.ok(!visibleIn(t, root(t)), missing + ' : Facturation cachée par la règle d\'en-tête');
+      assert.ok(!root(t).hasAttribute('data-ordo-pret'), missing);
+    }
+    for (const b of secours(t)) assert.ok(visibleIn(t, b), missing + ' : bloc SECOURS visible');
+    assert.deepStrictEqual(t.reported.map((r) => r.err.name), [nom], missing);
     const outcomes = t.pushed.filter((p) => p.event === 'subscriptions_list').map((p) => p.subs_outcome);
-    assert.strictEqual(outcomes.filter((o) => o === 'designer-absent').length, 1, missing + ' ' + outcomes.join(','));
-    assert.ok(outcomes.some((o) => o === 'shown' || o === 'instant'), 'la liste reste comptée : ' + outcomes.join(','));
+    assert.deepStrictEqual(outcomes, ['designer-absent'], missing);
+    assert.deepStrictEqual(t.erreurs, [], missing);
+    t.dom.window.close();
+  }
+
+  // Designer incomplet, invoice-emails.js chargé : l'interrupteur reste dans le bloc SECOURS des factures.
+  // Sans la Facturation, la case est celle construite par invoice-emails.js ; avec une Facturation incomplète,
+  // la ligne du Designer est prise et placée dans le bloc.
+  for (const [missing, construite] of [['[data-ordo-facturation]', true], ['[data-ordo-gabarits="facturation"]', false]]) {
+    const t = page({ removeGabarit: missing, emails: true, outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], invoices: INVOICES } }] });
+    t.run();
+    await wait(120);
+    assert.ok(doc(t).documentElement.classList.contains('ordo-subs-fallback'), missing);
+    assert.strictEqual(t.calls.length, 0, missing);
+    const block = doc(t).getElementById('invoices-block');
+    assert.ok(visibleIn(t, block), missing);
+    const sw = block.querySelector('#invoice-emails-toggle');
+    assert.ok(sw, missing + ' : interrupteur dans le bloc des factures');
+    assert.ok(visibleIn(t, sw), missing);
+    assert.strictEqual(sw.tagName === 'INPUT', construite, missing);
+    if (construite) assert.strictEqual(sw.type, 'checkbox');
+    else assert.ok(sw.closest('[data-ordo-factures-email]'), missing);
+    assert.strictEqual(doc(t).querySelectorAll('#invoice-emails-toggle').length, 1);
+    // Le consentement se retire depuis ce bloc
+    sw.click();
+    await wait(40);
+    const post = t.emailCalls.find((c) => c.options && c.options.method === 'POST');
+    assert.ok(post, missing);
+    assert.deepStrictEqual(JSON.parse(post.options.body), { enabled: true }, missing);
+    assert.deepStrictEqual(t.erreurs, [], missing);
+    t.dom.window.close();
+  }
+
+  // Échec de la liste, Facturation complète : la ligne du Designer est prise par invoice-emails.js et reste
+  // dans le bloc SECOURS des factures, visible avec lui.
+  {
+    const t = page({ outcomes: [{ status: 502, body: {} }], emails: true, emailsState: { eligible: true, enabled: true } });
+    t.run();
+    await wait(120);
+    assert.ok(doc(t).documentElement.classList.contains('ordo-subs-fallback'));
+    const block = doc(t).getElementById('invoices-block');
+    const row = block.querySelector('[data-ordo-factures-email]');
+    assert.ok(row, 'ligne du Designer dans le bloc des factures');
+    assert.ok(visibleIn(t, block));
+    assert.ok(visibleIn(t, row));
+    assert.strictEqual(row.querySelector('[role="switch"]').getAttribute('aria-checked'), 'true');
+    assert.strictEqual(root(t).querySelectorAll('[data-ordo-factures-email]').length, 0, 'plus rien dans la Facturation cachée');
+    t.dom.window.close();
+  }
+
+  // Ligne du Designer sans interrupteur : signalée, et la case est construite à la place
+  {
+    const body = { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES };
+    const t = page({ removeGabarit: '[data-ordo-factures-email] [data-ordo-champ="interrupteur"]', emails: true, outcomes: [{ status: 200, body }] });
+    t.run();
+    await wait(120);
+    const slot = section(t, 'factures').querySelector('[data-ordo-slot="factures-email"]');
+    const input = slot.querySelector('input[type="checkbox"]#invoice-emails-toggle');
+    assert.ok(input, 'case construite, déplacée dans la carte Factures');
+    assert.ok(visibleIn(t, input));
+    assert.ok(!visibleIn(t, slot.querySelector('[data-ordo-factures-email]')), 'la ligne incomplète reste cachée');
+    assert.deepStrictEqual(t.network.map((r) => r.err.message), ['invoice-emails: Designer row without switch or state']);
+    input.click();
+    await wait(40);
+    assert.ok(t.emailCalls.some((c) => c.options && c.options.method === 'POST'));
+    assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }
 
@@ -560,6 +641,8 @@ async function main() {
     await wait(80);
     assert.strictEqual(designerCards(t).length, 1);
     assert.strictEqual(t.calls.length, 1);
+    assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-fallback'), 'pas de secours par-dessus la liste');
+    assert.strictEqual(t.reported.length, 0);
     t.dom.window.close();
   }
 

@@ -13,7 +13,8 @@
  *   - an HTTP error is an answer: no second request;
  *   - a timeout the member did not see (tab in the background) is `timeout-unseen`, and is not
  *     reported: the page's own blocks still come back;
- *   - a page without the anchor is recorded as `no-anchor`;
+ *   - a page whose Facturation is not fully drawn in the Designer is recorded as `designer-absent`,
+ *     sends no list request, and leaves the page's own blocks;
  *   - a normal answer is still `shown`, and no late `timeout` follows it;
  *   - an HTTP error is still `failed`, never `timeout`;
  *   - a body cut while it is read (page left, connection lost) is a network failure: sent a
@@ -22,7 +23,8 @@
  *   - actions (PDF, payment, reactivation) are never subject to the delay;
  *   - without AbortController, the request keeps its previous, unbounded behaviour.
  *
- * The real file is loaded in jsdom. Only LIST_TIMEOUT_MS and HEDGE_MS are shortened, in the
+ * The real file is loaded in jsdom, on the Facturation tab as Webflow publishes it
+ * (test/fixtures/compte-facturation.html). Only LIST_TIMEOUT_MS and HEDGE_MS are shortened, in the
  * test's copy, so each case runs in milliseconds instead of eight seconds.
  *
  * Usage: node test/subscriptions-list-timeout.js
@@ -34,6 +36,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const FILE = path.resolve(__dirname, '..', 'account/subscriptions-overview.js');
 const REAL = fs.readFileSync(FILE, 'utf8');
+const FIXTURE = fs.readFileSync(path.resolve(__dirname, 'fixtures/compte-facturation.html'), 'utf8');
 const SHORT_MS = 60;
 const HEDGE_SHORT_MS = 30;
 const SHORTENED = REAL.replace('var LIST_TIMEOUT_MS = 8000;', 'var LIST_TIMEOUT_MS = ' + SHORT_MS + ';');
@@ -44,14 +47,16 @@ assert.notStrictEqual(SOURCE, SHORTENED, 'HEDGE_MS = 4000 not found: the test wo
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let passed = 0;
 
-function page({ anchor = true, fetch, withAbort = true, hidden = false } = {}) {
-  const html = '<!doctype html><html><body>' + (anchor ? '<div id="ordotype-subscriptions"></div>' : '') + '</body></html>';
+// designer: false = Facturation retirée du Designer ([data-ordo-facturation] absent).
+function page({ designer = true, fetch, withAbort = true, hidden = false } = {}) {
+  const html = '<!doctype html><html><body><div class="w-tabs">' + FIXTURE + '</div></body></html>';
   const dom = new JSDOM(html, {
     runScripts: 'outside-only',
     url: 'https://www.ordotype.fr/membership/compte',
     virtualConsole: new VirtualConsole(),
   });
   const w = dom.window;
+  if (!designer) w.document.querySelector('[data-ordo-facturation]').remove();
   w.dataLayer = [];
   w.OrdoAccount = { member: { id: 'mem_test' } };
   w.$memberstackDom = { getMemberCookie: () => Promise.resolve('test-token') };
@@ -84,6 +89,12 @@ const cutBody = (status) => (w) => Promise.resolve({
 });
 const notJson = (w) => Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new w.SyntaxError('JSON.parse: unexpected character')) });
 const EMPTY = { subscriptions: [], paymentMethods: [], invoices: [] };
+// The script reads the Designer's templates before sending the list request: the delays are measured
+// from that first request, not from the page load.
+async function started(p) {
+  const t0 = Date.now();
+  while (!p.calls.length && Date.now() - t0 < 1000) await wait(1);
+}
 // A status-less failure is sent again after RETRY_DELAY_MS, which the test keeps real.
 const RETRY_WAIT_MS = 600;
 
@@ -96,6 +107,7 @@ async function check(name, fn) {
 (async () => {
   await check('no answer: a second request after HEDGE_MS, both cut by LIST_TIMEOUT_MS, ONE `timeout`', async () => {
     const p = page({ fetch: hang });
+    await started(p);
     await wait(HEDGE_SHORT_MS / 2);
     assert.strictEqual(p.calls.length, 1, 'no second request before HEDGE_MS');
     await wait(SHORT_MS * 5);
@@ -111,6 +123,7 @@ async function check(name, fn) {
 
   await check('the total wait does not grow: both requests are over by LIST_TIMEOUT_MS', async () => {
     const p = page({ fetch: hang });
+    await started(p);
     const t0 = Date.now();
     while (!p.events().length && Date.now() - t0 < SHORT_MS * 10) await wait(5);
     assert.ok(p.events().length === 1 && Date.now() - t0 < SHORT_MS * 2, 'recorded well before twice the delay');
@@ -129,6 +142,7 @@ async function check(name, fn) {
   await check('first request hangs, the second gets an HTTP error: `failed` at once, not a later `timeout`', async () => {
     let n = 0;
     const p = page({ fetch: (w, opts) => (++n === 1 ? hang(w, opts) : answer(503, { error: 'unavailable' })()) });
+    await started(p);
     await wait(HEDGE_SHORT_MS + 10);
     const ev = p.events();
     assert.strictEqual(ev.length, 1, 'recorded before the first request is cut');
@@ -154,14 +168,15 @@ async function check(name, fn) {
     assert.strictEqual(p.reports.length, 0, 'a wait nobody saw is not a failure');
   });
 
-  await check('no anchor: recorded as `no-anchor`, no request, page blocks back', async () => {
-    const p = page({ anchor: false, fetch: answer(200, EMPTY) });
+  await check('Facturation missing from the Designer: recorded as `designer-absent`, no request, page blocks back', async () => {
+    const p = page({ designer: false, fetch: answer(200, EMPTY) });
     await wait(SHORT_MS * 2);
     const ev = p.events();
     assert.strictEqual(ev.length, 1);
-    assert.strictEqual(ev[0].subs_outcome, 'no-anchor');
+    assert.strictEqual(ev[0].subs_outcome, 'designer-absent');
     assert.strictEqual(p.calls.length, 0);
     assert.ok(p.fallback());
+    assert.deepStrictEqual(p.reports.map((r) => r.err.name), ['FacturationDesignerAbsent']);
   });
 
   await check('normal answer: still `shown`, and no late `timeout` after the delay', async () => {

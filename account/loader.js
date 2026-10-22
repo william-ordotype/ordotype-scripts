@@ -82,21 +82,13 @@
       // client ne pourrait plus retirer depuis sa page.
       'www.ordotype.fr': 100
     },
-    // Facturation dessinée dans le Designer (bloc [data-ordo-facturation] et ses gabarits) : ce fichier
-    // n'est qu'un marqueur de palier, lu par subscriptions-overview.js et invoice-emails.js. Hors palier,
-    // ils gardent la présentation construite par le script. Membres live seulement, comme la liste :
-    // vérifié sur www avec l'override `facturation-designer.js:on`.
-    'facturation-designer.js': {
-      'sandbox-ordotype.webflow.io': 100,
-      'ordotype.webflow.io': 100,
-      // 10 % du 2026-10-12 au 2026-10-15 (bucket commun : mêmes membres que la photo et le RPPS) : 118 membres,
-      // 164 affichages de la liste, 0 échec (témoin 0,51 %), 0 designer-absent, actions abouties, Sentry propre.
-      'www.ordotype.fr': 100 // 50 % du 2026-10-15 au 2026-10-19, 100 % depuis le 2026-10-19
-    },
     // Live members only, like invoice-emails.js: verified on www with the override.
     'subscriptions-overview.js': {
       // 100 % d'emblée depuis le 2026-09-22, après la recette sur de vrais comptes avec l'override.
-      // Si la liste ne se charge pas, l'ancienne section du site reste affichée.
+      // Il remplit la Facturation dessinée dans le Designer ([data-ordo-facturation]) : seule présentation
+      // depuis le 2026-10-22 (celle construite par le script et son palier facturation-designer.js retirés).
+      // Si la liste ne se charge pas, ou si la Facturation du Designer est incomplète, l'ancienne section du
+      // site reste affichée (blocs SECOURS). Interrupteur d'arrêt : retirer l'hôte ramène ces blocs.
       'www.ordotype.fr': 100
     },
     // Nouvelle présentation de « Mon profil » et « Connexion et Sécurité ». Les anciens blocs
@@ -232,7 +224,6 @@
     'status-selectors.js',
     'delete-account.js',
     'billing-portal.js',
-    'facturation-designer.js', // Palier : la Facturation se dessine dans le Designer. Gated by GATES.
     'subscriptions-overview.js', // « Mes abonnements » list. Gated by GATES.
     'invoice-emails.js', // Opt-in « recevoir mes factures par e-mail ». Gated by GATES.
     'profile-overview.js', // Mon profil + Connexion et Sécurité, après les scripts dont il déplace les blocs. Gated by GATES.

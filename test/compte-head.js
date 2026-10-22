@@ -286,7 +286,7 @@ async function test(name, fn) {
 
   await test('facturation : liste rendue = anciens blocs masqués ; secours = les trois ; ordo-keep = un seul', async () => {
     let r = page({ rollout: { 'profile-overview.js': { enabled: true }, 'subscriptions-overview.js': { enabled: true } } });
-    r.d.getElementById('ordotype-subscriptions').innerHTML = '<div class="ordo-subs"></div>';
+    r.h.classList.add('ordo-subs-v2'); // posé par subscriptions-overview.js une fois la Facturation remplie
     await tick(150);
     r.avance(9000);
     await tick(150);
