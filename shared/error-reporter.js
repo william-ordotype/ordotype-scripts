@@ -17,7 +17,7 @@
  *   // Le seul point d'entrée du dataLayer. Ne jette jamais, signale l'échec.
  *   OrdoErrorReporter.track({ event: 'stripe_signup_click', option: 'rempla' });
  *
- * Version: 1.2.0 (2026-09-09)
+ * Version: 1.3.0 (2026-10-23)
  *   1.0.0 — report() vers le webhook Discord.
  *   1.1.0 — reportSideEffect() et track() partagés, pour que la règle « une
  *           mesure ne doit jamais casser la page » vive à un seul endroit au
@@ -26,6 +26,7 @@
  *           page. Mesuré : ces échecs-là sont sans statut, le serveur les a
  *           souvent servis normalement, et ce sont les seuls que `keepalive`
  *           laisse encore remonter.
+ *   1.3.0 : l'e-mail du membre ne part plus vers Sentry (Discord le garde).
  */
 (function() {
     'use strict';
@@ -101,10 +102,16 @@
                     var client = carrier.defaultCurrentScope.getClient();
                     if (client && client.captureException) {
                         var err = error instanceof Error ? error : new Error(String(error));
+                        // Sentry garde memberId, jamais l'adresse en clair.
+                        // Discord reçoit toujours le payload complet.
+                        var extra = {};
+                        for (var key in payload) {
+                            if (key !== 'email') extra[key] = payload[key];
+                        }
                         client.captureException(err, {
                             captureContext: {
                                 tags: { reporter: 'OrdoErrorReporter', context: context },
-                                extra: payload
+                                extra: extra
                             }
                         });
                     }
