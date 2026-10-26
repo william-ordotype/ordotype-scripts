@@ -22,6 +22,9 @@
  * A logged out visitor (nothing is sent), or a member the server turns away because the offer is not
  * on their account (409), sees a message in the error element with a link to the subscriptions tab of
  * their account, instead of the generic error; the wording follows the 409 error code.
+ * An offer refused because a discount is still running (409 `remise_en_cours`) hands the server's
+ * `remise` to window.OrdoCurrentOffer (offre-annulation/current-offer.js), which replaces the offer
+ * with the member's current offer; without it, the error element says so.
  *
  * Usage in Webflow footer:
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/redeem-cancel-forms.js"></script>
@@ -44,10 +47,11 @@
   const NOTICES = {
     noSession: { name: 'CancelFormNoSession', link: 'Se connecter' },
     planAbsent: { name: 'CancelFormPlanAbsent', link: 'Voir mes abonnements' },
-    subscriptionAbsent: { name: 'CancelFormSubscriptionAbsent', link: 'Voir mes abonnements' }
+    subscriptionAbsent: { name: 'CancelFormSubscriptionAbsent', link: 'Voir mes abonnements' },
+    discountActive: { name: 'CancelFormDiscountActive', link: 'Voir mes abonnements' }
   };
   // 409 error code from the endpoint → notice; any other 409 is planAbsent.
-  const NOTICE_OF_409 = { abonnement_absent: 'subscriptionAbsent' };
+  const NOTICE_OF_409 = { abonnement_absent: 'subscriptionAbsent', remise_en_cours: 'discountActive' };
 
   /**
    * Pages that load this script through a page loader already have the reporter.
@@ -98,7 +102,8 @@
       errorId: 'error-message-redeem',
       notices: {
         noSession: 'Connectez-vous pour profiter de cette offre.',
-        planAbsent: 'Cette offre n\'est pas disponible pour votre compte. Vos abonnements sont dans votre compte.'
+        planAbsent: 'Cette offre n\'est pas disponible pour votre compte. Vos abonnements sont dans votre compte.',
+        discountActive: 'Votre abonnement bénéficie déjà d’une offre en cours, que l’offre -50 % remplacerait. Rien n’a été modifié.'
       }
     },
     cancel: {
@@ -231,7 +236,12 @@
           window.location.href = '/';
         }, REDIRECT_DELAY);
       } else if (action && response.status === 409) {
-        refuse(elements, formName, NOTICE_OF_409[serverError(response.body)] || 'planAbsent', 'server returned 409');
+        const kind = NOTICE_OF_409[serverError(response.body)] || 'planAbsent';
+        if (kind === 'discountActive' && formName === 'redeem' && showCurrentOffer(response.body)) {
+          report(formName, NOTICES[kind].name, 'server returned 409, current offer shown');
+          return;
+        }
+        refuse(elements, formName, kind, 'server returned 409');
       } else {
         const detail = response.body ? `: ${String(response.body).slice(0, 200)}` : '';
         throw new Error(`Server returned ${response.status}${detail}`);
@@ -260,6 +270,17 @@
     setError(elements, { text: text, link: NOTICES[kind].link });
     showElement(elements.error);
     elements.busy = false;
+  }
+
+  /** Hands the refusal's `remise` to the page's current offer block; true when it took its place. */
+  function showCurrentOffer(body) {
+    try {
+      const parsed = JSON.parse(String(body || ''));
+      const block = window.OrdoCurrentOffer;
+      return Boolean(block && typeof block.show === 'function' && parsed && block.show(parsed.remise));
+    } catch (e) {
+      return false;
+    }
   }
 
   /** The `error` code of a JSON error body, or ''. */
