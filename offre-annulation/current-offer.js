@@ -142,12 +142,15 @@
         reveal();
     }
 
+    // The member's session token, or '' for a visitor: the cookie is only read once a member is logged in.
     function sessionToken(deadline) {
         return new Promise(function(resolve) {
             (function poll() {
                 var ms = window.$memberstackDom;
-                if (ms && typeof ms.getMemberCookie === 'function') {
-                    Promise.resolve(ms.getMemberCookie()).then(resolve, function() { resolve(''); });
+                if (ms && typeof ms.getMemberCookie === 'function' && typeof ms.getCurrentMember === 'function') {
+                    Promise.resolve(ms.getCurrentMember()).then(function(res) {
+                        return res && res.data ? ms.getMemberCookie() : '';
+                    }).then(resolve, function() { resolve(''); });
                     return;
                 }
                 if (Date.now() >= deadline) { resolve(''); return; }

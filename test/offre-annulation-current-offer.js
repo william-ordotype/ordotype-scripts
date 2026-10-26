@@ -9,7 +9,7 @@
  *     discount, the wording of its kind (until a date, forever, once), the link back to the account; the
  *     intro line changes, the redeem form is gone, pause and cancel are untouched;
  *   - fields missing from `remise` give the short card, never a wrong amount;
- *   - any other answer (200, 503, unreadable, network error, no session, no answer in time) keeps the
+ *   - any other answer (200, 503, unreadable, network error, no answer in time), a visitor or no session keeps the
  *     -50 % offer and shows it again;
  *   - a refusal that comes after the timeout still replaces the offer;
  *   - window.OrdoCurrentOffer.show() does the same for the refusal of a submitted offer.
@@ -52,14 +52,19 @@ const OFFERT = { prix: 3000, prixRemise: 0, intervalle: 'month', duree: 'repeati
 
 // answer: { status, body } | { transport } | { never: true }; token: session token ('' = none);
 // memberstack: false = the SDK never arrives.
-function page({ answer = { status: 200, body: { apercu: true, remise: null } }, token = 'jeton-de-test', memberstack = true, html = HTML, late = null } = {}) {
+function page({ answer = { status: 200, body: { apercu: true, remise: null } }, token = 'jeton-de-test', member = { id: 'mem_test' }, memberstack = true, html = HTML, late = null } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://www.ordotype.fr/membership/offre-annulation', virtualConsole: new VirtualConsole() });
   const w = dom.window;
   const d = w.document;
   // What the loader does before this script runs.
   const block = d.getElementById('offer');
   if (block) block.style.visibility = 'hidden';
-  if (memberstack) w.$memberstackDom = { getMemberCookie: () => Promise.resolve(token) };
+  if (memberstack) {
+    w.$memberstackDom = {
+      getCurrentMember: () => Promise.resolve({ data: member }),
+      getMemberCookie: () => Promise.resolve(token),
+    };
+  }
   const fetches = [];
   w.fetch = (url, opts) => {
     fetches.push({ url, method: opts.method, headers: Object.assign({}, opts.headers), body: opts.body });
@@ -172,6 +177,13 @@ function assertCard(p, price, unit, note) {
       assertOfferKept(p);
     });
   }
+
+  await check('visitor (no member) with a cookie value: nothing sent, offer kept', async () => {
+    const p = page({ member: null, token: 'undefined' });
+    await wait(30);
+    assert.strictEqual(p.fetches.length, 0);
+    assertOfferKept(p);
+  });
 
   await check('no session token: nothing sent, offer kept', async () => {
     const p = page({ token: '' });
