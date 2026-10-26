@@ -183,15 +183,18 @@
             }
         }
 
-        // Bandeau dont la croix est retenue : « numéro de téléphone ». La croix masque
-        // le bandeau 30 jours, dans ce navigateur et pour ce membre seulement ; au
-        // chargement suivant, le bandeau d'après dans l'ordre peut s'afficher. Valeur
-        // « <id du membre>:<horodatage> » : sur un poste partagé (hôpital), un autre
-        // membre n'en hérite pas. Un horodatage dans le futur (horloge déréglée) ne
-        // compte pas. Stockage inaccessible : la croix ferme quand même, le bandeau
-        // revient à la page suivante.
+        // Bandeaux dont la croix est retenue : « numéro de téléphone » et « moyen de
+        // paiement qui expire bientôt ». La croix masque le bandeau 30 jours, dans ce
+        // navigateur et pour ce membre seulement ; au chargement suivant, le bandeau
+        // d'après dans l'ordre peut s'afficher. Valeur « <id du membre>:<horodatage> » :
+        // sur un poste partagé (hôpital), un autre membre n'en hérite pas. Un
+        // horodatage dans le futur (horloge déréglée) ne compte pas. Stockage
+        // inaccessible : la croix ferme quand même, le bandeau revient à la page suivante.
+        // « Carte expirée » (moins de 31 jours) n'a pas de croix : la fermeture de
+        // « expire bientôt » ne le masque pas.
         const CLOSABLE_SNOOZE_MS = 30 * DAY_MS;
         const PHONE_BANNER = { id: 'banner-to-hide-phone-missing', key: 'phoneBannerClosedTs' };
+        const CB_EXPIRES_SOON_BANNER = { id: 'banner-to-hide-cb-expires-soon', key: 'cbExpiresSoonBannerClosedTs' };
 
         function bannerSnoozed(banner) {
             let raw = '';
@@ -224,14 +227,21 @@
 
         // Paused subscription — show dedicated pause banner, skip all other banner logic
         if (showPauseBanner($)) return;
+        const SUBSCRIPTION = 'SUBSCRIPTION';
+        const ACTIVE = 'ACTIVE';
+        const TRIALING = 'TRIALING';
+        const EXPIRE_SOON_DAYS = 60; // Days before CB expiry to show "expires soon" banner
+        const EXPIRE_DAYS = 31;      // Days before CB expiry to show "expired" banner
         const SIGNUP_DAYS = 15;      // Days after signup before certain redirects activate
 
         // Safe date parsing via shared utility
         const switchDate = ms.safeDate('date-de-switch');
         const signupDate = ms.safeDateFromValue(member.createdAt);
+        const expiredDate = ms.safeDate('cb');
 
         const date_since_signup = ms.daysSince(signupDate);
         const date_since_switch = ms.daysSince(switchDate);
+        const date_till_expired = ms.daysUntil(expiredDate);
 
         // Use shared constants from memberstack-utils
         const isFrance = ms.isFrenchTerritory(ms.customFields["country"]);
@@ -298,6 +308,10 @@
             return connections.every(plan =>
                 plan.status === 'CANCELED' || plan.planId === 'pln_essai-expir--vr4r0ouk'
             );
+        }
+
+        function isSubscriptionActiveOrTrialing(plan) {
+            return plan.type === SUBSCRIPTION && (plan.status === ACTIVE || plan.status === TRIALING);
         }
 
         // Le bandeau SAU propose une offre que ces membres ont déjà.
@@ -402,7 +416,7 @@
 
         // Display various banners based on member conditions.
         // Paiement échoué d'abord : c'est l'état de facturation le plus urgent, il
-        // passe avant tout autre bandeau. (Les redirections
+        // passe avant tout autre bandeau, carte expirée comprise. (Les redirections
         // de profil ci-dessus passent encore avant.) Même règle que Memberstack, qui
         // affiche seul le bandeau « paiement échoué » pour TOUT plan en échec
         // (modules compris) et coupe seul le contenu payant (premium-pages) : sans
@@ -413,9 +427,6 @@
         // envoyé depuis moins de 24 h (repère partagé, voir memberstack-utils).
         // Prélèvement SEPA en route : pas de bandeau d'échec non plus, comme sur les
         // fiches, où il est dans un bloc `!sepa-temp`.
-        // Plus de bandeau « carte expirée » ni « carte qui expire bientôt » (26/10/2026) :
-        // la date d'expiration n'annonce pas un refus, la banque renouvelant souvent la
-        // carte sous le même numéro. Un vrai refus passe par « paiement échoué » ici.
         if (ms.hasFailedPayment()) {
             if (hasPastDuePlan && !isPastDueBrique && !isSepaTemporary &&
                 !ms.isPaymentPageSeenRecently() && ms.markPaymentPageSeen()) {
@@ -447,6 +458,17 @@
             return;
         } else if (endOfInternship.banner) {
             $('#banner-to-hide-signup-internat-termine').css({ display: 'flex' });
+        } else if (
+            planConnections.some(isSubscriptionActiveOrTrialing) &&
+            date_till_expired !== null && date_till_expired < EXPIRE_DAYS
+        ) {
+            $('#banner-to-hide-cb-expired').css({ display: 'flex' });
+        } else if (
+            planConnections.some(isSubscriptionActiveOrTrialing) &&
+            date_till_expired !== null && date_till_expired < EXPIRE_SOON_DAYS &&
+            !bannerSnoozed(CB_EXPIRES_SOON_BANNER)
+        ) {
+            showClosableBanner(CB_EXPIRES_SOON_BANNER);
         } else {
             showInformationBanner();
         }
