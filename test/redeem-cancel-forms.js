@@ -20,6 +20,9 @@
  *   - the 409 wording follows the error code: `abonnement_absent` → no active subscription found
  *     (CancelFormSubscriptionAbsent), any other or unreadable body → the offer is not active
  *     (CancelFormPlanAbsent); a form without wording for a notice uses its planAbsent text;
+ *   - a 409 `remise_en_cours` on the redeem form hands `remise` to window.OrdoCurrentOffer; without a
+ *     block that takes it, the redeem form's own notice (CancelFormDiscountActive); the cancel form
+ *     never calls it;
  *   - a second submit while the first is in flight sends nothing;
  *   - two forms on the same page each take their own path.
  *
@@ -281,6 +284,48 @@ async function check(name, fn) {
       assert.ok(t.indexOf("Cette offre n'est pas disponible pour votre compte.") !== -1, t);
       assert.ok(!/undefined/.test(t), t);
     }
+  });
+
+  const REMISE = { prix: 3000, prixRemise: 0, intervalle: 'month', duree: 'repeating', pleinTarif: '2027-04-25' };
+  const DISCOUNT_ACTIVE = { status: 409, body: JSON.stringify({ error: 'remise_en_cours', remise: REMISE }) };
+
+  await check('redeem form: HTTP 409 remise_en_cours hands the remise to the current offer block, no notice', async () => {
+    const p = await page({ cancelAttr: null, redeem: true, redeemAttr: 'redeem-mg', answers: [DISCOUNT_ACTIVE] });
+    const given = [];
+    p.w.OrdoCurrentOffer = { show: (r) => { given.push(r); return true; } };
+    p.submit('redeem-form');
+    await wait(60);
+    // Parsed inside the page: compared by value, not by prototype.
+    assert.strictEqual(JSON.stringify(given), JSON.stringify([REMISE]));
+    assert.ok(!p.shown('error-message-redeem'));
+    assert.ok(!p.shown('success-message-redeem'));
+    assert.strictEqual(p.reports.length, 1);
+    assert.strictEqual(p.reports[0].err.name, 'CancelFormDiscountActive');
+    await wait(AFTER_REDIRECT);
+    assert.deepStrictEqual(p.navigations, []);
+  });
+
+  await check('redeem form: HTTP 409 remise_en_cours without a block that takes it shows its own notice', async () => {
+    for (const block of [undefined, { show: () => false }, { show: () => { throw new Error('render'); } }]) {
+      const p = await page({ cancelAttr: null, redeem: true, redeemAttr: 'redeem-mg', answers: [DISCOUNT_ACTIVE] });
+      if (block) p.w.OrdoCurrentOffer = block;
+      p.submit('redeem-form');
+      await wait(60);
+      await assertNotice(p, 'error-message-redeem', 'redeem-form',
+        'Votre abonnement bénéficie déjà d’une offre en cours, que l’offre -50 % remplacerait. Rien n’a été modifié.',
+        'CancelFormDiscountActive');
+    }
+  });
+
+  await check('cancel form: HTTP 409 remise_en_cours (never sent for it) falls back to its planAbsent wording', async () => {
+    const p = await page({ answers: [DISCOUNT_ACTIVE] });
+    let calls = 0;
+    p.w.OrdoCurrentOffer = { show: () => { calls += 1; return true; } };
+    p.submit('cancel-form');
+    await wait(60);
+    assert.strictEqual(calls, 0, 'the current offer block belongs to the redeem form');
+    const t = p.d.getElementById('error-message-cancel').textContent;
+    assert.ok(t.indexOf("Cette offre n'est pas active sur votre compte") !== -1, t);
   });
 
   await check('with data-ordo-action: HTTP 409 with an unreadable or other body is the offer-not-active notice', async () => {

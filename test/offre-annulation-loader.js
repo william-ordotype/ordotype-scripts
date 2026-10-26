@@ -30,6 +30,12 @@ const GABARIT = `<!doctype html><html><head>
   <div id="waiting-message-cancel" style="display:none"></div><div id="error-message-cancel" style="display:none"></div>
 </body></html>`;
 
+// Comme en ligne : l'offre -50 % dans son bloc `.inscr-p_actions`.
+const GABARIT_BLOC = GABARIT
+  .replace('<form id="redeem-form"', '<div class="inscr-p_actions" id="offre"><form id="redeem-form"')
+  .replace('<div id="error-message-redeem" style="display:none"></div>', '<div id="error-message-redeem" style="display:none"></div></div>');
+assert.notStrictEqual(GABARIT_BLOC, GABARIT);
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
 async function flush() { for (let i = 0; i < 20; i++) await tick(); }
 
@@ -37,7 +43,7 @@ function page(options = {}) {
   const natifs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => { if (/not implemented/i.test(e.message)) natifs.push(e.message); });
-  const dom = new JSDOM(GABARIT, { url: 'https://www.ordotype.fr/membership/offre-annulation', runScripts: 'outside-only', virtualConsole });
+  const dom = new JSDOM(options.bloc ? GABARIT_BLOC : GABARIT, { url: 'https://www.ordotype.fr/membership/offre-annulation', runScripts: 'outside-only', virtualConsole });
   const w = dom.window; const d = w.document;
   const rapports = [];
   w.OrdoErrorReporter = { report: (nom, err) => rapports.push(err.name) };
@@ -60,6 +66,11 @@ function page(options = {}) {
       if (options.brancherTard) differes.push(go); else go();
     },
     'offre-annulation/pause-form.js': () => brancher('pause-form'),
+    // Offre en cours : décide tout de suite si le test le demande, comme après la réponse du serveur.
+    'offre-annulation/current-offer.js': () => {
+      const bloc = d.getElementById('offre');
+      if (options.decision && bloc) { bloc.setAttribute('data-ordo-offer', options.decision); bloc.style.visibility = ''; }
+    },
     // Fenêtre du motif : coupe le premier envoi (capture), puis laisse passer le second.
     'offre-annulation/cancel-reason-modal.js': () => {
       let passe = false;
@@ -87,7 +98,7 @@ function page(options = {}) {
     await flush();
   };
   const tout = async (sauf = {}) => {
-    for (const nom of ['offre-annulation/cancel-reason-modal.js', 'shared/memberstack-utils.js', 'shared/error-reporter.js', 'shared/opacity-reveal.js',
+    for (const nom of ['offre-annulation/cancel-reason-modal.js', 'shared/memberstack-utils.js', 'shared/error-reporter.js', 'offre-annulation/current-offer.js', 'shared/opacity-reveal.js',
       'shared/countdown.js', 'offre-annulation/session-stats.js', 'offre-annulation/pause-form.js', 'shared/redeem-cancel-forms.js']) {
       await charger(nom, sauf[nom] || 'ok');
     }
@@ -183,6 +194,41 @@ async function ouvrir(options) {
     assert.ok(p.visible('error-message-redeem'));
     assert.ok(!p.visible('error-message-pause'));
     assert.deepStrictEqual(p.natifs, []);
+  }
+  // 9. Bloc de l'offre -50 % : masqué (place gardée) dès le chargeur, rendu à current-offer.js.
+  {
+    const p = await ouvrir({ bloc: true, decision: 'current' });
+    const bloc = () => p.d.getElementById('offre');
+    assert.strictEqual(bloc().style.visibility, 'hidden', 'masqué avant tout script');
+    assert.notStrictEqual(bloc().style.display, 'none', 'sa place est gardée');
+    await p.tout();
+    assert.strictEqual(bloc().style.visibility, '', 'rendu par current-offer.js');
+    const filet = p.minuteries.find((m) => m.ms === 5000 && m.fn);
+    assert.ok(filet, 'filet de 5 s posé');
+    bloc().style.visibility = 'hidden'; // ce que le script aurait laissé, décision prise : le filet n'y touche pas
+    filet.fn(); await flush();
+    assert.strictEqual(bloc().style.visibility, 'hidden');
+  }
+  // 10. current-offer.js ne se charge pas : le bloc réapparaît aussitôt, les formulaires marchent.
+  {
+    const p = await ouvrir({ bloc: true });
+    await p.tout({ 'offre-annulation/current-offer.js': 'erreur' });
+    assert.strictEqual(p.d.getElementById('offre').style.visibility, '');
+    p.clic('redeem-form'); await flush();
+    assert.deepStrictEqual(p.traites, ['redeem-form']);
+  }
+  // 11. current-offer.js chargé mais sans décision : le filet de 5 s réaffiche le bloc.
+  {
+    const p = await ouvrir({ bloc: true });
+    await p.tout();
+    assert.strictEqual(p.d.getElementById('offre').style.visibility, 'hidden');
+    p.minuteries.find((m) => m.ms === 5000 && m.fn).fn(); await flush();
+    assert.strictEqual(p.d.getElementById('offre').style.visibility, '');
+  }
+  // 12. Page sans bloc (gabarit ancien) : rien n'est masqué, aucun filet posé.
+  {
+    const p = await ouvrir();
+    assert.ok(!p.minuteries.some((m) => m.ms === 5000));
   }
   // 6. Une fois prêts, la garde ne s'interpose plus.
   {

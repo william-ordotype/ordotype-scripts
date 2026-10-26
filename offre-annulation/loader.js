@@ -33,7 +33,9 @@
     // Scripts to load in order
     // Note: tracking-churn-offers.js is injected site-wide by shared/global-utils.js
     // (path-guarded to cancel URLs) so it lives on every cancel page from one source.
+    const OFFER_SCRIPT = 'offre-annulation/current-offer.js';
     const scripts = [
+        OFFER_SCRIPT,
         'shared/opacity-reveal.js',
         'shared/countdown.js',
         'offre-annulation/session-stats.js',
@@ -46,6 +48,19 @@
         'offre-annulation/pause-form.js': ['pause-form'],
         'shared/redeem-cancel-forms.js': ['redeem-form', 'cancel-form']
     };
+
+    // Bloc de l'offre -50 % : masqué (sa place gardée) jusqu'à ce que current-offer.js dise s'il reste
+    // (attribut `data-ordo-offer`). Réaffiché si ce script ne se charge pas ou ne décide pas à temps.
+    const OFFER_WAIT = 5000;
+    const redeemForm = document.getElementById('redeem-form');
+    const offerBlock = redeemForm && redeemForm.closest ? redeemForm.closest('.inscr-p_actions') : null;
+    function revealOffer() {
+        if (offerBlock && !offerBlock.hasAttribute('data-ordo-offer')) offerBlock.style.visibility = '';
+    }
+    if (offerBlock) {
+        offerBlock.style.visibility = 'hidden';
+        setTimeout(revealOffer, OFFER_WAIT);
+    }
 
     // --------------------------------------------------------------------
     // Garde des formulaires. Un formulaire sans son écouteur part en envoi
@@ -165,6 +180,7 @@
             } catch (err) {
                 failed += 1;
                 console.error(PREFIX, 'Load error:', err);
+                if (file === OFFER_SCRIPT) revealOffer();
                 (FORM_SCRIPTS[file] || []).forEach((id) => { failedForms[id] = true; });
                 if (FORM_SCRIPTS[file]) report('FormScriptsFailed', file + ' did not load');
                 if (held && failedForms[held.id]) failHeld();
