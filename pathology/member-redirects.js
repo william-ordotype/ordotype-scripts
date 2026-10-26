@@ -50,11 +50,9 @@
     const allowedPlanIds = ms.ALLOWED_INTERN_PLAN_IDS;
 
     // Safe date parsing via shared utility
-    const expiredDate = ms.safeDate('cb');
     const switchDate = ms.safeDate('date-de-switch');
     const signupDate = ms.safeDateFromValue(member.createdAt);
 
-    const date_till_expired = ms.daysUntil(expiredDate);
     const date_since_signup = ms.daysSince(signupDate);
     const date_since_switch = ms.daysSince(switchDate);
 
@@ -177,24 +175,8 @@
     else if (endOfInternship.banner) {
         if ($) $('#banner-to-hide-signup-internat-termine').css({ 'display': 'flex' });
     }
-    else if (
-        planConnections.some(plan =>
-            plan.type === 'SUBSCRIPTION' &&
-            (plan.status === 'ACTIVE' || plan.status === 'TRIALING') &&
-            date_till_expired !== null && date_till_expired < 31
-        )
-    ) {
-        if ($) $('#pathologie-cb-expired-click').css({ 'display': 'flex' });
-    }
-    else if (
-        planConnections.some(plan =>
-            plan.type === 'SUBSCRIPTION' &&
-            (plan.status === 'ACTIVE' || plan.status === 'TRIALING') &&
-            date_till_expired !== null && date_till_expired >= 31 && date_till_expired < 60
-        )
-    ) {
-        if ($) $('#pathologie-cb-expires-soon-click').css({ 'display': 'flex' });
-    }
+    // Plus de bandeau « carte expirée » ni « carte qui expire bientôt » (26/10/2026),
+    // comme sur la page d'accueil, qui l'explique.
     else if (
         date_since_switch !== null && date_since_switch < 8 &&
         ms.hasPlan('pln_essai-gratuit-5e4s0o0r') &&

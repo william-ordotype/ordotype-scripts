@@ -1,21 +1,20 @@
 #!/usr/bin/env node
 /**
- * Bandeaux de l'accueil dont la croix est retenue : « numéro de téléphone »
- * (#banner-to-hide-phone-missing) et « moyen de paiement qui expire bientôt »
- * (#banner-to-hide-cb-expires-soon). La croix masque le bandeau 30 jours, dans ce
+ * Bandeau de l'accueil dont la croix est retenue : « numéro de téléphone »
+ * (#banner-to-hide-phone-missing). La croix masque le bandeau 30 jours, dans ce
  * navigateur et pour ce membre seulement ; au chargement suivant, le bandeau
- * d'après dans l'ordre peut s'afficher.
+ * d'après dans l'ordre peut s'afficher. Le bandeau « moyen de paiement qui expire
+ * bientôt », qui avait la même croix, est retiré depuis le 26/10/2026
+ * (test/bandeaux-carte-retires.js).
  *
  * Ce qui doit tenir :
  *   - membre sans téléphone, rien en mémoire : bandeau téléphone affiché ;
  *   - clic sur la croix (sur l'icône, comme un vrai clic) : bandeau masqué, repère
  *     « <id du membre>:<horodatage> » posé, celui-là seulement ;
  *   - rechargement après la croix du téléphone : l'image partenariat Rennes prend la place ;
- *   - rechargement après la croix de la carte : les bandeaux d'information
- *     (ici le téléphone) prennent la place ;
  *   - 31 jours après : le bandeau revient ;
- *   - « carte expirée » (moins de 31 jours, sans croix) n'est pas masqué par la
- *     croix de « expire bientôt » ;
+ *   - carte qui expire ou « expirée » : plus de bandeau carte, le téléphone s'affiche,
+ *     y compris avec un ancien repère de croix carte resté dans le navigateur ;
  *   - repère d'un autre membre (poste partagé) ou daté dans le futur : ne compte pas ;
  *   - stockage qui refuse l'écriture : la croix ferme quand même, sans erreur ;
  *   - clic ailleurs (croix d'un autre bandeau) : aucun repère ;
@@ -38,6 +37,8 @@ const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
 const ASSO = 'pln_interne-m-decine-g-n-rale-adh-rent--4a4t0o95';
 
 const TEL = { bandeau: '#banner-to-hide-phone-missing', cle: 'phoneBannerClosedTs' };
+// Bandeau carte retiré : ses éléments restent dans la page Webflow, masqués, et des
+// navigateurs gardent l'ancien repère de sa croix.
 const CARTE = { bandeau: '#banner-to-hide-cb-expires-soon', cle: 'cbExpiresSoonBannerClosedTs' };
 const CARTE_EXPIREE = '#banner-to-hide-cb-expired';
 const CARTE_DANS_45_J = iso(MIDI + 45 * JOUR);
@@ -80,7 +81,7 @@ function page(m, { maintenant = MIDI, stockage = {}, refusEcriture = false } = {
     if (refusEcriture) {
         const ecrire = w.Storage.prototype.setItem;
         w.Storage.prototype.setItem = function (k, v) {
-            if (k === TEL.cle || k === CARTE.cle) throw new Error('QuotaExceededError');
+            if (k === TEL.cle) throw new Error('QuotaExceededError');
             return ecrire.call(this, k, v);
         };
     }
@@ -148,35 +149,22 @@ const CAS = [
         const p = page(membre({ phone: '+33600000000' }));
         return [[p.vus.includes(TEL.bandeau), false, 'bandeau']];
     }],
-    // Carte qui expire bientôt.
-    ['[carte] expire dans 45 jours, sans téléphone : bandeau carte, il bloque le téléphone', () => {
+    // Carte : bandeaux retirés, le téléphone n'est plus bloqué.
+    ['[carte] expire dans 45 jours, sans téléphone : pas de bandeau carte, le téléphone s\'affiche', () => {
         const p = page(membre({ cb: CARTE_DANS_45_J }));
-        return [[p.vus.includes(CARTE.bandeau), true, 'carte'], [p.vus.includes(TEL.bandeau), false, 'téléphone']];
+        return [[p.vus.includes(CARTE.bandeau), false, 'carte'], [p.vus.includes(TEL.bandeau), true, 'téléphone']];
     }],
-    ['[carte] clic sur la croix : bandeau masqué, repère carte posé, pas celui du téléphone', () => {
-        const p = page(membre({ cb: CARTE_DANS_45_J }));
-        p.cliquer(CARTE.bandeau + ' .nfc_close-icon path');
-        return [[p.masque(CARTE), true, 'masqué'], [p.repere(CARTE), 'mem_test:' + MIDI, 'repère carte'], [p.repere(TEL), null, 'repère téléphone']];
+    ['[carte] « expirée » (dans 10 jours), sans téléphone : pas de bandeau carte, le téléphone s\'affiche', () => {
+        const p = page(membre({ cb: iso(MIDI + 10 * JOUR) }));
+        return [[p.vus.includes(CARTE_EXPIREE), false, 'carte expirée'], [p.vus.includes(TEL.bandeau), true, 'téléphone']];
     }],
-    ['[carte] rechargement 1 jour après la croix : pas de bandeau carte, le téléphone prend la place', () => {
+    ['[carte] ancien repère de croix carte dans le navigateur : sans effet, le téléphone s\'affiche', () => {
         const p = page(membre({ cb: CARTE_DANS_45_J }), { stockage: { [CARTE.cle]: 'mem_test:' + (MIDI - JOUR) } });
         return [[p.vus.includes(CARTE.bandeau), false, 'carte'], [p.vus.includes(TEL.bandeau), true, 'téléphone']];
     }],
-    ['[carte] 31 jours après la croix (carte toujours à 45 jours) : le bandeau carte revient', () => {
-        const p = page(membre({ cb: CARTE_DANS_45_J }), { stockage: { [CARTE.cle]: 'mem_test:' + (MIDI - 31 * JOUR) } });
-        return [[p.vus.includes(CARTE.bandeau), true, 'carte']];
-    }],
-    ['[carte] carte expirée (10 jours) après la croix de « expire bientôt » : « carte expirée » toujours affiché', () => {
-        const p = page(membre({ cb: iso(MIDI + 10 * JOUR) }), { stockage: { [CARTE.cle]: 'mem_test:' + (MIDI - JOUR) } });
-        return [[p.vus.includes(CARTE_EXPIREE), true, 'carte expirée'], [p.vus.includes(TEL.bandeau), false, 'téléphone']];
-    }],
-    ['[carte] croix d\'un AUTRE membre sur ce navigateur : bandeau carte affiché', () => {
-        const p = page(membre({ cb: CARTE_DANS_45_J }), { stockage: { [CARTE.cle]: 'mem_autre:' + (MIDI - JOUR) } });
-        return [[p.vus.includes(CARTE.bandeau), true, 'carte']];
-    }],
-    ['[carte] croix du téléphone posée : ne masque pas le bandeau carte', () => {
+    ['[carte] croix du téléphone posée, carte qui expire : ni téléphone ni carte', () => {
         const p = page(membre({ cb: CARTE_DANS_45_J }), { stockage: { [TEL.cle]: 'mem_test:' + (MIDI - JOUR) } });
-        return [[p.vus.includes(CARTE.bandeau), true, 'carte']];
+        return [[p.vus.includes(CARTE.bandeau), false, 'carte'], [p.vus.includes(TEL.bandeau), false, 'téléphone']];
     }],
 ];
 
