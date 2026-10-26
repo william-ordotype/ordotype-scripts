@@ -108,7 +108,8 @@ function page(options = {}) {
   const visible = (id) => d.getElementById(id).style.display === 'block';
   const clic = (id) => d.querySelector('#' + id + ' button').click();
   const brancherMaintenant = async () => { differes.splice(0).forEach((f) => f()); await flush(); };
-  return { w, d, natifs, traites, rapports, minuteries, charger, tout, visible, clic, brancherMaintenant };
+  const demandes = () => Array.from(attente.keys());
+  return { w, d, natifs, traites, rapports, minuteries, charger, tout, visible, clic, brancherMaintenant, demandes };
 }
 
 async function ouvrir(options) {
@@ -203,8 +204,8 @@ async function ouvrir(options) {
     assert.notStrictEqual(bloc().style.display, 'none', 'sa place est gardée');
     await p.tout();
     assert.strictEqual(bloc().style.visibility, '', 'rendu par current-offer.js');
-    const filet = p.minuteries.find((m) => m.ms === 5000 && m.fn);
-    assert.ok(filet, 'filet de 5 s posé');
+    const filet = p.minuteries.find((m) => m.ms === 10000 && m.fn);
+    assert.ok(filet, 'filet de 10 s posé');
     bloc().style.visibility = 'hidden'; // ce que le script aurait laissé, décision prise : le filet n'y touche pas
     filet.fn(); await flush();
     assert.strictEqual(bloc().style.visibility, 'hidden');
@@ -217,18 +218,26 @@ async function ouvrir(options) {
     p.clic('redeem-form'); await flush();
     assert.deepStrictEqual(p.traites, ['redeem-form']);
   }
-  // 11. current-offer.js chargé mais sans décision : le filet de 5 s réaffiche le bloc.
+  // 11. current-offer.js chargé mais sans décision : le filet de 10 s réaffiche le bloc.
   {
     const p = await ouvrir({ bloc: true });
     await p.tout();
     assert.strictEqual(p.d.getElementById('offre').style.visibility, 'hidden');
-    p.minuteries.find((m) => m.ms === 5000 && m.fn).fn(); await flush();
+    p.minuteries.find((m) => m.ms === 10000 && m.fn).fn(); await flush();
     assert.strictEqual(p.d.getElementById('offre').style.visibility, '');
+  }
+  // 13. current-offer.js part dès l'ouverture, en parallèle, sans attendre la file des autres scripts.
+  {
+    const p = await ouvrir({ bloc: true });
+    const d = p.demandes();
+    assert.ok(d.includes('offre-annulation/current-offer.js'), 'demandé avant tout chargement : ' + d.join(', '));
+    assert.ok(d.includes('offre-annulation/cancel-reason-modal.js'));
+    assert.ok(!d.includes('shared/opacity-reveal.js'), 'la file, elle, attend');
   }
   // 12. Page sans bloc (gabarit ancien) : rien n'est masqué, aucun filet posé.
   {
     const p = await ouvrir();
-    assert.ok(!p.minuteries.some((m) => m.ms === 5000));
+    assert.ok(!p.minuteries.some((m) => m.ms === 10000));
   }
   // 6. Une fois prêts, la garde ne s'interpose plus.
   {

@@ -30,12 +30,14 @@
     // localStorage itself rather than waiting for memberstack-utils.js.
     const FIRST = 'offre-annulation/cancel-reason-modal.js';
 
+    // The offer block waits on a server answer: started in parallel too, so the
+    // request leaves without queuing behind the scripts below.
+    const OFFER_SCRIPT = 'offre-annulation/current-offer.js';
+
     // Scripts to load in order
     // Note: tracking-churn-offers.js is injected site-wide by shared/global-utils.js
     // (path-guarded to cancel URLs) so it lives on every cancel page from one source.
-    const OFFER_SCRIPT = 'offre-annulation/current-offer.js';
     const scripts = [
-        OFFER_SCRIPT,
         'shared/opacity-reveal.js',
         'shared/countdown.js',
         'offre-annulation/session-stats.js',
@@ -50,8 +52,9 @@
     };
 
     // Bloc de l'offre -50 % : masqué (sa place gardée) jusqu'à ce que current-offer.js dise s'il reste
-    // (attribut `data-ordo-offer`). Réaffiché si ce script ne se charge pas ou ne décide pas à temps.
-    const OFFER_WAIT = 5000;
+    // (attribut `data-ordo-offer`). Réaffiché si ce script ne se charge pas ou ne décide pas à temps
+    // (il attend lui-même le serveur 6 s au plus).
+    const OFFER_WAIT = 10000;
     const redeemForm = document.getElementById('redeem-form');
     const offerBlock = redeemForm && redeemForm.closest ? redeemForm.closest('.inscr-p_actions') : null;
     function revealOffer() {
@@ -170,6 +173,10 @@
             reasonSettled = true;
             releaseHeld();
         });
+        loadScript(`${BASE}/${OFFER_SCRIPT}`).catch((err) => {
+            console.error(PREFIX, 'Load error:', err);
+            revealOffer();
+        });
 
         // Each file on its own: a failing one is skipped, the next still loads,
         // so a broken countdown no longer leaves the forms without their scripts.
@@ -180,7 +187,6 @@
             } catch (err) {
                 failed += 1;
                 console.error(PREFIX, 'Load error:', err);
-                if (file === OFFER_SCRIPT) revealOffer();
                 (FORM_SCRIPTS[file] || []).forEach((id) => { failedForms[id] = true; });
                 if (FORM_SCRIPTS[file]) report('FormScriptsFailed', file + ' did not load');
                 if (held && failedForms[held.id]) failHeld();

@@ -22,8 +22,8 @@ const assert = require('assert');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const REAL = fs.readFileSync(path.resolve(__dirname, '..', 'offre-annulation/current-offer.js'), 'utf8');
-// The 3 s answer timeout shortened to 80 ms: same checks, without sleeping.
-const SCRIPT = REAL.split('var ANSWER_TIMEOUT = 3000;').join('var ANSWER_TIMEOUT = 80;');
+// The 6 s answer timeout shortened to 80 ms: same checks, without sleeping.
+const SCRIPT = REAL.split('var ANSWER_TIMEOUT = 6000;').join('var ANSWER_TIMEOUT = 80;');
 assert.notStrictEqual(SCRIPT, REAL, 'timeout not found');
 const ENDPOINT = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
