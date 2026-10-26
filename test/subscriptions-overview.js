@@ -271,7 +271,8 @@ async function main() {
   {
     const expired = Object.assign({}, VISA, { expMonth: 6, expYear: 2026, expired: true });
     const t = await withPms([CARDS[0]], [expired]);
-    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Visa •••• 4242 Expirée A expiré en juin 2026. Utilisée pour : Médecine Générale. Mettre à jour');
+    // A past date is not an expired card (most are still charged): the date, and the SEPA, not « A expiré »
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Visa •••• 4242 Fin de validité Date d’expiration : juin 2026. Utilisée pour : Médecine Générale. Passez au prélèvement SEPA : pas de date d’expiration. Mettre à jour');
     assert.ok(pmSection(t.w).querySelector('.compte-v2_badge.is-a-regler'));
     assert.ok(pmSection(t.w).querySelector('.compte-v2_picto.is-expiree'));
     assert.ok(pmSection(t.w).querySelector('a.compte-v2_btn.is-principal'));
@@ -280,7 +281,7 @@ async function main() {
   {
     const soon = Object.assign({}, VISA, { brand: 'mastercard', expMonth: 10, expYear: 2026, expiresSoon: true });
     const t = await withPms([CARDS[0]], [soon]);
-    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Mastercard •••• 4242 Expire bientôt Expire en octobre 2026. Utilisée pour : Médecine Générale. Mettre à jour');
+    assert.strictEqual(text(pmSection(t.w)), 'Moyen de paiement Carte Mastercard •••• 4242 Expire bientôt Expire en octobre 2026. Utilisée pour : Médecine Générale. Passez au prélèvement SEPA : pas de date d’expiration. Mettre à jour');
     assert.ok(pmSection(t.w).querySelector('.compte-v2_badge.is-expire-bientot'));
     t.dom.window.close();
   }

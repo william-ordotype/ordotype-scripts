@@ -585,11 +585,13 @@
   }
 
   // Expiry and "Utilisée pour : …" in `box`; false when there is nothing to say.
+  // A past date is not an expired card: banks renew most cards under the same number and Stripe keeps the old
+  // date (26/10/2026: 96 of the 131 "expired" cards had been charged since). Hence the date, not « A expiré ».
   function fillDetail(box, pm, several, makeItem) {
     var month = Number(pm.expMonth);
     if (pm.type === 'card' && month >= 1 && month <= 12 && pm.expYear) {
       var when = MOIS[month - 1] + ' ' + pm.expYear;
-      box.appendChild(document.createTextNode(pm.expired ? 'A expiré en ' + when + '. ' : 'Expire en ' + when + '. '));
+      box.appendChild(document.createTextNode(pm.expired ? 'Date d’expiration : ' + when + '. ' : 'Expire en ' + when + '. '));
     }
     var used = Array.isArray(pm.usedBy) ? pm.usedBy : [];
     var icons = Array.isArray(pm.usedByIcons) ? pm.usedByIcons : [];
@@ -1805,6 +1807,14 @@
       else if (pm.expiresSoon) nom.appendChild(copie('moyen-bientot'));
       var detail = champ(row, 'detail');
       detail.textContent = '';
+      // Carte à date passée ou proche : on pousse le SEPA, seul moyen que propose « Mettre à jour ». Même dessin
+      // que la ligne de détail, dont elle est une copie.
+      if (pm.type === 'card' && (pm.expired || pm.expiresSoon)) {
+        var conseil = detail.cloneNode(false);
+        conseil.removeAttribute('data-ordo-champ');
+        conseil.textContent = 'Passez au prélèvement SEPA : pas de date d’expiration.';
+        detail.parentNode.insertBefore(conseil, detail.nextSibling);
+      }
       if (!fillDetail(detail, pm, m.several, usageD)) retirer(detail);
       retirer(champ(row, 'action'));
       rows.push(row);

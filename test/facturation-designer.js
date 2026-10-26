@@ -81,9 +81,10 @@ const TEXTES_CARTES = [
   'Essai gratuit Gratuit Valable 15 jours à partir de votre inscription.',
   'Résiliation Résiliation programmée 30 € / mois Se termine le 1er novembre 2026. Prochain prélèvement 30 € le 1er novembre 2026 Me réabonner',
 ];
+// Sauf la carte à date passée, réécrite le 26/10/2026 : « Fin de validité » (texte du gabarit), sa date et le SEPA.
 const TEXTES_MOYENS = [
   'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Médecine Générale et Module Rhumatologie. Modifier Aussi enregistrée : carte •••• 1004, non utilisée',
-  'Moyen de paiement Carte Visa •••• 4242 Expirée A expiré en juin 2026. Utilisée pour : Médecine Générale. Mettre à jour Aussi enregistrée : carte •••• 1004, non utilisée',
+  'Moyen de paiement Carte Visa •••• 4242 Fin de validité Date d’expiration : juin 2026. Utilisée pour : Médecine Générale. Passez au prélèvement SEPA : pas de date d’expiration. Mettre à jour Aussi enregistrée : carte •••• 1004, non utilisée',
   'Moyen de paiement Carte Visa •••• 4242 Expire en août 2027. Utilisée pour : Médecine Générale et Module Rhumatologie. Prélèvement SEPA •••• 3000 Utilisé pour : Stockage. Aussi enregistrée : carte •••• 1004, non utilisée Modifier',
   'Moyen de paiement Aucun moyen de paiement enregistré Ajouter un moyen de paiement',
 ];
@@ -283,6 +284,12 @@ async function main() {
       assert.ok(card.querySelector('.compte-v2_picto.is-moyen.is-expiree'));
       assert.ok(card.querySelector('.compte-v2_badge.is-a-regler'));
       assert.ok(card.querySelector('a.compte-v2_btn.is-principal[href="/membership/moyen-de-paiement"]'));
+      // La ligne SEPA est une copie de la ligne de détail du Designer : même classe, sans son repère
+      const detail = card.querySelector('[data-ordo-champ="detail"]');
+      assert.strictEqual(detail.nextElementSibling.className, detail.className);
+      assert.strictEqual(detail.nextElementSibling.hasAttribute('data-ordo-champ'), false);
+    } else {
+      assert.ok(!text(card).includes('Passez au prélèvement SEPA'));
     }
     if (pms.length === 2) {
       assert.ok(card.querySelector('.compte-v2_picto.is-moyen svg path[d="M3 20h18"]'), 'icône banque pour le SEPA');
