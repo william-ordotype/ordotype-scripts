@@ -20,7 +20,7 @@
 
     var PREFIX = '[CurrentOffer]';
     var MEMBER_FORMS_URL = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
-    var ANSWER_TIMEOUT = 3000;
+    var ANSWER_TIMEOUT = 6000;
     var ACCOUNT_URL = '/membership/compte#abonnements';
     var INTRO = 'Avant de confirmer la résiliation, voici votre offre en cours et une autre possibilité.';
     var ENDS = 'Cette offre prend fin si vous résiliez.';
