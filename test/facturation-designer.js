@@ -12,7 +12,9 @@
  *   - formulaires recopiés : identifiants, libellés, pays, envoi gardé loin de Webflow ;
  *   - squelette, secours sur erreur, repère manquant (blocs SECOURS, aucune requête de liste, signalé) ;
  *   - l'interrupteur « factures par e-mail » piloté sur l'élément du Designer, et la case construite par
- *     invoice-emails.js quand cet élément manque : un consentement doit toujours pouvoir se retirer.
+ *     invoice-emails.js quand cet élément manque : un consentement doit toujours pouvoir se retirer ;
+ *   - portail de paiement en échec (vrai billing-portal.js, deux 502) : erreur visible du gabarit
+ *     « erreur » sous le bouton, retirée au clic suivant ; le lien garde son libellé, « Modifier » dit « Réessayer ».
  *
  * Usage : node test/facturation-designer.js
  */
@@ -25,6 +27,12 @@ const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'account/subscriptions-overview.js'), 'utf8');
 const NAV_SCRIPT = SCRIPT.split('window.location.assign(').join('window.__navigate(');
 const EMAILS = fs.readFileSync(path.join(ROOT, 'account/invoice-emails.js'), 'utf8');
+// Le vrai portail, nouvel essai raccourci, sans navigation.
+const PORTAL_REAL = fs.readFileSync(path.join(ROOT, 'account/billing-portal.js'), 'utf8');
+const PORTAL_SCRIPT = PORTAL_REAL.split('RETRY_DELAY_MS = 1000;').join('RETRY_DELAY_MS = 10;')
+  .split('window.location.href = portalUrl;').join('window.__navigate(portalUrl);');
+assert.ok(PORTAL_SCRIPT.indexOf('RETRY_DELAY_MS = 10;') !== -1 && PORTAL_SCRIPT.indexOf('window.__navigate(portalUrl)') !== -1);
+const PORTAL_FAILED = 'Le portail de paiement n’a pas pu s’ouvrir. Réessayez dans un instant.';
 const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.html'), 'utf8');
 // La règle d'en-tête qui cache la Facturation tant qu'elle n'est pas remplie (account/compte-head.html).
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
@@ -108,7 +116,7 @@ function text(node) {
  * outcomes : réponses successives de la fonction (liste puis actions) ;
  * removeGabarit : retire un repère du Designer avant le chargement.
  */
-function page({ outcomes = [], visible = true, removeGabarit = null, emails = false, emailsState = { eligible: true, enabled: false }, emailsWrite = null } = {}) {
+function page({ outcomes = [], visible = true, removeGabarit = null, emails = false, emailsState = { eligible: true, enabled: false }, emailsWrite = null, portal = false } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -124,6 +132,8 @@ function page({ outcomes = [], visible = true, removeGabarit = null, emails = fa
   const reported = [];
   const network = [];
   const opened = [];
+  const openedOptions = [];
+  const portalCalls = [];
   const pushed = [];
   w.dataLayer = { push: (p) => { pushed.push(p); return 0; } };
   w.OrdoRollout = {
@@ -136,7 +146,8 @@ function page({ outcomes = [], visible = true, removeGabarit = null, emails = fa
     report(ctx, err) { reported.push({ ctx, err }); },
     reportNetwork(ctx, err) { network.push({ ctx, err }); return true; },
   };
-  w.OrdoBillingPortal = { open(btn) { opened.push(btn); return w.__portalResult; } };
+  // portal : le vrai billing-portal.js, dont la fonction répond toujours 502 ; sinon un portail simulé.
+  if (!portal) w.OrdoBillingPortal = { open(btn, options) { opened.push(btn); openedOptions.push(options); return w.__portalResult; } };
   w.confirm = () => true;
   w.console.log = () => {};
   w.__navigate = () => {};
@@ -164,6 +175,10 @@ function page({ outcomes = [], visible = true, removeGabarit = null, emails = fa
       }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(emailsState) });
     }
+    if (String(url).indexOf('create-billing-portal') !== -1) {
+      portalCalls.push(url);
+      return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ error: 'upstream_error' }) });
+    }
     if (String(url).indexOf('abonnements-affiches') !== -1) {
       return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) });
     }
@@ -174,8 +189,8 @@ function page({ outcomes = [], visible = true, removeGabarit = null, emails = fa
     if (outcome.delay) return new Promise((r) => setTimeout(() => r(response), outcome.delay));
     return Promise.resolve(response);
   };
-  return { dom, w, erreurs, reported, network, opened, pushed, observers, calls, emailCalls, webflowSubmits,
-    run() { w.eval(NAV_SCRIPT); if (emails) w.eval(EMAILS); } };
+  return { dom, w, erreurs, reported, network, opened, openedOptions, portalCalls, pushed, observers, calls, emailCalls, webflowSubmits,
+    run() { if (portal) w.eval(PORTAL_SCRIPT); w.eval(NAV_SCRIPT); if (emails) w.eval(EMAILS); } };
 }
 
 const doc = (t) => t.w.document;
@@ -277,6 +292,7 @@ async function main() {
       edit.click();
       assert.strictEqual(t.opened.length, 1);
       assert.strictEqual(t.opened[0], edit);
+      assert.strictEqual(t.openedOptions[0], undefined, '« Modifier » garde « Réessayer » sur un échec');
       assert.ok(card.querySelector('.compte-v2_picto.is-moyen'));
       assert.strictEqual(card.querySelector('.compte-v2_moyen-usage img').getAttribute('src'), 'https://cdn.prod.website-files.com/x/logo.svg');
       assert.ok(text(card).includes('Aussi enregistrée : carte •••• 1004, non utilisée'));
@@ -324,6 +340,7 @@ async function main() {
     portal.click();
     assert.strictEqual(t.opened.length, 1);
     assert.strictEqual(t.opened[0], portal, 'le portail affiche l\'attente et l\'échec sur le bouton cliqué');
+    assert.strictEqual(JSON.stringify(t.openedOptions[0]), '{"retryLabel":false}', 'le lien garde son libellé sur un échec');
     // Le portail dit qu'il ne s'est pas ouvert : l'échec est compté
     t.w.__portalResult = Promise.resolve(false);
     portal.click();
@@ -343,6 +360,94 @@ async function main() {
     assert.ok(visibleIn(t, aide));
     assert.strictEqual(aide.querySelector('[data-ordo-aide="email"]').getAttribute('data-subs-action'), 'aide_email');
     assert.strictEqual(aide.querySelector('[data-ordo-aide="video-2"]').getAttribute('data-subs-action'), 'video_factures');
+    assert.deepStrictEqual(t.erreurs, []);
+    t.dom.window.close();
+  }
+
+  // Portail injoignable (vrai billing-portal.js, 502 à chaque essai) : erreur visible sous chaque bouton,
+  // copie du gabarit « erreur » (celui de l'interrupteur « factures par e-mail »), retirée au clic suivant
+  {
+    const body = { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES };
+    const t = page({ outcomes: [{ status: 200, body }], portal: true, emails: true });
+    t.run();
+    await wait(150);
+    const echecs = (node) => Array.from(node.querySelectorAll('[role="alert"]')).filter((n) => n.textContent === PORTAL_FAILED);
+    const gabarit = doc(t).querySelector('[data-ordo-gabarits="facturation"] [data-ordo-gabarit="erreur"]');
+    const LIBELLE = 'Toutes mes factures et mes informations de facturation';
+    const factures = section(t, 'factures');
+    const portal = factures.querySelector('button[data-subs-action="portail"]');
+    assert.strictEqual(portal.textContent, LIBELLE);
+    portal.click();
+    assert.strictEqual(portal.textContent, 'Patientez…');
+    await wait(120);
+    assert.strictEqual(t.portalCalls.length, 3, 'le préchargement, puis deux essais au clic');
+    // Le lien garde son libellé ; l'erreur est juste dessous, avant la ligne « factures par e-mail »
+    assert.strictEqual(portal.textContent, LIBELLE);
+    assert.strictEqual(portal.getAttribute('title'), PORTAL_FAILED);
+    const msg = portal.nextElementSibling;
+    assert.ok(msg, 'erreur sous le lien');
+    assert.strictEqual(msg.className, gabarit.className, 'classe du gabarit « erreur »');
+    assert.strictEqual(msg.className, 'compte-v2_erreur');
+    assert.strictEqual(msg.getAttribute('role'), 'alert');
+    assert.strictEqual(msg.textContent, PORTAL_FAILED);
+    assert.strictEqual(msg.parentElement, factures);
+    assert.ok(msg.nextElementSibling.hasAttribute('data-ordo-slot'), 'avant la ligne « factures par e-mail »');
+    assert.ok(visibleIn(t, msg), 'erreurD la crée cachée : elle doit être montrée');
+    assert.strictEqual(msg.hidden, false);
+    assert.deepStrictEqual(echecs(factures), [msg]);
+    assert.ok(t.pushed.some((p) => p.event === 'subscriptions_action' && p.subs_action === 'portail' && p.subs_outcome === 'failed'));
+    // Clic suivant : l'erreur part dès le clic, une seule revient avec le nouvel échec
+    portal.click();
+    assert.strictEqual(echecs(factures).length, 0);
+    await wait(120);
+    assert.strictEqual(echecs(factures).length, 1);
+    assert.strictEqual(portal.textContent, LIBELLE);
+
+    // « Modifier » : « Réessayer » sur le bouton, erreur en bas de la carte, hors de la rangée du moyen
+    const card = section(t, 'moyen-de-paiement');
+    const edit = card.querySelector('button[data-subs-action="modifier_moyen"]');
+    edit.click();
+    assert.strictEqual(edit.textContent, 'Patientez…');
+    await wait(120);
+    assert.strictEqual(edit.textContent, 'Réessayer');
+    assert.strictEqual(edit.getAttribute('title'), PORTAL_FAILED);
+    const m2 = echecs(card)[0];
+    assert.ok(m2 && visibleIn(t, m2));
+    assert.strictEqual(m2.className, 'compte-v2_erreur');
+    assert.strictEqual(m2.getAttribute('role'), 'alert');
+    assert.strictEqual(m2.parentElement, card);
+    assert.strictEqual(m2.previousElementSibling, edit.closest('.compte-v2_moyen'), 'sous la rangée du moyen, pas dedans');
+    assert.strictEqual(card.lastElementChild, m2);
+    assert.strictEqual(echecs(factures).length, 1, 'chaque bouton garde son erreur');
+    edit.click();
+    assert.strictEqual(echecs(card).length, 0);
+    assert.strictEqual(edit.textContent, 'Patientez…');
+    await wait(120);
+    assert.strictEqual(echecs(card).length, 1);
+    // Le gabarit lui-même n'a pas bougé et garde son texte
+    assert.ok(gabarit.parentElement.closest('[data-ordo-gabarits="facturation"]'));
+    assert.strictEqual(gabarit.textContent.trim(), 'Une erreur est survenue. Merci de réessayer.');
+    assert.deepStrictEqual(t.erreurs, []);
+    t.dom.window.close();
+  }
+
+  // Deux moyens : « Modifier » est dans la rangée d'actions, l'erreur vient après elle, en bas de la carte
+  {
+    const body = { subscriptions: [CARDS[0], CARDS[3]], paymentMethods: [VISA, SEPA], invoices: INVOICES };
+    const t = page({ outcomes: [{ status: 200, body }], portal: true });
+    t.run();
+    await wait(120);
+    const card = section(t, 'moyen-de-paiement');
+    const edit = card.querySelector('button[data-subs-action="modifier_moyen"]');
+    assert.ok(edit.parentElement.classList.contains('compte-v2_actions'));
+    edit.click();
+    await wait(120);
+    const msg = card.lastElementChild;
+    assert.strictEqual(msg.className, 'compte-v2_erreur');
+    assert.strictEqual(msg.getAttribute('role'), 'alert');
+    assert.strictEqual(msg.textContent, PORTAL_FAILED);
+    assert.ok(visibleIn(t, msg));
+    assert.strictEqual(msg.previousElementSibling, edit.parentElement);
     assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }

@@ -56,8 +56,9 @@
     // Lets other account scripts open the same portal. It does not depend on the page's own
     // button, so that removing that button from the page keeps the portal reachable. The caller
     // passes its clicked button to show the wait and the failure on it; the promise tells whether
-    // the portal is opening (true) or not (false).
-    window.OrdoBillingPortal = { open: function(btn) { return openPortal(btn || null); } };
+    // the portal is opening (true) or not (false). With options.retryLabel === false, a failure
+    // gives the button its own label back instead of « Réessayer » (a link that names what it opens).
+    window.OrdoBillingPortal = { open: function(btn, options) { return openPortal(btn || null, options || null); } };
 
     // Back from the portal, the browser may restore the page as it was left, mid-opening
     window.addEventListener('pageshow', function(e) {
@@ -186,14 +187,15 @@
     if (!btn.children.length) btn.textContent = text;
   }
 
-  function openPortal(btn) {
+  function openPortal(btn, options) {
     // A second click while the portal is opening creates no second session
     if (pending) return pending;
-    pending = openingPortal(btn);
+    pending = openingPortal(btn, options);
     return pending;
   }
 
-  async function openingPortal(btn) {
+  async function openingPortal(btn, options) {
+    const retryLabel = !(options && options.retryLabel === false);
     if (btn) {
       if (!labels.has(btn)) labels.set(btn, btn.textContent);
       setLabel(btn, LABEL_BUSY);
@@ -209,7 +211,7 @@
       btn.disabled = false;
       btn.removeAttribute('aria-busy');
       if (failure) {
-        setLabel(btn, LABEL_RETRY);
+        setLabel(btn, retryLabel ? LABEL_RETRY : labels.get(btn));
         btn.setAttribute('title', failure.status === 401 ? TITLE_SESSION : TITLE_FAILED);
       } else {
         setLabel(btn, labels.get(btn));
