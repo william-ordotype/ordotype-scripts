@@ -316,15 +316,17 @@
   var PORTAL_FAILED = 'Le portail de paiement n’a pas pu s’ouvrir. Réessayez dans un instant.';
   var portalMessages = [];
 
-  // The failure message of a button, under the block of its card that holds it: never inside a flex
-  // row, where the Designer's button (order 1 on mobile) would pass after it.
+  // The failure of a button, in the Designer's « erreur » template (role=alert, as when the invoice emails
+  // switch fails in the same tab), under the block of its card that holds the button: never inside a flex
+  // row, where the Designer's button (order 1 on mobile) would pass after it. erreurD() creates it hidden.
   function showPortalFailure(btn) {
     var card = btn.closest('[data-ordo-section]');
     if (!card) return;
     var block = btn;
     while (block.parentNode !== card) block = block.parentNode;
-    var msg = rendu(ui.message());
+    var msg = rendu(erreurD(null));
     msg.textContent = PORTAL_FAILED;
+    afficher(msg, true);
     card.insertBefore(msg, block.nextSibling);
     portalMessages.push({ btn: btn, msg: msg });
   }
@@ -1510,7 +1512,7 @@
     var toggleRow = d.slot.querySelector('[data-ordo-factures-email]');
     if (toggleRow) afficher(toggleRow, false);
     // Le lien vers le portail Stripe devient un bouton : il ouvre le portail, sans adresse à suivre. Sur
-    // un échec, il garde son libellé (« Réessayer » seul ne dirait plus ce qu'il ouvre), le message dessous.
+    // un échec, il garde son libellé (« Réessayer » seul ne dirait plus ce qu'il ouvre), l'erreur dessous.
     var portail = enBouton(d.portail);
     mark(portail, 'portail');
     portail.addEventListener('click', function() { openPortal(portail, { retryLabel: false }); });

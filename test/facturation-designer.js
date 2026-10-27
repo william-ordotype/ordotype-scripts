@@ -13,8 +13,8 @@
  *   - squelette, secours sur erreur, repère manquant (blocs SECOURS, aucune requête de liste, signalé) ;
  *   - l'interrupteur « factures par e-mail » piloté sur l'élément du Designer, et la case construite par
  *     invoice-emails.js quand cet élément manque : un consentement doit toujours pouvoir se retirer ;
- *   - portail de paiement en échec (vrai billing-portal.js, deux 502) : message visible du gabarit
- *     « message » sous le bouton, retiré au clic suivant ; le lien garde son libellé, « Modifier » dit « Réessayer ».
+ *   - portail de paiement en échec (vrai billing-portal.js, deux 502) : erreur visible du gabarit
+ *     « erreur » sous le bouton, retirée au clic suivant ; le lien garde son libellé, « Modifier » dit « Réessayer ».
  *
  * Usage : node test/facturation-designer.js
  */
@@ -364,12 +364,15 @@ async function main() {
     t.dom.window.close();
   }
 
-  // Portail injoignable (vrai billing-portal.js, 502 à chaque essai) : message visible sous le bouton
+  // Portail injoignable (vrai billing-portal.js, 502 à chaque essai) : erreur visible sous chaque bouton,
+  // copie du gabarit « erreur » (celui de l'interrupteur « factures par e-mail »), retirée au clic suivant
   {
     const body = { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES };
-    const t = page({ outcomes: [{ status: 200, body }], portal: true });
+    const t = page({ outcomes: [{ status: 200, body }], portal: true, emails: true });
     t.run();
-    await wait(120);
+    await wait(150);
+    const echecs = (node) => Array.from(node.querySelectorAll('[role="alert"]')).filter((n) => n.textContent === PORTAL_FAILED);
+    const gabarit = doc(t).querySelector('[data-ordo-gabarits="facturation"] [data-ordo-gabarit="erreur"]');
     const LIBELLE = 'Toutes mes factures et mes informations de facturation';
     const factures = section(t, 'factures');
     const portal = factures.querySelector('button[data-subs-action="portail"]');
@@ -378,25 +381,29 @@ async function main() {
     assert.strictEqual(portal.textContent, 'Patientez…');
     await wait(120);
     assert.strictEqual(t.portalCalls.length, 3, 'le préchargement, puis deux essais au clic');
-    // Le lien garde son libellé ; le message, copie du gabarit « message », est juste dessous, dans la carte
+    // Le lien garde son libellé ; l'erreur est juste dessous, avant la ligne « factures par e-mail »
     assert.strictEqual(portal.textContent, LIBELLE);
     assert.strictEqual(portal.getAttribute('title'), PORTAL_FAILED);
     const msg = portal.nextElementSibling;
-    assert.ok(msg, 'message sous le lien');
-    assert.strictEqual(msg.className, 'compte-v2_message');
-    assert.strictEqual(msg.getAttribute('role'), 'status');
+    assert.ok(msg, 'erreur sous le lien');
+    assert.strictEqual(msg.className, gabarit.className, 'classe du gabarit « erreur »');
+    assert.strictEqual(msg.className, 'compte-v2_erreur');
+    assert.strictEqual(msg.getAttribute('role'), 'alert');
     assert.strictEqual(msg.textContent, PORTAL_FAILED);
     assert.strictEqual(msg.parentElement, factures);
-    assert.ok(visibleIn(t, msg));
+    assert.ok(msg.nextElementSibling.hasAttribute('data-ordo-slot'), 'avant la ligne « factures par e-mail »');
+    assert.ok(visibleIn(t, msg), 'erreurD la crée cachée : elle doit être montrée');
+    assert.strictEqual(msg.hidden, false);
+    assert.deepStrictEqual(echecs(factures), [msg]);
     assert.ok(t.pushed.some((p) => p.event === 'subscriptions_action' && p.subs_action === 'portail' && p.subs_outcome === 'failed'));
-    // Clic suivant : le message part dès le clic, un seul revient avec le nouvel échec
+    // Clic suivant : l'erreur part dès le clic, une seule revient avec le nouvel échec
     portal.click();
-    assert.strictEqual(factures.querySelectorAll('.compte-v2_message').length, 0);
+    assert.strictEqual(echecs(factures).length, 0);
     await wait(120);
-    assert.strictEqual(factures.querySelectorAll('.compte-v2_message').length, 1);
+    assert.strictEqual(echecs(factures).length, 1);
     assert.strictEqual(portal.textContent, LIBELLE);
 
-    // « Modifier » : « Réessayer » sur le bouton, message en bas de la carte, hors de la rangée du moyen
+    // « Modifier » : « Réessayer » sur le bouton, erreur en bas de la carte, hors de la rangée du moyen
     const card = section(t, 'moyen-de-paiement');
     const edit = card.querySelector('button[data-subs-action="modifier_moyen"]');
     edit.click();
@@ -404,24 +411,27 @@ async function main() {
     await wait(120);
     assert.strictEqual(edit.textContent, 'Réessayer');
     assert.strictEqual(edit.getAttribute('title'), PORTAL_FAILED);
-    const m2 = card.querySelector('.compte-v2_message');
+    const m2 = echecs(card)[0];
     assert.ok(m2 && visibleIn(t, m2));
-    assert.strictEqual(m2.textContent, PORTAL_FAILED);
-    assert.strictEqual(m2.getAttribute('role'), 'status');
+    assert.strictEqual(m2.className, 'compte-v2_erreur');
+    assert.strictEqual(m2.getAttribute('role'), 'alert');
     assert.strictEqual(m2.parentElement, card);
     assert.strictEqual(m2.previousElementSibling, edit.closest('.compte-v2_moyen'), 'sous la rangée du moyen, pas dedans');
     assert.strictEqual(card.lastElementChild, m2);
-    assert.strictEqual(factures.querySelectorAll('.compte-v2_message').length, 1, 'chaque bouton garde son message');
+    assert.strictEqual(echecs(factures).length, 1, 'chaque bouton garde son erreur');
     edit.click();
-    assert.strictEqual(card.querySelectorAll('.compte-v2_message').length, 0);
+    assert.strictEqual(echecs(card).length, 0);
     assert.strictEqual(edit.textContent, 'Patientez…');
     await wait(120);
-    assert.strictEqual(card.querySelectorAll('.compte-v2_message').length, 1);
+    assert.strictEqual(echecs(card).length, 1);
+    // Le gabarit lui-même n'a pas bougé et garde son texte
+    assert.ok(gabarit.parentElement.closest('[data-ordo-gabarits="facturation"]'));
+    assert.strictEqual(gabarit.textContent.trim(), 'Une erreur est survenue. Merci de réessayer.');
     assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }
 
-  // Deux moyens : « Modifier » est dans la rangée d'actions, le message vient après elle, en bas de la carte
+  // Deux moyens : « Modifier » est dans la rangée d'actions, l'erreur vient après elle, en bas de la carte
   {
     const body = { subscriptions: [CARDS[0], CARDS[3]], paymentMethods: [VISA, SEPA], invoices: INVOICES };
     const t = page({ outcomes: [{ status: 200, body }], portal: true });
@@ -433,8 +443,10 @@ async function main() {
     edit.click();
     await wait(120);
     const msg = card.lastElementChild;
-    assert.strictEqual(msg.className, 'compte-v2_message');
+    assert.strictEqual(msg.className, 'compte-v2_erreur');
+    assert.strictEqual(msg.getAttribute('role'), 'alert');
     assert.strictEqual(msg.textContent, PORTAL_FAILED);
+    assert.ok(visibleIn(t, msg));
     assert.strictEqual(msg.previousElementSibling, edit.parentElement);
     assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
