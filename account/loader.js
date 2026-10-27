@@ -299,5 +299,78 @@
     done.then(function() { console.log('[' + LOADER_NAME + '] All scripts loaded'); });
   }
 
-  loadAll();
+  // --- Rafale de chargements ---
+  // Une app qui recharge la page en boucle (vue WebKit d'une app macOS, 22-24/10/2026 :
+  // 13 607 chargements en deux jours pour un seul membre) paie à chaque passage les appels
+  // serveur des scripts : portail Stripe, abonnements, offres affichées. Au-delà de RAFALE_MAX
+  // chargements de Mon compte en RAFALE_FENETRE_MS dans ce navigateur, les scripts attendent
+  // que la page ait tenu RAFALE_ATTENTE_MS, ou un geste de l'utilisateur. Une page rechargée
+  // avant ne coûte plus rien ; un membre qui recharge à la main attend quelques secondes.
+  // window.OrdoRollout est déjà posé : l'en-tête de page ne conclut pas à un chargeur absent,
+  // et ses 8 s d'attente du rendu couvrent ce délai. Sans stockage lisible : rien ne change.
+  const RAFALE_CLE = 'ordo_compte_chargements';
+  const RAFALE_SIGNAL_CLE = 'ordo_compte_rafale_signalee';
+  const RAFALE_FENETRE_MS = 30000;
+  const RAFALE_MAX = 8;
+  const RAFALE_ATTENTE_MS = 3000;
+  const RAFALE_SIGNAL_MS = 3600000;
+  const RAFALE_GESTES = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+
+  // Note ce chargement. Rend le nombre de chargements de la fenêtre, celui-ci compris
+  // (borné à 2 x RAFALE_MAX), ou 0 si le stockage est illisible.
+  function compterChargement(maintenant) {
+    try {
+      let liste;
+      try { liste = JSON.parse(localStorage.getItem(RAFALE_CLE) || '[]'); } catch (e) { liste = []; }
+      if (!Array.isArray(liste)) liste = [];
+      liste = liste.filter(function(t) {
+        return typeof t === 'number' && t > maintenant - RAFALE_FENETRE_MS && t <= maintenant;
+      });
+      liste.push(maintenant);
+      liste = liste.slice(-2 * RAFALE_MAX);
+      localStorage.setItem(RAFALE_CLE, JSON.stringify(liste));
+      return liste.length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Un avertissement Sentry par heure au plus, sans Discord : il se lit au tri Sentry.
+  // Même accès au client que shared/error-reporter.js (pas encore chargé à ce stade).
+  function signalerRafale(nombre, maintenant) {
+    try {
+      const dernier = Number(localStorage.getItem(RAFALE_SIGNAL_CLE)) || 0;
+      if (dernier <= maintenant && maintenant - dernier < RAFALE_SIGNAL_MS) return;
+      const carrier = window.__SENTRY__ && window.__SENTRY__[window.__SENTRY__.version];
+      const client = carrier && carrier.defaultCurrentScope && carrier.defaultCurrentScope.getClient();
+      if (!client || typeof client.captureMessage !== 'function') return;
+      localStorage.setItem(RAFALE_SIGNAL_CLE, String(maintenant));
+      client.captureMessage('Mon compte : rafale de chargements', 'warning', {
+        captureContext: {
+          tags: { reporter: 'OrdoAccount', context: 'CompteRafale' },
+          extra: { chargements: nombre, fenetre_s: RAFALE_FENETRE_MS / 1000, userAgent: navigator.userAgent }
+        }
+      });
+    } catch (e) { /* signal accessoire : la page n'en dépend pas */ }
+  }
+
+  // Lance `partir` tout de suite, ou, en rafale, après RAFALE_ATTENTE_MS ou au premier geste.
+  function apresRafale(partir) {
+    const maintenant = Date.now();
+    const nombre = compterChargement(maintenant);
+    if (nombre < RAFALE_MAX) return partir();
+    console.warn('[' + LOADER_NAME + '] Rafale : ' + nombre + ' chargements en ' + (RAFALE_FENETRE_MS / 1000) + ' s, scripts différés');
+    signalerRafale(nombre, maintenant);
+    let minuterie = null;
+    // Le premier départ retire les écouteurs et la minuterie : il n'y en a pas de second.
+    function lancer() {
+      clearTimeout(minuterie);
+      RAFALE_GESTES.forEach(function(g) { window.removeEventListener(g, lancer, true); });
+      partir();
+    }
+    RAFALE_GESTES.forEach(function(g) { window.addEventListener(g, lancer, { capture: true, passive: true }); });
+    minuterie = setTimeout(lancer, RAFALE_ATTENTE_MS);
+  }
+
+  apresRafale(loadAll);
 })();
