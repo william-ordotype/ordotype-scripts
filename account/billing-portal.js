@@ -14,11 +14,22 @@
   const WEBHOOK_URL = 'https://billing.ordotype.fr/.netlify/functions/notify-webhook';
   const MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
 
+  // A busy or unreachable function answers 502, 503 or 504, or not at all: a click asks once more
+  // after a short wait. A refusal (401, 422...) would get the same answer twice.
+  const RETRYABLE = [502, 503, 504];
+  const RETRY_DELAY_MS = 1000;
+
+  const LABEL_BUSY = 'Patientez…';
+  const LABEL_RETRY = 'Réessayer';
+  const TITLE_FAILED = 'Le portail de paiement n’a pas pu s’ouvrir. Réessayez dans un instant.';
+  const TITLE_SESSION = 'Votre session a expiré : reconnectez-vous puis réessayez.';
+
   // State
   let portalUrl = null;
   let sessionId = null;
-  let opening = false;
+  let pending = null;
   let restoreOpening = null;
+  const labels = new WeakMap(); // button → its label before the first opening
 
   function init() {
     const invoicesBtn = document.querySelector('[data-ms-action="customer-portal"]');
@@ -43,8 +54,10 @@
     prefetchPortalSession();
 
     // Lets other account scripts open the same portal. It does not depend on the page's own
-    // button, so that removing that button from the page keeps the portal reachable.
-    window.OrdoBillingPortal = { open: function() { openPortal(null); } };
+    // button, so that removing that button from the page keeps the portal reachable. The caller
+    // passes its clicked button to show the wait and the failure on it; the promise tells whether
+    // the portal is opening (true) or not (false).
+    window.OrdoBillingPortal = { open: function(btn) { return openPortal(btn || null); } };
 
     // Back from the portal, the browser may restore the page as it was left, mid-opening
     window.addEventListener('pageshow', function(e) {
@@ -136,51 +149,85 @@
     openPortal(e.currentTarget);
   }
 
-  async function openPortal(btn) {
-    // A second click while the portal is opening creates no second session
-    if (opening) return;
-    opening = true;
-    const originalText = btn ? btn.textContent : '';
-    if (btn) {
-      btn.textContent = 'Patientez...';
-      btn.disabled = true;
+  // One request for a portal address. Rejects with the answer's status, none when there was no answer.
+  async function fetchPortal() {
+    let status = 0;
+    let data;
+    try {
+      const response = await requestPortal();
+      status = response.status;
+      data = await response.json();
+    } catch (err) {
+      // A body that is not JSON still had an answer: keep its status
+      if (status && !err.status) err.status = status;
+      throw err;
     }
-    function restore() {
-      opening = false;
+    if (data && data.url) return data;
+    const missing = new Error('create-billing-portal ' + status + ': no portal url');
+    missing.status = status;
+    throw missing;
+  }
+
+  // After a failed prefetch, the click asks again, and once more after a short wait if the function
+  // was busy or unreachable (Memberstack slow to check the session makes it answer 502).
+  async function fetchPortalForClick() {
+    try {
+      return await fetchPortal();
+    } catch (err) {
+      if (err.status && RETRYABLE.indexOf(err.status) === -1) throw err;
+      console.warn('[BillingPortal] Portal not ready (' + (err.status || 'no answer') + '), one new try');
+      await new Promise(function(resolve) { setTimeout(resolve, RETRY_DELAY_MS); });
+      return fetchPortal();
+    }
+  }
+
+  // Only a button that holds nothing but its text gets a new label: one with an icon keeps its own.
+  function setLabel(btn, text) {
+    if (!btn.children.length) btn.textContent = text;
+  }
+
+  function openPortal(btn) {
+    // A second click while the portal is opening creates no second session
+    if (pending) return pending;
+    pending = openingPortal(btn);
+    return pending;
+  }
+
+  async function openingPortal(btn) {
+    if (btn) {
+      if (!labels.has(btn)) labels.set(btn, btn.textContent);
+      setLabel(btn, LABEL_BUSY);
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      btn.removeAttribute('title');
+    }
+    // A failure leaves the button saying so, as the invoice PDF and payment buttons do
+    function restore(failure) {
+      pending = null;
       restoreOpening = null;
-      if (btn) {
-        btn.textContent = originalText;
-        btn.disabled = false;
+      if (!btn) return;
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      if (failure) {
+        setLabel(btn, LABEL_RETRY);
+        btn.setAttribute('title', failure.status === 401 ? TITLE_SESSION : TITLE_FAILED);
+      } else {
+        setLabel(btn, labels.get(btn));
       }
     }
-    restoreOpening = restore;
+    restoreOpening = function() { restore(null); };
 
     // Fallback fetch if prefetch failed
     if (!portalUrl) {
-      let status = 0;
       try {
-        const response = await requestPortal();
-        status = response.status;
-        const data = await response.json();
-        if (data.url) {
-          portalUrl = data.url;
-          sessionId = data.id || extractSessionId(data.url);
-        }
+        const data = await fetchPortalForClick();
+        portalUrl = data.url;
+        sessionId = data.id || extractSessionId(data.url);
       } catch (err) {
         console.error('[BillingPortal] Fallback fetch error:', err);
-        // A body that is not JSON still had an answer: keep its status
-        if (status && !err.status) err.status = status;
         reportFailure(err);
-        restore();
-        return;
-      }
-      if (!portalUrl) {
-        const missing = new Error('create-billing-portal ' + status + ': no portal url');
-        missing.status = status;
-        console.error('[BillingPortal] No portal URL returned');
-        reportFailure(missing);
-        restore();
-        return;
+        restore(err);
+        return false;
       }
     }
 
@@ -205,6 +252,7 @@
 
     // Redirect
     window.location.href = portalUrl;
+    return true;
   }
 
   // Init on DOM ready

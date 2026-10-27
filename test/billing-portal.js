@@ -9,12 +9,15 @@
  *   - with it, the button keeps working, with the same prefetched session;
  *   - a member without a Stripe customer gets no open() and no request;
  *   - a second open() while the portal is opening creates no second session;
- *   - a failure (no answer, or an answer without a portal address) opens nothing, is reported,
- *     and a later click can try again;
+ *   - a failure (no answer, or an answer without a portal address) opens nothing, is reported once,
+ *     leaves the button saying « Réessayer » with a title, and a later click can try again;
+ *   - at the click, a 502, 503, 504 or no answer gets ONE new try after a short wait (the function
+ *     answers 502 when Memberstack is slow to check the session); a refusal (401, 422, 500) none;
+ *   - open(btn) shows the wait on the button it is given and resolves true (opening) or false;
  *   - back from the portal, a page restored from the browser cache can open it again;
  *   - with a Memberstack token the request carries `Authorization: Bearer`, without one it goes out
  *     as before (no header, same body), both with `v: 2`; the prefetch waits for the token;
- *   - a 401 opens nothing and is reported.
+ *   - a 401 opens nothing, is reported, and the title asks to log in again.
  *
  * Usage: node test/billing-portal.js
  */
@@ -24,8 +27,12 @@ const assert = require('assert');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const REAL = fs.readFileSync(path.resolve(__dirname, '..', 'account/billing-portal.js'), 'utf8');
-const SCRIPT = REAL.split('window.location.href = portalUrl;').join('window.__navigate(portalUrl);');
-assert.notStrictEqual(SCRIPT, REAL, 'navigation line not found: the test could not observe it');
+const NAVIGATING = REAL.split('window.location.href = portalUrl;').join('window.__navigate(portalUrl);');
+assert.notStrictEqual(NAVIGATING, REAL, 'navigation line not found: the test could not observe it');
+const SCRIPT = NAVIGATING.split('RETRY_DELAY_MS = 1000;').join('RETRY_DELAY_MS = 30;');
+assert.notStrictEqual(SCRIPT, NAVIGATING, 'retry delay not found: the test would wait a full second per try');
+const TITLE_FAILED = 'Le portail de paiement n’a pas pu s’ouvrir. Réessayez dans un instant.';
+const TITLE_SESSION = 'Votre session a expiré : reconnectez-vous puis réessayez.';
 
 const PORTAL = 'https://billing.stripe.com/p/session/live_abc';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -144,36 +151,125 @@ async function check(name, fn) {
     await wait(20);
     const btn = p.btn();
     btn.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
-    await wait(20);
+    await wait(100);
     assert.deepStrictEqual(p.navigations, [], 'never navigate to an undefined address');
+    assert.strictEqual(p.portalCalls.length, 2, 'a 500 is a refusal: no new try');
     assert.strictEqual(p.reports.length, 1);
     assert.strictEqual(p.reports[0].kind, 'report');
     assert.strictEqual(p.reports[0].err.status, 500);
-    assert.strictEqual(btn.textContent, 'Voir mes factures', 'the label comes back');
+    assert.strictEqual(btn.textContent, 'Réessayer', 'the failure shows on the button');
+    assert.strictEqual(btn.getAttribute('title'), TITLE_FAILED);
+    assert.strictEqual(btn.hasAttribute('aria-busy'), false);
     p.w.OrdoBillingPortal.open();
     await wait(20);
     assert.strictEqual(p.portalCalls.length, 3, 'a later attempt goes through');
     assert.deepStrictEqual(p.navigations, [PORTAL]);
   });
 
-  await check('no answer: nothing opens, reported as a network failure', async () => {
-    const p = page({ button: false, answers: [{ transport: 'Failed to fetch' }, { transport: 'Failed to fetch' }] });
+  await check('no answer at all: one new try, then nothing opens, reported once as a network failure', async () => {
+    const dead = { transport: 'Failed to fetch' };
+    const p = page({ button: false, answers: [dead, dead, dead] });
     await wait(20);
-    p.w.OrdoBillingPortal.open();
-    await wait(20);
+    const opened = p.w.OrdoBillingPortal.open();
+    await wait(100);
+    assert.strictEqual(p.portalCalls.length, 3, 'the prefetch, the click, its new try');
     assert.deepStrictEqual(p.navigations, []);
     assert.strictEqual(p.reports.length, 1);
     assert.strictEqual(p.reports[0].kind, 'network');
+    assert.strictEqual(await opened, false);
   });
 
   await check('an answer that is not JSON keeps its status in the report', async () => {
-    const p = page({ button: false, answers: [{ transport: 'Failed to fetch' }, { status: 502 }] });
+    const p = page({ button: false, answers: [{ transport: 'Failed to fetch' }, { status: 502 }, { status: 502 }] });
     await wait(20);
     p.w.OrdoBillingPortal.open();
-    await wait(20);
+    await wait(100);
     assert.strictEqual(p.reports.length, 1);
     assert.strictEqual(p.reports[0].kind, 'report');
     assert.strictEqual(p.reports[0].err.status, 502);
+  });
+
+  await check('a 502, 503 or 504 at the click: one new try after a short wait, and the portal opens', async () => {
+    for (const status of [502, 503, 504]) {
+      const busy = { status, body: { error: 'upstream_error' } };
+      const p = page({ answers: [busy, busy] });
+      await wait(20);
+      const btn = p.btn();
+      btn.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait(10);
+      assert.strictEqual(p.portalCalls.length, 2, status + ': the new try waits');
+      assert.strictEqual(btn.textContent, 'Patientez…', status + ': still waiting, no failure shown');
+      await wait(80);
+      assert.strictEqual(p.portalCalls.length, 3, status);
+      assert.deepStrictEqual(p.navigations, [PORTAL], status);
+      assert.strictEqual(p.reports.length, 0, status + ': nothing to report, the member got the portal');
+    }
+  });
+
+  await check('two 502 in a row at the click: the button says Réessayer, one report, the next click starts over', async () => {
+    const busy = { status: 502, body: { error: 'upstream_error' } };
+    const p = page({ answers: [busy, busy, busy] });
+    await wait(20);
+    const btn = p.btn();
+    const click = () => btn.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true, cancelable: true }));
+    click();
+    await wait(100);
+    assert.strictEqual(p.portalCalls.length, 3, 'no more than one new try');
+    assert.deepStrictEqual(p.navigations, []);
+    assert.strictEqual(p.reports.length, 1);
+    assert.strictEqual(p.reports[0].err.status, 502);
+    assert.strictEqual(btn.textContent, 'Réessayer');
+    assert.strictEqual(btn.getAttribute('title'), TITLE_FAILED);
+    click();
+    assert.strictEqual(btn.textContent, 'Patientez…');
+    assert.strictEqual(btn.hasAttribute('title'), false, 'the failure title goes with the new attempt');
+    await wait(20);
+    assert.deepStrictEqual(p.navigations, [PORTAL]);
+  });
+
+  await check('a refusal at the click (401, 422) gets no new try', async () => {
+    for (const status of [401, 422]) {
+      const refused = { status, body: { error: 'refused' } };
+      const p = page({ button: false, answers: [refused, refused] });
+      await wait(20);
+      p.w.OrdoBillingPortal.open();
+      await wait(100);
+      assert.strictEqual(p.portalCalls.length, 2, status);
+      assert.strictEqual(p.reports.length, 1, status);
+    }
+  });
+
+  await check('open(btn): the wait and the failure show on the given button, the promise says what happened', async () => {
+    const busy = { status: 502, body: { error: 'upstream_error' } };
+    const p = page({ button: false, answers: [busy, busy, busy] });
+    await wait(20);
+    const doc = p.w.document;
+    const btn = doc.createElement('button');
+    btn.textContent = 'Modifier';
+    doc.body.appendChild(btn);
+    const failed = p.w.OrdoBillingPortal.open(btn);
+    assert.strictEqual(btn.textContent, 'Patientez…');
+    assert.strictEqual(btn.disabled, true);
+    assert.strictEqual(btn.getAttribute('aria-busy'), 'true');
+    assert.strictEqual(p.w.OrdoBillingPortal.open(btn), failed, 'a second click gets the same opening');
+    assert.strictEqual(await failed, false);
+    assert.strictEqual(btn.textContent, 'Réessayer');
+    assert.strictEqual(btn.disabled, false);
+    const opened = p.w.OrdoBillingPortal.open(btn);
+    assert.strictEqual(await opened, true);
+    assert.deepStrictEqual(p.navigations, [PORTAL]);
+    // A button with an icon keeps its own content
+    const q = page({ button: false, answers: [busy, busy, busy] });
+    await wait(20);
+    const icon = q.w.document.createElement('button');
+    icon.innerHTML = '<svg></svg><span>Factures</span>';
+    q.w.document.body.appendChild(icon);
+    const r = q.w.OrdoBillingPortal.open(icon);
+    assert.strictEqual(icon.innerHTML, '<svg></svg><span>Factures</span>');
+    assert.strictEqual(icon.getAttribute('aria-busy'), 'true');
+    assert.strictEqual(await r, false);
+    assert.strictEqual(icon.innerHTML, '<svg></svg><span>Factures</span>');
+    assert.strictEqual(icon.getAttribute('title'), TITLE_FAILED);
   });
 
   await check('back from the portal (page restored from cache): the portal opens again', async () => {
@@ -188,14 +284,14 @@ async function check(name, fn) {
     };
     click();
     await wait(20);
-    assert.strictEqual(btn.textContent, 'Patientez...');
+    assert.strictEqual(btn.textContent, 'Patientez…');
     pageshow(true);
     assert.strictEqual(btn.textContent, 'Voir mes factures', 'the label comes back');
     click();
     await wait(20);
     assert.strictEqual(p.navigations.length, 2, 'not stuck on the first opening');
     pageshow(false);
-    assert.strictEqual(btn.textContent, 'Patientez...', 'a normal load changes nothing');
+    assert.strictEqual(btn.textContent, 'Patientez…', 'a normal load changes nothing');
   });
 
   await check('with a member token: prefetch and fallback carry Authorization: Bearer, and v: 2', async () => {
@@ -236,7 +332,7 @@ async function check(name, fn) {
     assert.deepStrictEqual(p.events, ['token', 'portal'], 'the token is read before the request');
   });
 
-  await check('a 401 opens nothing, is reported with its status, the label comes back', async () => {
+  await check('a 401 opens nothing, is reported with its status, the title asks to log in again', async () => {
     const refused = { status: 401, body: { error: 'unauthorized' } };
     const p = page({ answers: [refused, refused] });
     await wait(20);
@@ -246,7 +342,8 @@ async function check(name, fn) {
     assert.deepStrictEqual(p.navigations, []);
     assert.strictEqual(p.reports.length, 1);
     assert.strictEqual(p.reports[0].err.status, 401);
-    assert.strictEqual(btn.textContent, 'Voir mes factures');
+    assert.strictEqual(btn.textContent, 'Réessayer');
+    assert.strictEqual(btn.getAttribute('title'), TITLE_SESSION);
   });
 
   console.log('\n' + passed + ' checks pass');

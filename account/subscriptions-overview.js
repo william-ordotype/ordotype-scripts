@@ -313,9 +313,19 @@
     return Boolean(window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function');
   }
 
+  // The portal shows the wait and the failure on the clicked button, and says whether it opened:
+  // a failure is counted like those of the other actions.
+  function openPortal(btn) {
+    var opening = window.OrdoBillingPortal.open(btn);
+    if (!opening || typeof opening.then !== 'function') return;
+    opening.then(function(opened) {
+      if (opened === false) trackOutcome(btn.getAttribute('data-subs-action'), btn.getAttribute('data-subs-status'), 'failed');
+    });
+  }
+
   function portalButton(kind, label) {
     var b = mark(ui.button(kind, label), label === 'Modifier' ? 'modifier_moyen' : label);
-    b.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
+    b.addEventListener('click', function() { openPortal(b); });
     return b;
   }
 
@@ -1473,7 +1483,7 @@
     // Le lien vers le portail Stripe devient un bouton : il ouvre le portail, sans adresse à suivre.
     var portail = enBouton(d.portail);
     mark(portail, 'portail');
-    portail.addEventListener('click', function() { window.OrdoBillingPortal.open(); });
+    portail.addEventListener('click', function() { openPortal(portail); });
     d.portail = portail;
     var aideLinks = d.aide.querySelectorAll('[data-ordo-aide]');
     for (i = 0; i < aideLinks.length; i++) {
