@@ -136,7 +136,7 @@ function page({ outcomes = [], visible = true, removeGabarit = null, emails = fa
     report(ctx, err) { reported.push({ ctx, err }); },
     reportNetwork(ctx, err) { network.push({ ctx, err }); return true; },
   };
-  w.OrdoBillingPortal = { open() { opened.push(true); } };
+  w.OrdoBillingPortal = { open(btn) { opened.push(btn); return w.__portalResult; } };
   w.confirm = () => true;
   w.console.log = () => {};
   w.__navigate = () => {};
@@ -276,6 +276,7 @@ async function main() {
       assert.ok(!edit.classList.contains('is-principal'));
       edit.click();
       assert.strictEqual(t.opened.length, 1);
+      assert.strictEqual(t.opened[0], edit);
       assert.ok(card.querySelector('.compte-v2_picto.is-moyen'));
       assert.strictEqual(card.querySelector('.compte-v2_moyen-usage img').getAttribute('src'), 'https://cdn.prod.website-files.com/x/logo.svg');
       assert.ok(text(card).includes('Aussi enregistrée : carte •••• 1004, non utilisée'));
@@ -322,6 +323,13 @@ async function main() {
     assert.ok(portal && portal.classList.contains('compte-v2_lien'));
     portal.click();
     assert.strictEqual(t.opened.length, 1);
+    assert.strictEqual(t.opened[0], portal, 'le portail affiche l\'attente et l\'échec sur le bouton cliqué');
+    // Le portail dit qu'il ne s'est pas ouvert : l'échec est compté
+    t.w.__portalResult = Promise.resolve(false);
+    portal.click();
+    await wait(10);
+    assert.ok(t.pushed.some((p) => p.event === 'subscriptions_action' && p.subs_action === 'portail' && p.subs_outcome === 'failed'));
+    t.w.__portalResult = undefined;
     // L'interrupteur du Designer : pris par invoice-emails.js, déplacé dans la carte, rendu
     const row = card.querySelector('[data-ordo-slot="factures-email"] [data-ordo-factures-email]');
     assert.ok(row, 'ligne de l\'interrupteur dans la carte Factures');
