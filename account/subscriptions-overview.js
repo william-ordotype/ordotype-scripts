@@ -313,13 +313,42 @@
     return Boolean(window.OrdoBillingPortal && typeof window.OrdoBillingPortal.open === 'function');
   }
 
+  var PORTAL_FAILED = 'Le portail de paiement n’a pas pu s’ouvrir. Réessayez dans un instant.';
+  var portalMessages = [];
+
+  // The failure message of a button, under the block of its card that holds it: never inside a flex
+  // row, where the Designer's button (order 1 on mobile) would pass after it.
+  function showPortalFailure(btn) {
+    var card = btn.closest('[data-ordo-section]');
+    if (!card) return;
+    var block = btn;
+    while (block.parentNode !== card) block = block.parentNode;
+    var msg = rendu(ui.message());
+    msg.textContent = PORTAL_FAILED;
+    card.insertBefore(msg, block.nextSibling);
+    portalMessages.push({ btn: btn, msg: msg });
+  }
+
+  function clearPortalFailure(btn) {
+    // A message already gone with a render is forgotten too
+    portalMessages = portalMessages.filter(function(m) {
+      if (m.btn !== btn && m.msg.parentNode) return true;
+      retirer(m.msg);
+      return false;
+    });
+  }
+
   // The portal shows the wait and the failure on the clicked button, and says whether it opened:
-  // a failure is counted like those of the other actions.
-  function openPortal(btn) {
-    var opening = window.OrdoBillingPortal.open(btn);
+  // a failure is counted like those of the other actions, and said under the button (the title
+  // alone only shows on hover).
+  function openPortal(btn, options) {
+    clearPortalFailure(btn);
+    var opening = window.OrdoBillingPortal.open(btn, options);
     if (!opening || typeof opening.then !== 'function') return;
     opening.then(function(opened) {
-      if (opened === false) trackOutcome(btn.getAttribute('data-subs-action'), btn.getAttribute('data-subs-status'), 'failed');
+      if (opened !== false) return;
+      trackOutcome(btn.getAttribute('data-subs-action'), btn.getAttribute('data-subs-status'), 'failed');
+      if (D && D.root.contains(btn)) showPortalFailure(btn);
     });
   }
 
@@ -1480,10 +1509,11 @@
     // L'interrupteur « factures par e-mail » n'apparaît que si invoice-emails.js l'a pris en charge.
     var toggleRow = d.slot.querySelector('[data-ordo-factures-email]');
     if (toggleRow) afficher(toggleRow, false);
-    // Le lien vers le portail Stripe devient un bouton : il ouvre le portail, sans adresse à suivre.
+    // Le lien vers le portail Stripe devient un bouton : il ouvre le portail, sans adresse à suivre. Sur
+    // un échec, il garde son libellé (« Réessayer » seul ne dirait plus ce qu'il ouvre), le message dessous.
     var portail = enBouton(d.portail);
     mark(portail, 'portail');
-    portail.addEventListener('click', function() { openPortal(portail); });
+    portail.addEventListener('click', function() { openPortal(portail, { retryLabel: false }); });
     d.portail = portail;
     var aideLinks = d.aide.querySelectorAll('[data-ordo-aide]');
     for (i = 0; i < aideLinks.length; i++) {

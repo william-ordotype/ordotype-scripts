@@ -14,6 +14,7 @@
  *   - at the click, a 502, 503, 504 or no answer gets ONE new try after a short wait (the function
  *     answers 502 when Memberstack is slow to check the session); a refusal (401, 422, 500) none;
  *   - open(btn) shows the wait on the button it is given and resolves true (opening) or false;
+ *   - open(btn, { retryLabel: false }): a failure gives the button its own label back, title kept;
  *   - back from the portal, a page restored from the browser cache can open it again;
  *   - with a Memberstack token the request carries `Authorization: Bearer`, without one it goes out
  *     as before (no header, same body), both with `v: 2`; the prefetch waits for the token;
@@ -270,6 +271,50 @@ async function check(name, fn) {
     assert.strictEqual(await r, false);
     assert.strictEqual(icon.innerHTML, '<svg></svg><span>Factures</span>');
     assert.strictEqual(icon.getAttribute('title'), TITLE_FAILED);
+  });
+
+  await check('open(btn, { retryLabel: false }): a failure gives the button its own label back, title kept', async () => {
+    const LABEL = 'Toutes mes factures et mes informations de facturation';
+    const busy = { status: 502, body: { error: 'upstream_error' } };
+    const p = page({ button: false, answers: [busy, busy, busy, busy, busy] });
+    await wait(20);
+    const btn = p.w.document.createElement('button');
+    btn.textContent = LABEL;
+    p.w.document.body.appendChild(btn);
+    const failed = p.w.OrdoBillingPortal.open(btn, { retryLabel: false });
+    assert.strictEqual(btn.textContent, 'Patientez…', 'the wait still shows');
+    assert.strictEqual(btn.disabled, true);
+    assert.strictEqual(await failed, false);
+    assert.strictEqual(btn.textContent, LABEL, 'no « Réessayer »: the link keeps saying what it opens');
+    assert.strictEqual(btn.getAttribute('title'), TITLE_FAILED);
+    assert.strictEqual(btn.disabled, false);
+    assert.strictEqual(btn.hasAttribute('aria-busy'), false);
+    // The next attempt starts over, and fails the same way
+    const again = p.w.OrdoBillingPortal.open(btn, { retryLabel: false });
+    assert.strictEqual(btn.textContent, 'Patientez…');
+    assert.strictEqual(btn.hasAttribute('title'), false);
+    assert.strictEqual(await again, false);
+    assert.strictEqual(btn.textContent, LABEL);
+    assert.strictEqual(p.portalCalls.length, 5, 'the prefetch, then two tries per click');
+    // A 401 keeps the label too, with the session title
+    const refused = { status: 401, body: { error: 'unauthorized' } };
+    const q = page({ button: false, answers: [refused, refused] });
+    await wait(20);
+    const link = q.w.document.createElement('button');
+    link.textContent = LABEL;
+    assert.strictEqual(await q.w.OrdoBillingPortal.open(link, { retryLabel: false }), false);
+    assert.strictEqual(link.textContent, LABEL);
+    assert.strictEqual(link.getAttribute('title'), TITLE_SESSION);
+    // Any other option, or none: « Réessayer » as before
+    for (const options of [undefined, null, {}, { retryLabel: true }]) {
+      const r = page({ button: false, answers: [busy, busy, busy] });
+      await wait(20);
+      const b = r.w.document.createElement('button');
+      b.textContent = 'Modifier';
+      assert.strictEqual(await r.w.OrdoBillingPortal.open(b, options), false, JSON.stringify(options));
+      assert.strictEqual(b.textContent, 'Réessayer', JSON.stringify(options));
+      assert.strictEqual(b.getAttribute('title'), TITLE_FAILED, JSON.stringify(options));
+    }
   });
 
   await check('back from the portal (page restored from cache): the portal opens again', async () => {
