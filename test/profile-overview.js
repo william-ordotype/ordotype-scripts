@@ -389,6 +389,22 @@ async function test(name, fn) {
     assert.ok(!pushed.some((p) => p.profile_step === 'edit:password:unconfirmed'));
   });
 
+  await test('mot de passe affiché en clair (œil) : toujours rien à comparer, aucun signalement', async () => {
+    const { w, d, pushed, reports } = await page({ fastPoll: true });
+    d.querySelector('[data-ordo-edit="password"]').click();
+    const form = d.querySelector('[data-ordo-form-slot="password"] form');
+    for (const key of ['current-password', 'new-password']) {
+      const input = form.querySelector(`[data-ms-member="${key}"]`);
+      input.type = 'text';
+      input.value = key === 'current-password' ? 'Ancien1!' : 'Nouveau1!';
+    }
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await waitFor(() => pushed.some((p) => /^edit:password:(saved|unverified|unconfirmed)$/.test(p.profile_step || '')));
+    assert.deepStrictEqual(reports, []);
+    assert.ok(pushed.some((p) => p.profile_step === 'edit:password:unverified'));
+    assert.ok(!pushed.some((p) => p.profile_step === 'edit:password:unconfirmed'));
+  });
+
   await test('double envoi non constaté : un seul signalement', async () => {
     const { w, d, reports } = await page({ fastPoll: true });
     d.querySelector('[data-ordo-edit="perso"]').click();

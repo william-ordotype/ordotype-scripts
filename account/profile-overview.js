@@ -81,6 +81,12 @@
     return member.customFields || {};
   }
 
+  /** Champ non comparable à la fiche : mot de passe (même affiché en clair), case à cocher, champ caché. */
+  function skipped(el) {
+    var key = el.getAttribute('data-ms-member') || '';
+    return el.type === 'password' || /password/.test(key) || el.type === 'checkbox' || el.type === 'hidden';
+  }
+
   function isInterne() {
     return text(fields().statut).toLowerCase() === 'interne';
   }
@@ -348,7 +354,7 @@
     for (var i = 0; i < inputs.length; i++) {
       var el = inputs[i];
       var key = el.getAttribute('data-ms-member');
-      if (el.type === 'password' || el.type === 'checkbox' || el.type === 'hidden') continue;
+      if (skipped(el)) continue;
       // Le finder SIREN écrit lui-même ce champ : y remettre la valeur du chargement annulerait un SIREN tout juste enregistré.
       if (key === 'siret') continue;
       if (key === 'email') { el.value = email(); continue; }
@@ -594,7 +600,7 @@
     for (var i = 0; i < inputs.length; i++) {
       var el = inputs[i];
       var key = el.getAttribute('data-ms-member');
-      if (el.type === 'password' || el.type === 'checkbox' || el.type === 'hidden' || key === 'siret') continue;
+      if (skipped(el) || key === 'siret') continue;
       if (hiddenIn(el, block)) continue; // champ masqué (interne…) : non concerné
       var current = key === 'email' ? email() : text(fields()[key]);
       if (comparable(key, el.value) !== comparable(key, current)) return false;
