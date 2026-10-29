@@ -231,13 +231,15 @@
 
     /**
      * Last semester of the cursus, from the declared `semestre` value.
-     * A "6 (FST)" value is a final semester, whatever the specialization.
+     * A "6 (FST)" or "6 (Dernier semestre)" value is a final semester, whatever the specialization.
      */
+    var FINAL_SEMESTER_LABEL = /\(\s*(FST|SFT|dernier\s+semestre)\s*\)/i;
+
     function isInFinalSemester(semestreValue, specialization) {
         var value = String(semestreValue == null ? '' : semestreValue);
         var semester = parseInt(value, 10);
         if (isNaN(semester)) return false;
-        if (/\((FST|SFT)\)/i.test(value)) return semester >= 6;
+        if (FINAL_SEMESTER_LABEL.test(value)) return semester >= 6;
         return semester >= getRequiredSemester(specialization);
     }
 

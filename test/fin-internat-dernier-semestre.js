@@ -74,6 +74,18 @@ const CAS = [
         [final('6 (FST)'), true, '6 (FST)'], [final('6 (SFT)'), true, '6 (SFT)'], [final('6 (fst)'), true, 'casse'],
         [final('5 (FST)'), false, '5 (FST)'],
     ]],
+    ['[règle] « (Dernier semestre) » : dernier semestre, casse et espaces tolérés', () => [
+        [final('6 (Dernier semestre)'), true, '6 (Dernier semestre)'],
+        [final('6 (dernier semestre)'), true, 'minuscules'],
+        [final('6 (DERNIER SEMESTRE)'), true, 'majuscules'],
+        [final(' 6 ( Dernier  semestre ) '), true, 'espaces'],
+        [final('6 (Dernier semestre)', 'Psychiatrie'), true, 'psychiatrie'],
+        [final('6 (Dernier semestre)', ''), true, 'spécialité vide'],
+        [final('5 (Dernier semestre)'), false, '5 (Dernier semestre)'],
+        [final('Dernier semestre'), false, 'sans numéro'],
+        [final('6 Dernier semestre'), false, 'sans parenthèses'],
+        [final('6 (Avant-dernier semestre)'), false, 'avant-dernier'],
+    ]],
     ['[règle] autres spécialités : durée de la spécialité', () => [
         [final('8', 'Psychiatrie'), false, 'psychiatrie 8'], [final('10', 'Psychiatrie'), true, 'psychiatrie 10'],
         [final('8', "Médecine d'urgence"), true, 'urgence 8'], [final('10', 'Chirurgie générale'), false, 'chirurgie 10'],
@@ -111,6 +123,31 @@ for (const page of Object.keys(PAGES)) {
             [voit({ semestre: '6 (FST)', plans: [ASSO, SPECIAL_500] }), false, 'offre spéciale'],
         ]],
         [`[${page}] statut Medecin : pas de bandeau`, () => [[voit({ semestre: '8', statut: 'Medecin' }), false, 'Medecin']]],
+        [`[${page}] « 6 (Dernier semestre) » MG : ce seul bandeau, pas Docteur Junior`, () => {
+            const vus = bandeaux(page, membre({ semestre: '6 (Dernier semestre)' }));
+            return [[vus.join(','), BANDEAU, '6 (Dernier semestre)']];
+        }],
+        [`[${page}] « 6 » MG : Docteur Junior, pas ce bandeau`, () => {
+            const vus = bandeaux(page, membre({ semestre: '6' }));
+            return [[vus.join(','), '#banner-to-hide-docteur-junior', '6']];
+        }],
+        [`[${page}] matrice semestre × spécialité × statut`, () => {
+            // [semestre, médecine générale, psychiatrie] pour un statut Interne ; Medecin : jamais.
+            const ATTENDU = [
+                ['6 (Dernier semestre)', true, true], ['6 (dernier semestre)', true, true],
+                ['6 (FST)', true, true], ['6 (SFT)', true, true],
+                ['6', false, false], ['7', false, false], ['8', true, false],
+                ['Internat terminé', false, false], ['', false, false],
+            ];
+            const out = [];
+            for (const [semestre, mg, psy] of ATTENDU) {
+                for (const [specialite, attendu] of [['Médecine générale', mg], ['Psychiatrie', psy]]) {
+                    out.push([voit({ semestre, specialite }), attendu, `Interne ${specialite} « ${semestre} »`]);
+                    out.push([voit({ semestre, specialite, statut: 'Medecin' }), false, `Medecin ${specialite} « ${semestre} »`]);
+                }
+            }
+            return out;
+        }],
         [`[${page}] hors période : jamais de bandeau`, () => [
             [voit({ semestre: '6 (FST)' }, t(DEBUT) - 1), false, 'veille'],
             [voit({ semestre: '8' }, t(FIN)), false, 'lendemain du 02/11'],
