@@ -546,6 +546,40 @@ ul {
     }
 }
 
+/* Cadre du bloc Sources/Auteurs (.redacteur-block.patho) à la largeur des
+   tableaux des rappels. Le Designer le plafonne (550px sous 768px, 700px
+   jusqu'à 991px, 785px jusqu'à 1439px) et le centre, alors que les tableaux
+   remplissent la colonne des rappels : il était jusqu'à 105px plus étroit
+   entre 769 et 991px, et 100 à 115px entre 1280 et 1439px (30/10). Au-delà
+   de 1440px, ses plafonds (950px, 1000px) sont ceux de la colonne : rien ne
+   change. */
+@media only screen and (min-width: 768px) {
+    .redacteur-block.patho {
+        max-width: none;
+    }
+}
+
+/* 480 à 767px : les rappels restent plafonnés à 550px (Designer) mais calés à
+   gauche de la colonne ; le bloc centré était décalé de quelques pixels. Sa
+   largeur minimale de 500px (Designer) le faisait dépasser de la colonne sous
+   520px d'écran (bord droit coupé, jusqu'à 40px à 480px). */
+@media only screen and (min-width: 480px) and (max-width: 767px) {
+    .redacteur-block.patho {
+        min-width: 0;
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
+/* Téléphones : 1px de marge, comme les tableaux, pour que son cadre tombe sur
+   le leur (il dépassait d'1px de chaque côté). */
+@media only screen and (max-width: 479px) {
+    .redacteur-block.patho {
+        margin-left: 1px;
+        margin-right: 1px;
+    }
+}
+
 /* Téléphones : le bloc des rappels (.rappels-cliniques-content) est un
    élément de grille à marges automatiques (règle Webflow « margin: auto »).
    Il prend donc la largeur de son contenu au lieu de celle de la colonne :
