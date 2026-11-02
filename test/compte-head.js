@@ -21,13 +21,16 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
 const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8');
+// Connexion et sécurité dessinée sans anciens blocs (pièces posées dans la nouvelle présentation).
+const DIRECTE = require('./fixtures/securite-directe')(FIXTURE);
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
 const HEAD_SCRIPT = /<script>([\s\S]*?)<\/script>/.exec(HEAD)[1];
 
 // Classes du Designer (feuille Webflow publiée) dont dépend l'affichage.
 const SITE_CSS = '.compte-v2_wrap{display:none}.compte-v2_wrap.is-on{display:flex}.inner-block-wraper.is-secours{display:none}'
-  + '.compte-v2_field.is-cache{display:none}.compte-v2_photo{cursor:pointer}';
+  + '.compte-v2_field.is-cache{display:none}.compte-v2_photo{cursor:pointer}'
+  + '.compte-v2_edit{display:none}.compte-v2_edit.is-open{display:block}.compte-v2_card.is-liste.is-2fa{display:none}.hidden{display:none}';
 // Ce que Memberstack pose pour un membre payant sans mot de passe (feuille #dynamic-css).
 const MS_CSS = "[data-ms-content='!paid-plans'],[data-ms-content='has-password']{display: none !important;}";
 
@@ -38,7 +41,7 @@ const fenetres = [];
  * rollout : décisions publiées par le chargeur ; loader:false = chargeur jamais arrivé.
  * reporter : un OrdoErrorReporter factice (track) ; push : remplace dataLayer.push.
  */
-function page({ head = true, memberstack = false, rollout = {}, loader = true, before = null, reporter = false, push = null } = {}) {
+function page({ head = true, memberstack = false, rollout = {}, loader = true, before = null, reporter = false, push = null, fixture = FIXTURE } = {}) {
   const styles = `<style>${SITE_CSS}</style>` + (head ? `<style>${HEAD_STYLE}</style><script>${HEAD_SCRIPT}</script>` : '')
     + (memberstack ? `<style id="dynamic-css">${MS_CSS}</style>` : '');
   const chargeur = loader
@@ -49,7 +52,7 @@ function page({ head = true, memberstack = false, rollout = {}, loader = true, b
   const tracked = [];
   const alertes = [];
   const virtualConsole = new VirtualConsole(); // erreurs voulues (décision illisible) : pas de bruit
-  const dom = new JSDOM(`<!doctype html><html><head>${styles}</head><body><div class="w-tabs">${FIXTURE}</div>${chargeur}</body></html>`, {
+  const dom = new JSDOM(`<!doctype html><html><head>${styles}</head><body><div class="w-tabs">${fixture}</div>${chargeur}</body></html>`, {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     virtualConsole,
@@ -82,6 +85,12 @@ const steps = (pushed) => pushed.map((p) => p.profile_step || p.subs_outcome);
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const visible = (w, el) => !!el && w.getComputedStyle(el).display !== 'none';
+/** Vraiment à l'écran : ni l'élément ni un de ses parents masqué. */
+const affiche = (w, el) => {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) if (w.getComputedStyle(n).display === 'none') return false;
+  return !!el;
+};
+const securite = (d) => d.querySelector('[data-ordo-v2="securite"]');
 const anciens = (d, tab) => [...d.querySelectorAll(`[data-w-tab="${tab}"] .compte_form > .inner-block-wraper`)];
 const v2 = (d) => [...d.querySelectorAll('[data-ordo-v2]')];
 
@@ -329,6 +338,64 @@ async function test(name, fn) {
     h.classList.add('ordo-photo-v2'); // posé par profile-photo.js
     for (const el of pieces(d)) assert.ok(visible(w, el), el.getAttribute('data-ordo-photo'));
     assert.strictEqual(w.getComputedStyle(rond).cursor, 'pointer', 'rond actif : la main du Designer');
+  });
+
+  await test('sécurité sans anciens blocs : chargement = sa nouvelle présentation cachée ; rendu = elle, formulaires fermés', async () => {
+    const r = page({ fixture: DIRECTE });
+    await tick(0);
+    assert.ok(r.h.classList.contains('ordo-securite-directe'));
+    assert.ok(!affiche(r.w, securite(r.d)), 'rien pendant le chargement');
+    r.h.classList.add('ordo-profil-v2');
+    await tick(0);
+    assert.ok(affiche(r.w, securite(r.d)));
+    for (const slot of securite(r.d).querySelectorAll('.compte-v2_edit')) assert.ok(!affiche(r.w, slot), 'formulaire fermé');
+    for (const b of securite(r.d).querySelectorAll('[data-ordo-edit]')) assert.ok(affiche(r.w, b), 'Modifier présent');
+  });
+
+  await test('sécurité sans anciens blocs, rien en 8 s : sa nouvelle présentation telle quelle, formulaires ouverts', async () => {
+    const { w, d, h, avance } = page({ fixture: DIRECTE, rollout: { 'profile-overview.js': { enabled: true } } });
+    avance(8100);
+    await tick(150);
+    assert.ok(h.classList.contains('ordo-profil-fallback'));
+    const c = securite(d);
+    assert.ok(affiche(w, c), 'carte Connexion et sécurité');
+    assert.ok(affiche(w, c.querySelector('form[data-ms-form="email"]')), 'formulaire e-mail');
+    assert.ok(affiche(w, c.querySelector('form[data-ms-form="password"]')), 'formulaire mot de passe');
+    for (const b of c.querySelectorAll('[data-ordo-edit]')) assert.ok(!affiche(w, b), 'Modifier masqué');
+    assert.ok(affiche(w, c.querySelector('[data-ms-auth-provider="google"]')), 'bouton Google');
+    assert.ok(affiche(w, c.querySelector('#ordotype-totp-section')), 'module 2FA');
+    assert.ok(affiche(w, d.getElementById('delete-account-btn')), 'Supprimer');
+    assert.ok(!affiche(w, d.getElementById('delete-account-form-v2')), 'formulaire de suppression fermé (ouvert au clic)');
+    // Mon profil ne change pas : ses anciens blocs, sa nouvelle présentation cachée.
+    assert.ok(!affiche(w, d.querySelector('[data-ordo-v2="profil"]')));
+    for (const b of anciens(d, 'information')) assert.ok(affiche(w, b));
+  });
+
+  await test('sécurité sans anciens blocs, chargeur absent : même secours', async () => {
+    const { w, d, h } = page({ fixture: DIRECTE, loader: false });
+    await tick(150);
+    assert.ok(h.classList.contains('ordo-profil-fallback'));
+    assert.ok(affiche(w, securite(d)));
+    assert.ok(affiche(w, securite(d).querySelector('form[data-ms-form="password"]')));
+  });
+
+  await test('sécurité sans anciens blocs, secours : Memberstack masque toujours la suppression et l\'e-mail', async () => {
+    const { w, d } = page({ fixture: DIRECTE, memberstack: true, rollout: { 'profile-overview.js': { enabled: false } } });
+    await tick(150);
+    const c = securite(d);
+    assert.ok(affiche(w, c));
+    assert.ok(!affiche(w, c.querySelector('[data-ordo-section="suppression"]')), '!paid-plans respecté');
+    assert.ok(!affiche(w, c.querySelector('form[data-ms-form="email"]')), 'has-password respecté');
+    assert.ok(affiche(w, c.querySelector('form[data-ms-form="password"]')));
+  });
+
+  await test('page actuelle (anciens blocs) en secours : la nouvelle présentation de la sécurité reste cachée, pas de doublon', async () => {
+    const { w, d, h } = page({ rollout: { 'profile-overview.js': { enabled: false } } });
+    await tick(150);
+    assert.ok(h.classList.contains('ordo-profil-fallback'));
+    assert.ok(!h.classList.contains('ordo-securite-directe'));
+    assert.ok(!affiche(w, securite(d)));
+    assert.ok(anciens(d, 'security').some((b) => affiche(w, b)));
   });
 
   for (const w of fenetres) w.close();

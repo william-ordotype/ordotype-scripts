@@ -706,16 +706,23 @@
 
   /**
    * Le bouton Google d'origine vit dans le conteneur Memberstack `manage-providers`, qui affiche
-   * « Compte Google connecté » et la croix de déliaison. On déplace ce conteneur à la place du
-   * bouton de la carte ; sans lui, le bouton de la carte relaie le clic.
+   * « Compte Google connecté » et la croix de déliaison. Dessiné directement dans la carte, il y
+   * reste (un bouton remplaçant oublié à côté est masqué). Resté dans les anciens blocs, on le
+   * déplace à la place du bouton remplaçant de la carte ; sans lui, le remplaçant relaie le clic.
    */
   function placeGoogle() {
-    var btn = securite && securite.querySelector('[data-ordo-google]');
-    if (!btn) return;
-    trackGoogleState();
+    if (!securite) return;
     var providers = outsideV2('[data-ms-auth="manage-providers"]');
+    var direct = !!(providers && providers.closest('[data-ordo-v2]'));
+    var btn = securite.querySelector('[data-ordo-google]');
+    if (!btn && !direct) return;
+    trackGoogleState();
     if (providers) guardGoogle(providers);
-    if (providers && !providers.closest('[data-ordo-v2]')) {
+    if (direct) {
+      show(btn, false);
+      return;
+    }
+    if (providers) {
       move(providers, btn.parentNode, btn);
       show(btn, false);
       return;
