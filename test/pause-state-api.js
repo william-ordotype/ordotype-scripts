@@ -10,8 +10,8 @@
  *     failure gives onResult(false) and a report with its own error name; onResult runs once;
  *   - without a session token nothing is sent, onResult(false), reported as `PauseStateNoSession`;
  *   - the script no longer holds any third-party webhook URL;
- *   - the account card (#pause-state-card) uses the same call: resume sends `resume-pause`, then
- *     redirects; a failed definitive cancel shows the error and gives the buttons back.
+ *   - it reads nothing from the page: the paused card and its buttons are drawn by the « Mes abonnements »
+ *     list (subscriptions-overview.js), which calls OrdoPause.
  *
  * Usage : node test/pause-state-api.js
  */
@@ -22,11 +22,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
 const REAL = fs.readFileSync(path.join(ROOT, 'account/pause-state.js'), 'utf8');
-const SCRIPT = REAL
-  .split('window.location.href = redirectUrl;').join('window.__navigate(redirectUrl);')
-  .split('window.location.reload();').join("window.__navigate('reload');");
-assert.ok(SCRIPT.includes('window.__navigate(redirectUrl);'), 'redirect line not found: the test could not observe it');
-assert.ok(SCRIPT.includes("window.__navigate('reload');"), 'reload line not found: the test could not observe it');
+const SCRIPT = REAL;
 const SHORT_TIMEOUT = SCRIPT.split('var REQUEST_TIMEOUT = 10000;').join('var REQUEST_TIMEOUT = 30;');
 assert.notStrictEqual(SHORT_TIMEOUT, SCRIPT, 'timeout constant not found');
 
@@ -34,17 +30,10 @@ const ENDPOINT = 'https://webhooks.ordotype.fr/.netlify/functions/member-forms';
 const wait = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 let passed = 0;
 
-const CARD = '<div id="pause-state-card" class="hidden" style="display:none">' +
-  '<div id="pause-plan-label"></div><div id="pause-resume-date"></div>' +
-  '<a id="resume-btn" href="#">Reprendre</a><a id="cancel-definitive-btn" href="#">Annuler</a>' +
-  '<div id="pause-action-waiting" style="display:none"></div>' +
-  '<div id="pause-action-success" style="display:none"></div>' +
-  '<div id="pause-action-error" style="display:none"></div></div>';
-
 // answers: { status, body } or { network: true } or { hang: true } (only the abort ends it).
 // token: what getMemberCookie() gives; memberstack: 'absent' | 'throws' | 'rejects'.
-function page({ answers = [], token = 'jeton-de-test', memberstack = null, card = false, metaData = {}, script = SCRIPT, fetchThrows = false } = {}) {
-  const dom = new JSDOM('<!doctype html><html><head></head><body>' + (card ? CARD : '') + '</body></html>', {
+function page({ answers = [], token = 'jeton-de-test', memberstack = null, script = SCRIPT, fetchThrows = false } = {}) {
+  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
     url: 'https://www.ordotype.fr/membership/compte',
     runScripts: 'outside-only',
     virtualConsole: new VirtualConsole(),
@@ -52,7 +41,6 @@ function page({ answers = [], token = 'jeton-de-test', memberstack = null, card 
   const w = dom.window;
   const requests = [];
   const reported = [];
-  const navigations = [];
   const queue = answers.slice();
   w.fetch = (url, opts) => {
     if (fetchThrows) throw new TypeError('blocked');
@@ -78,12 +66,9 @@ function page({ answers = [], token = 'jeton-de-test', memberstack = null, card 
       },
     };
   }
-  w.OrdoMemberstack = { memberId: 'mem_test', metaData, planConnections: [] };
   w.OrdoErrorReporter = { report(ctx, err) { reported.push({ name: err.name, message: err.message }); } };
-  w.__navigate = (u) => navigations.push(u);
-  w.confirm = () => true;
   w.eval(script);
-  return { w, d: w.document, requests, reported, navigations, names: () => reported.map((r) => r.name) };
+  return { w, d: w.document, requests, reported, names: () => reported.map((r) => r.name) };
 }
 
 // Calls fn(onResult) and returns every value onResult received.
@@ -189,56 +174,12 @@ async function main() {
     });
   }
 
-  const PAUSED = { 'pause-end-date': new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), 'paused-group-key': 'compte-praticien' };
-  const shown = (t, id) => t.d.getElementById(id).style.display === 'block';
-  const click = (t, id) => t.d.getElementById(id).dispatchEvent(new t.w.MouseEvent('click', { bubbles: true, cancelable: true }));
-
-  await check('account card: resume sends resume-pause with the token, then redirects', async () => {
-    const t = page({ card: true, metaData: PAUSED });
+  await check('no account card any more: nothing read from the page, only OrdoPause', async () => {
+    assert.ok(!/getElementById|querySelector|document\./.test(REAL), 'no page element');
+    const t = page();
     await wait(20);
-    assert.strictEqual(t.d.getElementById('pause-state-card').style.display, '', 'card shown');
-    assert.strictEqual(t.d.getElementById('pause-plan-label').textContent, 'Module MG - Compte Praticien');
-    click(t, 'resume-btn');
-    assert.ok(shown(t, 'pause-action-waiting'));
-    assert.strictEqual(t.d.getElementById('resume-btn').style.display, 'none');
-    await wait(60);
-    assert.strictEqual(t.requests.length, 1);
-    assert.strictEqual(t.requests[0].url, ENDPOINT);
-    assert.strictEqual(t.requests[0].headers.Authorization, 'Bearer jeton-de-test');
-    assert.strictEqual(t.requests[0].body, '{"action":"resume-pause","fields":{}}');
-    assert.ok(!shown(t, 'pause-action-waiting'));
-    assert.ok(shown(t, 'pause-action-success'));
-    assert.strictEqual(t.d.getElementById('pause-action-success').textContent, 'Votre abonnement a été réactivé !');
-    assert.deepStrictEqual(t.navigations, []);
-    await wait(3100);
-    assert.deepStrictEqual(t.navigations, ['/membership/abonnement-repris']);
-  });
-
-  await check('account card: a failed definitive cancel shows the error and gives the buttons back', async () => {
-    const t = page({ card: true, metaData: PAUSED, answers: [{ status: 502, body: 'bad gateway' }] });
-    await wait(20);
-    click(t, 'cancel-definitive-btn');
-    await wait(60);
-    assert.strictEqual(t.requests.length, 1);
-    assert.strictEqual(t.requests[0].body, '{"action":"cancel-pause","fields":{}}');
-    assert.ok(shown(t, 'pause-action-error'));
-    assert.ok(!shown(t, 'pause-action-success'));
-    assert.ok(!shown(t, 'pause-action-waiting'));
-    assert.strictEqual(t.d.getElementById('resume-btn').style.display, '');
-    assert.strictEqual(t.d.getElementById('cancel-definitive-btn').style.display, '');
-    assert.deepStrictEqual(t.names(), ['PauseStateActionFailed']);
-    await wait(3100);
-    assert.deepStrictEqual(t.navigations, []);
-  });
-
-  await check('account card: without a session token nothing is sent and the error shows', async () => {
-    const t = page({ card: true, metaData: PAUSED, token: '' });
-    await wait(20);
-    click(t, 'resume-btn');
-    await wait(60);
-    assert.strictEqual(t.requests.length, 0);
-    assert.ok(shown(t, 'pause-action-error'));
-    assert.deepStrictEqual(t.names(), ['PauseStateNoSession']);
+    assert.deepStrictEqual(Object.keys(t.w.OrdoPause).sort(), ['cancelDefinitive', 'redirectDelay', 'resume', 'resumedUrl']);
+    assert.strictEqual(t.requests.length, 0, 'nothing sent on load');
   });
 
   console.log('\npause-state-api: ' + passed + ' checks pass');

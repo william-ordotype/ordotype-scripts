@@ -218,8 +218,7 @@
     'core.js',           // Exposes window.OrdoAccount
     'siren-finder.js',   // SIREN/SIRET self-service (facturation électronique), replaces the free-text #SIRET input. Gated by GATES.
     'rpps-finder.js',    // RPPS check in the Annuaire santé, before profile-overview.js which places it. Gated by GATES.
-    'subscriptions.js',
-    'pause-state.js',
+    'pause-state.js',    // Reprise et annulation d'une pause, pour la liste « Mes abonnements » (window.OrdoPause).
     'tab-hash.js',
     'status-selectors.js',
     'delete-account.js',
