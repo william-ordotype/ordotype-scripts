@@ -3,14 +3,16 @@
  * Onglet Facturation dessiné dans le Designer, seule présentation depuis le 22/10/2026.
  *
  * La page de test est l'onglet tel que Webflow le publie (test/fixtures/compte-facturation.html, copie du
- * domaine de recette) : la Facturation du Designer, son bloc de gabarits, et les anciens blocs en secours.
+ * domaine de recette), redessiné sans anciens blocs (test/fixtures/facturation-directe.js) : la Facturation du
+ * Designer, son attente (texte et lien natif vers le portail), et son bloc de gabarits.
  * Ce qui est vérifié :
  *   - mêmes textes que la présentation construite par le script avant son retrait (relevés le 22/10/2026),
  *     pour chaque carte, moyen de paiement, facture et adresse ;
  *   - le dessin vient du Designer : classes recopiées des gabarits, aucune feuille de style injectée ;
  *   - les gabarits en place disparaissent, aucun identifiant n'est dupliqué, rien ne reste d'un rendu à l'autre ;
  *   - formulaires recopiés : identifiants, libellés, pays, envoi gardé loin de Webflow ;
- *   - squelette, secours sur erreur, repère manquant (blocs SECOURS, aucune requête de liste, signalé) ;
+ *   - avant le script : attente, portail natif et aide visibles, exemples et cartes de données cachés ;
+ *   - squelette, échec dit par l'attente, repère manquant (aucune requête de liste, signalé) ;
  *   - l'interrupteur « factures par e-mail » piloté sur l'élément du Designer, et la case construite par
  *     invoice-emails.js quand cet élément manque : un consentement doit toujours pouvoir se retirer ;
  *   - portail de paiement en échec (vrai billing-portal.js, deux 502) : erreur visible du gabarit
@@ -33,14 +35,15 @@ const PORTAL_SCRIPT = PORTAL_REAL.split('RETRY_DELAY_MS = 1000;').join('RETRY_DE
   .split('window.location.href = portalUrl;').join('window.__navigate(portalUrl);');
 assert.ok(PORTAL_SCRIPT.indexOf('RETRY_DELAY_MS = 10;') !== -1 && PORTAL_SCRIPT.indexOf('window.__navigate(portalUrl)') !== -1);
 const PORTAL_FAILED = 'Le portail de paiement n’a pas pu s’ouvrir. Réessayez dans un instant.';
-const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.html'), 'utf8');
-// La règle d'en-tête qui cache la Facturation tant qu'elle n'est pas remplie (account/compte-head.html).
+const facturationDirecte = require('./fixtures/facturation-directe');
+const FIXTURE = facturationDirecte(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.html'), 'utf8'));
+// Les règles d'en-tête de la Facturation (account/compte-head.html) : exemples et cartes de données cachés.
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
 // Règles de base publiées par Webflow pour ces classes : une classe qui fixe `display` l'emporte sur `hidden`.
-// Les blocs SECOURS sont masqués par le site (combo « is-secours », comme dans test/compte-head.js).
-const SITE_CSS = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.css'), 'utf8')
-  + '.inner-block-wraper.is-secours{display:none}';
+const SITE_CSS = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.css'), 'utf8');
+const ATTENDRE = 'Chargement de vos abonnements…';
+const ECHEC = 'Vos abonnements n’ont pas pu s’afficher. Rechargez la page dans un instant.';
 
 const PRICE = (amount, current) => ({ amount, current, currency: 'eur', interval: 'month', intervalCount: 1 });
 const CARDS = [
@@ -197,7 +200,7 @@ const doc = (t) => t.w.document;
 const root = (t) => doc(t).querySelector('[data-ordo-facturation]');
 const section = (t, name) => root(t).querySelector('[data-ordo-section="' + name + '"]');
 const designerCards = (t) => Array.from(root(t).querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu]'));
-const secours = (t) => Array.from(doc(t).querySelectorAll('[data-w-tab="billing"] .inner-block-wraper.is-secours'));
+const attente = (t) => root(t).querySelector('[data-ordo-attente]');
 // Visible pour de vrai : ni l'élément ni un ancêtre n'est masqué. Sur le site, l'attribut `hidden` ne masque rien
 // dès qu'une classe fixe `display` (la règle de base Webflow n'est pas prioritaire) ; jsdom, lui, le fait toujours
 // gagner. On ne lui fait donc pas confiance : un élément qui n'est caché QUE par `hidden` compte comme visible.
@@ -208,6 +211,16 @@ function visibleIn(t, node) {
     if (t.w.getComputedStyle(n).display === 'none') return false;
   }
   return true;
+}
+
+// Le texte que voit le membre : celui des éléments visibles seulement.
+function visibleText(t, node) {
+  const walker = node.ownerDocument.createTreeWalker(node, 4);
+  const parts = [];
+  while (walker.nextNode()) {
+    if (visibleIn(t, walker.currentNode.parentElement)) parts.push(walker.currentNode.nodeValue.replace(/[\u00a0\u202f]/g, ' ').trim());
+  }
+  return parts.filter(Boolean).join(' ');
 }
 
 async function rendered(body) {
@@ -255,12 +268,12 @@ async function main() {
     // Les actions vivent dans la rangée dessinée dans le Designer
     assert.ok(again.parentElement.classList.contains('compte-v2_actions'));
 
-    // La Facturation est montrée, les anciens blocs cachés, la page dit qu'elle est rendue
+    // La Facturation est montrée, l'attente partie, la page dit qu'elle est rendue
     assert.ok(doc(t).documentElement.classList.contains('ordo-subs-v2'));
     assert.strictEqual(root(t).hidden, false);
     assert.ok(visibleIn(t, root(t)));
-    assert.strictEqual(doc(t).getElementById('payment-method-block').style.display, 'none');
-    assert.strictEqual(doc(t).getElementById('invoices-block').style.display, 'none');
+    assert.strictEqual(attente(t), null, 'l\'attente part avec la liste');
+    assert.strictEqual(doc(t).querySelectorAll('.is-secours, #payment-method-block, #invoices-block').length, 0);
 
     // Sans invoice-emails.js, l'interrupteur dessiné ne se montre jamais (pas de position inventée)
     assert.ok(!visibleIn(t, root(t).querySelector('[data-ordo-factures-email]')));
@@ -620,14 +633,51 @@ async function main() {
     t.dom.window.close();
   }
 
-  // Factures illisibles : carte et aide cachées, ancien bloc gardé
+  // Factures illisibles : la carte reste, sans tableau, avec le portail (toutes les factures y sont) et
+  // l'interrupteur ; l'aide aussi
   {
-    const t = page({ outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [VISA] } }] });
+    const t = page({ emails: true, outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [VISA] } }] });
     t.run();
-    await wait(80);
-    assert.ok(!visibleIn(t, section(t, 'factures')));
-    assert.ok(!visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')));
-    assert.strictEqual(doc(t).getElementById('invoices-block').style.display, '');
+    await wait(120);
+    assert.ok(visibleIn(t, section(t, 'factures')));
+    assert.ok(!visibleIn(t, section(t, 'factures').querySelector('[role="table"]')));
+    assert.ok(visibleIn(t, section(t, 'factures').querySelector('[data-ordo-champ="portail"]')));
+    const sw = section(t, 'factures').querySelector('[data-ordo-slot="factures-email"] [role="switch"]');
+    assert.ok(sw && visibleIn(t, sw), 'interrupteur dans la carte Factures');
+    assert.ok(visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')));
+    assert.deepStrictEqual(t.erreurs, []);
+    t.dom.window.close();
+  }
+
+  // Avant le script (ou sans lui) : « Mes abonnements » avec son texte d'attente et le lien natif Memberstack vers
+  // le portail, et l'aide ; ni exemple du Designer ni carte qui n'a de sens qu'avec des données
+  {
+    const t = page();
+    await wait(20);
+    assert.ok(visibleIn(t, root(t)));
+    assert.strictEqual(visibleText(t, section(t, 'abonnements')), 'Mes abonnements ' + ATTENDRE + ' Gérer ma facturation');
+    const lien = attente(t).querySelector('a');
+    assert.strictEqual(lien.getAttribute('data-ms-action'), 'customer-portal');
+    assert.ok(visibleIn(t, lien));
+    for (const name of ['moyen-de-paiement', 'adresse', 'factures']) assert.ok(!visibleIn(t, section(t, name)), name);
+    assert.ok(!visibleIn(t, root(t).querySelector('[data-ordo-liste="abonnements"]')), 'liste vide (son exemple seul) cachée');
+    const exemples = root(t).querySelectorAll('[data-ordo-gabarit]');
+    assert.ok(exemples.length >= 5);
+    for (const ex of exemples) assert.ok(!visibleIn(t, ex), 'exemple caché : ' + ex.getAttribute('data-ordo-gabarit'));
+    assert.ok(visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')));
+    t.dom.window.close();
+  }
+
+  // Rendu complet : rien de ce que le script pose n'est caché par la règle des exemples
+  {
+    const t = await rendered({ subscriptions: CARDS, paymentMethods: [VISA, SEPA], otherPaymentMethods: OTHERS, invoices: INVOICES,
+      billingAddress: ADDRESS, taxId: null, taxIdAllowed: true });
+    assert.strictEqual(root(t).querySelectorAll('[data-ordo-gabarit]').length, 0);
+    for (const n of root(t).querySelectorAll('[data-ordo-rendu]')) {
+      if (n.closest('[role="table"]') || n.closest('[data-ordo-liste]') || n.closest('[data-ordo-section="moyen-de-paiement"]')) {
+        assert.ok(visibleIn(t, n), 'visible : ' + n.className);
+      }
+    }
     t.dom.window.close();
   }
 
@@ -641,8 +691,9 @@ async function main() {
     assert.strictEqual(skels.length, 2, 'un par plan non résilié');
     assert.strictEqual(section(t, 'abonnements').getAttribute('aria-busy'), 'true');
     assert.ok(text(section(t, 'abonnements')).includes('Chargement de vos abonnements…'));
+    assert.ok(!visibleIn(t, attente(t)), 'le squelette remplace l\'attente');
     assert.ok(!visibleIn(t, section(t, 'moyen-de-paiement')));
-    assert.ok(!visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')));
+    assert.ok(visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')), 'l\'aide, visible dès le départ, reste');
     await wait(250);
     assert.strictEqual(section(t, 'abonnements').querySelectorAll('.compte-v2_squelette').length, 0);
     assert.strictEqual(section(t, 'abonnements').hasAttribute('aria-busy'), false);
@@ -650,20 +701,37 @@ async function main() {
     t.dom.window.close();
   }
 
-  // Échec de la liste : Facturation cachée, anciens blocs rendus par la classe de secours
+  // Échec de la liste : l'attente dit l'échec et garde le portail ; les cartes de données restent cachées
   {
     const t = page({ outcomes: [{ status: 500, body: {} }] });
     t.run();
     await wait(80);
-    assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-v2'));
-    assert.ok(doc(t).documentElement.classList.contains('ordo-subs-fallback'));
-    assert.ok(!visibleIn(t, root(t)));
-    assert.strictEqual(secours(t).length, 3);
-    for (const b of secours(t)) assert.ok(visibleIn(t, b), 'bloc SECOURS visible : ' + (b.id || b.getAttribute('data-ms-content')));
+    assert.ok(visibleIn(t, root(t)));
+    assert.ok(visibleIn(t, attente(t)));
+    assert.strictEqual(text(section(t, 'abonnements')), 'Mes abonnements ' + ECHEC + ' Gérer ma facturation');
+    for (const name of ['moyen-de-paiement', 'adresse', 'factures']) assert.ok(!visibleIn(t, section(t, name)), name);
+    assert.ok(visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')));
+    assert.strictEqual(designerCards(t).length, 0);
+    const out = t.pushed.filter((p) => p.event === 'subscriptions_list').map((p) => p.subs_outcome);
+    assert.deepStrictEqual(out, ['failed']);
     t.dom.window.close();
   }
 
-  // Repère manquant dans le Designer : blocs SECOURS, aucune requête de liste, signalé et compté une fois
+  // Échec sans attente dessinée : l'erreur du gabarit, dans la carte (pas dans la liste, cachée tant que rien
+  // n'est rempli)
+  {
+    const t = page({ removeGabarit: '[data-ordo-attente]', outcomes: [{ status: 500, body: {} }] });
+    t.run();
+    await wait(80);
+    const erreur = section(t, 'abonnements').querySelector('.compte-v2_erreur[data-ordo-rendu]');
+    assert.ok(erreur && visibleIn(t, erreur));
+    assert.strictEqual(erreur.textContent, ECHEC);
+    assert.strictEqual(erreur.parentElement, section(t, 'abonnements'));
+    t.dom.window.close();
+  }
+
+  // Repère manquant dans le Designer : aucune requête de liste, l'attente dit l'échec (exemples et cartes de
+  // données toujours cachés par l'en-tête), signalé et compté une fois
   for (const [missing, nom] of [
     ['[data-ordo-gabarit="statut-past_due"]', 'FacturationGabaritAbsent'],
     ['[data-ordo-gabarit="facture"]', 'FacturationGabaritAbsent'],
@@ -675,13 +743,14 @@ async function main() {
     await wait(80);
     assert.strictEqual(t.calls.length, 0, missing + ' : aucune requête de liste');
     const html = doc(t).documentElement;
-    assert.ok(html.classList.contains('ordo-subs-fallback'), missing);
     assert.ok(!html.classList.contains('ordo-subs-v2'), missing);
     if (root(t)) {
-      assert.ok(!visibleIn(t, root(t)), missing + ' : Facturation cachée par la règle d\'en-tête');
       assert.ok(!root(t).hasAttribute('data-ordo-pret'), missing);
+      assert.ok(visibleIn(t, attente(t)), missing);
+      assert.strictEqual(text(attente(t)), ECHEC + ' Gérer ma facturation', missing);
+      for (const name of ['moyen-de-paiement', 'adresse', 'factures']) assert.ok(!visibleIn(t, section(t, name)), missing + ' ' + name);
+      for (const ex of root(t).querySelectorAll('[data-ordo-gabarit]')) assert.ok(!visibleIn(t, ex), missing + ' : exemple caché');
     }
-    for (const b of secours(t)) assert.ok(visibleIn(t, b), missing + ' : bloc SECOURS visible');
     assert.deepStrictEqual(t.reported.map((r) => r.err.name), [nom], missing);
     const outcomes = t.pushed.filter((p) => p.event === 'subscriptions_list').map((p) => p.subs_outcome);
     assert.deepStrictEqual(outcomes, ['designer-absent'], missing);
@@ -689,48 +758,50 @@ async function main() {
     t.dom.window.close();
   }
 
-  // Designer incomplet, invoice-emails.js chargé : l'interrupteur reste dans le bloc SECOURS des factures.
-  // Sans la Facturation, la case est celle construite par invoice-emails.js ; avec une Facturation incomplète,
-  // la ligne du Designer est prise et placée dans le bloc.
-  for (const [missing, construite] of [['[data-ordo-facturation]', true], ['[data-ordo-gabarits="facturation"]', false]]) {
-    const t = page({ removeGabarit: missing, emails: true, outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], invoices: INVOICES } }] });
+  // Designer incomplet, invoice-emails.js chargé : l'interrupteur rejoint l'attente, qui dit l'échec, et le
+  // consentement s'y retire. Sans la Facturation, plus d'ancrage : rien à montrer, et le masquage se dit.
+  {
+    const t = page({ removeGabarit: '[data-ordo-gabarits="facturation"]', emails: true, outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], invoices: INVOICES } }] });
     t.run();
-    await wait(120);
-    assert.ok(doc(t).documentElement.classList.contains('ordo-subs-fallback'), missing);
-    assert.strictEqual(t.calls.length, 0, missing);
-    const block = doc(t).getElementById('invoices-block');
-    assert.ok(visibleIn(t, block), missing);
-    const sw = block.querySelector('#invoice-emails-toggle');
-    assert.ok(sw, missing + ' : interrupteur dans le bloc des factures');
-    assert.ok(visibleIn(t, sw), missing);
-    assert.strictEqual(sw.tagName === 'INPUT', construite, missing);
-    if (construite) assert.strictEqual(sw.type, 'checkbox');
-    else assert.ok(sw.closest('[data-ordo-factures-email]'), missing);
+    await wait(300);
+    assert.strictEqual(t.calls.length, 0);
+    const sw = attente(t).querySelector('#invoice-emails-toggle');
+    assert.ok(sw, 'interrupteur dans l\'attente');
+    assert.ok(sw.closest('[data-ordo-factures-email]'), 'ligne du Designer');
+    assert.ok(visibleIn(t, sw));
     assert.strictEqual(doc(t).querySelectorAll('#invoice-emails-toggle').length, 1);
-    // Le consentement se retire depuis ce bloc
     sw.click();
     await wait(40);
     const post = t.emailCalls.find((c) => c.options && c.options.method === 'POST');
-    assert.ok(post, missing);
-    assert.deepStrictEqual(JSON.parse(post.options.body), { enabled: true }, missing);
-    assert.deepStrictEqual(t.erreurs, [], missing);
+    assert.ok(post);
+    assert.deepStrictEqual(JSON.parse(post.options.body), { enabled: true });
+    assert.deepStrictEqual(t.erreurs, []);
+    t.dom.window.close();
+  }
+  {
+    const t = page({ removeGabarit: '[data-ordo-facturation]', emails: true, outcomes: [{ status: 200, body: { subscriptions: [CARDS[0]], invoices: INVOICES } }] });
+    t.run();
+    await wait(120);
+    assert.strictEqual(t.calls.length, 0);
+    assert.strictEqual(doc(t).getElementById('invoice-emails-toggle'), null);
+    const hidden = t.pushed.filter((p) => p.event === 'invoice_emails_hidden').map((p) => p.invoice_hidden_reason);
+    assert.deepStrictEqual(hidden, ['no_anchor']);
+    assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }
 
-  // Échec de la liste, Facturation complète : la ligne du Designer est prise par invoice-emails.js et reste
-  // dans le bloc SECOURS des factures, visible avec lui.
+  // Échec de la liste, Facturation complète : la ligne du Designer, prise par invoice-emails.js, rejoint
+  // l'attente, visible avec elle
   {
     const t = page({ outcomes: [{ status: 502, body: {} }], emails: true, emailsState: { eligible: true, enabled: true } });
     t.run();
-    await wait(120);
-    assert.ok(doc(t).documentElement.classList.contains('ordo-subs-fallback'));
-    const block = doc(t).getElementById('invoices-block');
-    const row = block.querySelector('[data-ordo-factures-email]');
-    assert.ok(row, 'ligne du Designer dans le bloc des factures');
-    assert.ok(visibleIn(t, block));
+    await wait(300);
+    const row = attente(t).querySelector('[data-ordo-factures-email]');
+    assert.ok(row, 'ligne du Designer dans l\'attente');
+    assert.ok(visibleIn(t, attente(t)));
     assert.ok(visibleIn(t, row));
     assert.strictEqual(row.querySelector('[role="switch"]').getAttribute('aria-checked'), 'true');
-    assert.strictEqual(root(t).querySelectorAll('[data-ordo-factures-email]').length, 0, 'plus rien dans la Facturation cachée');
+    assert.strictEqual(section(t, 'factures').querySelectorAll('[data-ordo-factures-email]').length, 0, 'plus rien dans la carte cachée');
     t.dom.window.close();
   }
 
@@ -761,7 +832,8 @@ async function main() {
     await wait(80);
     assert.strictEqual(designerCards(t).length, 1);
     assert.strictEqual(t.calls.length, 1);
-    assert.ok(!doc(t).documentElement.classList.contains('ordo-subs-fallback'), 'pas de secours par-dessus la liste');
+    assert.strictEqual(attente(t), null, 'pas d\'échec dit par-dessus la liste');
+    assert.ok(text(root(t)).indexOf(ECHEC) === -1);
     assert.strictEqual(t.reported.length, 0);
     t.dom.window.close();
   }

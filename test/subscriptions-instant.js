@@ -23,7 +23,8 @@
  *   - the skeleton has one placeholder per plan that is not cancelled (1 to 3) and says when the
  *     wait is long; a timeout on a section never on screen is `timeout-unseen`, not reported.
  *
- * The page is the Facturation tab as Webflow publishes it (test/fixtures/compte-facturation.html).
+ * The page is the Facturation tab as Webflow publishes it (test/fixtures/compte-facturation.html), drawn
+ * without its old blocks (test/fixtures/facturation-directe.js).
  *
  * Usage: node test/subscriptions-instant.js
  */
@@ -33,7 +34,7 @@ const assert = require('assert');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const REAL = fs.readFileSync(path.resolve(__dirname, '..', 'account/subscriptions-overview.js'), 'utf8');
-const FIXTURE = fs.readFileSync(path.resolve(__dirname, 'fixtures/compte-facturation.html'), 'utf8');
+const FIXTURE = require('./fixtures/facturation-directe')(fs.readFileSync(path.resolve(__dirname, 'fixtures/compte-facturation.html'), 'utf8'));
 function shorten(src, from, to) {
   const out = src.replace(from, to);
   assert.notStrictEqual(out, src, from + ' not found: the test would not shorten it');
@@ -118,8 +119,8 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
     logo: () => cards().map((n) => n.querySelector('img')).filter(Boolean)[0] || null,
     text: () => root.querySelector('[data-ordo-section="abonnements"]').textContent,
     skeletons: () => root.querySelectorAll('.compte-v2_squelette').length,
-    oldSection: () => doc.querySelector('[data-w-tab="billing"] .inner-block-wraper[data-ms-content="!no-plans"]'),
-    fallback: () => doc.documentElement.classList.contains('ordo-subs-fallback'),
+    waiting: () => doc.querySelector('[data-ordo-attente]'),
+    failed: () => /n’ont pas pu s’afficher/.test(root.textContent),
   };
 }
 
@@ -147,7 +148,7 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.deepStrictEqual(p.events(), ['instant']);
     assert.ok(/Voir les offres/.test(p.text()) && /Accès pendant l’internat\./.test(p.text()), 'button and note of the plan');
     assert.strictEqual(p.logo().getAttribute('src'), PUBLIC.pln_interne.icon, 'logo of the plan');
-    assert.strictEqual(p.oldSection().style.display, 'none', 'the page\'s own blocks give way');
+    assert.strictEqual(p.waiting(), null, 'the page\'s waiting text gives way');
     await wait(120);
     assert.deepStrictEqual(p.labels(), ['Interne MG'], 'then replaced by the list');
     assert.deepStrictEqual(p.events(), ['instant'], 'ONE list event per page');
@@ -248,11 +249,11 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.strictEqual(p.reports.length, 0);
   });
 
-  await check('the list times out after an instant render: the cards stay, no page blocks, nothing reported', async () => {
+  await check('the list times out after an instant render: the cards stay, no failure said, nothing reported', async () => {
     const p = await open({ plans: [free('pln_interne')], stored: COPY, list: hang });
     await wait(300);
     assert.deepStrictEqual(p.labels(), ['Interne MG']);
-    assert.ok(!p.fallback());
+    assert.ok(!p.failed());
     assert.deepStrictEqual(p.events(), ['instant']);
     assert.strictEqual(p.reports.length, 0);
     assert.strictEqual(p.calls.list.length, 2, 'the list was still sent a second time');
@@ -262,7 +263,7 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     const p = await open({ plans: [free('pln_interne')], stored: COPY, list: reply(502, { error: 'upstream_error' }) });
     await wait(60);
     assert.deepStrictEqual(p.labels(), ['Interne MG']);
-    assert.ok(!p.fallback());
+    assert.ok(!p.failed());
     assert.strictEqual(p.reports.length, 1);
   });
 
@@ -377,12 +378,12 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.strictEqual(none.skeletons(), 1);
   });
 
-  await check('a timeout on a section never on screen: `timeout-unseen`, not reported, blocks back', async () => {
+  await check('a timeout on a section never on screen: `timeout-unseen`, not reported, failure said', async () => {
     const p = await open({ plans: [paid('pln_mg')], list: hang, visible: false });
     await wait(300);
     assert.deepStrictEqual(p.events(), ['timeout-unseen']);
     assert.strictEqual(p.reports.length, 0);
-    assert.ok(p.fallback());
+    assert.ok(p.failed());
   });
 
   await check('the same timeout on screen: `timeout`, reported', async () => {

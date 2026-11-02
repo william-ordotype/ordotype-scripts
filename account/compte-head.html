@@ -1,9 +1,8 @@
 <!-- Mon compte : nouvelle présentation et secours. Source : ordotype-scripts, account/compte-head.html
      (copie de référence de ce bloc du code d'en-tête de la page /membership/compte, testée par test/compte-head.js).
-     Mon profil et Connexion et sécurité s'affichent tout de suite (valeurs et formulaires Memberstack) ; un script
-     de Mon profil coupé, absent, en échec ou sans rendu en 8 s est seulement mesuré (GA4). La facturation garde ses
-     anciens blocs en secours (combo « is-secours »), réaffichés dans ces mêmes cas. Un chargeur absent part aussi
-     dans Sentry. -->
+     Mon profil, Connexion et sécurité et Facturation s'affichent tout de suite (valeurs et formulaires Memberstack,
+     attente et portail de la Facturation) ; un script coupé, absent, en échec ou sans rendu en 8 s est seulement
+     mesuré (GA4). Un chargeur absent part aussi dans Sentry. -->
 <script>
 (function () {
   var h = document.documentElement;
@@ -67,7 +66,7 @@
     try { present = !!window.OrdoRollout; } catch (e) { /* illisible : on attend les 8 s */ }
     if (present) return;
     for (var i = 0; i < SUIVIS.length; i++) secours(SUIVIS[i], 'chargeur');
-    alerter('CompteChargeurAbsent', 'account/loader.js absent : anciens blocs affichés');
+    alerter('CompteChargeurAbsent', 'account/loader.js absent : page sans ses scripts');
   });
 
   (function verifier() {
@@ -93,17 +92,15 @@ html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-initiales],
 html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-nom-complet],
 html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-resume],
 html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-rpps-entete] { visibility: hidden; }
-/* Facturation : anciens blocs en secours. Sans !important : un bloc que Memberstack masque le reste. */
-html.ordo-subs-fallback [data-w-tab="billing"] .inner-block-wraper.is-secours,
-.inner-block-wraper.is-secours.ordo-keep { display: block; }
-@media screen and (max-width: 479px) {
-  html.ordo-subs-fallback [data-w-tab="billing"] .inner-block-wraper.is-secours,
-  .inner-block-wraper.is-secours.ordo-keep { display: flex; }
-}
 /* Encart visible seulement dans le Designer. */
 .compte-v2_designer { display: none !important; }
-/* Facturation dessinée dans le Designer : cachée tant que son script ne l'a pas remplie (le Designer, lui, la montre). */
-html:not(.ordo-subs-v2) [data-ordo-facturation] { display: none !important; }
+/* Facturation : « Mes abonnements » (texte d'attente et lien Memberstack vers le portail Stripe) et l'aide
+   s'affichent tout de suite. Les exemples dessinés dans le Designer ne s'affichent jamais ; la liste (vide sans
+   son exemple) et les cartes qui n'ont de sens qu'avec des données (moyen de paiement, adresse, factures)
+   attendent le script, qui les montre ou non. */
+[data-ordo-facturation] [data-ordo-gabarit] { display: none !important; }
+html:not(.ordo-subs-v2) [data-ordo-facturation] [data-ordo-liste],
+html:not(.ordo-subs-v2) [data-ordo-facturation] [data-ordo-section]:not([data-ordo-section="abonnements"]) { display: none; }
 /* Ce que le Designer ne sait pas dessiner : pulsation des squelettes, bouton occupé. */
 @keyframes compte-v2-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 .compte-v2_squelette, .compte-v2_interrupteur.is-chargement { animation: compte-v2-pulse 1.2s ease-in-out infinite; }

@@ -12,9 +12,9 @@
  *     answer before HEDGE_MS sends no second request;
  *   - an HTTP error is an answer: no second request;
  *   - a timeout the member did not see (tab in the background) is `timeout-unseen`, and is not
- *     reported: the page's own blocks still come back;
+ *     reported: the failure is still said on the page;
  *   - a page whose Facturation is not fully drawn in the Designer is recorded as `designer-absent`,
- *     sends no list request, and leaves the page's own blocks;
+ *     sends no list request;
  *   - a normal answer is still `shown`, and no late `timeout` follows it;
  *   - an HTTP error is still `failed`, never `timeout`;
  *   - a body cut while it is read (page left, connection lost) is a network failure: sent a
@@ -23,8 +23,8 @@
  *   - actions (PDF, payment, reactivation) are never subject to the delay;
  *   - without AbortController, the request keeps its previous, unbounded behaviour.
  *
- * The real file is loaded in jsdom, on the Facturation tab as Webflow publishes it
- * (test/fixtures/compte-facturation.html). Only LIST_TIMEOUT_MS and HEDGE_MS are shortened, in the
+ * The real file is loaded in jsdom, on the Facturation tab as Webflow publishes it, drawn without its old
+ * blocks (test/fixtures/compte-facturation.html, test/fixtures/facturation-directe.js). Only LIST_TIMEOUT_MS and HEDGE_MS are shortened, in the
  * test's copy, so each case runs in milliseconds instead of eight seconds.
  *
  * Usage: node test/subscriptions-list-timeout.js
@@ -36,7 +36,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const FILE = path.resolve(__dirname, '..', 'account/subscriptions-overview.js');
 const REAL = fs.readFileSync(FILE, 'utf8');
-const FIXTURE = fs.readFileSync(path.resolve(__dirname, 'fixtures/compte-facturation.html'), 'utf8');
+const FIXTURE = require('./fixtures/facturation-directe')(fs.readFileSync(path.resolve(__dirname, 'fixtures/compte-facturation.html'), 'utf8'));
 const SHORT_MS = 60;
 const HEDGE_SHORT_MS = 30;
 const SHORTENED = REAL.replace('var LIST_TIMEOUT_MS = 8000;', 'var LIST_TIMEOUT_MS = ' + SHORT_MS + ';');
@@ -71,7 +71,7 @@ function page({ designer = true, fetch, withAbort = true, hidden = false } = {})
   if (hidden) Object.defineProperty(w.document, 'visibilityState', { configurable: true, get: () => 'hidden' });
   w.eval(SOURCE);
   const events = () => w.dataLayer.filter((e) => e.event === 'subscriptions_list');
-  return { w, calls, reports, events, fallback: () => w.document.documentElement.classList.contains('ordo-subs-fallback') };
+  return { w, calls, reports, events, failed: () => /n’ont pas pu s’afficher/.test(w.document.body.textContent) };
 }
 
 // Never answers, but honours the abort signal like a real fetch.
@@ -117,7 +117,7 @@ async function check(name, fn) {
     assert.strictEqual(ev[0].subs_status, 'timeout');
     assert.strictEqual(p.calls.length, 2, 'the unanswered request is sent a second time, and only once');
     assert.ok(p.calls.every((c) => c.opts.signal && c.opts.signal.aborted), 'both requests are cut');
-    assert.ok(p.fallback(), 'the page\'s own blocks come back');
+    assert.ok(p.failed(), 'the failure is said');
     assert.strictEqual(p.reports.length, 1, 'a hung function is reported, so it shows in Sentry');
   });
 
@@ -135,7 +135,7 @@ async function check(name, fn) {
     await wait(SHORT_MS * 3);
     assert.deepStrictEqual(p.events().map((e) => e.subs_outcome), ['shown-retry']);
     assert.strictEqual(p.calls.length, 2);
-    assert.ok(!p.fallback());
+    assert.ok(!p.failed());
     assert.strictEqual(p.reports.length, 0);
   });
 
@@ -164,18 +164,18 @@ async function check(name, fn) {
     const p = page({ fetch: hang, hidden: true });
     await wait(SHORT_MS * 5);
     assert.deepStrictEqual(p.events().map((e) => e.subs_outcome), ['timeout-unseen']);
-    assert.ok(p.fallback(), 'the page\'s own blocks still come back');
+    assert.ok(p.failed(), 'the failure is still said');
     assert.strictEqual(p.reports.length, 0, 'a wait nobody saw is not a failure');
   });
 
-  await check('Facturation missing from the Designer: recorded as `designer-absent`, no request, page blocks back', async () => {
+  await check('Facturation missing from the Designer: recorded as `designer-absent`, no request', async () => {
     const p = page({ designer: false, fetch: answer(200, EMPTY) });
     await wait(SHORT_MS * 2);
     const ev = p.events();
     assert.strictEqual(ev.length, 1);
     assert.strictEqual(ev[0].subs_outcome, 'designer-absent');
     assert.strictEqual(p.calls.length, 0);
-    assert.ok(p.fallback());
+    assert.ok(!p.failed(), 'no Facturation to say it in');
     assert.deepStrictEqual(p.reports.map((r) => r.err.name), ['FacturationDesignerAbsent']);
   });
 

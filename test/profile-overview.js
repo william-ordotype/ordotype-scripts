@@ -15,12 +15,13 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'account/profile-overview.js'), 'utf8');
-const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8');
+// Facturation dessinée sans anciens blocs, comme sur le site : ce script ne doit pas y toucher.
+const FIXTURE = require('./fixtures/facturation-directe')(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8'));
 // Connexion et sécurité dessinée sans anciens blocs (pièces posées dans la nouvelle présentation).
 const DIRECTE = require('./fixtures/securite-directe')(FIXTURE);
 // Les deux onglets dessinés sans anciens blocs : la page servie.
 const SERVIE = require('./fixtures/profil-directe')(DIRECTE);
-// Code d'en-tête de la page : il cache la nouvelle présentation jusqu'au rendu et gère le secours.
+// Code d'en-tête de la page : il cache ce que les scripts calculent (en-tête de Mon profil, données de la Facturation).
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
 const HEAD_SCRIPT = /<script>([\s\S]*?)<\/script>/.exec(HEAD)[1];
@@ -114,16 +115,16 @@ async function test(name, fn) {
     assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'bloc profil affiché');
   });
 
-  await test('anciens blocs masqués dans les deux onglets, et seulement là', async () => {
+  await test('anciens blocs masqués dans les deux onglets, Facturation laissée telle quelle', async () => {
     const { w, d } = await page();
     const info = d.querySelector('.w-tab-pane[data-w-tab="information"] .compte_form');
     const secu = d.querySelector('.w-tab-pane[data-w-tab="security"] .compte_form');
-    const bill = d.querySelector('.w-tab-pane[data-w-tab="billing"] .compte_form');
     for (const b of info.querySelectorAll(':scope > .inner-block-wraper')) assert.ok(!visible(w, b), 'ancien bloc profil masqué');
     for (const b of secu.querySelectorAll(':scope > .inner-block-wraper')) assert.ok(!visible(w, b), 'ancien bloc sécurité masqué');
-    const billing = bill.querySelectorAll(':scope > .inner-block-wraper');
-    assert.ok(billing.length > 0);
-    for (const b of billing) assert.ok(visible(w, b), 'bloc facturation intact');
+    const bill = d.querySelector('.w-tab-pane[data-w-tab="billing"]');
+    assert.ok(visible(w, bill.querySelector('[data-ordo-facturation]')), 'Facturation intacte');
+    assert.ok(visible(w, bill.querySelector('[data-ordo-attente]')), 'attente intacte');
+    assert.strictEqual(bill.querySelector('[data-ordo-attente] a').getAttribute('data-ms-action'), 'customer-portal');
   });
 
   await test('interne : mode d\'exercice, TVA et SIREN masqués, TVA masquée aussi dans le formulaire', async () => {
@@ -902,7 +903,7 @@ async function test(name, fn) {
     assert.deepStrictEqual(erreurs, []);
     assert.deepStrictEqual(reports, []);
     assert.ok(d.documentElement.classList.contains('ordo-profil-v2'));
-    assert.strictEqual(d.querySelectorAll('.inner-block-wraper.is-secours').length, 3, 'seuls ceux de la facturation');
+    assert.strictEqual(d.querySelectorAll('.inner-block-wraper.is-secours').length, 0, 'aucun, Facturation comprise');
     assert.strictEqual(champ(d, 'statut'), 'Médecin');
     assert.strictEqual(champ(d, 'phone'), '+33 6 12 34 56 78');
     assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')));

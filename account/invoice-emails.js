@@ -675,6 +675,9 @@
    * masqué. Sert à la section « Factures » de la liste des abonnements.
    */
   function relocate(container) {
+    // Appelé avant `init` (la liste des abonnements dit son échec dès son propre démarrage) : l'ancrage est
+    // cherché ici, `init` retrouvera le même élément.
+    if (!anchor) anchor = document.getElementById(ANCHOR_ID);
     if (!anchor || !container || typeof container.appendChild !== 'function') return false;
     container.appendChild(wrapper() || anchor);
     if (pendingObserver) {

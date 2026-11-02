@@ -2,9 +2,10 @@
 /**
  * « Mes abonnements » list on the account page: rendering of each status, formats, loading and errors.
  *
- * The page is the Facturation tab as Webflow publishes it (test/fixtures/compte-facturation.html): the
- * script fills the Facturation drawn in the Designer ([data-ordo-facturation]) from its templates, and the
- * page's own blocks (SECOURS) are the fallback. test/facturation-designer.js covers the drawing itself.
+ * The page is the Facturation tab as Webflow publishes it (test/fixtures/compte-facturation.html), drawn
+ * without its old blocks (test/fixtures/facturation-directe.js): the script fills the Facturation drawn in
+ * the Designer ([data-ordo-facturation]) from its templates; when it cannot, the page's waiting text says
+ * so and keeps its portal link. test/facturation-designer.js covers the drawing itself.
  *
  * Usage : node test/subscriptions-overview.js
  */
@@ -17,7 +18,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'account/subscriptions-overview.js'), 'utf8');
 // jsdom cannot navigate: the redirections are captured instead (same approach as test/fin-internat.js).
 const NAV_SCRIPT = SCRIPT.split('window.location.assign(').join('window.__navigate(');
-const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.html'), 'utf8');
+const FIXTURE = require('./fixtures/facturation-directe')(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-facturation.html'), 'utf8'));
 // The page head rule that hides the Facturation until it is filled (account/compte-head.html), and the base
 // rules Webflow publishes for its classes.
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
@@ -144,7 +145,9 @@ const filled = (w) => w.document.documentElement.classList.contains('ordo-subs-v
 const cards = (w) => Array.from(root(w).querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu][role="listitem"]'));
 const cardText = (w, i) => text(cards(w)[i]);
 const badge = (card) => card.querySelector('.compte-v2_abo-head > .compte-v2_badge');
-const oldSection = (w) => w.document.querySelector('[data-w-tab="billing"] .inner-block-wraper[data-ms-content="!no-plans"]');
+// The page's waiting text and portal link, there before the script; the failure it says when the list cannot show.
+const waiting = (w) => w.document.querySelector('[data-ordo-attente]');
+const saysFailure = (w) => /n’ont pas pu s’afficher/.test(root(w).textContent);
 
 async function main() {
   // Rendering of every status
@@ -199,40 +202,19 @@ async function main() {
     assert.strictEqual(t.reported.length + t.network.length, 0);
   }
 
-  // The old per-plan section is hidden once the list is shown; other sections stay
+  // Once the list is shown, the page's waiting text and its portal link go; no old block anywhere
   {
     const t = page();
     installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.strictEqual(oldSection(t.w).style.display, 'none');
-    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
-    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '');
+    assert.strictEqual(waiting(t.w), null);
+    assert.ok(!saysFailure(t.w));
+    assert.strictEqual(t.w.document.querySelectorAll('.is-secours, #payment-method-block, #invoices-block').length, 0);
     t.dom.window.close();
   }
 
-  // Nothing billed (free or ended plans only, or no plan): no payment method block
-  for (const list of [[CARDS[3], CARDS[12], CARDS[13]], []]) {
-    const t = page();
-    installFetch(t.w, [{ status: 200, body: { subscriptions: list } }]);
-    t.w.eval(SCRIPT);
-    await wait(60);
-    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
-    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
-    t.dom.window.close();
-  }
-
-  // A paused or canceling subscription keeps it: the card may need updating before billing resumes
-  for (const kept of [CARDS[4], CARDS[6], CARDS[5]]) {
-    const t = page();
-    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[3], kept] } }]);
-    t.w.eval(SCRIPT);
-    await wait(60);
-    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '', kept.status);
-    t.dom.window.close();
-  }
-
-  // Payment method section: the method Stripe will charge, replacing the page's own block
+  // Payment method section: the method Stripe will charge
   const pmSection = (w) => sectionOf(w, 'moyen-de-paiement');
   const pmRows = (w) => pmSection(w).querySelectorAll('.compte-v2_moyen[data-ordo-rendu]');
   const VISA = { type: 'card', brand: 'visa', last4: '4242', expMonth: 8, expYear: 2027, expired: false, expiresSoon: false, usedBy: ['Médecine Générale'] };
@@ -256,8 +238,6 @@ async function main() {
     edit.click();
     assert.strictEqual(t.opened.length, 1);
     assert.ok(s.querySelector('.compte-v2_picto svg path'), 'card icon drawn');
-    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
-    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
     t.dom.window.close();
   }
   {
@@ -394,10 +374,9 @@ async function main() {
     t.dom.window.close();
   }
   {
-    // No payment method in the response (free account): no section, and the block goes too
+    // No payment method in the response (free account): no section
     const t = await withPms([CARDS[3]], []);
     assert.ok(!shown(pmSection(t.w)));
-    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, 'none');
     t.dom.window.close();
   }
   {
@@ -581,9 +560,9 @@ async function main() {
     assert.ok(s.querySelector('.compte-v2_badge.is-paye') && s.querySelector('.compte-v2_badge.is-en-cours') && s.querySelector('.compte-v2_badge.is-a-regler'));
     assert.strictEqual(invRows(t.w)[2].querySelector('a.compte-v2_lien').getAttribute('href'), '/membership/moyen-de-paiement');
     assert.strictEqual(s.querySelector('button.compte-v2_pdf').getAttribute('aria-label'), 'Télécharger la facture du 14 septembre 2026');
-    // The page's invoices block gives way, and its invoice emails toggle moves into the section
-    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, 'none');
+    // The invoice emails toggle is held by the section
     assert.strictEqual(t.relocated.length, 1);
+    assert.strictEqual(t.relocated[0], toggleSlot(t.w));
     assert.ok(toggleSlot(t.w).querySelector('#ordotype-invoice-emails'));
     // The billing portal stays one click away
     const more = s.querySelector('button[data-subs-action="portail"]');
@@ -600,17 +579,19 @@ async function main() {
     t.dom.window.close();
   }
   {
-    // The invoice emails script can run after the list is rendered: the toggle still moves in
+    // The invoice emails script can run after the list is rendered: the section still claims the toggle
     const t2 = page();
     const node = t2.w.document.getElementById('ordotype-invoice-emails').parentElement;
+    assert.ok(toggleSlot(t2.w).contains(node), 'drawn in its slot');
     installFetch(t2.w, [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INVOICES } }]);
     t2.w.eval(SCRIPT);
     await wait(60);
     assert.ok(shown(invSection(t2.w)), 'list rendered first');
-    assert.strictEqual(node.parentElement.id, 'invoices-block', 'toggle not moved yet');
-    t2.w.OrdoInvoiceEmails = { relocate(container) { container.appendChild(node); return true; } };
+    const claimed = [];
+    t2.w.OrdoInvoiceEmails = { relocate(container) { claimed.push(container); container.appendChild(node); return true; } };
     await wait(260);
-    assert.ok(toggleSlot(t2.w).querySelector('#ordotype-invoice-emails'), 'moved once the script is there');
+    assert.deepStrictEqual(claimed, [toggleSlot(t2.w)], 'claimed once the script is there');
+    assert.ok(toggleSlot(t2.w).contains(node));
     t2.dom.window.close();
   }
   {
@@ -620,19 +601,22 @@ async function main() {
     t.dom.window.close();
   }
   {
-    // Invoices unknown (the function could not read them): the page's block stays, no help box
-    const { t } = await withInvoices(null);
-    assert.ok(!shown(invSection(t.w)));
-    assert.ok(!shown(helpBox(t.w)));
-    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, '');
+    // Invoices unknown (the function could not read them): the section stays without its table, with the
+    // portal (every invoice is there) and the toggle; the help box too
+    const { t } = await withInvoices(null, { toggle: true });
+    assert.ok(shown(invSection(t.w)));
+    assert.ok(!shown(invSection(t.w).querySelector('[role="table"]')));
+    assert.strictEqual(invRows(t.w).length, 0);
+    assert.ok(shown(invSection(t.w).querySelector('button[data-subs-action="portail"]')));
+    assert.deepStrictEqual(t.relocated, [toggleSlot(t.w)]);
+    assert.ok(shown(helpBox(t.w)));
     t.dom.window.close();
   }
   {
-    // No invoice at all: no section, the help box replaces the block
+    // No invoice at all: no section, the help box
     const { t } = await withInvoices([]);
     assert.ok(!shown(invSection(t.w)));
     assert.ok(shown(helpBox(t.w)));
-    assert.strictEqual(t.w.document.getElementById('invoices-block').style.display, 'none');
     t.dom.window.close();
   }
   {
@@ -754,7 +738,7 @@ async function main() {
     t.dom.window.close();
   }
   {
-    // A later render without invoices gives the toggle back to the page's block, shown again
+    // A later render with unreadable invoices keeps the section, without its table, and the toggle in it
     const canceling = Object.assign({}, CARDS[4], { reactivation: '0123456789abcdef0123' });
     const after = Object.assign({}, canceling, { status: 'active', reactivation: null, endsOn: null, next: { date: '2026-10-30', amount: 200 } });
     const { t } = await withInvoices(INVOICES, {
@@ -764,21 +748,24 @@ async function main() {
     });
     cards(t.w)[0].querySelector('button').click();
     await wait(60);
-    const block = t.w.document.getElementById('invoices-block');
-    assert.strictEqual(block.style.display, '');
-    assert.ok(block.querySelector('#ordotype-invoice-emails'), 'toggle back in the block');
-    assert.ok(!shown(invSection(t.w)));
+    assert.ok(shown(invSection(t.w)));
+    assert.ok(!shown(invSection(t.w).querySelector('[role="table"]')));
+    assert.strictEqual(invRows(t.w).length, 0);
+    assert.ok(toggleSlot(t.w).querySelector('#ordotype-invoice-emails'), 'toggle still in the section');
     t.dom.window.close();
   }
 
-  // On a load error the old section stays as the fallback, and so does the payment method block
+  // On a load error the waiting text says so and keeps its portal link; the data sections stay hidden
   {
     const t = page();
     installFetch(t.w, [{ status: 502, body: { error: 'upstream_error' } }]);
     t.w.eval(SCRIPT);
     await wait(100);
-    assert.strictEqual(oldSection(t.w).style.display, '');
-    assert.strictEqual(t.w.document.getElementById('payment-method-block').style.display, '');
+    assert.ok(shown(waiting(t.w)));
+    assert.ok(saysFailure(t.w));
+    assert.strictEqual(waiting(t.w).querySelector('a').getAttribute('data-ms-action'), 'customer-portal');
+    for (const name of ['moyen-de-paiement', 'adresse', 'factures']) assert.ok(!shown(sectionOf(t.w, name)), name);
+    assert.ok(!filled(t.w), 'not filled');
     t.dom.window.close();
   }
 
@@ -1009,13 +996,14 @@ async function main() {
   }
   {
     // Still loading when the tab opens: the placeholder shows, then the list replaces it; while the
-    // tab stays closed, the block stays hidden
+    // tab stays closed, the page's waiting text stays as it is
     const t = page({ visible: false });
     installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS }, delay: 500 }]);
     t.w.eval(SCRIPT);
     await wait(60);
-    assert.ok(!filled(t.w), 'hidden while the tab is closed');
-    assert.strictEqual(root(t.w).style.display, 'none');
+    assert.ok(!filled(t.w), 'not filled while the tab is closed');
+    assert.ok(shown(waiting(t.w)), 'the page\'s waiting text');
+    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null);
     t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
     await wait(260);
     assert.ok(root(t.w).querySelector('.compte-v2_squelette'));
@@ -1136,38 +1124,14 @@ async function main() {
     t.dom.window.close();
   }
 
-  // The page's own blocks start hidden (page head CSS): the list says which ones it still needs,
-  // and hands them all back when it cannot show itself
-  {
-    const t = page();
-    const INV = [{ ref: 'aaaaaaaaaaaaaaaaaaaa', date: '2026-09-14', label: 'Médecine Générale', amount: 1500, currency: 'eur', status: 'paid', pdf: true }];
-    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [VISA], invoices: INV } }]);
-    t.w.eval(SCRIPT);
-    await wait(60);
-    const html = t.w.document.documentElement;
-    assert.ok(!html.classList.contains('ordo-subs-fallback'), 'list shown: no fallback');
-    assert.ok(!t.w.document.getElementById('payment-method-block').classList.contains('ordo-keep'));
-    assert.ok(!t.w.document.getElementById('invoices-block').classList.contains('ordo-keep'));
-    t.dom.window.close();
-  }
-  {
-    // Billed without a readable payment method, invoices unknown: those two page blocks are kept
-    const t = page();
-    installFetch(t.w, [{ status: 200, body: { subscriptions: [CARDS[0]], paymentMethods: [], invoices: null } }]);
-    t.w.eval(SCRIPT);
-    await wait(60);
-    assert.ok(t.w.document.getElementById('payment-method-block').classList.contains('ordo-keep'));
-    assert.ok(t.w.document.getElementById('invoices-block').classList.contains('ordo-keep'));
-    assert.ok(!t.w.document.documentElement.classList.contains('ordo-subs-fallback'));
-    t.dom.window.close();
-  }
+  // The list cannot show itself: the failure is said, whatever the reason, and nothing is filled
   for (const status of [502, 401]) {
-    // The list cannot show itself: every page block comes back, whatever the reason
     const t = page();
     installFetch(t.w, [{ status, body: { error: 'x' } }]);
     t.w.eval(SCRIPT);
     await wait(100);
-    assert.ok(t.w.document.documentElement.classList.contains('ordo-subs-fallback'), `status ${status}`);
+    assert.ok(saysFailure(t.w), `status ${status}`);
+    assert.ok(!filled(t.w), `status ${status}`);
     t.dom.window.close();
   }
 

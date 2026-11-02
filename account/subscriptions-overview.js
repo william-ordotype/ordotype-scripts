@@ -13,8 +13,7 @@
   var MS_MAX_ATTEMPTS = 50;
   var SKELETON_DELAY_MS = 200;
   var RETRY_DELAY_MS = 400;
-  // Same delay as the page head rule that brings the page's own blocks back: past it, the
-  // member already sees those blocks, so the list is recorded as timed out instead of silent.
+  // Past it, the member is told the list could not be shown, and the list is recorded as timed out.
   var LIST_TIMEOUT_MS = 8000;
   // An unanswered list request is sent a second time, without cancelling the first: the first answer wins.
   var HEDGE_MS = 4000;
@@ -54,8 +53,11 @@
   // Les sections, leurs classes et leurs textes fixes sont dessinés dans Webflow ([data-ordo-facturation]) ;
   // les états à recopier vivent dans le bloc [data-ordo-gabarits="facturation"], visible seulement dans le
   // Designer. Le script n'y met que les données et les actions ; `ui`, défini avec la présentation plus bas,
-  // en fabrique les éléments. Designer incomplet ou liste impossible à charger : les blocs SECOURS de la page
-  // restent seuls (classe `ordo-subs-fallback`, règle de l'en-tête de page), comme pour Profil et Sécurité.
+  // en fabrique les éléments. Avant le script, la page montre déjà « Mes abonnements » avec son texte d'attente
+  // et le lien natif Memberstack vers le portail Stripe ([data-ordo-attente]), et l'aide ; les exemples du
+  // Designer et les cartes qui n'ont de sens qu'avec des données attendent le script (règles de l'en-tête de
+  // page). Designer incomplet ou liste impossible à charger : l'attente dit l'échec et garde le portail, et
+  // l'interrupteur « factures par e-mail » la rejoint (un consentement doit toujours pouvoir se retirer).
   var D = null;
 
   // Le libellé d'un bouton d'envoi : un <input type="submit"> (formulaire Webflow) le porte dans `value`.
@@ -543,53 +545,8 @@
     return row;
   }
 
-  function closestSection(node) {
-    while (node && node !== document.body) {
-      if (node.classList && node.classList.contains('inner-block-wraper')) return node;
-      node = node.parentElement;
-    }
-    return null;
-  }
-
-  // The previous per-plan blocks stay as the fallback until the list is shown.
-  function hideOldSection() {
-    var blocks = document.querySelectorAll('.abonnement-wrapper');
-    var hidden = [];
-    for (var i = 0; i < blocks.length; i++) {
-      var section = closestSection(blocks[i]);
-      if (section && hidden.indexOf(section) === -1 && !section.contains(anchor)) {
-        section.style.display = 'none';
-        hidden.push(section);
-      }
-    }
-  }
-
-  // Adding a payment method only matters when something is billed or paused.
+  // What is billed or paused: what a billing address matters for.
   var BILLED = ['active', 'past_due', 'pending', 'canceling', 'pause_scheduled', 'paused'];
-
-  // The page's own block stays only while the list cannot show the payment method itself.
-  // The page's own blocks start hidden on www (page head CSS, class `ordo-subs-pending` on <html>):
-  // `ordo-keep` shows one that the list still needs, `ordo-subs-fallback` brings them all back.
-  function keepBlock(block, keep) {
-    if (!block) return;
-    if (keep) block.classList.add('ordo-keep');
-    else block.classList.remove('ordo-keep');
-    block.style.display = keep ? '' : 'none';
-  }
-
-  function fallbackToPageBlocks() {
-    document.documentElement.classList.add('ordo-subs-fallback');
-  }
-
-  function togglePaymentBlock(list, pms) {
-    var block = document.getElementById('payment-method-block');
-    if (!block) return;
-    var billed = false;
-    for (var i = 0; i < list.length; i++) {
-      if (BILLED.indexOf(list[i].status) !== -1) billed = true;
-    }
-    keepBlock(block, billed && !pms.length);
-  }
 
   var CARD_BRANDS = {
     visa: 'Visa',
@@ -1081,10 +1038,10 @@
     return btn;
   }
 
-  // The page's invoices block (portal button, help, invoice emails toggle) gives way to the
-  // invoices section and the help box, once the invoices are known. The toggle moves into the
-  // section, and back into the block whenever a later render has no section to hold it.
-  var toggleMoved = false;
+  // The invoice emails switch lives in the invoices section ([data-ordo-slot="factures-email"]). When the list
+  // cannot be shown, it joins the waiting block of « Mes abonnements », which stays on screen: a consent must
+  // always be withdrawable. A later render with invoices puts it back.
+  var toggleAway = false;
 
   function moveToggle(container) {
     var emails = window.OrdoInvoiceEmails;
@@ -1399,7 +1356,7 @@
   // qui sert de gabarit : carte d'abonnement, moyen de paiement, adresse, ligne de facture) et les états
   // du bloc [data-ordo-gabarits="facturation"] (statuts, boutons, formulaires, messages). Le script les
   // recopie et n'y écrit que des données ; il ne crée d'éléments que pour des boutons, dont la classe
-  // vient alors du gabarit. Un repère manquant laisse les blocs SECOURS de la page à sa place, en le signalant.
+  // vient alors du gabarit. Un repère manquant fait dire l'échec à l'attente de la page, en le signalant.
 
   var GABARITS = [
     'statut-active', 'statut-free', 'statut-past_due', 'statut-pending', 'statut-canceling',
@@ -1452,7 +1409,7 @@
     return node;
   }
 
-  // Facturation du Designer incomplète : les blocs SECOURS de la page restent seuls et la liste n'est pas
+  // Facturation du Designer incomplète : l'attente de la page dit l'échec et la liste n'est pas
   // demandée (voir init). Signalé à Sentry ET compté dans GA4 (subscriptions_list, subs_outcome
   // « designer-absent ») : c'est la seule issue de la liste mesurée pour cette page.
   function designerAbsent(name, detail) {
@@ -1492,7 +1449,10 @@
       zoneTva: root.querySelector('[data-ordo-zone="tva"]'),
       portail: root.querySelector('[data-ordo-champ="portail"]'),
       slot: root.querySelector('[data-ordo-slot="factures-email"]'),
-      aide: root.querySelector('[data-ordo-aide-bloc]')
+      aide: root.querySelector('[data-ordo-aide-bloc]'),
+      // Texte d'attente et lien natif vers le portail, visibles avant le script ; facultatif (échec dit
+      // dans la liste sans lui).
+      attente: root.querySelector('[data-ordo-attente]')
     };
     ['liste', 'zoneAdresse', 'zoneTva', 'portail', 'slot', 'aide'].forEach(function(k) { if (!d[k]) missing.push(k); });
     var pdf = g.facture && g.facture.querySelector('[data-ordo-gabarit="pdf"]');
@@ -1525,13 +1485,16 @@
     return d;
   }
 
-  // Une copie du gabarit, sans son repère ni ses identifiants (la page ne doit jamais en avoir deux).
+  // Une copie du gabarit, sans repère ni identifiant (la page ne doit jamais en avoir deux). Les repères
+  // imbriqués partent aussi : l'en-tête de page cache tout repère de la Facturation, exemples du Designer.
   function copie(name) {
     var n = D.g[name].cloneNode(true);
     n.removeAttribute('data-ordo-gabarit');
     if (n.id) n.removeAttribute('id');
     var ids = n.querySelectorAll('[id]');
     for (var i = 0; i < ids.length; i++) ids[i].removeAttribute('id');
+    var marks = n.querySelectorAll('[data-ordo-gabarit]');
+    for (var j = 0; j < marks.length; j++) marks[j].removeAttribute('data-ordo-gabarit');
     return n;
   }
 
@@ -1738,9 +1701,35 @@
     document.documentElement.classList.add('ordo-subs-v2');
   }
 
-  function hideD() {
-    afficher(D.root, false);
-    document.documentElement.classList.remove('ordo-subs-v2');
+  var ECHEC = 'Vos abonnements n’ont pas pu s’afficher. Rechargez la page dans un instant.';
+
+  // The list cannot be shown: the waiting block says so and keeps its portal link, the switch joins it, and
+  // the sections that need the list stay hidden (page head rules). `d` is D, or null when the Designer is
+  // incomplete.
+  function failed(d) {
+    var root = d ? d.root : document.querySelector('[data-ordo-facturation]');
+    var attente = d ? d.attente : (root && root.querySelector('[data-ordo-attente]'));
+    if (d) {
+      resetD();
+      for (var i = 0; i < SECTIONS.length; i++) afficher(d.cards[SECTIONS[i]], SECTIONS[i] === 'abonnements');
+      afficher(d.aide, true);
+      // Not filled: the page head rules hide the data sections again, as before the list.
+      document.documentElement.classList.remove('ordo-subs-v2');
+    }
+    if (!attente) {
+      // In the card, not in the list, which the page head rules hide while nothing is filled.
+      if (d) {
+        var erreur = rendu(copie('erreur'));
+        erreur.textContent = ECHEC;
+        d.cards.abonnements.appendChild(erreur);
+      }
+      return;
+    }
+    afficher(attente, true);
+    poser(champ(attente, 'attente-texte'), ECHEC);
+    whenInvoiceEmails(function() {
+      if (moveToggle(attente)) toggleAway = true;
+    });
   }
 
   function resetD() {
@@ -1902,27 +1891,21 @@
     afficher(D.portail, portalAvailable());
   }
 
+  // Unreadable invoices (null) keep the section without its table: the portal holds them all, and the switch
+  // stays reachable. No invoice at all hides the section.
   function placeInvoicesD(invoices) {
-    var block = document.getElementById('invoices-block');
-    if (!Array.isArray(invoices)) {
-      afficher(D.cards.factures, false);
-      afficher(D.aide, false);
-      keepBlock(block, true);
-      if (toggleMoved && moveToggle(block)) toggleMoved = false;
-      return;
-    }
-    if (invoices.length) {
-      invoicesD(invoices);
-      afficher(D.cards.factures, true);
+    var known = Array.isArray(invoices);
+    afficher(D.table, known && invoices.length > 0);
+    if (known && invoices.length) invoicesD(invoices);
+    else afficher(D.portail, portalAvailable());
+    var shown = !known || invoices.length > 0;
+    afficher(D.cards.factures, shown);
+    if (shown) {
       whenInvoiceEmails(function() {
-        if (!D.cards.factures.hidden && moveToggle(D.slot)) toggleMoved = true;
+        if (!D.cards.factures.hidden && moveToggle(D.slot)) toggleAway = false;
       });
-    } else {
-      afficher(D.cards.factures, false);
-      if (toggleMoved && moveToggle(block)) toggleMoved = false;
     }
     afficher(D.aide, true);
-    keepBlock(block, false);
   }
 
   function render(list, flash, pms, invoices, others, address, taxId, taxIdAllowed) {
@@ -1942,17 +1925,19 @@
     afficher(D.cards.adresse, withAddress);
     if (withAddress) addressSection(address, taxId, taxIdAllowed);
     placeInvoicesD(invoices);
+    // Once a list is shown, no failure can follow it (see init): the waiting block goes for good.
+    retirer(D.attente);
+    D.attente = null;
     showD();
-    hideOldSection();
-    togglePaymentBlock(list, pms);
   }
 
+  // The help box, shown by the page from the start, stays put.
   function skeletonD() {
     resetD();
     var subs = D.cards.abonnements;
     subs.setAttribute('aria-busy', 'true');
     for (var k = 0; k < SECTIONS.length; k++) afficher(D.cards[SECTIONS[k]], SECTIONS[k] === 'abonnements');
-    afficher(D.aide, false);
+    afficher(D.attente, false);
     for (var i = skeletonCount(); i > 0; i--) {
       var s = rendu(copie('squelette'));
       s.setAttribute('aria-hidden', 'true');
@@ -1998,20 +1983,19 @@
 
   function init() {
     // Une seconde exécution (bundle périmé servi à côté de l'épinglé) trouverait les gabarits déjà retirés :
-    // elle signalerait un Designer incomplet à tort et rendrait les blocs SECOURS par-dessus la liste.
+    // elle signalerait un Designer incomplet à tort et dirait l'échec par-dessus la liste.
     if (document.querySelector('[data-ordo-facturation][data-ordo-pret]')) {
       console.log(PREFIX + ' Already rendered');
       return;
     }
-    // Designer incomplet : signalé par prepareDesigner ; les blocs SECOURS restent, sans requête de liste.
+    // Designer incomplet : signalé par prepareDesigner ; l'attente dit l'échec, sans requête de liste.
     D = prepareDesigner();
     if (!D) {
-      console.log(PREFIX + ' Designer incomplete, page blocks kept');
-      fallbackToPageBlocks();
+      console.log(PREFIX + ' Designer incomplete, list not requested');
+      failed(null);
       return;
     }
     anchor = D.root;
-    hideD();
     listenClicks();
     // The list is requested with the page, not when its tab opens: it is usually ready (and rendered,
     // replacing the page's own blocks) before the member gets there. The skeleton only shows if not.
@@ -2074,9 +2058,7 @@
         subs_outcome: timedOut ? (unseen ? 'timeout-unseen' : 'timeout') : 'failed',
         subs_status: err && err.status ? String(err.status) : 'network'
       });
-      resetD();
-      hideD();
-      fallbackToPageBlocks();
+      failed(D);
       console.error(PREFIX + ' Load error:', err && err.message);
       if (!unseen) reportIfActionable(err);
     });

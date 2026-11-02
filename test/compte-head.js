@@ -2,12 +2,12 @@
 /**
  * Code d'en-tête de la page Mon compte (account/compte-head.html).
  *
- * Le Designer montre la nouvelle présentation et masque les anciens blocs (combos `is-on` et
- * `is-secours`). Ce code, que seul le site exécute, doit : ne rien montrer pendant le chargement,
- * montrer la nouvelle présentation une fois rendue, rendre les anciens blocs quand le script est
- * coupé par le chargeur, ne se télécharge pas, ou n'a rien rendu en 8 s, sans jamais réafficher un
- * bloc que Memberstack masque ; mesurer chaque secours et alerter quand le chargeur manque. Même
- * contrat pour la liste des abonnements (onglet facturation).
+ * Les trois onglets n'ont plus d'anciens blocs : leurs pièces Memberstack (valeurs, formulaires, portail
+ * Stripe) sont posées dans la nouvelle présentation. Ce code, que seul le site exécute, doit : tout montrer
+ * sans attendre les scripts, sauf ce qu'ils calculent (en-tête de Mon profil) et, en Facturation, les
+ * exemples du Designer (jamais) et les cartes qui n'ont de sens qu'avec des données (jusqu'au rendu de la
+ * liste) ; ne jamais réafficher un bloc que Memberstack masque ; mesurer chaque script coupé, absent, en
+ * échec ou sans rendu en 8 s, et alerter quand le chargeur manque.
  *
  * L'en-tête s'exécute pendant l'analyse de la page, comme dans le navigateur ; le chargeur
  * (« defer ») est simulé par un script en fin de page, qui tourne avant DOMContentLoaded.
@@ -20,9 +20,9 @@ const assert = require('assert');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
-// Page telle que servie : Mon profil et Connexion et sécurité dessinés sans anciens blocs (pièces Memberstack
-// posées dans la nouvelle présentation), Facturation avec les siens.
-const FIXTURE = require('./fixtures/profil-directe')(require('./fixtures/securite-directe')(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8')));
+// Page telle que servie : les trois onglets dessinés sans anciens blocs (pièces Memberstack posées dans la
+// nouvelle présentation).
+const FIXTURE = require('./fixtures/facturation-directe')(require('./fixtures/profil-directe')(require('./fixtures/securite-directe')(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8'))));
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
 const HEAD_SCRIPT = /<script>([\s\S]*?)<\/script>/.exec(HEAD)[1];
@@ -96,6 +96,17 @@ const profil = (d) => d.querySelector('[data-ordo-v2="profil"]');
 const ENTETE = ['[data-ordo-initiales]', '[data-ordo-nom-complet]', '[data-ordo-resume]', '[data-ordo-rpps-entete]'];
 const anciens = (d, tab) => [...d.querySelectorAll(`[data-w-tab="${tab}"] .compte_form > .inner-block-wraper`)];
 const v2 = (d) => [...d.querySelectorAll('[data-ordo-v2]')];
+const facturation = (d) => d.querySelector('[data-ordo-facturation]');
+const carte = (d, name) => facturation(d).querySelector(`[data-ordo-section="${name}"]`);
+const DONNEES = ['moyen-de-paiement', 'adresse', 'factures'];
+/** Facturation avant ou sans son script : « Mes abonnements » et son attente, l'aide ; ni exemple ni carte de données. */
+function facturationAttente(w, d, nom) {
+  assert.ok(affiche(w, facturation(d)), nom + ' : Facturation');
+  assert.ok(affiche(w, d.querySelector('[data-ordo-attente]')), nom + ' : attente');
+  assert.ok(affiche(w, facturation(d).querySelector('[data-ordo-aide-bloc]')), nom + ' : aide');
+  for (const n of DONNEES) assert.ok(!affiche(w, carte(d, n)), nom + ' : ' + n);
+  for (const ex of facturation(d).querySelectorAll('[data-ordo-gabarit]')) assert.ok(!affiche(w, ex), nom + ' : exemple ' + ex.getAttribute('data-ordo-gabarit'));
+}
 
 let passed = 0;
 async function test(name, fn) {
@@ -109,12 +120,12 @@ async function test(name, fn) {
 }
 
 (async () => {
-  await test('fixture : 2 nouvelles présentations, 0 + 0 + 3 anciens blocs', async () => {
+  await test('fixture : 3 nouvelles présentations, aucun ancien bloc', async () => {
     const { d } = page({ head: false });
     assert.strictEqual(v2(d).length, 2);
-    assert.strictEqual(anciens(d, 'information').length, 0);
-    assert.strictEqual(anciens(d, 'security').length, 0);
-    assert.strictEqual(anciens(d, 'billing').length, 3);
+    assert.ok(facturation(d));
+    for (const tab of ['information', 'security', 'billing']) assert.strictEqual(anciens(d, tab).length, 0, tab);
+    assert.strictEqual(d.querySelectorAll('.is-secours').length, 0);
   });
 
   await test('Designer (sans le code d\'en-tête) : nouvelle présentation visible, anciens blocs masqués, encart visible', async () => {
@@ -127,7 +138,7 @@ async function test(name, fn) {
     assert.ok(!tva || !visible(w, tva.closest('.compte-v2_field')), 'ligne TVA (masquée à tous) masquée aussi ici');
   });
 
-  await test('site, chargement : Mon profil et Connexion et sécurité visibles, en-tête calculé invisible, pas d\'encart', async () => {
+  await test('site, chargement : les trois onglets visibles, en-tête calculé invisible, pas d\'encart', async () => {
     const { w, d, h } = page();
     assert.ok(h.classList.contains('ordo-profil-pending'));
     assert.ok(h.classList.contains('ordo-subs-pending'));
@@ -135,7 +146,8 @@ async function test(name, fn) {
     assert.ok(affiche(w, securite(d)), 'Connexion et sécurité sans attendre le script');
     for (const sel of ENTETE) assert.strictEqual(w.getComputedStyle(profil(d).querySelector(sel)).visibility, 'hidden', 'en-tête invisible : ' + sel);
     for (const el of profil(d).querySelectorAll('[data-ordo-champ]')) assert.ok(el.hasAttribute('data-ms-member'), 'valeur écrite par Memberstack : ' + el.getAttribute('data-ordo-champ'));
-    for (const tab of ['information', 'security', 'billing']) for (const b of anciens(d, tab)) assert.ok(!visible(w, b), tab);
+    facturationAttente(w, d, 'chargement');
+    assert.strictEqual(d.querySelector('[data-ordo-attente] a').getAttribute('data-ms-action'), 'customer-portal', 'portail Stripe natif');
     assert.ok(!visible(w, d.querySelector('.compte-v2_designer')));
   });
 
@@ -158,7 +170,7 @@ async function test(name, fn) {
     assert.ok(affiche(w, profil(d)), 'Mon profil : sa carte, telle quelle');
     assert.ok(affiche(w, securite(d)), 'Connexion et sécurité : sa carte, telle quelle');
     assert.ok(!h.classList.contains('ordo-subs-fallback'), 'la facturation a sa propre décision');
-    for (const b of anciens(d, 'billing')) assert.ok(!visible(w, b));
+    facturationAttente(w, d, 'profil coupé');
   });
 
   await test('coupure voulue par le chargeur : ni mesure ni alerte', async () => {
@@ -178,7 +190,7 @@ async function test(name, fn) {
     assert.ok(h.classList.contains('ordo-profil-fallback'));
   });
 
-  await test('site, rien de rendu en 8 s : secours posé (mesure), Mon profil reste affiché, facturation en secours', async () => {
+  await test('site, rien de rendu en 8 s : secours posé (mesure), Mon profil et la Facturation restent tels quels', async () => {
     const { w, d, h, avance } = page({ rollout: { 'profile-overview.js': { enabled: true } } });
     avance(7900);
     await tick(150);
@@ -188,7 +200,7 @@ async function test(name, fn) {
     assert.ok(h.classList.contains('ordo-profil-fallback'));
     assert.ok(h.classList.contains('ordo-subs-fallback'));
     assert.ok(affiche(w, profil(d)));
-    for (const b of anciens(d, 'billing')) assert.ok(visible(w, b));
+    facturationAttente(w, d, '8 s');
   });
 
   await test('8 s : secours du profil mesuré ; celui de la liste non (elle mesure son propre délai) ; pas d\'alerte', async () => {
@@ -286,11 +298,8 @@ async function test(name, fn) {
     assert.ok(affiche(w, c.querySelector('[data-ms-auth-provider="google"]')));
   });
 
-  await test('secours jamais en !important (jsdom ne départage pas deux !important : contrôle sur le texte)', async () => {
-    const regles = HEAD_STYLE.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+\{[^{}]*\}/g) || [];
-    const secours = regles.filter((r) => /is-secours/.test(r.split('{')[0]));
-    assert.ok(secours.length >= 2, 'règles de secours trouvées (ordinateur et mobile)');
-    for (const r of secours) assert.ok(!/!important/.test(r.split('{')[1]), `sans !important : ${r.trim().slice(0, 80)}`);
+  await test('plus aucune règle d\'anciens blocs : rien à réafficher', async () => {
+    assert.ok(!/is-secours|ordo-keep/.test(HEAD_STYLE.replace(/\/\*[\s\S]*?\*\//g, '')));
   });
 
   await test('secours posé puis rendu tardif : l\'en-tête calculé apparaît', async () => {
@@ -301,35 +310,28 @@ async function test(name, fn) {
     for (const sel of ENTETE) assert.strictEqual(w.getComputedStyle(profil(d).querySelector(sel)).visibility, 'visible', sel);
   });
 
-  await test('facturation : liste rendue = anciens blocs masqués ; secours = les trois ; ordo-keep = un seul', async () => {
+  await test('facturation : liste rendue = cartes de données au script, exemples toujours cachés ; coupée = telle quelle', async () => {
     let r = page({ rollout: { 'profile-overview.js': { enabled: true }, 'subscriptions-overview.js': { enabled: true } } });
     r.h.classList.add('ordo-subs-v2'); // posé par subscriptions-overview.js une fois la Facturation remplie
     await tick(150);
     r.avance(9000);
     await tick(150);
     assert.ok(!r.h.classList.contains('ordo-subs-fallback'), 'liste rendue : pas de secours');
-    for (const b of anciens(r.d, 'billing')) assert.ok(!visible(r.w, b));
-    // subscriptions-overview.js garde un ancien bloc dont la liste a encore besoin.
-    const inv = r.d.getElementById('invoices-block');
-    inv.classList.add('ordo-keep');
-    inv.style.display = '';
-    assert.ok(visible(r.w, inv));
-    inv.classList.remove('ordo-keep');
-    inv.style.display = 'none';
-    assert.ok(!visible(r.w, inv));
+    for (const n of DONNEES) assert.ok(affiche(r.w, carte(r.d, n)), 'au script de la montrer ou non : ' + n);
+    for (const ex of facturation(r.d).querySelectorAll('[data-ordo-gabarit]')) assert.ok(!affiche(r.w, ex), 'exemple caché');
 
     r = page({ rollout: { 'subscriptions-overview.js': { enabled: false, reason: 'host' } } });
     await tick(150);
     assert.ok(r.h.classList.contains('ordo-subs-fallback'));
-    for (const b of anciens(r.d, 'billing')) assert.ok(visible(r.w, b));
+    facturationAttente(r.w, r.d, 'liste coupée');
     assert.ok(!r.h.classList.contains('ordo-profil-fallback'), 'le profil a sa propre décision');
   });
 
-  await test('facturation : secours posé par la liste elle-même (échec) = anciens blocs', async () => {
+  await test('facturation : secours posé (mesure seule) = rien ne change à l\'écran', async () => {
     const { w, d, h } = page({ rollout: { 'subscriptions-overview.js': { enabled: true } } });
-    h.classList.add('ordo-subs-fallback'); // fallbackToPageBlocks()
-    for (const b of anciens(d, 'billing')) assert.ok(visible(w, b));
-    for (const b of anciens(d, 'information')) assert.ok(!visible(w, b), 'le profil n\'est pas concerné');
+    h.classList.add('ordo-subs-fallback');
+    facturationAttente(w, d, 'secours');
+    assert.ok(affiche(w, profil(d)), 'le profil n\'est pas concerné');
   });
 
   await test('photo dessinée : pastille, liens et message cachés tant que profile-photo.js ne l\'a pas activée ; rond toujours là', async () => {
@@ -375,10 +377,12 @@ async function test(name, fn) {
     assert.ok(affiche(r.w, securite(r.d)), 'rendu : carte');
   });
 
-  await test('le code d\'en-tête ne réaffiche plus d\'anciens blocs ni ne cache Mon profil et Connexion et sécurité', async () => {
+  await test('le code d\'en-tête ne réaffiche plus d\'anciens blocs ni ne cache Mon profil, Connexion et sécurité ou la Facturation', async () => {
     assert.ok(!/ordo-securite-directe/.test(HEAD), 'classe retirée');
     assert.ok(!/\[data-w-tab="(security|information)"\][^{]*is-secours/.test(HEAD_STYLE), 'plus d\'anciens blocs à réafficher dans ces onglets');
     assert.ok(!/\[data-ordo-v2\][^{]*\{[^}]*display:\s*none/.test(HEAD_STYLE), 'plus de nouvelle présentation cachée');
+    assert.ok(!/\[data-ordo-facturation\]\s*\{[^}]*display:\s*none/.test(HEAD_STYLE), 'Facturation jamais cachée en bloc');
+    assert.ok(!/anciens blocs affichés/.test(HEAD), 'l\'alerte ne promet plus d\'anciens blocs');
   });
 
   for (const w of fenetres) w.close();
