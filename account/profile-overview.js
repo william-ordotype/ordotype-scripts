@@ -317,6 +317,7 @@
       for (var j = 0; j < interne.length; j++) show(interne[j], !isInterne());
       show(vatRow(), false);
     }
+    markGoogleNoPassword();
   }
 
   /** Ligne « Numéro de TVA » de la carte : masquée pour tous, le numéro se modifie dans l'onglet facturation. */
@@ -711,12 +712,10 @@
     var btn = securite && securite.querySelector('[data-ordo-google]');
     if (!btn) return;
     var providers = outsideV2('[data-ms-auth="manage-providers"]');
+    if (providers) guardGoogle(providers);
     if (providers && !providers.closest('[data-ordo-v2]')) {
       move(providers, btn.parentNode, btn);
       show(btn, false);
-      providers.addEventListener('click', function(e) {
-        if (e.target && e.target.closest && e.target.closest('[data-ms-auth-provider]')) track('google', 'connexion', 'click');
-      });
       return;
     }
     btn.addEventListener('click', function(e) {
@@ -726,6 +725,119 @@
       if (original && original !== btn) original.click();
       else report('ProfileOverviewNoGoogle', 'Google link not found');
     });
+  }
+
+  var GOOGLE_CONFIRM = 'Dissocier votre compte Google ?\n\n'
+    + 'Vous vous connecterez ensuite avec votre adresse e-mail et votre mot de passe.';
+  var GOOGLE_OK = 'Votre compte Google est dissocié. Connectez-vous désormais avec votre adresse e-mail et votre mot de passe.';
+  var GOOGLE_SANS_MDP = 'Pour dissocier Google, définissez d\'abord un mot de passe, puis réessayez.';
+  var GOOGLE_ECHEC = 'La dissociation n\'a pas abouti. Réessayez, ou écrivez-nous à securite@ordotype.fr.';
+
+  /**
+   * Memberstack dissocie Google au clic sur TOUT le bouton dès que la croix `data-ms-auth-disconnect`
+   * s'y trouve (même masquée), sans confirmation, et sans message si le serveur refuse. Il arrête
+   * aussi la propagation du clic. On l'intercepte donc en capture, avant lui : bouton « connecté »
+   * sans effet, croix = confirmation puis dissociation, chaque réponse affichée. Un bouton
+   * « Continuer avec Google » reste à Memberstack.
+   */
+  function guardGoogle(providers) {
+    var link = providers.querySelector('[data-ms-auth-provider="google"]');
+    if (!link) return;
+    var busy = false;
+    providers.addEventListener('click', function(e) {
+      if (!e.target || !e.target.closest || !link.contains(e.target)) return;
+      if (link.hasAttribute('data-ordo-google-dissocie')) {
+        // Memberstack croit encore le compte lié jusqu'au rechargement : son clic redissocierait.
+        e.preventDefault();
+        e.stopPropagation();
+        track('google', 'connexion', 'apres-dissociation');
+        return;
+      }
+      if (!googleLinked(link)) {
+        track('google', 'connexion', 'click');
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.target.closest('[data-ms-auth-disconnect]')) {
+        track('google', 'connexion', 'deja-connecte');
+        return;
+      }
+      if (busy) return;
+      if (!window.confirm(GOOGLE_CONFIRM)) {
+        track('google', 'dissociation', 'annule');
+        return;
+      }
+      busy = true;
+      track('google', 'dissociation', 'confirme');
+      disconnectGoogle(link).then(function() { busy = false; });
+    }, true);
+  }
+
+  /** Ce que le bouton affiche, donc ce que Memberstack ferait au clic : « connecté » = il dissocierait. */
+  function googleLinked(link) {
+    var label = link.querySelector('[data-ms-auth-connected-text]');
+    return !!label && text(label.textContent) === text(label.getAttribute('data-ms-auth-connected-text'));
+  }
+
+  /**
+   * `account-not-connected` vaut réussite : le compte n'est plus lié, alors que la liste
+   * `auth.providers` de Memberstack peut encore afficher Google (elle ne suit pas la dissociation).
+   */
+  function disconnectGoogle(link) {
+    return waitForMemberstack().then(function(ms) {
+      if (!ms || typeof ms.disconnectProvider !== 'function') throw new Error('Memberstack unavailable');
+      return ms.disconnectProvider({ provider: 'google' });
+    }).then(function() {
+      googleDisconnected(link, 'ok');
+    }, function(err) {
+      var code = err && err.code;
+      if (code === 'account-not-connected') return googleDisconnected(link, 'deja');
+      if (code === 'account-set-password-before-disconnect') {
+        track('google', 'dissociation', 'sans-mot-de-passe');
+        showMessage(GOOGLE_SANS_MDP, true);
+        return;
+      }
+      track('google', 'dissociation', 'echec');
+      report('ProfileOverviewGoogleDisconnect', code || (err && err.message) || 'unknown');
+      showMessage(GOOGLE_ECHEC, true);
+    }).catch(function(err) {
+      report('ProfileOverviewGoogleDisconnect', err);
+    });
+  }
+
+  function googleDisconnected(link, outcome) {
+    link.setAttribute('data-ordo-google-dissocie', '1');
+    var label = link.querySelector('[data-ms-auth-connected-text]');
+    var original = label && label.getAttribute('data-ms-original-text');
+    if (original) label.textContent = original;
+    track('google', 'dissociation', outcome);
+    showMessage(GOOGLE_OK, false);
+  }
+
+  /** Sans mot de passe, Google est le seul accès : Memberstack refuserait, la croix ne s'affiche pas. */
+  function markGoogleNoPassword() {
+    var noPassword = !!(member.auth && member.auth.hasPassword === false);
+    var links = document.querySelectorAll('[data-ms-auth-provider="google"]');
+    for (var i = 0; i < links.length; i++) {
+      if (noPassword) links[i].setAttribute('data-ordo-google-sans-mdp', '1');
+      else links[i].removeAttribute('data-ordo-google-sans-mdp');
+    }
+  }
+
+  /** Bandeau de message de Memberstack (celui de ses propres réponses), sinon une alerte. */
+  function showMessage(msg, isError) {
+    var ms = window.$memberstackDom;
+    if (ms && typeof ms._showMessage === 'function') {
+      try {
+        var p = ms._showMessage(msg, !!isError);
+        if (p && typeof p.catch === 'function') p.catch(function(err) { report('ProfileOverviewMessage', err); });
+        return;
+      } catch (e) {
+        report('ProfileOverviewMessage', e);
+      }
+    }
+    window.alert(msg);
   }
 
   // --- Double authentification -----------------------------------------------------------------
@@ -791,7 +903,9 @@
     '[data-ordo-v2] .ot-totp__btn--primary:hover{background:#263fd3;border-color:#263fd3}',
     '[data-ordo-v2] .ot-totp__btn--secondary{color:#3454f6;border-color:#3454f6}',
     '[data-ordo-v2] .ot-totp__btn--danger{color:#ba1b1b;border-color:#ba1b1b}',
-    '[data-ordo-v2] .ot-totp__badge{border-radius:4px;background:#106820;color:#fff}'
+    '[data-ordo-v2] .ot-totp__badge{border-radius:4px;background:#106820;color:#fff}',
+    // Croix de dissociation Google : pas pour un compte sans mot de passe, ni une fois dissocié.
+    '[data-ordo-google-sans-mdp] [data-ms-auth-disconnect],[data-ordo-google-dissocie] [data-ms-auth-disconnect]{display:none!important}'
     // Le bouton Google (conteneur Memberstack déplacé dans la carte) est dessiné dans le Designer :
     // classes compte-v2_google, compte-v2_btn is-avec-logo, compte-v2_google-contenu, compte-v2_google-logo.
     // Les formulaires déplacés aussi (compte-form-wrapper sans marge ; séparateur = gabarit « separateur »).

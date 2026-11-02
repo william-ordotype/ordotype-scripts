@@ -519,6 +519,132 @@ async function test(name, fn) {
     assert.strictEqual(clicked, 1);
   });
 
+  /**
+   * Bouton Google tel que Memberstack le laisse : libellé « connecté » (texte d'origine gardé dans
+   * data-ms-original-text) et son propre écouteur sur le lien, qui dissocierait au clic.
+   */
+  function google({ linked = true, confirm = true, disconnect = () => Promise.resolve({ data: { providers: [] } }) } = {}) {
+    const s = { ms: 0, calls: [], msgs: [], asked: 0 };
+    s.before = (w) => {
+      const link = w.document.querySelector('[data-ms-auth-provider="google"]');
+      const label = link.querySelector('[data-ms-auth-connected-text]');
+      if (linked) {
+        label.setAttribute('data-ms-original-text', label.innerHTML);
+        label.textContent = label.getAttribute('data-ms-auth-connected-text');
+      }
+      link.addEventListener('click', (e) => { e.preventDefault(); s.ms += 1; });
+      w.$memberstackDom.disconnectProvider = (p) => { s.calls.push(p); return disconnect(); };
+      w.$memberstackDom._showMessage = (m, isError) => { s.msgs.push({ m, isError }); return Promise.resolve(); };
+      w.confirm = () => { s.asked += 1; return confirm; };
+    };
+    return s;
+  }
+  const croix = (d) => d.querySelector('[data-ordo-v2] [data-ms-auth-provider="google"] [data-ms-auth-disconnect]');
+  const libelle = (d) => d.querySelector('[data-ordo-v2] [data-ms-auth-provider="google"] [data-ms-auth-connected-text]');
+  const step = (pushed, s) => pushed.some((p) => p.profile_step === s);
+
+  await test('Google lié : un clic sur le bouton ne dissocie plus, Memberstack ne le reçoit pas', async () => {
+    const s = google();
+    const { d, pushed, erreurs } = await page({ before: s.before });
+    libelle(d).click();
+    assert.strictEqual(s.ms, 0, 'clic arrêté avant Memberstack');
+    assert.strictEqual(s.asked, 0);
+    assert.deepStrictEqual(s.calls, []);
+    assert.ok(step(pushed, 'google:connexion:deja-connecte'));
+    assert.deepStrictEqual(erreurs, []);
+  });
+
+  await test('Google lié : croix puis « Annuler » = rien', async () => {
+    const s = google({ confirm: false });
+    const { d, pushed } = await page({ before: s.before });
+    croix(d).querySelector('img').click();
+    assert.strictEqual(s.asked, 1);
+    assert.deepStrictEqual(s.calls, []);
+    assert.strictEqual(s.ms, 0);
+    assert.ok(step(pushed, 'google:dissociation:annule'));
+  });
+
+  await test('Google lié : croix confirmée = dissociation, message, bouton remis, croix masquée', async () => {
+    const s = google();
+    const { w, d, pushed, reports } = await page({ before: s.before });
+    croix(d).click();
+    await waitFor(() => s.msgs.length > 0);
+    assert.strictEqual(JSON.stringify(s.calls), '[{"provider":"google"}]');
+    assert.strictEqual(s.ms, 0);
+    assert.strictEqual(s.msgs.length, 1);
+    assert.strictEqual(s.msgs[0].isError, false);
+    assert.ok(/dissocié/.test(s.msgs[0].m));
+    assert.strictEqual(libelle(d).textContent, 'Continuer avec Google');
+    assert.ok(!visible(w, croix(d)), 'croix masquée');
+    assert.ok(step(pushed, 'google:dissociation:confirme') && step(pushed, 'google:dissociation:ok'));
+    assert.deepStrictEqual(reports, []);
+    // Memberstack croit encore le compte lié : son clic ne doit pas repartir.
+    libelle(d).click();
+    assert.strictEqual(s.ms, 0);
+    assert.strictEqual(s.calls.length, 1);
+    assert.ok(step(pushed, 'google:connexion:apres-dissociation'));
+  });
+
+  await test('Google : « account-not-connected » vaut réussite (liste Memberstack en retard)', async () => {
+    const s = google({ disconnect: () => Promise.reject({ code: 'account-not-connected', message: 'x' }) });
+    const { d, pushed, reports } = await page({ before: s.before });
+    croix(d).click();
+    await waitFor(() => s.msgs.length > 0);
+    assert.strictEqual(s.msgs[0].isError, false);
+    assert.strictEqual(libelle(d).textContent, 'Continuer avec Google');
+    assert.ok(step(pushed, 'google:dissociation:deja'));
+    assert.deepStrictEqual(reports, []);
+  });
+
+  await test('Google : mot de passe exigé = message, bouton inchangé, pas de rapport', async () => {
+    const s = google({ disconnect: () => Promise.reject({ code: 'account-set-password-before-disconnect' }) });
+    const { d, pushed, reports } = await page({ before: s.before });
+    croix(d).click();
+    await waitFor(() => s.msgs.length > 0);
+    assert.strictEqual(s.msgs[0].isError, true);
+    assert.ok(/mot de passe/.test(s.msgs[0].m));
+    assert.strictEqual(libelle(d).textContent, 'Compte Google connecté');
+    assert.ok(step(pushed, 'google:dissociation:sans-mot-de-passe'));
+    assert.deepStrictEqual(reports, []);
+  });
+
+  await test('Google : autre échec = message d\'erreur et rapport', async () => {
+    const s = google({ disconnect: () => Promise.reject({ code: 'boom' }) });
+    const { d, pushed, reports } = await page({ before: s.before });
+    croix(d).click();
+    await waitFor(() => s.msgs.length > 0);
+    assert.strictEqual(s.msgs[0].isError, true);
+    assert.strictEqual(libelle(d).textContent, 'Compte Google connecté');
+    assert.ok(step(pushed, 'google:dissociation:echec'));
+    assert.ok(reports.some((r) => r.name === 'ProfileOverviewGoogleDisconnect' && r.message === 'boom'));
+    // Nouvel essai possible.
+    croix(d).click();
+    await waitFor(() => s.calls.length > 1);
+    assert.strictEqual(s.calls.length, 2);
+  });
+
+  await test('Google non lié : le clic va à Memberstack (connexion) et se mesure', async () => {
+    const s = google({ linked: false });
+    const { d, pushed } = await page({ before: s.before });
+    libelle(d).click();
+    assert.strictEqual(s.ms, 1);
+    assert.strictEqual(s.asked, 0);
+    assert.ok(step(pushed, 'google:connexion:click'));
+  });
+
+  await test('Google sans mot de passe : croix masquée, puis rendue quand la relecture en trouve un', async () => {
+    const s = google();
+    const m = clone(MEDECIN);
+    m.auth.hasPassword = false;
+    const fresh = clone(m);
+    fresh.auth.hasPassword = true;
+    let r = await page({ member: m, before: s.before });
+    assert.ok(!visible(r.w, croix(r.d)), 'croix masquée sans mot de passe');
+    r = await page({ member: m, fresh, before: google().before });
+    await waitFor(() => visible(r.w, croix(r.d)));
+    assert.ok(visible(r.w, croix(r.d)), 'croix rendue après relecture');
+  });
+
   await test('suppression : le formulaire existant s\'ouvre dans la carte', async () => {
     const { w, d } = await page();
     d.querySelector('[data-ordo-supprimer]').click();
