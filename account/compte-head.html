@@ -9,7 +9,7 @@
   var debut = Date.now();
   var SUIVIS = [
     { fichier: 'profile-overview.js', classe: 'ordo-profil', rendu: function () { return h.classList.contains('ordo-profil-v2'); } },
-    { fichier: 'subscriptions-overview.js', classe: 'ordo-subs', rendu: function () { return h.classList.contains('ordo-subs-v2') || !!document.querySelector('#ordotype-subscriptions .ordo-subs'); } }
+    { fichier: 'subscriptions-overview.js', classe: 'ordo-subs', rendu: function () { return h.classList.contains('ordo-subs-v2'); } }
   ];
 
   function alerter(nom, message) {
@@ -45,11 +45,7 @@
     }
   }
 
-
-  // Marqueurs d'attente (cités par subscriptions-overview.js) ; aucune règle ne les lit.
-  for (var i = 0; i < SUIVIS.length; i++) h.classList.add(SUIVIS[i].classe + '-pending');
-
-  // Un script de la liste qui ne se télécharge pas : secours tout de suite (le chargeur le signale à Sentry).
+  // Un script de la liste qui ne se télécharge pas : mesuré tout de suite (le chargeur le signale à Sentry).
   window.addEventListener('error', function (e) {
     var t = e && e.target;
     if (!t || t.tagName !== 'SCRIPT') return;

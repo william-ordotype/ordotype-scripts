@@ -140,8 +140,7 @@ async function test(name, fn) {
 
   await test('site, chargement : les trois onglets visibles, en-tête calculé invisible, pas d\'encart', async () => {
     const { w, d, h } = page();
-    assert.ok(h.classList.contains('ordo-profil-pending'));
-    assert.ok(h.classList.contains('ordo-subs-pending'));
+    assert.ok(!/-pending/.test(h.className), 'plus de marqueur d\'attente');
     assert.ok(affiche(w, profil(d)), 'Mon profil sans attendre le script');
     assert.ok(affiche(w, securite(d)), 'Connexion et sécurité sans attendre le script');
     for (const sel of ENTETE) assert.strictEqual(w.getComputedStyle(profil(d).querySelector(sel)).visibility, 'hidden', 'en-tête invisible : ' + sel);
