@@ -542,6 +542,8 @@ async function test(name, fn) {
   const croix = (d) => d.querySelector('[data-ordo-v2] [data-ms-auth-provider="google"] [data-ms-auth-disconnect]');
   const libelle = (d) => d.querySelector('[data-ordo-v2] [data-ms-auth-provider="google"] [data-ms-auth-connected-text]');
   const step = (pushed, s) => pushed.some((p) => p.profile_step === s);
+  /** Message sous la ligne Google : le nœud, ou null. */
+  const notice = (d) => d.querySelector('[data-ordo-v2] [data-ordo-google-message]');
 
   await test('Google lié : un clic sur le bouton ne dissocie plus, Memberstack ne le reçoit pas', async () => {
     const s = google();
@@ -564,16 +566,22 @@ async function test(name, fn) {
     assert.ok(step(pushed, 'google:dissociation:annule'));
   });
 
-  await test('Google lié : croix confirmée = dissociation, message, bouton remis, croix masquée', async () => {
+  await test('Google lié : croix confirmée = dissociation, message vert sous la ligne, bouton remis, croix masquée', async () => {
     const s = google();
     const { w, d, pushed, reports } = await page({ before: s.before });
     croix(d).click();
-    await waitFor(() => s.msgs.length > 0);
+    await waitFor(() => !!notice(d));
     assert.strictEqual(JSON.stringify(s.calls), '[{"provider":"google"}]');
     assert.strictEqual(s.ms, 0);
-    assert.strictEqual(s.msgs.length, 1);
-    assert.strictEqual(s.msgs[0].isError, false);
-    assert.ok(/dissocié/.test(s.msgs[0].m));
+    const n = notice(d);
+    assert.strictEqual(n.className, 'compte-v2_flash', 'gabarit « flash » de Facturation');
+    assert.strictEqual(n.getAttribute('role'), 'status');
+    assert.ok(!n.hasAttribute('data-ordo-gabarit'));
+    assert.ok(/^C’est fait : votre compte Google est dissocié\./.test(n.textContent), n.textContent);
+    const ligne = d.querySelector('[data-ordo-v2] [data-ms-auth-provider="google"]').closest('.compte-v2_ligne');
+    assert.strictEqual(ligne.nextElementSibling, n, 'juste sous la ligne Google');
+    assert.ok(visible(w, n));
+    assert.deepStrictEqual(s.msgs, [], 'pas de bandeau Memberstack');
     assert.strictEqual(libelle(d).textContent, 'Continuer avec Google');
     assert.ok(!visible(w, croix(d)), 'croix masquée');
     assert.ok(step(pushed, 'google:dissociation:confirme') && step(pushed, 'google:dissociation:ok'));
@@ -589,8 +597,8 @@ async function test(name, fn) {
     const s = google({ disconnect: () => Promise.reject({ code: 'account-not-connected', message: 'x' }) });
     const { d, pushed, reports } = await page({ before: s.before });
     croix(d).click();
-    await waitFor(() => s.msgs.length > 0);
-    assert.strictEqual(s.msgs[0].isError, false);
+    await waitFor(() => !!notice(d));
+    assert.strictEqual(notice(d).className, 'compte-v2_flash');
     assert.strictEqual(libelle(d).textContent, 'Continuer avec Google');
     assert.ok(step(pushed, 'google:dissociation:deja'));
     assert.deepStrictEqual(reports, []);
@@ -600,27 +608,49 @@ async function test(name, fn) {
     const s = google({ disconnect: () => Promise.reject({ code: 'account-set-password-before-disconnect' }) });
     const { d, pushed, reports } = await page({ before: s.before });
     croix(d).click();
-    await waitFor(() => s.msgs.length > 0);
-    assert.strictEqual(s.msgs[0].isError, true);
-    assert.ok(/mot de passe/.test(s.msgs[0].m));
+    await waitFor(() => !!notice(d));
+    assert.strictEqual(notice(d).className, 'compte-v2_erreur', 'gabarit « erreur » de Facturation');
+    assert.strictEqual(notice(d).getAttribute('role'), 'alert');
+    assert.ok(/définissez d’abord un mot de passe/.test(notice(d).textContent));
     assert.strictEqual(libelle(d).textContent, 'Compte Google connecté');
     assert.ok(step(pushed, 'google:dissociation:sans-mot-de-passe'));
     assert.deepStrictEqual(reports, []);
   });
 
-  await test('Google : autre échec = message d\'erreur et rapport', async () => {
-    const s = google({ disconnect: () => Promise.reject({ code: 'boom' }) });
+  await test('Google : autre échec = message d\'erreur et rapport ; le nouvel essai remplace le message', async () => {
+    let fail = true;
+    const s = google({ disconnect: () => (fail ? Promise.reject({ code: 'boom' }) : Promise.resolve({ data: { providers: [] } })) });
     const { d, pushed, reports } = await page({ before: s.before });
     croix(d).click();
-    await waitFor(() => s.msgs.length > 0);
-    assert.strictEqual(s.msgs[0].isError, true);
+    await waitFor(() => !!notice(d));
+    assert.strictEqual(notice(d).className, 'compte-v2_erreur');
+    assert.ok(/n’a pas abouti/.test(notice(d).textContent));
     assert.strictEqual(libelle(d).textContent, 'Compte Google connecté');
     assert.ok(step(pushed, 'google:dissociation:echec'));
     assert.ok(reports.some((r) => r.name === 'ProfileOverviewGoogleDisconnect' && r.message === 'boom'));
-    // Nouvel essai possible.
+    // Nouvel essai, réussi : un seul message, le vert.
+    fail = false;
     croix(d).click();
-    await waitFor(() => s.calls.length > 1);
+    await waitFor(() => notice(d) && notice(d).className === 'compte-v2_flash');
     assert.strictEqual(s.calls.length, 2);
+    assert.strictEqual(d.querySelectorAll('[data-ordo-google-message]').length, 1);
+    assert.strictEqual(notice(d).className, 'compte-v2_flash');
+  });
+
+  await test('Google : sans les gabarits de Facturation, le bandeau Memberstack prend le relais', async () => {
+    const s = google();
+    const before = (w) => {
+      s.before(w);
+      const store = w.document.querySelector('[data-ordo-gabarits="facturation"]');
+      store.parentNode.removeChild(store);
+    };
+    const { d } = await page({ before });
+    croix(d).click();
+    await waitFor(() => s.msgs.length > 0);
+    assert.strictEqual(s.msgs.length, 1);
+    assert.strictEqual(s.msgs[0].isError, false);
+    assert.ok(/^C’est fait/.test(s.msgs[0].m));
+    assert.ok(!notice(d));
   });
 
   await test('Google non lié : le clic va à Memberstack (connexion) et se mesure', async () => {
