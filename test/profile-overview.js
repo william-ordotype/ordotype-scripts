@@ -653,6 +653,22 @@ async function test(name, fn) {
     assert.ok(!notice(d));
   });
 
+  await test('Google : état du compte mesuré une fois par page (lié, lié sans mot de passe, non lié, inconnu)', async () => {
+    const cas = [
+      [{ providers: [{ provider: 'google' }], hasPassword: true }, 'google:etat:lie'],
+      [{ providers: [{ provider: 'google' }], hasPassword: false }, 'google:etat:lie-sans-mot-de-passe'],
+      [{ providers: [], hasPassword: true }, 'google:etat:non-lie'],
+      [{}, 'google:etat:inconnu']
+    ];
+    for (const [auth, attendu] of cas) {
+      const m = clone(MEDECIN);
+      m.auth = Object.assign({ email: m.auth.email }, auth);
+      const { pushed } = await page({ member: m });
+      const etats = pushed.filter((p) => /^google:etat:/.test(p.profile_step || '')).map((p) => p.profile_step);
+      assert.deepStrictEqual(etats, [attendu]);
+    }
+  });
+
   await test('Google non lié : le clic va à Memberstack (connexion) et se mesure', async () => {
     const s = google({ linked: false });
     const { d, pushed } = await page({ before: s.before });

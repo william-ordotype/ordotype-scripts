@@ -712,6 +712,7 @@
   function placeGoogle() {
     var btn = securite && securite.querySelector('[data-ordo-google]');
     if (!btn) return;
+    trackGoogleState();
     var providers = outsideV2('[data-ms-auth="manage-providers"]');
     if (providers) guardGoogle(providers);
     if (providers && !providers.closest('[data-ordo-v2]')) {
@@ -773,6 +774,24 @@
       track('google', 'dissociation', 'confirme');
       disconnectGoogle(link).then(function() { busy = false; });
     }, true);
+  }
+
+  /**
+   * État Google du compte à l'affichage de la page, une fois : base de comparaison des clics et des
+   * dissociations. Lu dans la copie du membre que Memberstack affiche au chargement ; une copie
+   * sans liste de fournisseurs donne « inconnu ».
+   */
+  function trackGoogleState() {
+    var auth = member.auth || {};
+    var state = 'inconnu';
+    if (Object.prototype.toString.call(auth.providers) === '[object Array]') {
+      var linked = false;
+      for (var i = 0; i < auth.providers.length; i++) {
+        if (auth.providers[i] && auth.providers[i].provider === 'google') linked = true;
+      }
+      state = !linked ? 'non-lie' : (auth.hasPassword === false ? 'lie-sans-mot-de-passe' : 'lie');
+    }
+    track('google', 'etat', state);
   }
 
   /** Ce que le bouton affiche, donc ce que Memberstack ferait au clic : « connecté » = il dissocierait. */
