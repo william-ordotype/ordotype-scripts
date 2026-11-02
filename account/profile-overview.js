@@ -122,15 +122,16 @@
   /**
    * Gabarits dessinés dans le Designer (bloc [data-ordo-gabarits="profil"], visible seulement dans le
    * Designer) : « Non renseigné », coche « Vérifié », séparateur de formulaires. Sans eux (page publiée
-   * avant), le script retombe sur son ancien dessin.
+   * avant), le script retombe sur son ancien dessin. `store` : un autre bloc de la page, par exemple
+   * « facturation » pour ses messages « flash » et « erreur ».
    */
-  function gabarit(name) {
-    var store = document.querySelector('[data-ordo-gabarits="profil"]');
-    return store ? store.querySelector('[data-ordo-gabarit="' + name + '"]') : null;
+  function gabarit(name, store) {
+    var s = document.querySelector('[data-ordo-gabarits="' + (store || 'profil') + '"]');
+    return s ? s.querySelector('[data-ordo-gabarit="' + name + '"]') : null;
   }
 
-  function copie(name) {
-    var g = gabarit(name);
+  function copie(name, store) {
+    var g = gabarit(name, store);
     if (!g) return null;
     var n = g.cloneNode(true);
     n.removeAttribute('data-ordo-gabarit');
@@ -711,6 +712,7 @@
   function placeGoogle() {
     var btn = securite && securite.querySelector('[data-ordo-google]');
     if (!btn) return;
+    trackGoogleState();
     var providers = outsideV2('[data-ms-auth="manage-providers"]');
     if (providers) guardGoogle(providers);
     if (providers && !providers.closest('[data-ordo-v2]')) {
@@ -729,9 +731,9 @@
 
   var GOOGLE_CONFIRM = 'Dissocier votre compte Google ?\n\n'
     + 'Vous vous connecterez ensuite avec votre adresse e-mail et votre mot de passe.';
-  var GOOGLE_OK = 'Votre compte Google est dissocié. Connectez-vous désormais avec votre adresse e-mail et votre mot de passe.';
-  var GOOGLE_SANS_MDP = 'Pour dissocier Google, définissez d\'abord un mot de passe, puis réessayez.';
-  var GOOGLE_ECHEC = 'La dissociation n\'a pas abouti. Réessayez, ou écrivez-nous à securite@ordotype.fr.';
+  var GOOGLE_OK = 'C’est fait : votre compte Google est dissocié. Connectez-vous désormais avec votre adresse e-mail et votre mot de passe.';
+  var GOOGLE_SANS_MDP = 'Pour dissocier Google, définissez d’abord un mot de passe, puis réessayez.';
+  var GOOGLE_ECHEC = 'La dissociation n’a pas abouti. Réessayez, ou écrivez-nous à securite@ordotype.fr.';
 
   /**
    * Memberstack dissocie Google au clic sur TOUT le bouton dès que la croix `data-ms-auth-disconnect`
@@ -774,6 +776,24 @@
     }, true);
   }
 
+  /**
+   * État Google du compte à l'affichage de la page, une fois : base de comparaison des clics et des
+   * dissociations. Lu dans la copie du membre que Memberstack affiche au chargement ; une copie
+   * sans liste de fournisseurs donne « inconnu ».
+   */
+  function trackGoogleState() {
+    var auth = member.auth || {};
+    var state = 'inconnu';
+    if (Object.prototype.toString.call(auth.providers) === '[object Array]') {
+      var linked = false;
+      for (var i = 0; i < auth.providers.length; i++) {
+        if (auth.providers[i] && auth.providers[i].provider === 'google') linked = true;
+      }
+      state = !linked ? 'non-lie' : (auth.hasPassword === false ? 'lie-sans-mot-de-passe' : 'lie');
+    }
+    track('google', 'etat', state);
+  }
+
   /** Ce que le bouton affiche, donc ce que Memberstack ferait au clic : « connecté » = il dissocierait. */
   function googleLinked(link) {
     var label = link.querySelector('[data-ms-auth-connected-text]');
@@ -795,12 +815,12 @@
       if (code === 'account-not-connected') return googleDisconnected(link, 'deja');
       if (code === 'account-set-password-before-disconnect') {
         track('google', 'dissociation', 'sans-mot-de-passe');
-        showMessage(GOOGLE_SANS_MDP, true);
+        googleNotice(link, GOOGLE_SANS_MDP, true);
         return;
       }
       track('google', 'dissociation', 'echec');
       report('ProfileOverviewGoogleDisconnect', code || (err && err.message) || 'unknown');
-      showMessage(GOOGLE_ECHEC, true);
+      googleNotice(link, GOOGLE_ECHEC, true);
     }).catch(function(err) {
       report('ProfileOverviewGoogleDisconnect', err);
     });
@@ -812,7 +832,32 @@
     var original = label && label.getAttribute('data-ms-original-text');
     if (original) label.textContent = original;
     track('google', 'dissociation', outcome);
-    showMessage(GOOGLE_OK, false);
+    googleNotice(link, GOOGLE_OK, false);
+  }
+
+  /**
+   * Réponse sous la ligne Google, là où le membre a cliqué, avec les gabarits « flash » (réussite)
+   * et « erreur » de l'onglet Facturation ; elle reste jusqu'au rechargement. Sans ces gabarits,
+   * le bandeau de Memberstack.
+   */
+  function googleNotice(link, msg, isError) {
+    var ligne = link.closest('.compte-v2_ligne');
+    var node = copie(isError ? 'erreur' : 'flash', 'facturation');
+    if (!ligne || !ligne.parentNode || !node) {
+      showMessage(msg, isError);
+      return;
+    }
+    var old = ligne.parentNode.querySelector('[data-ordo-google-message]');
+    if (old) old.parentNode.removeChild(old);
+    node.setAttribute('data-ordo-google-message', isError ? 'erreur' : 'ok');
+    node.setAttribute('role', isError ? 'alert' : 'status');
+    node.textContent = msg;
+    // Aligné sur le titre et la description de la ligne (le pictogramme est masqué en mobile).
+    var texte = ligne.querySelector('.compte-v2_ligne-texte');
+    var indent = texte ? Math.max(0, Math.round(texte.getBoundingClientRect().left - ligne.getBoundingClientRect().left)) : 0;
+    node.style.padding = '0 0 16px ' + indent + 'px';
+    node.style.marginTop = '-4px';
+    ligne.parentNode.insertBefore(node, ligne.nextSibling);
   }
 
   /** Sans mot de passe, Google est le seul accès : Memberstack refuserait, la croix ne s'affiche pas. */
@@ -825,7 +870,7 @@
     }
   }
 
-  /** Bandeau de message de Memberstack (celui de ses propres réponses), sinon une alerte. */
+  /** Secours : bandeau de message de Memberstack (celui de ses propres réponses), sinon une alerte. */
   function showMessage(msg, isError) {
     var ms = window.$memberstackDom;
     if (ms && typeof ms._showMessage === 'function') {
