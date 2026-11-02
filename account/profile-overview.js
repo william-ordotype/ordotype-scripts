@@ -1017,10 +1017,21 @@
   }
 
   function init() {
-    // Arrivé après les 8 s de l'en-tête : le membre a déjà les anciens blocs sous les yeux, peut-être
-    // en train d'y écrire. On ne les lui retire pas ; la page suivante aura la nouvelle présentation.
+    // Arrivé après les 8 s de l'en-tête : le membre a déjà les anciens blocs de Mon profil sous les yeux,
+    // peut-être en train d'y écrire. On ne les lui retire pas ; la page suivante aura la nouvelle présentation.
+    // Connexion et sécurité, toujours affichée, reçoit quand même ce qui la fait marcher.
     if (document.documentElement.classList.contains(FALLBACK_CLASS)) {
       track('view', '', 'late');
+      try {
+        injectStyles();
+        markGoogleNoPassword();
+        placeDelete();
+        placeGoogle();
+        placeTotp();
+        listenEdits();
+      } catch (err) {
+        report('ProfileOverviewLate', err);
+      }
       return;
     }
     try {

@@ -737,9 +737,11 @@ async function test(name, fn) {
     assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
     assert.ok(d.documentElement.classList.contains('ordo-profil-fallback'), 'secours sans attendre les 8 s');
     assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'nouveau bloc resté masqué');
-    for (const b of d.querySelectorAll('[data-w-tab="information"] .compte_form > .inner-block-wraper, [data-w-tab="security"] .compte_form > .inner-block-wraper')) {
+    for (const b of d.querySelectorAll('[data-w-tab="information"] .compte_form > .inner-block-wraper')) {
       assert.ok(visible(w, b), 'ancien bloc réaffiché');
     }
+    // Connexion et sécurité n'est jamais cachée : ses pièces sont celles de Memberstack.
+    assert.ok(visible(w, d.querySelector('[data-ordo-v2="securite"]')), 'Connexion et sécurité reste affichée');
     assert.strictEqual(reports.length, 1);
     assert.strictEqual(reports[0].name, 'ProfileOverviewInit');
     assert.ok(pushed.some((p) => p.profile_action === 'view' && p.profile_outcome === 'failed'));
@@ -758,15 +760,20 @@ async function test(name, fn) {
     assert.ok(!d.querySelector('[data-ordo-v2] [data-ms-auth="manage-providers"]'), 'Google revenu');
   });
 
-  await test('arrivé après le secours de l\'en-tête (8 s) : rien n\'est rendu ni déplacé, arrivée tardive mesurée', async () => {
-    const { w, d, pushed, reports } = await page({ before: (win) => { win.document.documentElement.classList.add('ordo-profil-fallback'); } });
+  await test('arrivé après le secours de l\'en-tête (8 s) : Mon profil laissé tel quel, Connexion et sécurité quand même équipée', async () => {
+    const s = google();
+    const { w, d, pushed, reports } = await page({ fixture: DIRECTE, before: (win) => { s.before(win); win.document.documentElement.classList.add('ordo-profil-fallback'); } });
     assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
-    for (const el of d.querySelectorAll('[data-ordo-v2]')) assert.ok(!visible(w, el), 'nouvelle présentation cachée');
+    assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'Mon profil : nouvelle présentation cachée');
     for (const b of d.querySelectorAll('[data-w-tab="information"] .compte_form > .inner-block-wraper')) assert.ok(visible(w, b), 'anciens blocs laissés au membre');
-    assert.ok(!d.querySelector('[data-ordo-v2] #ordotype-totp-section'), 'module TOTP non déplacé');
-    assert.ok(!d.querySelector('[data-ordo-v2] [data-ms-auth="manage-providers"]'), 'Google non déplacé');
-    assert.strictEqual(champ(d, 'prnom'), 'Prénom', 'rien de rempli');
-    assert.deepStrictEqual(pushed.map((p) => p.profile_step), ['view:-:late']);
+    assert.strictEqual(champ(d, 'prnom'), 'Prénom', 'Mon profil : rien de rempli');
+    assert.strictEqual(pushed[0].profile_step, 'view:-:late');
+    // Connexion et sécurité : « Modifier » ouvre le formulaire, le bouton Google est gardé.
+    d.querySelector('[data-ordo-v2="securite"] [data-ordo-edit="password"]').click();
+    assert.ok(visible(w, d.querySelector('[data-ordo-form-slot="password"]')), 'formulaire mot de passe ouvert');
+    libelle(d).click();
+    assert.strictEqual(s.ms, 0, 'clic Google arrêté avant Memberstack');
+    assert.ok(step(pushed, 'google:connexion:deja-connecte'));
     assert.deepStrictEqual(reports, []);
   });
 

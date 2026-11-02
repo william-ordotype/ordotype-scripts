@@ -20,9 +20,9 @@ const assert = require('assert');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
-const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8');
-// Connexion et sécurité dessinée sans anciens blocs (pièces posées dans la nouvelle présentation).
-const DIRECTE = require('./fixtures/securite-directe')(FIXTURE);
+// Page telle que servie : Connexion et sécurité dessinée sans anciens blocs (pièces posées dans la nouvelle
+// présentation), Mon profil et Facturation avec les leurs.
+const FIXTURE = require('./fixtures/securite-directe')(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8'));
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
 const HEAD_SCRIPT = /<script>([\s\S]*?)<\/script>/.exec(HEAD)[1];
@@ -106,11 +106,11 @@ async function test(name, fn) {
 }
 
 (async () => {
-  await test('fixture : 2 nouvelles présentations, 3 + 4 + 3 anciens blocs', async () => {
+  await test('fixture : 2 nouvelles présentations, 3 + 0 + 3 anciens blocs', async () => {
     const { d } = page({ head: false });
     assert.strictEqual(v2(d).length, 2);
     assert.strictEqual(anciens(d, 'information').length, 3);
-    assert.strictEqual(anciens(d, 'security').length, 4);
+    assert.strictEqual(anciens(d, 'security').length, 0);
     assert.strictEqual(anciens(d, 'billing').length, 3);
   });
 
@@ -124,11 +124,12 @@ async function test(name, fn) {
     assert.ok(!tva || !visible(w, tva.closest('.compte-v2_field')), 'ligne TVA (masquée à tous) masquée aussi ici');
   });
 
-  await test('site, chargement : ni nouvelle présentation ni anciens blocs, pas d\'encart', async () => {
+  await test('site, chargement : Mon profil caché (ni nouvelle présentation ni anciens blocs), Connexion et sécurité visible, pas d\'encart', async () => {
     const { w, d, h } = page();
     assert.ok(h.classList.contains('ordo-profil-pending'));
     assert.ok(h.classList.contains('ordo-subs-pending'));
-    for (const el of v2(d)) assert.ok(!visible(w, el), 'pas de gabarit vide affiché');
+    assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'pas de gabarit vide affiché');
+    assert.ok(affiche(w, securite(d)), 'Connexion et sécurité sans attendre le script');
     for (const tab of ['information', 'security', 'billing']) for (const b of anciens(d, tab)) assert.ok(!visible(w, b), tab);
     assert.ok(!visible(w, d.querySelector('.compte-v2_designer')));
   });
@@ -148,8 +149,9 @@ async function test(name, fn) {
     const { w, d, h } = page({ rollout: { 'profile-overview.js': { enabled: false, reason: 'bucket' } } });
     await tick(150);
     assert.ok(h.classList.contains('ordo-profil-fallback'));
-    for (const el of v2(d)) assert.ok(!visible(w, el));
-    for (const b of anciens(d, 'information').concat(anciens(d, 'security'))) assert.ok(visible(w, b));
+    assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'Mon profil : anciens blocs à la place');
+    assert.ok(affiche(w, securite(d)), 'Connexion et sécurité : sa carte, telle quelle');
+    for (const b of anciens(d, 'information')) assert.ok(visible(w, b));
     assert.ok(!h.classList.contains('ordo-subs-fallback'), 'la facturation a sa propre décision');
     for (const b of anciens(d, 'billing')) assert.ok(!visible(w, b));
   });
@@ -267,15 +269,15 @@ async function test(name, fn) {
     assert.ok(h.classList.contains('ordo-profil-fallback'));
   });
 
-  await test('secours : un bloc que Memberstack masque le reste (suppression pour un payant, e-mail sans mot de passe)', async () => {
+  await test('secours : ce que Memberstack masque le reste (suppression pour un payant, e-mail sans mot de passe)', async () => {
     const { w, d, h } = page({ memberstack: true, rollout: { 'profile-overview.js': { enabled: false } } });
     await tick(150);
     assert.ok(h.classList.contains('ordo-profil-fallback'));
-    assert.ok(!visible(w, d.getElementById('delete-account')), '!paid-plans respecté');
-    assert.ok(!visible(w, d.querySelector('[data-w-tab="security"] .inner-block-wraper[data-ms-content="has-password"]')), 'has-password respecté');
-    const autres = anciens(d, 'security').filter((b) => !b.hasAttribute('data-ms-content'));
-    assert.strictEqual(autres.length, 2);
-    for (const b of autres) assert.ok(visible(w, b));
+    const c = securite(d);
+    assert.ok(affiche(w, c));
+    assert.ok(!affiche(w, c.querySelector('[data-ordo-section="suppression"]')), '!paid-plans respecté');
+    assert.ok(!affiche(w, c.querySelector('[data-ordo-champ="email"]')), 'has-password respecté');
+    assert.ok(affiche(w, c.querySelector('[data-ms-auth-provider="google"]')));
   });
 
   await test('secours jamais en !important (jsdom ne départage pas deux !important : contrôle sur le texte)', async () => {
@@ -340,62 +342,37 @@ async function test(name, fn) {
     assert.strictEqual(w.getComputedStyle(rond).cursor, 'pointer', 'rond actif : la main du Designer');
   });
 
-  await test('sécurité sans anciens blocs : chargement = sa nouvelle présentation cachée ; rendu = elle, formulaires fermés', async () => {
-    const r = page({ fixture: DIRECTE });
-    await tick(0);
-    assert.ok(r.h.classList.contains('ordo-securite-directe'));
-    assert.ok(!affiche(r.w, securite(r.d)), 'rien pendant le chargement');
+  await test('Connexion et sécurité : même carte pendant le chargement, une fois rendue, et en secours ; formulaires fermés', async () => {
+    const cas = [
+      ['chargement', page()],
+      ['rien en 8 s', page({ rollout: { 'profile-overview.js': { enabled: true } } })],
+      ['chargeur absent', page({ loader: false })]
+    ];
+    cas[1][1].avance(8100);
+    await tick(150);
+    assert.ok(cas[1][1].h.classList.contains('ordo-profil-fallback'));
+    assert.ok(cas[2][1].h.classList.contains('ordo-profil-fallback'));
+    for (const [nom, r] of cas) {
+      const c = securite(r.d);
+      assert.ok(affiche(r.w, c), nom + ' : carte');
+      for (const slot of c.querySelectorAll('.compte-v2_edit')) assert.ok(!affiche(r.w, slot), nom + ' : formulaire fermé');
+      for (const b of c.querySelectorAll('[data-ordo-edit]')) assert.ok(affiche(r.w, b), nom + ' : Modifier');
+      assert.ok(affiche(r.w, c.querySelector('[data-ms-auth-provider="google"]')), nom + ' : Google');
+      assert.ok(affiche(r.w, r.d.getElementById('delete-account-btn')), nom + ' : Supprimer');
+    }
+    // En secours, Mon profil retrouve ses anciens blocs comme avant.
+    const s = cas[1][1];
+    assert.ok(!affiche(s.w, s.d.querySelector('[data-ordo-v2="profil"]')));
+    for (const b of anciens(s.d, 'information')) assert.ok(affiche(s.w, b));
+    const r = cas[0][1];
     r.h.classList.add('ordo-profil-v2');
     await tick(0);
-    assert.ok(affiche(r.w, securite(r.d)));
-    for (const slot of securite(r.d).querySelectorAll('.compte-v2_edit')) assert.ok(!affiche(r.w, slot), 'formulaire fermé');
-    for (const b of securite(r.d).querySelectorAll('[data-ordo-edit]')) assert.ok(affiche(r.w, b), 'Modifier présent');
+    assert.ok(affiche(r.w, securite(r.d)), 'rendu : carte');
   });
 
-  await test('sécurité sans anciens blocs, rien en 8 s : sa nouvelle présentation telle quelle, formulaires ouverts', async () => {
-    const { w, d, h, avance } = page({ fixture: DIRECTE, rollout: { 'profile-overview.js': { enabled: true } } });
-    avance(8100);
-    await tick(150);
-    assert.ok(h.classList.contains('ordo-profil-fallback'));
-    const c = securite(d);
-    assert.ok(affiche(w, c), 'carte Connexion et sécurité');
-    assert.ok(affiche(w, c.querySelector('form[data-ms-form="email"]')), 'formulaire e-mail');
-    assert.ok(affiche(w, c.querySelector('form[data-ms-form="password"]')), 'formulaire mot de passe');
-    for (const b of c.querySelectorAll('[data-ordo-edit]')) assert.ok(!affiche(w, b), 'Modifier masqué');
-    assert.ok(affiche(w, c.querySelector('[data-ms-auth-provider="google"]')), 'bouton Google');
-    assert.ok(affiche(w, c.querySelector('#ordotype-totp-section')), 'module 2FA');
-    assert.ok(affiche(w, d.getElementById('delete-account-btn')), 'Supprimer');
-    assert.ok(!affiche(w, d.getElementById('delete-account-form-v2')), 'formulaire de suppression fermé (ouvert au clic)');
-    // Mon profil ne change pas : ses anciens blocs, sa nouvelle présentation cachée.
-    assert.ok(!affiche(w, d.querySelector('[data-ordo-v2="profil"]')));
-    for (const b of anciens(d, 'information')) assert.ok(affiche(w, b));
-  });
-
-  await test('sécurité sans anciens blocs, chargeur absent : même secours', async () => {
-    const { w, d, h } = page({ fixture: DIRECTE, loader: false });
-    await tick(150);
-    assert.ok(h.classList.contains('ordo-profil-fallback'));
-    assert.ok(affiche(w, securite(d)));
-    assert.ok(affiche(w, securite(d).querySelector('form[data-ms-form="password"]')));
-  });
-
-  await test('sécurité sans anciens blocs, secours : Memberstack masque toujours la suppression et l\'e-mail', async () => {
-    const { w, d } = page({ fixture: DIRECTE, memberstack: true, rollout: { 'profile-overview.js': { enabled: false } } });
-    await tick(150);
-    const c = securite(d);
-    assert.ok(affiche(w, c));
-    assert.ok(!affiche(w, c.querySelector('[data-ordo-section="suppression"]')), '!paid-plans respecté');
-    assert.ok(!affiche(w, c.querySelector('form[data-ms-form="email"]')), 'has-password respecté');
-    assert.ok(affiche(w, c.querySelector('form[data-ms-form="password"]')));
-  });
-
-  await test('page actuelle (anciens blocs) en secours : la nouvelle présentation de la sécurité reste cachée, pas de doublon', async () => {
-    const { w, d, h } = page({ rollout: { 'profile-overview.js': { enabled: false } } });
-    await tick(150);
-    assert.ok(h.classList.contains('ordo-profil-fallback'));
-    assert.ok(!h.classList.contains('ordo-securite-directe'));
-    assert.ok(!affiche(w, securite(d)));
-    assert.ok(anciens(d, 'security').some((b) => affiche(w, b)));
+  await test('le code d\'en-tête ne connaît plus de secours propre à Connexion et sécurité', async () => {
+    assert.ok(!/ordo-securite-directe/.test(HEAD), 'classe retirée');
+    assert.ok(!/\[data-w-tab="security"\][^{]*is-secours/.test(HEAD_STYLE), 'plus d\'anciens blocs à réafficher dans cet onglet');
   });
 
   for (const w of fenetres) w.close();
