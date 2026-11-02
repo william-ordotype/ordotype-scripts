@@ -60,6 +60,12 @@
     }
   }, true);
 
+  // Connexion et sécurité dessinée sans anciens blocs : en secours, c'est sa nouvelle présentation
+  // qui s'affiche, telle quelle (règles ordo-securite-directe ci-dessous).
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!document.querySelector('[data-w-tab="security"] .inner-block-wraper.is-secours')) h.classList.add('ordo-securite-directe');
+  });
+
   // Le chargeur est « defer » : à DOMContentLoaded, il a tourné, ou il ne tournera pas (échec de
   // téléchargement compris). Personne d'autre ne peut signaler son absence.
   document.addEventListener('DOMContentLoaded', function () {
@@ -86,8 +92,16 @@
 })();
 </script>
 <style>
-/* Nouvelle présentation cachée tant que son script ne l'a pas remplie (le Designer, lui, la montre). */
-html:not(.ordo-profil-v2) [data-ordo-v2] { display: none !important; }
+/* Nouvelle présentation cachée tant que son script ne l'a pas remplie (le Designer, lui, la montre).
+   Sauf Connexion et sécurité dessinée sans anciens blocs : en secours, elle s'affiche telle quelle. */
+html:not(.ordo-profil-v2) [data-ordo-v2]:not([data-ordo-v2="securite"]),
+html:not(.ordo-profil-v2):not(.ordo-profil-fallback) [data-ordo-v2="securite"],
+html.ordo-profil-fallback:not(.ordo-profil-v2):not(.ordo-securite-directe) [data-ordo-v2="securite"] { display: none !important; }
+/* Ce secours-là : formulaires ouverts, sans les boutons « Modifier » ; carte de double authentification
+   visible (vide quand le module n'est pas requis) ; « Supprimer » ouvert par delete-account.js. */
+html.ordo-profil-fallback.ordo-securite-directe:not(.ordo-profil-v2) [data-ordo-v2="securite"] .compte-v2_edit { display: block; }
+html.ordo-profil-fallback.ordo-securite-directe:not(.ordo-profil-v2) [data-ordo-v2="securite"] [data-ordo-edit] { display: none; }
+html.ordo-profil-fallback.ordo-securite-directe:not(.ordo-profil-v2) [data-ordo-v2="securite"] [data-ordo-2fa-block] { display: flex; }
 /* Anciens blocs en secours. Sans !important : un bloc que Memberstack masque (!paid-plans, has-password) le reste. */
 html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="information"] .inner-block-wraper.is-secours,
 html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="security"] .inner-block-wraper.is-secours,

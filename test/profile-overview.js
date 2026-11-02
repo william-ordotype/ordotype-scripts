@@ -16,6 +16,8 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = fs.readFileSync(path.join(ROOT, 'account/profile-overview.js'), 'utf8');
 const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8');
+// Connexion et sécurité dessinée sans anciens blocs (pièces posées dans la nouvelle présentation).
+const DIRECTE = require('./fixtures/securite-directe')(FIXTURE);
 // Code d'en-tête de la page : il cache la nouvelle présentation jusqu'au rendu et gère le secours.
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
@@ -826,6 +828,71 @@ async function test(name, fn) {
     }
     const emails = d.querySelector('[data-ordo-section="emails"] a');
     assert.strictEqual(emails.textContent, 'Modifier', 'bouton de la carte E-mails intact');
+  });
+
+  // --- Connexion et sécurité dessinée sans anciens blocs ------------------------------------------
+
+  await test('sécurité sans anciens blocs : la page se rend, rien n\'est déplacé ni signalé', async () => {
+    const { w, d, erreurs, reports, pushed } = await page({ fixture: DIRECTE });
+    assert.deepStrictEqual(erreurs, []);
+    assert.deepStrictEqual(reports, []);
+    assert.ok(d.documentElement.classList.contains('ordo-profil-v2'));
+    assert.ok(visible(w, d.querySelector('[data-ordo-v2="securite"]')));
+    assert.ok(d.querySelector('[data-ordo-v2] [data-ms-auth="manage-providers"]'), 'Google dans la carte');
+    assert.ok(!d.querySelector('[data-ordo-google]'), 'plus de remplaçant');
+    assert.strictEqual(pushed.filter((p) => /^google:etat:/.test(p.profile_step || '')).length, 1, 'état Google mesuré');
+    assert.strictEqual(txt(d, '[data-ordo-v2="securite"] [data-ordo-champ="email"]'), 'claire.martin@exemple.fr');
+  });
+
+  await test('sécurité sans anciens blocs : Google gardé (clic sans effet, croix = dissociation, message sous la ligne)', async () => {
+    const s = google();
+    const { d, pushed } = await page({ fixture: DIRECTE, before: s.before });
+    libelle(d).click();
+    assert.strictEqual(s.ms, 0, 'clic arrêté avant Memberstack');
+    assert.ok(step(pushed, 'google:connexion:deja-connecte'));
+    croix(d).click();
+    await waitFor(() => !!notice(d));
+    assert.strictEqual(JSON.stringify(s.calls), '[{"provider":"google"}]');
+    assert.strictEqual(notice(d).className, 'compte-v2_flash');
+    const ligne = d.querySelector('[data-ordo-v2] [data-ms-auth-provider="google"]').closest('.compte-v2_ligne');
+    assert.strictEqual(ligne.nextElementSibling, notice(d));
+  });
+
+  await test('sécurité sans anciens blocs : un remplaçant oublié à côté du vrai bouton Google est masqué', async () => {
+    const avecRemplacant = DIRECTE.replace('<div data-ms-auth="manage-providers"', '<a href="#" data-ordo-google="1" class="compte-v2_btn">Continuer avec Google</a><div data-ms-auth="manage-providers"');
+    const { w, d } = await page({ fixture: avecRemplacant });
+    assert.ok(!visible(w, d.querySelector('[data-ordo-google]')));
+  });
+
+  await test('sécurité sans anciens blocs : « Modifier » ouvre les formulaires mot de passe et e-mail là où ils sont', async () => {
+    const { w, d, reports, pushed } = await page({ fixture: DIRECTE });
+    for (const section of ['password', 'email']) {
+      d.querySelector(`[data-ordo-v2="securite"] [data-ordo-edit="${section}"]`).click();
+      const slot = d.querySelector(`[data-ordo-form-slot="${section}"]`);
+      assert.ok(visible(w, slot), 'emplacement ouvert : ' + section);
+      assert.ok(slot.querySelector(`form[data-ms-form="${section}"]`), 'formulaire en place : ' + section);
+      assert.ok(step(pushed, `edit:${section}:open`));
+    }
+    assert.deepStrictEqual(reports, []);
+  });
+
+  await test('sécurité sans anciens blocs : le formulaire e-mail passe dans Contact puis revient', async () => {
+    const { d } = await page({ fixture: DIRECTE });
+    d.querySelector('[data-ordo-edit="contact"]').click();
+    assert.ok(d.querySelector('[data-ordo-form-slot="contact"] form[data-ms-form="email"]'), 'dans Contact');
+    d.querySelector('[data-ordo-v2="securite"] [data-ordo-edit="email"]').click();
+    assert.ok(d.querySelector('[data-ordo-form-slot="email"] form[data-ms-form="email"]'), 'revenu dans Connexion');
+  });
+
+  await test('sécurité sans anciens blocs : module 2FA en place ; « Supprimer » ouvre le formulaire en place', async () => {
+    const { w, d, reports } = await page({ fixture: DIRECTE });
+    assert.ok(d.querySelector('[data-ordo-totp-slot] #ordotype-totp-section'));
+    d.querySelector('[data-ordo-supprimer]').click();
+    const slot = d.querySelector('[data-ordo-form-slot="suppression"]');
+    assert.ok(visible(w, slot));
+    assert.strictEqual(d.getElementById('delete-account-form-v2').parentNode, slot);
+    assert.ok(visible(w, d.getElementById('delete-account-form-v2')));
+    assert.deepStrictEqual(reports, []);
   });
 
   console.log(`profile-overview : ${passed} tests OK`);
