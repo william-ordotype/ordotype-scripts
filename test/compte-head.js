@@ -20,9 +20,9 @@ const assert = require('assert');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
-// Page telle que servie : Connexion et sécurité dessinée sans anciens blocs (pièces posées dans la nouvelle
-// présentation), Mon profil et Facturation avec les leurs.
-const FIXTURE = require('./fixtures/securite-directe')(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8'));
+// Page telle que servie : Mon profil et Connexion et sécurité dessinés sans anciens blocs (pièces Memberstack
+// posées dans la nouvelle présentation), Facturation avec les siens.
+const FIXTURE = require('./fixtures/profil-directe')(require('./fixtures/securite-directe')(fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8')));
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
 const HEAD_SCRIPT = /<script>([\s\S]*?)<\/script>/.exec(HEAD)[1];
@@ -91,6 +91,9 @@ const affiche = (w, el) => {
   return !!el;
 };
 const securite = (d) => d.querySelector('[data-ordo-v2="securite"]');
+const profil = (d) => d.querySelector('[data-ordo-v2="profil"]');
+// En-tête de Mon profil calculé par le script : invisible tant qu'il n'est pas passé.
+const ENTETE = ['[data-ordo-initiales]', '[data-ordo-nom-complet]', '[data-ordo-resume]', '[data-ordo-rpps-entete]'];
 const anciens = (d, tab) => [...d.querySelectorAll(`[data-w-tab="${tab}"] .compte_form > .inner-block-wraper`)];
 const v2 = (d) => [...d.querySelectorAll('[data-ordo-v2]')];
 
@@ -106,10 +109,10 @@ async function test(name, fn) {
 }
 
 (async () => {
-  await test('fixture : 2 nouvelles présentations, 3 + 0 + 3 anciens blocs', async () => {
+  await test('fixture : 2 nouvelles présentations, 0 + 0 + 3 anciens blocs', async () => {
     const { d } = page({ head: false });
     assert.strictEqual(v2(d).length, 2);
-    assert.strictEqual(anciens(d, 'information').length, 3);
+    assert.strictEqual(anciens(d, 'information').length, 0);
     assert.strictEqual(anciens(d, 'security').length, 0);
     assert.strictEqual(anciens(d, 'billing').length, 3);
   });
@@ -124,12 +127,14 @@ async function test(name, fn) {
     assert.ok(!tva || !visible(w, tva.closest('.compte-v2_field')), 'ligne TVA (masquée à tous) masquée aussi ici');
   });
 
-  await test('site, chargement : Mon profil caché (ni nouvelle présentation ni anciens blocs), Connexion et sécurité visible, pas d\'encart', async () => {
+  await test('site, chargement : Mon profil et Connexion et sécurité visibles, en-tête calculé invisible, pas d\'encart', async () => {
     const { w, d, h } = page();
     assert.ok(h.classList.contains('ordo-profil-pending'));
     assert.ok(h.classList.contains('ordo-subs-pending'));
-    assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'pas de gabarit vide affiché');
+    assert.ok(affiche(w, profil(d)), 'Mon profil sans attendre le script');
     assert.ok(affiche(w, securite(d)), 'Connexion et sécurité sans attendre le script');
+    for (const sel of ENTETE) assert.strictEqual(w.getComputedStyle(profil(d).querySelector(sel)).visibility, 'hidden', 'en-tête invisible : ' + sel);
+    for (const el of profil(d).querySelectorAll('[data-ordo-champ]')) assert.ok(el.hasAttribute('data-ms-member'), 'valeur écrite par Memberstack : ' + el.getAttribute('data-ordo-champ'));
     for (const tab of ['information', 'security', 'billing']) for (const b of anciens(d, tab)) assert.ok(!visible(w, b), tab);
     assert.ok(!visible(w, d.querySelector('.compte-v2_designer')));
   });
@@ -142,16 +147,16 @@ async function test(name, fn) {
     await tick(150);
     assert.ok(!h.classList.contains('ordo-profil-fallback'));
     for (const el of v2(d)) assert.ok(visible(w, el));
+    for (const sel of ENTETE) assert.strictEqual(w.getComputedStyle(profil(d).querySelector(sel)).visibility, 'visible', 'en-tête visible : ' + sel);
     for (const b of anciens(d, 'information').concat(anciens(d, 'security'))) assert.ok(!visible(w, b));
   });
 
-  await test('site, script coupé par le chargeur : anciens blocs tout de suite, sans attendre 8 s', async () => {
+  await test('site, script coupé par le chargeur : secours posé tout de suite, rien ne change à l\'écran', async () => {
     const { w, d, h } = page({ rollout: { 'profile-overview.js': { enabled: false, reason: 'bucket' } } });
     await tick(150);
     assert.ok(h.classList.contains('ordo-profil-fallback'));
-    assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'Mon profil : anciens blocs à la place');
+    assert.ok(affiche(w, profil(d)), 'Mon profil : sa carte, telle quelle');
     assert.ok(affiche(w, securite(d)), 'Connexion et sécurité : sa carte, telle quelle');
-    for (const b of anciens(d, 'information')) assert.ok(visible(w, b));
     assert.ok(!h.classList.contains('ordo-subs-fallback'), 'la facturation a sa propre décision');
     for (const b of anciens(d, 'billing')) assert.ok(!visible(w, b));
   });
@@ -173,7 +178,7 @@ async function test(name, fn) {
     assert.ok(h.classList.contains('ordo-profil-fallback'));
   });
 
-  await test('site, rien de rendu en 8 s : anciens blocs', async () => {
+  await test('site, rien de rendu en 8 s : secours posé (mesure), Mon profil reste affiché, facturation en secours', async () => {
     const { w, d, h, avance } = page({ rollout: { 'profile-overview.js': { enabled: true } } });
     avance(7900);
     await tick(150);
@@ -182,7 +187,8 @@ async function test(name, fn) {
     await tick(150);
     assert.ok(h.classList.contains('ordo-profil-fallback'));
     assert.ok(h.classList.contains('ordo-subs-fallback'));
-    for (const b of anciens(d, 'information')) assert.ok(visible(w, b));
+    assert.ok(affiche(w, profil(d)));
+    for (const b of anciens(d, 'billing')) assert.ok(visible(w, b));
   });
 
   await test('8 s : secours du profil mesuré ; celui de la liste non (elle mesure son propre délai) ; pas d\'alerte', async () => {
@@ -195,11 +201,11 @@ async function test(name, fn) {
     assert.deepStrictEqual(alertes, []);
   });
 
-  await test('chargeur absent : anciens blocs dès DOMContentLoaded, les deux secours mesurés, UNE alerte', async () => {
+  await test('chargeur absent : secours dès DOMContentLoaded, les deux mesurés, UNE alerte ; Mon profil reste affiché', async () => {
     const { w, d, h, pushed, alertes } = page({ loader: false });
     await tick(150);
     assert.ok(h.classList.contains('ordo-profil-fallback') && h.classList.contains('ordo-subs-fallback'));
-    for (const b of anciens(d, 'information')) assert.ok(visible(w, b));
+    assert.ok(affiche(w, profil(d)));
     assert.deepStrictEqual(steps(pushed).sort(), ['fallback-chargeur', 'view:-:fallback-chargeur']);
     assert.deepStrictEqual(alertes, ['CompteChargeurAbsent']);
   });
@@ -287,12 +293,12 @@ async function test(name, fn) {
     for (const r of secours) assert.ok(!/!important/.test(r.split('{')[1]), `sans !important : ${r.trim().slice(0, 80)}`);
   });
 
-  await test('secours posé mais nouvelle présentation rendue ensuite : elle gagne', async () => {
+  await test('secours posé puis rendu tardif : l\'en-tête calculé apparaît', async () => {
     const { w, d, h } = page({ rollout: { 'profile-overview.js': { enabled: false } } });
     await tick(150);
     h.classList.add('ordo-profil-v2');
     for (const el of v2(d)) assert.ok(visible(w, el));
-    for (const b of anciens(d, 'information')) assert.ok(!visible(w, b));
+    for (const sel of ENTETE) assert.strictEqual(w.getComputedStyle(profil(d).querySelector(sel)).visibility, 'visible', sel);
   });
 
   await test('facturation : liste rendue = anciens blocs masqués ; secours = les trois ; ordo-keep = un seul', async () => {
@@ -360,19 +366,19 @@ async function test(name, fn) {
       assert.ok(affiche(r.w, c.querySelector('[data-ms-auth-provider="google"]')), nom + ' : Google');
       assert.ok(affiche(r.w, r.d.getElementById('delete-account-btn')), nom + ' : Supprimer');
     }
-    // En secours, Mon profil retrouve ses anciens blocs comme avant.
+    // En secours, Mon profil reste affiché lui aussi.
     const s = cas[1][1];
-    assert.ok(!affiche(s.w, s.d.querySelector('[data-ordo-v2="profil"]')));
-    for (const b of anciens(s.d, 'information')) assert.ok(affiche(s.w, b));
+    assert.ok(affiche(s.w, profil(s.d)));
     const r = cas[0][1];
     r.h.classList.add('ordo-profil-v2');
     await tick(0);
     assert.ok(affiche(r.w, securite(r.d)), 'rendu : carte');
   });
 
-  await test('le code d\'en-tête ne connaît plus de secours propre à Connexion et sécurité', async () => {
+  await test('le code d\'en-tête ne réaffiche plus d\'anciens blocs ni ne cache Mon profil et Connexion et sécurité', async () => {
     assert.ok(!/ordo-securite-directe/.test(HEAD), 'classe retirée');
-    assert.ok(!/\[data-w-tab="security"\][^{]*is-secours/.test(HEAD_STYLE), 'plus d\'anciens blocs à réafficher dans cet onglet');
+    assert.ok(!/\[data-w-tab="(security|information)"\][^{]*is-secours/.test(HEAD_STYLE), 'plus d\'anciens blocs à réafficher dans ces onglets');
+    assert.ok(!/\[data-ordo-v2\][^{]*\{[^}]*display:\s*none/.test(HEAD_STYLE), 'plus de nouvelle présentation cachée');
   });
 
   for (const w of fenetres) w.close();
