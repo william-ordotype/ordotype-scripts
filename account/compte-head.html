@@ -1,9 +1,9 @@
 <!-- Mon compte : nouvelle présentation et secours. Source : ordotype-scripts, account/compte-head.html
      (copie de référence de ce bloc du code d'en-tête de la page /membership/compte, testée par test/compte-head.js).
-     Le Designer montre la nouvelle présentation telle qu'un membre la voit, anciens blocs masqués (combo « is-secours »).
-     Le Designer n'exécute pas ce code ; le site, si : rien pendant le chargement, la nouvelle présentation quand son
-     script l'a rendue, les anciens blocs dès que le script est coupé par le chargeur, ne se télécharge pas, échoue,
-     ou n'a rien rendu en 8 s. Chaque secours est mesuré (GA4) ; un chargeur absent part aussi dans Sentry. -->
+     Mon profil et Connexion et sécurité s'affichent tout de suite (valeurs et formulaires Memberstack) ; un script
+     de Mon profil coupé, absent, en échec ou sans rendu en 8 s est seulement mesuré (GA4). La facturation garde ses
+     anciens blocs en secours (combo « is-secours »), réaffichés dans ces mêmes cas. Un chargeur absent part aussi
+     dans Sentry. -->
 <script>
 (function () {
   var h = document.documentElement;
@@ -86,16 +86,17 @@
 })();
 </script>
 <style>
-/* Mon profil : nouvelle présentation cachée tant que son script ne l'a pas remplie (le Designer, lui, la montre).
-   Connexion et sécurité ne l'est pas : ses pièces sont celles de Memberstack, l'adresse est écrite par Memberstack
-   (data-ms-member) ; sans le script, la carte reste lisible et ses formulaires fermés. */
-html:not(.ordo-profil-v2) [data-ordo-v2]:not([data-ordo-v2="securite"]) { display: none !important; }
-/* Anciens blocs en secours. Sans !important : un bloc que Memberstack masque (!paid-plans, has-password) le reste. */
-html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="information"] .inner-block-wraper.is-secours,
+/* Mon profil et Connexion et sécurité s'affichent sans attendre le script : leurs valeurs sont écrites par
+   Memberstack (data-ms-member) et leurs formulaires sont ceux de Memberstack. Seul l'en-tête de Mon profil, calculé
+   par le script (initiales, « Dr », résumé, RPPS), reste invisible jusqu'à son passage. */
+html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-initiales],
+html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-nom-complet],
+html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-resume],
+html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-rpps-entete] { visibility: hidden; }
+/* Facturation : anciens blocs en secours. Sans !important : un bloc que Memberstack masque le reste. */
 html.ordo-subs-fallback [data-w-tab="billing"] .inner-block-wraper.is-secours,
 .inner-block-wraper.is-secours.ordo-keep { display: block; }
 @media screen and (max-width: 479px) {
-  html.ordo-profil-fallback:not(.ordo-profil-v2) [data-w-tab="information"] .inner-block-wraper.is-secours,
   html.ordo-subs-fallback [data-w-tab="billing"] .inner-block-wraper.is-secours,
   .inner-block-wraper.is-secours.ordo-keep { display: flex; }
 }

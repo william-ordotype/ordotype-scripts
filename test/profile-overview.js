@@ -18,6 +18,8 @@ const SCRIPT = fs.readFileSync(path.join(ROOT, 'account/profile-overview.js'), '
 const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8');
 // Connexion et sécurité dessinée sans anciens blocs (pièces posées dans la nouvelle présentation).
 const DIRECTE = require('./fixtures/securite-directe')(FIXTURE);
+// Les deux onglets dessinés sans anciens blocs : la page servie.
+const SERVIE = require('./fixtures/profil-directe')(DIRECTE);
 // Code d'en-tête de la page : il cache la nouvelle présentation jusqu'au rendu et gère le secours.
 const HEAD = fs.readFileSync(path.join(ROOT, 'account/compte-head.html'), 'utf8');
 const HEAD_STYLE = /<style>([\s\S]*?)<\/style>/.exec(HEAD)[1];
@@ -719,28 +721,23 @@ async function test(name, fn) {
     assert.strictEqual(champ(d, 'prnom'), '<img src=x onerror=alert(1)>');
   });
 
-  await test('secours : sans bloc V2, les anciens blocs reviennent tout de suite', async () => {
+  await test('secours : sans bloc V2, échec posé et signalé tout de suite', async () => {
     const sans = FIXTURE.replace(/data-ordo-v2="[a-z]+"/g, 'data-ancien="1"');
-    const { w, d, pushed, reports } = await page({ fixture: sans });
+    const { d, pushed, reports } = await page({ fixture: sans });
     assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
     assert.ok(d.documentElement.classList.contains('ordo-profil-fallback'));
-    assert.ok(visible(w, d.querySelector('[data-w-tab="information"] .inner-block-wraper.is-secours')));
     assert.strictEqual(pushed.length, 0);
     assert.deepStrictEqual(reports.map((r) => r.name), ['ProfileOverviewNoV2Block'], 'blocs retirés du Designer : signalé');
   });
 
-  await test('secours : une erreur au rendu rend l\'ancienne présentation tout de suite et la signale', async () => {
+  await test('secours : une erreur au rendu est signalée tout de suite, la page reste affichée', async () => {
     const m = clone(MEDECIN);
     const { w, d, reports, pushed } = await page({ member: m, before: (w) => {
       Object.defineProperty(w.OrdoAccount.member, 'customFields', { get() { throw new Error('boom'); } });
     } });
     assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
-    assert.ok(d.documentElement.classList.contains('ordo-profil-fallback'), 'secours sans attendre les 8 s');
-    assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'nouveau bloc resté masqué');
-    for (const b of d.querySelectorAll('[data-w-tab="information"] .compte_form > .inner-block-wraper')) {
-      assert.ok(visible(w, b), 'ancien bloc réaffiché');
-    }
-    // Connexion et sécurité n'est jamais cachée : ses pièces sont celles de Memberstack.
+    assert.ok(d.documentElement.classList.contains('ordo-profil-fallback'), 'échec mesuré sans attendre les 8 s');
+    assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'Mon profil reste affiché');
     assert.ok(visible(w, d.querySelector('[data-ordo-v2="securite"]')), 'Connexion et sécurité reste affichée');
     assert.strictEqual(reports.length, 1);
     assert.strictEqual(reports[0].name, 'ProfileOverviewInit');
@@ -760,24 +757,20 @@ async function test(name, fn) {
     assert.ok(!d.querySelector('[data-ordo-v2] [data-ms-auth="manage-providers"]'), 'Google revenu');
   });
 
-  await test('arrivé après le secours de l\'en-tête (8 s) : Mon profil laissé tel quel, Connexion et sécurité quand même équipée', async () => {
+  await test('arrivé après les 8 s de l\'en-tête : arrivée tardive mesurée, puis rendu complet', async () => {
     const s = google();
-    const { w, d, pushed, reports } = await page({ fixture: DIRECTE, before: (win) => { s.before(win); win.document.documentElement.classList.add('ordo-profil-fallback'); } });
-    assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
-    assert.ok(!visible(w, d.querySelector('[data-ordo-v2="profil"]')), 'Mon profil : nouvelle présentation cachée');
-    for (const b of d.querySelectorAll('[data-w-tab="information"] .compte_form > .inner-block-wraper')) assert.ok(visible(w, b), 'anciens blocs laissés au membre');
-    assert.strictEqual(champ(d, 'prnom'), 'Prénom', 'Mon profil : rien de rempli');
+    const { d, pushed, reports } = await page({ fixture: DIRECTE, before: (win) => { s.before(win); win.document.documentElement.classList.add('ordo-profil-fallback'); } });
     assert.strictEqual(pushed[0].profile_step, 'view:-:late');
-    // Connexion et sécurité : « Modifier » ouvre le formulaire, le bouton Google est gardé.
+    assert.ok(d.documentElement.classList.contains('ordo-profil-v2'), 'rendu');
+    assert.strictEqual(champ(d, 'prnom'), 'Claire', 'Mon profil rempli');
     d.querySelector('[data-ordo-v2="securite"] [data-ordo-edit="password"]').click();
-    assert.ok(visible(w, d.querySelector('[data-ordo-form-slot="password"]')), 'formulaire mot de passe ouvert');
+    assert.ok(d.querySelector('[data-ordo-form-slot="password"] form[data-ms-form="password"]'), 'formulaire mot de passe ouvert');
     libelle(d).click();
     assert.strictEqual(s.ms, 0, 'clic Google arrêté avant Memberstack');
-    assert.ok(step(pushed, 'google:connexion:deja-connecte'));
     assert.deepStrictEqual(reports, []);
   });
 
-  await test('membre absent : anciens blocs tout de suite, rien d\'autre', async () => {
+  await test('membre absent : échec posé tout de suite, rien d\'autre', async () => {
     const { d, pushed } = await page({ member: {} });
     assert.ok(!d.documentElement.classList.contains('ordo-profil-v2'));
     assert.ok(d.documentElement.classList.contains('ordo-profil-fallback'));
@@ -900,6 +893,51 @@ async function test(name, fn) {
     assert.strictEqual(d.getElementById('delete-account-form-v2').parentNode, slot);
     assert.ok(visible(w, d.getElementById('delete-account-form-v2')));
     assert.deepStrictEqual(reports, []);
+  });
+
+  // --- Mon profil dessiné sans anciens blocs ------------------------------------------------------
+
+  await test('page servie : rendu sans déplacement ni signalement, plus aucun ancien bloc', async () => {
+    const { w, d, erreurs, reports } = await page({ fixture: SERVIE });
+    assert.deepStrictEqual(erreurs, []);
+    assert.deepStrictEqual(reports, []);
+    assert.ok(d.documentElement.classList.contains('ordo-profil-v2'));
+    assert.strictEqual(d.querySelectorAll('.inner-block-wraper.is-secours').length, 3, 'seuls ceux de la facturation');
+    assert.strictEqual(champ(d, 'statut'), 'Médecin');
+    assert.strictEqual(champ(d, 'phone'), '+33 6 12 34 56 78');
+    assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')));
+  });
+
+  await test('page servie : « Modifier » ouvre Personnel, Professionnel et Contact là où ils sont', async () => {
+    const { w, d, reports } = await page({ fixture: SERVIE });
+    const ids = { perso: 'profile-tab-1', pro: 'profile-tab-2', contact: 'profile-tab-3' };
+    for (const [section, id] of Object.entries(ids)) {
+      const form = d.getElementById(id);
+      const parent = form.closest('[data-ordo-form-slot]');
+      d.querySelector(`[data-ordo-v2="profil"] [data-ordo-edit="${section}"]`).click();
+      const slot = d.querySelector(`[data-ordo-form-slot="${section}"]`);
+      assert.strictEqual(parent, slot, 'déjà dans sa carte : ' + section);
+      assert.ok(visible(w, slot), 'ouvert : ' + section);
+      assert.strictEqual(form.closest('[data-ordo-form-slot]'), slot, 'pas bougé : ' + section);
+    }
+    // Contact emprunte toujours le formulaire e-mail posé dans Connexion et sécurité.
+    assert.ok(d.querySelector('[data-ordo-form-slot="contact"] form[data-ms-form="email"]'));
+    assert.deepStrictEqual(reports, []);
+  });
+
+  await test('valeurs : le script reprend la main sur Memberstack, qui ne réécrit plus la valeur brute', async () => {
+    const m = clone(MEDECIN);
+    const { d } = await page({ fixture: SERVIE, member: m });
+    for (const el of d.querySelectorAll('[data-ordo-v2] [data-ordo-champ]')) assert.ok(!el.hasAttribute('data-ms-member'), 'rendu : ' + el.getAttribute('data-ordo-champ'));
+    // Relecture du membre par Memberstack (comme memberstack.js) : il n'écrit que dans les éléments marqués.
+    for (const el of d.querySelectorAll('[data-ms-member]')) {
+      if (el.matches('input, select, textarea')) continue;
+      const k = el.getAttribute('data-ms-member');
+      const v = k === 'email' ? m.auth.email : m.customFields[k];
+      if (v) el.innerHTML = v;
+    }
+    assert.strictEqual(champ(d, 'statut'), 'Médecin', 'pas de « Medecin » brut');
+    assert.strictEqual(champ(d, 'phone'), '+33 6 12 34 56 78', 'pas de numéro brut');
   });
 
   console.log(`profile-overview : ${passed} tests OK`);

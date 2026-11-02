@@ -1,22 +1,21 @@
 /**
  * Ordotype Account - Mon profil / Connexion et Sécurité (nouvelle présentation)
  *
- * Les deux onglets ont une nouvelle présentation construite dans le Designer :
- * [data-ordo-v2="profil"] et [data-ordo-v2="securite"]. Le Designer la montre telle
- * qu'un membre la voit (combo `is-on`) ; les anciens blocs y sont masqués (combo
- * `is-secours`). Sur le site, le code d'en-tête de la page (account/compte-head.html)
- * garde la nouvelle présentation cachée jusqu'à ce que ce script l'ait remplie.
+ * Les deux onglets sont construits dans le Designer : [data-ordo-v2="profil"] et
+ * [data-ordo-v2="securite"]. Ils s'affichent sans attendre ce script : les valeurs sont
+ * écrites par Memberstack (data-ms-member), les formulaires sont ceux de Memberstack,
+ * posés dans les emplacements des cartes. Ce script améliore : accents, téléphone,
+ * en-tête (initiales, « Dr », résumé, RPPS), masquages propres aux internes, ouverture
+ * des formulaires (« Modifier »), confirmation d'enregistrement, garde Google.
  *
- * La lecture est native (cartes Webflow). La modification réutilise les
- * formulaires déjà en place : « Modifier » déplace le formulaire existant dans
- * la carte. Les identifiants et les scripts qui s'y accrochent (finder SIREN,
- * statut, téléphone, suppression, module TOTP) restent donc inchangés.
+ * Un formulaire resté hors de sa carte (ancien dessin) y est déplacé au clic sur
+ * « Modifier ». Les identifiants et les scripts qui s'y accrochent (finder SIREN,
+ * statut, téléphone, suppression, module TOTP) restent inchangés.
  *
- * Secours : rendu réussi = classe `ordo-profil-v2` sur <html>. Sinon (erreur, pas de
- * membre, pas de nouvelle présentation) ce script pose `ordo-profil-fallback`, et
- * l'en-tête réaffiche les anciens blocs. L'en-tête le fait aussi seul si ce script
- * est coupé par le chargeur, ne se télécharge pas ou n'a rien rendu au bout de 8 s ;
- * arrivé après ce secours, le script ne rend rien (mesuré `view:-:late`).
+ * Rendu réussi = classe `ordo-profil-v2` sur <html>. Une erreur, un membre absent ou
+ * une présentation absente posent `ordo-profil-fallback`, que l'en-tête mesure ; rien
+ * n'est caché ni réaffiché. Arrivé après les 8 s de l'en-tête, le script rend quand
+ * même (mesuré `view:-:late`).
  *
  * Depends on: core.js (window.OrdoAccount), Memberstack DOM SDK.
  */
@@ -31,7 +30,7 @@
   var SAVE_POLL_TRIES = 6; // ~9 s pour voir l'enregistrement arriver chez Memberstack
   var VIDE = 'Non renseigné';
 
-  /** Les anciens blocs reviennent tout de suite, sans attendre les 8 s de l'en-tête. */
+  /** Échec du rendu, signalé à l'en-tête qui le mesure tout de suite, sans attendre ses 8 s. */
   function fallback() {
     document.documentElement.classList.add(FALLBACK_CLASS);
   }
@@ -212,6 +211,9 @@
    * celui du champ le temps qu'il reste vide ; la classe d'origine revient avec une valeur.
    */
   function setValue(node, value) {
+    // Memberstack écrit la valeur brute (data-ms-member) tant que le script n'est pas là, puis la réécrirait
+    // à chaque relecture du membre : l'élément ne lui appartient plus une fois mis en forme ici.
+    node.removeAttribute('data-ms-member');
     var vide = gabarit('valeur-vide');
     if (!node.hasAttribute('data-ordo-classe')) node.setAttribute('data-ordo-classe', node.className);
     if (vide) {
@@ -1017,23 +1019,9 @@
   }
 
   function init() {
-    // Arrivé après les 8 s de l'en-tête : le membre a déjà les anciens blocs de Mon profil sous les yeux,
-    // peut-être en train d'y écrire. On ne les lui retire pas ; la page suivante aura la nouvelle présentation.
-    // Connexion et sécurité, toujours affichée, reçoit quand même ce qui la fait marcher.
-    if (document.documentElement.classList.contains(FALLBACK_CLASS)) {
-      track('view', '', 'late');
-      try {
-        injectStyles();
-        markGoogleNoPassword();
-        placeDelete();
-        placeGoogle();
-        placeTotp();
-        listenEdits();
-      } catch (err) {
-        report('ProfileOverviewLate', err);
-      }
-      return;
-    }
+    // Arrivé après les 8 s de l'en-tête : mesuré, puis rendu comme d'habitude. La page affiche déjà les
+    // valeurs de Memberstack ; il n'y a plus d'anciens blocs à laisser au membre.
+    if (document.documentElement.classList.contains(FALLBACK_CLASS)) track('view', '', 'late');
     try {
       injectStyles();
       render();
