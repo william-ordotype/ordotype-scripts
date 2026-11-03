@@ -167,9 +167,27 @@
     return badge;
   }
 
-  /** « Medecin » (valeur de la liste) comme « Médecin » (saisie plus ancienne). */
+  /** Une valeur sans ses accents ni majuscules : « Medecin » et « Médecin » sont la même valeur. */
+  function plain(v) {
+    return text(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
   function isMedecin() {
-    return text(fields().statut).toLowerCase().replace(/é/g, 'e') === 'medecin';
+    return plain(fields().statut) === 'medecin';
+  }
+
+  /**
+   * L'option d'une valeur enregistrée, ou à défaut celle qui n'en diffère que par un accent
+   * (fiche pas encore passée aux accents alors que la liste l'est, ou l'inverse).
+   */
+  function findOption(select, v) {
+    var near = null;
+    for (var i = 0; i < select.options.length; i++) {
+      var o = select.options[i];
+      if (o.value === v) return o;
+      if (!near && plain(o.value) === plain(v)) near = o;
+    }
+    return near;
   }
 
   function email() {
@@ -181,12 +199,8 @@
     var v = text(value);
     if (!v) return '';
     var select = document.querySelector('select[data-ms-member="' + field + '"]');
-    if (select) {
-      for (var i = 0; i < select.options.length; i++) {
-        if (select.options[i].value === v) return text(select.options[i].textContent) || v;
-      }
-    }
-    return v;
+    var option = select && findOption(select, v);
+    return (option && text(option.textContent)) || v;
   }
 
   function formatPhone(v) {
@@ -369,7 +383,8 @@
   /**
    * Une valeur enregistrée absente de la liste (statut ou mode d'exercice plus
    * ancien que la liste actuelle) : la liste retombait sur l'option vide, et un
-   * enregistrement l'effaçait. On l'ajoute comme option pour la conserver.
+   * enregistrement l'effaçait. On l'ajoute comme option pour la conserver. Une
+   * valeur qui ne diffère d'une option que par un accent prend cette option.
    */
   function keepUnlistedValues(block) {
     var selects = block.querySelectorAll('select[data-ms-member]');
@@ -377,15 +392,14 @@
       var s = selects[i];
       var v = text(fields()[s.getAttribute('data-ms-member')]);
       if (!v) continue;
-      var found = false;
-      for (var k = 0; k < s.options.length; k++) if (s.options[k].value === v) found = true;
-      if (!found) {
-        var opt = document.createElement('option');
-        opt.value = v;
-        opt.textContent = v;
-        s.appendChild(opt);
+      var option = findOption(s, v);
+      if (!option) {
+        option = document.createElement('option');
+        option.value = v;
+        option.textContent = v;
+        s.appendChild(option);
       }
-      s.value = v;
+      s.value = option.value;
     }
   }
 

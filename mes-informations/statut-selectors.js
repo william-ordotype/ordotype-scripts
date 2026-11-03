@@ -29,19 +29,24 @@
     console.log('[StatutSelectors] Initialized with status:', currentStatut);
   }
 
+  // « Autre professionnel de sante » et « … santé » : même statut, quelle que soit la forme stockée.
+  function plain(v) {
+    return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  }
+
   function applyVisibilityRules(statut) {
     var semestre = document.getElementById('semestre-selector');
     var modeExercice = document.getElementById('mode-exercice-selector');
     var specialite = document.getElementById('specialite-selector');
 
-    switch (statut) {
-      case 'Interne':
+    switch (plain(statut)) {
+      case 'interne':
         if (semestre) semestre.style.display = 'flex';
         if (modeExercice) modeExercice.style.display = 'none';
         if (specialite) specialite.style.display = 'flex';
         break;
 
-      case 'Autre professionnel de sante':
+      case 'autre professionnel de sante':
         if (semestre) semestre.style.display = 'none';
         if (modeExercice) modeExercice.style.display = 'flex';
         if (specialite) specialite.style.display = 'none';

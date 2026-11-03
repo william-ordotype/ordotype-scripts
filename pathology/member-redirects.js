@@ -11,6 +11,14 @@
 
     const PREFIX = '[MemberRedirects]';
     const ms = window.OrdoMemberstack || {};
+
+    // « Remplacant » et « Remplaçant » sont la même valeur (passage aux accents en base).
+    // Gardée ici, comme dans homepage/member-redirects.js : un memberstack-utils.js
+    // resté en cache ne peut pas casser les redirections.
+    function sameValue(a, b) {
+        const plain = (v) => String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+        return plain(a) === plain(b);
+    }
     const BANNER_DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
     // Délai de grâce (24 h) après un vrai paiement : aucune redirection ni bandeau
@@ -73,8 +81,8 @@
     const storedDateEssaiGratuitRempla = localStorage.getItem("storedDateEssaiGratuitRempla");
     const storedDateEssaiGratuitRemplaBlue = localStorage.getItem("storedDateEssaiGratuitRemplaBlue");
 
-    const isNotRemplacant = ms.customFields['mode-dexercice'] !== 'Remplacant';
-    const isRemplacant = ms.customFields['mode-dexercice'] === 'Remplacant';
+    const isRemplacant = sameValue(ms.customFields['mode-dexercice'], 'Remplaçant');
+    const isNotRemplacant = !isRemplacant;
 
     const isPastDueBrique = ms.hasPlan('pln_brique-past-due-os1c808ai');
     const isSepaTemporary = ms.hasPlan('pln_sepa-temporary-lj4w0oky');

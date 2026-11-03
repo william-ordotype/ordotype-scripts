@@ -24,10 +24,20 @@
     'Paramédical': ['', 'IDE']
   };
 
+  // Deux valeurs qui ne diffèrent que par un accent ou une majuscule (« Medecin » / « Médecin »)
+  // sont le même statut : un statut imposé ne réécrit pas une fiche pour un accent.
+  function plain(v) {
+    return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  }
+
+  function sameValue(a, b) {
+    return plain(a) === plain(b);
+  }
+
   function canReplaceStatut(current, forced) {
-    var allowed = REPLACEABLE_STATUTS[forced];
-    if (!allowed) return true;
-    return allowed.indexOf(String(current == null ? '' : current).trim()) !== -1;
+    var key = Object.keys(REPLACEABLE_STATUTS).filter(function(k) { return sameValue(k, forced); })[0];
+    if (!key) return true;
+    return REPLACEABLE_STATUTS[key].some(function(v) { return sameValue(v, current); });
   }
   var FILL_ONLY_MAX_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
   var FILL_FORM_TIMEOUT_MS = 10000;
@@ -57,10 +67,12 @@
     return current;
   }
 
-  function hasOption(select, value) {
-    return Array.prototype.some.call(select.options, function(option) {
-      return option.value === value;
-    });
+  // The option for a value, or else the one that only differs by an accent (« Liberal » saved
+  // before the list moved to « Libéral », or the other way round).
+  function findOption(select, value) {
+    var options = Array.prototype.slice.call(select.options);
+    return options.filter(function(option) { return option.value === value; })[0] ||
+      options.filter(function(option) { return sameValue(option.value, value); })[0] || null;
   }
 
   // The form was pre-filled from the member before the update landed, and some selects only
@@ -72,8 +84,13 @@
 
     function apply() {
       if (input.value) return true;
-      if (input.tagName === 'SELECT' && !hasOption(input, value)) return false;
-      input.value = value;
+      var shown = value;
+      if (input.tagName === 'SELECT') {
+        var option = findOption(input, value);
+        if (!option) return false;
+        shown = option.value;
+      }
+      input.value = shown;
       input.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
     }
@@ -155,7 +172,7 @@
           ? member.customFields.statut
           : null;
 
-        if (currentStatut !== config.forceStatut && canReplaceStatut(currentStatut, config.forceStatut)) {
+        if (!sameValue(currentStatut, config.forceStatut) && canReplaceStatut(currentStatut, config.forceStatut)) {
           customFields.statut = config.forceStatut;
         }
       }

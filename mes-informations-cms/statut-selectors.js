@@ -6,16 +6,22 @@
 (function() {
   'use strict';
 
-  function updateSelectors(statut) {
+  // « Autre professionnel de sante » et « … santé » : même statut, quelle que soit la forme stockée.
+  function plain(v) {
+    return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  }
+
+  function updateSelectors(value) {
+    var statut = plain(value);
     var semestre = document.getElementById('semestre-selector');
     var modeExercice = document.getElementById('mode-exercice-selector');
     var specialite = document.getElementById('specialite-selector');
 
-    if (statut === 'Interne') {
+    if (statut === 'interne') {
       if (semestre) semestre.style.display = 'flex';
       if (modeExercice) modeExercice.style.display = 'none';
       if (specialite) specialite.style.display = 'flex';
-    } else if (statut === 'Autre professionnel de sante') {
+    } else if (statut === 'autre professionnel de sante') {
       if (semestre) semestre.style.display = 'none';
       if (modeExercice) modeExercice.style.display = 'flex';
       if (specialite) specialite.style.display = 'none';

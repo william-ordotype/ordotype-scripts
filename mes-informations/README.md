@@ -91,7 +91,9 @@ window.MES_INFOS_CONFIG = {
 | `Paramédical` | empty, `IDE` | every other statut, `Medecin` included |
 | `Medecin` (not in the table) | any other statut | — |
 
-A statut that is kept is not sent; the other fields of the page are still synced. Test: `node test/force-statut.js`.
+A statut that is kept is not sent; the other fields of the page are still synced. Statuts are compared without
+accents or case: `Medecin` and `Médecin` are the same statut, so forcing one never rewrites the other (stored
+values are moving to the accented form, 11/2026). Test: `node test/force-statut.js`.
 
 ## Per-page configs
 
