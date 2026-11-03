@@ -37,7 +37,8 @@
     'memberstack-sync.js',
     'statut-selectors.js',
     'required-if-visible.js',
-    'ga4-events.js'
+    'ga4-events.js',
+    'payment-return.js'
   ];
 
   // --- Loader queue: identical in every loader (test/loader-resilience.js) ---
