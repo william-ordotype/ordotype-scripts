@@ -3,10 +3,11 @@
  *
  * Les deux onglets sont construits dans le Designer : [data-ordo-v2="profil"] et
  * [data-ordo-v2="securite"]. Ils s'affichent sans attendre ce script : les valeurs sont
- * écrites par Memberstack (data-ms-member), les formulaires sont ceux de Memberstack,
- * posés dans les emplacements des cartes. Ce script améliore : accents, téléphone,
- * en-tête (initiales, « Dr », résumé, RPPS), masquages propres aux internes, ouverture
- * des formulaires (« Modifier »), confirmation d'enregistrement, garde Google.
+ * écrites par Memberstack (data-ms-member), telles qu'elles sont stockées, les formulaires
+ * sont ceux de Memberstack, posés dans les emplacements des cartes. Ce script ajoute :
+ * téléphone mis en forme, coche du RPPS vérifié, « Non renseigné », en-tête (initiales,
+ * « Dr », résumé, RPPS), masquages propres aux internes, ouverture des formulaires
+ * (« Modifier »), confirmation d'enregistrement, garde Google.
  *
  * Chaque pièce est posée dans sa carte dans le Designer ; seul le formulaire e-mail passe
  * de Connexion et sécurité à la carte Contact, au clic sur son « Modifier ». Les
@@ -30,6 +31,8 @@
   var SAVE_POLL_MS = 1500;
   var SAVE_POLL_TRIES = 6; // ~9 s pour voir l'enregistrement arriver chez Memberstack
   var VIDE = 'Non renseigné';
+  // Seules valeurs que ce script écrit lui-même : le téléphone mis en forme, le RPPS suivi de sa coche.
+  var MIS_EN_FORME = { phone: true, 'n-rpps': true };
 
   /** Échec du rendu, signalé à l'en-tête qui le mesure tout de suite, sans attendre ses 8 s. */
   function fallback() {
@@ -163,44 +166,40 @@
     return text((member.auth && member.auth.email) || member.email);
   }
 
-  /** Libellé affiché d'une valeur de liste : le texte de l'option du formulaire existant. */
-  function optionLabel(field, value) {
-    var v = text(value);
-    if (!v) return '';
-    var select = document.querySelector('select[data-ms-member="' + field + '"]');
-    var option = select && findOption(select, v);
-    return (option && text(option.textContent)) || v;
-  }
-
   function formatPhone(v) {
     var s = text(v);
     var fr = /^\+33(\d)(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(s);
     return fr ? '+33 ' + fr.slice(1).join(' ') : s;
   }
 
+  /** Valeur stockée d'un champ ; le téléphone, mis en forme. */
   function displayValue(field) {
-    var f = fields();
-    switch (field) {
-      case 'email': return email();
-      case 'statut': return optionLabel('statut', f.statut);
-      case 'mode-dexercice': return optionLabel('mode-dexercice', f['mode-dexercice']);
-      case 'phone': return formatPhone(f.phone);
-      default: return text(f[field]);
-    }
+    if (field === 'email') return email();
+    if (field === 'phone') return formatPhone(fields().phone);
+    return text(fields()[field]);
   }
 
   /**
-   * Valeur d'une carte. Vide : le dessin du gabarit « valeur-vide » (sa classe et son texte) remplace
-   * celui du champ le temps qu'il reste vide ; la classe d'origine revient avec une valeur.
+   * Valeur d'une carte. Remplie : celle que Memberstack écrit (data-ms-member), sauf téléphone et RPPS,
+   * écrits ici ; s'il ne l'a pas encore écrite (le champ dit encore « Non renseigné »), la même, telle
+   * quelle. Vide : Memberstack n'écrit rien et laisserait une valeur effacée, le texte et la classe du
+   * gabarit « valeur-vide » la remplacent ; la classe d'origine revient avec une valeur.
    */
-  function setValue(node, value) {
-    // Memberstack écrit la valeur brute (data-ms-member) tant que le script n'est pas là, puis la réécrirait
-    // à chaque relecture du membre : l'élément ne lui appartient plus une fois mis en forme ici.
-    node.removeAttribute('data-ms-member');
+  function setValue(node, key) {
+    var value = displayValue(key);
     var vide = gabarit('valeur-vide');
+    var videText = (vide && text(vide.textContent)) || VIDE;
     if (!node.hasAttribute('data-ordo-classe')) node.setAttribute('data-ordo-classe', node.className);
-    node.textContent = value || (vide && text(vide.textContent)) || VIDE;
     node.className = value || !vide ? node.getAttribute('data-ordo-classe') : vide.className;
+    if (!value) {
+      node.textContent = videText;
+    } else if (MIS_EN_FORME[key]) {
+      // Memberstack réécrirait la valeur brute à chaque relecture du membre : l'élément passe à ce script.
+      node.removeAttribute('data-ms-member');
+      node.textContent = value;
+    } else if (!node.hasAttribute('data-ms-member') || text(node.textContent) === videText) {
+      node.textContent = value;
+    }
   }
 
   /** Déplacements faits par ce script, pour tout remettre en place si le rendu échoue. */
@@ -269,7 +268,7 @@
     var all = document.querySelectorAll('[data-ordo-v2] [data-ordo-champ]');
     for (var i = 0; i < all.length; i++) {
       var key = all[i].getAttribute('data-ordo-champ');
-      setValue(all[i], displayValue(key));
+      setValue(all[i], key);
       if (key === 'n-rpps' && rppsVerifie()) addCheckBadge(all[i]);
     }
 

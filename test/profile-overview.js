@@ -33,7 +33,22 @@ const MEDECIN = {
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-async function page({ member = MEDECIN, fixture = SERVIE, reporter = true, fresh = null, before = null, fastPoll = false } = {}) {
+/**
+ * Ce que memberstack.js fait des éléments marqués data-ms-member (hors champs de formulaire) au
+ * chargement, puis après l'envoi d'un de ses formulaires : la valeur stockée en innerHTML, rien
+ * si elle est vide.
+ */
+function memberstackFill(doc, m) {
+  for (const el of doc.querySelectorAll('[data-ms-member]')) {
+    if (el.matches('input, select, textarea')) continue;
+    const k = el.getAttribute('data-ms-member');
+    const v = k === 'email' ? (m.auth || {}).email : (m.customFields || {})[k];
+    if (v) el.innerHTML = v;
+  }
+}
+
+/** memberstack : false = Memberstack n'a pas encore rempli la page quand le script la rend. */
+async function page({ member = MEDECIN, fixture = SERVIE, reporter = true, fresh = null, before = null, fastPoll = false, memberstack = true } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -45,6 +60,14 @@ async function page({ member = MEDECIN, fixture = SERVIE, reporter = true, fresh
   const dom = new JSDOM(`<!doctype html><html><head><style>${SITE_CSS}</style><style>${HEAD_STYLE}</style></head><body><div class="w-tabs">${fixture}</div></body></html>`,
     { runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole });
   const w = dom.window;
+  if (memberstack) {
+    memberstackFill(w.document, member);
+    // Envoi d'un formulaire Memberstack : il réécrit la page avec le membre que le serveur renvoie.
+    w.document.addEventListener('submit', (e) => {
+      if (!e.target.matches('form[data-ms-form]')) return;
+      Promise.resolve(w.$memberstackDom.getCurrentMember()).then((r) => memberstackFill(w.document, r.data));
+    }, true);
+  }
   const reports = [];
   const pushed = [];
   w.dataLayer = [];
@@ -236,13 +259,13 @@ async function test(name, fn) {
     assert.deepStrictEqual(options(mode), options(avant.querySelector('select[data-ms-member="mode-dexercice"]')), 'aucune option ajoutée');
   });
 
-  await test('accents : liste accentuée (page servie), fiche encore « Medecin » / « Liberal » : l\'option accentuée est choisie', async () => {
+  await test('accents : liste accentuée (page servie), fiche encore « Medecin » / « Liberal » : valeur stockée affichée, option accentuée choisie', async () => {
     const m = clone(MEDECIN);
     m.customFields.statut = 'Medecin';
     m.customFields['mode-dexercice'] = 'Liberal';
     const { d } = await page({ member: m });
-    assert.strictEqual(champ(d, 'statut'), 'Médecin');
-    assert.strictEqual(champ(d, 'mode-dexercice'), 'Libéral');
+    assert.strictEqual(champ(d, 'statut'), 'Medecin', 'telle que stockée');
+    assert.strictEqual(champ(d, 'mode-dexercice'), 'Liberal');
     d.querySelector('[data-ordo-edit="pro"]').click();
     const [statut, mode] = proSelects(d);
     assert.strictEqual(statut.value, 'Médecin', 'un enregistrement écrira la forme accentuée');
@@ -732,12 +755,15 @@ async function test(name, fn) {
     assert.ok(d.querySelector('[data-ordo-siren-slot] .ordo-siren'));
   });
 
-  await test('valeurs rendues comme du texte, jamais comme du HTML', async () => {
+  await test('ce que le script écrit est du texte, jamais du HTML (en-tête, téléphone)', async () => {
     const m = clone(MEDECIN);
     m.customFields.prnom = '<img src=x onerror=alert(1)>';
+    m.customFields.phone = '<b>06</b>';
     const { d } = await page({ member: m });
-    assert.ok(!d.querySelector('[data-ordo-v2] [data-ordo-champ] img, [data-ordo-v2] [data-ordo-nom-complet] img'));
-    assert.strictEqual(champ(d, 'prnom'), '<img src=x onerror=alert(1)>');
+    assert.ok(!d.querySelector('[data-ordo-nom-complet] img, [data-ordo-initiales] img'));
+    assert.strictEqual(txt(d, '[data-ordo-nom-complet]'), 'Dr <img src=x onerror=alert(1)> Martin');
+    assert.ok(!d.querySelector('[data-ordo-champ="phone"] b'), 'Memberstack l\'avait écrit en HTML : remplacé par du texte');
+    assert.strictEqual(champ(d, 'phone'), '<b>06</b>');
   });
 
   await test('secours : sans bloc V2, échec posé et signalé tout de suite', async () => {
@@ -914,19 +940,65 @@ async function test(name, fn) {
     assert.deepStrictEqual(reports, []);
   });
 
-  await test('valeurs : le script reprend la main sur Memberstack, qui ne réécrit plus la valeur brute', async () => {
+  // --- Valeurs écrites par Memberstack ------------------------------------------------------------
+
+  await test('valeurs : Memberstack écrit les valeurs stockées (SSA compris) ; le script ne garde que téléphone et RPPS', async () => {
     const m = clone(MEDECIN);
+    m.customFields['mode-dexercice'] = 'SSA';
     const { d } = await page({ member: m });
-    for (const el of d.querySelectorAll('[data-ordo-v2] [data-ordo-champ]')) assert.ok(!el.hasAttribute('data-ms-member'), 'rendu : ' + el.getAttribute('data-ordo-champ'));
-    // Relecture du membre par Memberstack (comme memberstack.js) : il n'écrit que dans les éléments marqués.
-    for (const el of d.querySelectorAll('[data-ms-member]')) {
-      if (el.matches('input, select, textarea')) continue;
-      const k = el.getAttribute('data-ms-member');
-      const v = k === 'email' ? m.auth.email : m.customFields[k];
-      if (v) el.innerHTML = v;
+    for (const el of d.querySelectorAll('[data-ordo-v2] [data-ordo-champ]')) {
+      const k = el.getAttribute('data-ordo-champ');
+      assert.strictEqual(el.hasAttribute('data-ms-member'), !['phone', 'n-rpps'].includes(k), 'à Memberstack : ' + k);
     }
-    assert.strictEqual(champ(d, 'statut'), 'Médecin', 'pas de « Medecin » brut');
+    assert.strictEqual(champ(d, 'mode-dexercice'), 'SSA', 'valeur stockée, pas le libellé de la liste');
+    assert.strictEqual(txt(d, '[data-ordo-resume]'), 'Médecin, Médecine générale, SSA');
+    // Relecture du membre par Memberstack : il réécrit ses champs, plus le téléphone.
+    memberstackFill(d, m);
+    assert.strictEqual(champ(d, 'statut'), 'Médecin');
     assert.strictEqual(champ(d, 'phone'), '+33 6 12 34 56 78', 'pas de numéro brut');
+  });
+
+  await test('Memberstack pas encore passé : le script écrit la valeur stockée, telle quelle', async () => {
+    const m = clone(MEDECIN);
+    m.customFields['mode-dexercice'] = 'SSA';
+    const { d } = await page({ member: m, memberstack: false });
+    assert.strictEqual(champ(d, 'prnom'), 'Claire');
+    assert.strictEqual(champ(d, 'mode-dexercice'), 'SSA');
+    assert.strictEqual(champ(d, 'email'), 'claire.martin@exemple.fr');
+    assert.strictEqual(champ(d, 'phone'), '+33 6 12 34 56 78');
+  });
+
+  const nomLu = (d) => d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="nom"]');
+  /** Enregistre `valeur` comme nom ; le serveur renvoie ensuite `apres`. */
+  async function enregistrerNom(ctx, valeur, apres) {
+    ctx.w.$memberstackDom.getCurrentMember = () => Promise.resolve({ data: clone(apres) });
+    ctx.d.querySelector('[data-ordo-edit="perso"]').click();
+    const form = ctx.d.querySelector('[data-ordo-form-slot="perso"] form');
+    form.querySelector('[data-ms-member="nom"]').value = valeur;
+    form.dispatchEvent(new ctx.w.Event('submit', { cancelable: true }));
+    await waitFor(() => step(ctx.pushed, 'edit:perso:saved'));
+    assert.ok(step(ctx.pushed, 'edit:perso:saved'));
+  }
+
+  await test('valeur effacée puis enregistrée : « Non renseigné » revient (Memberstack n\'efface jamais)', async () => {
+    const apres = clone(MEDECIN);
+    apres.customFields.nom = '';
+    const ctx = await page({ fastPoll: true });
+    assert.strictEqual(nomLu(ctx.d).textContent, 'Martin');
+    await enregistrerNom(ctx, '', apres);
+    assert.strictEqual(nomLu(ctx.d).textContent, 'Non renseigné');
+    assert.strictEqual(nomLu(ctx.d).className, 'compte-v2_dd is-non-renseigne');
+  });
+
+  await test('valeur vide au chargement puis enregistrée : celle de Memberstack, dans la classe du champ', async () => {
+    const m = clone(MEDECIN);
+    m.customFields.nom = '';
+    const ctx = await page({ member: m, fastPoll: true });
+    assert.strictEqual(nomLu(ctx.d).className, 'compte-v2_dd is-non-renseigne');
+    await enregistrerNom(ctx, 'Martin', MEDECIN);
+    assert.strictEqual(nomLu(ctx.d).textContent, 'Martin');
+    assert.strictEqual(nomLu(ctx.d).className, 'compte-v2_dd');
+    assert.ok(nomLu(ctx.d).hasAttribute('data-ms-member'), 'toujours à Memberstack');
   });
 
   console.log(`profile-overview : ${passed} tests OK`);
