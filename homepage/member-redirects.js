@@ -12,6 +12,14 @@
     const PREFIX = '[MemberRedirects]';
     const ms = window.OrdoMemberstack || {};
 
+    // Stored values move from « Medecin » / « Remplacant » to « Médecin » / « Remplaçant »:
+    // both forms are the same value. Kept local (like pathology/member-redirects.js) so a
+    // cached memberstack-utils.js cannot break the redirects.
+    function sameValue(a, b) {
+        const plain = (v) => String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+        return plain(a) === plain(b);
+    }
+
     // SAU signup banner — escalating snooze (per-browser), set on close.
     // Closes #1-2 hide it 14 days; close #3+ hide it 365 days.
     const SAU_BANNER_DISMISS_KEY = 'sauSignupBannerDismissedTs';
@@ -256,7 +264,7 @@
         const noRPPS = !ms.customFields["n-rpps"] || ms.customFields["n-rpps"].length === 0;
         const noPhone = !ms.customFields["phone"] || ms.customFields["phone"].length === 0;
         const isInterne = ms.customFields["statut"] === 'Interne';
-        const isMedecin = ms.customFields["statut"] === 'Medecin';
+        const isMedecin = sameValue(ms.customFields["statut"], 'Médecin');
         const specialite = ms.customFields["specialite"];
         const partnershipCity = ms.customFields["partnership-city"];
         const semestreValue = ms.customFields["semestre"];
@@ -301,8 +309,8 @@
         );
 
         var endOfInternship = ms.getEndOfInternship();
-        const isNotRemplacant = ms.customFields['mode-dexercice'] !== 'Remplacant';
-        const isRemplacant = ms.customFields['mode-dexercice'] === 'Remplacant';
+        const isRemplacant = sameValue(ms.customFields['mode-dexercice'], 'Remplaçant');
+        const isNotRemplacant = !isRemplacant;
 
         function hasOnlyNonPremiumPlans(connections) {
             return connections.every(plan =>

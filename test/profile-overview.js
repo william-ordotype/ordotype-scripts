@@ -225,6 +225,39 @@ async function test(name, fn) {
     assert.strictEqual(s.value, 'PADHUE');
   });
 
+  // Passage aux accents en base : la fiche et la liste peuvent être dans deux formes différentes.
+  const proSelects = (d) => ['statut', 'mode-dexercice'].map((k) => d.querySelector(`[data-ordo-form-slot="pro"] select[data-ms-member="${k}"]`));
+  const options = (s) => Array.from(s.options).map((o) => o.value);
+
+  await test('accents : fiche « Médecin » / « Libéral », liste sans accents : libellés, option existante, sans doublon', async () => {
+    const m = clone(MEDECIN);
+    m.customFields.statut = 'Médecin';
+    m.customFields['mode-dexercice'] = 'Libéral';
+    const avant = new JSDOM(SERVIE).window.document;
+    const { d } = await page({ fixture: SERVIE, member: m });
+    assert.strictEqual(champ(d, 'statut'), 'Médecin');
+    assert.strictEqual(champ(d, 'mode-dexercice'), 'Libéral');
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    const [statut, mode] = proSelects(d);
+    assert.strictEqual(statut.value, 'Medecin', 'option de la liste');
+    assert.strictEqual(mode.value, 'Liberal', 'option de la liste');
+    assert.deepStrictEqual(options(statut), options(avant.querySelector('select[data-ms-member="statut"]')), 'aucune option ajoutée');
+    assert.deepStrictEqual(options(mode), options(avant.querySelector('select[data-ms-member="mode-dexercice"]')), 'aucune option ajoutée');
+  });
+
+  await test('accents : liste passée aux accents, fiche encore « Medecin » / « Liberal » : l\'option accentuée est choisie', async () => {
+    const accentuee = SERVIE.replace(/value="Medecin"/g, 'value="Médecin"').replace(/value="Liberal"/g, 'value="Libéral"');
+    assert.notStrictEqual(accentuee, SERVIE, 'la page servie porte bien ces options');
+    const { d } = await page({ fixture: accentuee });
+    assert.strictEqual(champ(d, 'statut'), 'Médecin');
+    assert.strictEqual(champ(d, 'mode-dexercice'), 'Libéral');
+    d.querySelector('[data-ordo-edit="pro"]').click();
+    const [statut, mode] = proSelects(d);
+    assert.strictEqual(statut.value, 'Médecin', 'un enregistrement écrira la forme accentuée');
+    assert.strictEqual(mode.value, 'Libéral');
+    assert.ok(!options(statut).includes('Medecin'), 'pas d\'option « Medecin » ajoutée');
+  });
+
   await test('formulaire pro : la cellule SIRET n\'y apparaît plus (le SIREN a sa carte)', async () => {
     const { w, d } = await page();
     d.querySelector('[data-ordo-edit="pro"]').click();

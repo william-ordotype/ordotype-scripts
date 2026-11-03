@@ -8,7 +8,8 @@
  *   - « Paramédical » ne remplace qu'un statut vide ou « IDE » ;
  *   - « Medecin » remplace tout statut différent, comme avant.
  * Un statut qui n'est pas remplacé reste tel quel, et les autres champs de la
- * page sont recopiés normalement.
+ * page sont recopiés normalement. Un statut qui ne diffère du statut imposé que
+ * par un accent (« Medecin » / « Médecin ») n'est jamais réécrit.
  *
  * Usage : node test/force-statut.js
  */
@@ -109,6 +110,31 @@ const CAS = [
     }],
     ['Paramédical imposé, Medecin : conservé', async () => {
         const r = await jouer({ membre: membre('Medecin'), config: paramedical });
+        return [[r.appels, 0, 'appels à Memberstack']];
+    }],
+    // Passage aux accents en base : « Medecin » et « Médecin » sont le même statut.
+    ['Medecin imposé, déjà Médecin : aucun appel', async () => {
+        const r = await jouer({ membre: membre('Médecin'), config: medecin });
+        return [[r.appels, 0, 'appels à Memberstack']];
+    }],
+    ['Médecin imposé, encore Medecin : aucun appel', async () => {
+        const r = await jouer({ membre: membre('Medecin'), config: { forceStatut: 'Médecin', syncFields: [] } });
+        return [[r.appels, 0, 'appels à Memberstack']];
+    }],
+    ['Médecin imposé, Interne : passe Médecin', async () => {
+        const r = await jouer({ membre: membre('Interne'), config: { forceStatut: 'Médecin', syncFields: [] } });
+        return [[r.envoye.statut, 'Médecin', 'statut envoyé']];
+    }],
+    ['Interne imposé, Médecin : statut conservé, aucun appel', async () => {
+        const r = await jouer({ membre: membre('Médecin'), config: interne });
+        return [[r.appels, 0, 'appels à Memberstack']];
+    }],
+    ['Paramedical imposé sans accent, IDE : passe, la table vaut pour les deux formes', async () => {
+        const r = await jouer({ membre: membre('IDE'), config: { forceStatut: 'Paramedical', syncFields: [] } });
+        return [[r.envoye.statut, 'Paramedical', 'statut envoyé']];
+    }],
+    ['Paramedical imposé sans accent, Médecin : conservé', async () => {
+        const r = await jouer({ membre: membre('Médecin'), config: { forceStatut: 'Paramedical', syncFields: [] } });
         return [[r.appels, 0, 'appels à Memberstack']];
     }],
 ];

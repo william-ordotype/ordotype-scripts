@@ -31,11 +31,11 @@ const HEURE = 60 * 60 * 1000;
 // Les options telles que la page /membership/mes-informations les sert.
 const OPTIONS = ['', 'Liberal', 'Remplacant', 'Salarie', 'SSA', 'Mixte', 'Retraité', "Autre mode d'exercice"];
 
-function creerPage() {
+function creerPage(liste = OPTIONS) {
     const erreurs = [];
     const virtualConsole = new VirtualConsole();
     virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
-    const options = OPTIONS.map((o) => `<option value="${o}">${o || "Mode d'exercice"}</option>`).join('');
+    const options = liste.map((o) => `<option value="${o}">${o || "Mode d'exercice"}</option>`).join('');
     const dom = new JSDOM(
         `<!doctype html><body><select data-ms-member="mode-dexercice">${options}</select></body>`,
         { url: 'https://www.ordotype.fr/membership/mes-informations', runScripts: 'outside-only', virtualConsole }
@@ -46,8 +46,8 @@ function creerPage() {
 const attendre = () => new Promise((r) => setTimeout(r, 30));
 
 /** Rejoue memberstack-sync.js pour un membre et un localStorage donnés. */
-async function jouerSync({ membre, stockage = {}, choixEcran = '', syncFields, echecMiseAJour = false }) {
-    const { dom, erreurs } = creerPage();
+async function jouerSync({ membre, stockage = {}, choixEcran = '', syncFields, echecMiseAJour = false, liste }) {
+    const { dom, erreurs } = creerPage(liste);
     const w = dom.window;
     Object.entries(stockage).forEach(([k, v]) => w.localStorage.setItem(k, v));
     w.document.querySelector('select').value = choixEcran;
@@ -106,6 +106,17 @@ const CAS = [
             [r.envoye['mode-dexercice'], 'Retraité', 'valeur envoyée à Memberstack'],
             [r.ecran, 'Retraité', 'liste du formulaire'],
             [r.cleRestante, null, 'clé consommée'],
+        ];
+    }],
+    ['clé « Remplacant » posée avant le passage de la liste aux accents : l\'option « Remplaçant » est affichée', async () => {
+        const r = await jouerSync({
+            membre: { id: 'mem_a2', createdAt: ilYa(HEURE), customFields: {} },
+            stockage: { [KEY]: 'Remplacant' },
+            liste: OPTIONS.map((o) => (o === 'Remplacant' ? 'Remplaçant' : o)),
+        });
+        return [
+            [r.envoye['mode-dexercice'], 'Remplacant', 'valeur envoyée à Memberstack'],
+            [r.ecran, 'Remplaçant', 'liste du formulaire'],
         ];
     }],
     ['membre qui a déjà un mode d\'exercice : jamais écrasé', async () => {
