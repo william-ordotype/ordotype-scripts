@@ -841,6 +841,24 @@ async function test(name, fn) {
     assert.ok(visible(w, d.querySelector('[data-ordo-v2="profil"]')));
   });
 
+  await test('gabarits du Designer retirés : pas de coche, « Non renseigné » dans la classe du champ, page rendue', async () => {
+    const m = clone(MEDECIN);
+    m.customFields.specialite = '';
+    m.customFields['statut-rpps'] = 'C';
+    m.metaData = { 'rpps-tested': '10000668540' };
+    const sans = (w) => w.document.querySelector('[data-ordo-gabarits="profil"]').remove();
+    const { d, erreurs, reports } = await page({ member: m, before: sans });
+    assert.deepStrictEqual(erreurs, []);
+    assert.deepStrictEqual(reports, []);
+    assert.ok(d.documentElement.classList.contains('ordo-profil-v2'));
+    assert.strictEqual(d.querySelectorAll('[data-ordo-rpps-verifie]').length, 0);
+    assert.strictEqual(champ(d, 'n-rpps'), '10000668540');
+    const spe = d.querySelector('[data-ordo-v2="profil"] [data-ordo-champ="specialite"]');
+    assert.strictEqual(spe.textContent, 'Non renseigné');
+    assert.strictEqual(spe.className, 'compte-v2_dd');
+    assert.strictEqual(spe.getAttribute('style'), null, 'aucun style en ligne');
+  });
+
   await test('aucun bouton ni lien ne porte data-ordo-champ : le remplissage ne les écrase jamais', async () => {
     const { d } = await page();
     for (const el of d.querySelectorAll('[data-ordo-v2] [data-ordo-champ]')) {

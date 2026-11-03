@@ -8,9 +8,10 @@
  * en-tête (initiales, « Dr », résumé, RPPS), masquages propres aux internes, ouverture
  * des formulaires (« Modifier »), confirmation d'enregistrement, garde Google.
  *
- * Un formulaire resté hors de sa carte (ancien dessin) y est déplacé au clic sur
- * « Modifier ». Les identifiants et les scripts qui s'y accrochent (finder SIREN,
- * statut, téléphone, suppression, module TOTP) restent inchangés.
+ * Chaque pièce est posée dans sa carte dans le Designer ; seul le formulaire e-mail passe
+ * de Connexion et sécurité à la carte Contact, au clic sur son « Modifier ». Les
+ * identifiants et les scripts qui s'y accrochent (finder SIREN, statut, téléphone,
+ * suppression, module TOTP) restent inchangés.
  *
  * Rendu réussi = classe `ordo-profil-v2` sur <html>. Une erreur, un membre absent ou
  * une présentation absente posent `ordo-profil-fallback`, que l'en-tête mesure ; rien
@@ -57,20 +58,11 @@
     perso: function() { return document.getElementById('profile-tab-1'); },
     pro: function() { return document.getElementById('profile-tab-2'); },
     contact: function() { return document.getElementById('profile-tab-3'); },
-    email: function() { return outsideV2('form[data-ms-form="email"]'); },
-    password: function() { return outsideV2('form[data-ms-form="password"]'); }
+    email: function() { return document.querySelector('form[data-ms-form="email"]'); },
+    password: function() { return document.querySelector('form[data-ms-form="password"]'); }
   };
 
   // --- Petits outils ---------------------------------------------------------------------------
-
-  function outsideV2(selector) {
-    var list = document.querySelectorAll(selector);
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i].closest('[data-ordo-v2]')) return list[i];
-    }
-    // Déjà déplacé dans une carte : on le renvoie aussi.
-    return list[0] || null;
-  }
 
   function text(v) {
     return v == null ? '' : String(v).trim();
@@ -120,9 +112,8 @@
 
   /**
    * Gabarits dessinés dans le Designer (bloc [data-ordo-gabarits="profil"], visible seulement dans le
-   * Designer) : « Non renseigné », coche « Vérifié », séparateur de formulaires. Sans eux (page publiée
-   * avant), le script retombe sur son ancien dessin. `store` : un autre bloc de la page, par exemple
-   * « facturation » pour ses messages « flash » et « erreur ».
+   * Designer) : « Non renseigné », coche « Vérifié », séparateur de formulaires. `store` : un autre bloc
+   * de la page, par exemple « facturation » pour ses messages « flash » et « erreur ».
    */
   function gabarit(name, store) {
     var s = document.querySelector('[data-ordo-gabarits="' + (store || 'profil') + '"]');
@@ -137,34 +128,12 @@
     return n;
   }
 
-  /** Coche verte « Vérifié » : celle du Designer, sinon construite élément par élément (jamais de HTML injecté). */
-  function checkBadge() {
-    var drawn = copie('rpps-verifie');
-    if (drawn) {
-      drawn.setAttribute('data-ordo-rpps-verifie', '1');
-      return drawn;
-    }
-    var badge = document.createElement('span');
+  /** Coche verte « Vérifié » du Designer à la fin de `node` ; sans son gabarit, pas de coche. */
+  function addCheckBadge(node) {
+    var badge = copie('rpps-verifie');
+    if (!badge) return;
     badge.setAttribute('data-ordo-rpps-verifie', '1');
-    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:8px;color:var(--success-700, #106820);font-size:13px;font-weight:600;vertical-align:middle';
-    var NS = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('width', '16');
-    svg.setAttribute('height', '16');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    var circle = document.createElementNS(NS, 'circle');
-    circle.setAttribute('cx', '12'); circle.setAttribute('cy', '12'); circle.setAttribute('r', '11');
-    circle.setAttribute('fill', 'var(--success-700, #106820)');
-    var path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', 'm7 12.5 3.2 3.2L17 9');
-    path.setAttribute('fill', 'none'); path.setAttribute('stroke', '#ffffff'); path.setAttribute('stroke-width', '2.2');
-    path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
-    svg.appendChild(circle);
-    svg.appendChild(path);
-    badge.appendChild(svg);
-    badge.appendChild(document.createTextNode('Vérifié'));
-    return badge;
+    node.appendChild(badge);
   }
 
   /** Une valeur sans ses accents ni majuscules : « Medecin » et « Médecin » sont la même valeur. */
@@ -230,14 +199,8 @@
     node.removeAttribute('data-ms-member');
     var vide = gabarit('valeur-vide');
     if (!node.hasAttribute('data-ordo-classe')) node.setAttribute('data-ordo-classe', node.className);
-    if (vide) {
-      node.textContent = value || text(vide.textContent) || VIDE;
-      node.className = value ? node.getAttribute('data-ordo-classe') : vide.className;
-      return;
-    }
-    node.textContent = value || VIDE;
-    node.style.color = value ? '' : '#47505c';
-    node.style.fontWeight = value ? '' : '400';
+    node.textContent = value || (vide && text(vide.textContent)) || VIDE;
+    node.className = value || !vide ? node.getAttribute('data-ordo-classe') : vide.className;
   }
 
   /** Déplacements faits par ce script, pour tout remettre en place si le rendu échoue. */
@@ -251,7 +214,7 @@
     for (var i = moved.length - 1; i >= 0; i--) {
       var m = moved[i];
       try { m.parent.insertBefore(m.node, m.next && m.next.parentNode === m.parent ? m.next : null); } catch (e) { /* no-op */ }
-      // Recherche remise dans l'ancien formulaire : elle reprend ses classes d'avant la carte.
+      // Recherche remise dans son formulaire : elle reprend ses classes d'avant la carte.
       var hors = m.node.getAttribute && m.node.getAttribute('data-ordo-classe-hors-carte');
       if (hors != null) {
         m.node.className = hors;
@@ -307,7 +270,7 @@
     for (var i = 0; i < all.length; i++) {
       var key = all[i].getAttribute('data-ordo-champ');
       setValue(all[i], displayValue(key));
-      if (key === 'n-rpps' && rppsVerifie()) all[i].appendChild(checkBadge());
+      if (key === 'n-rpps' && rppsVerifie()) addCheckBadge(all[i]);
     }
 
     if (profil) {
@@ -353,7 +316,7 @@
       resume.parentNode.insertBefore(line, resume.nextSibling);
     }
     line.textContent = rpps ? 'N° RPPS ' + rpps : '';
-    if (rpps && rppsVerifie()) line.appendChild(checkBadge());
+    if (rpps && rppsVerifie()) addCheckBadge(line);
     show(line, !!rpps);
   }
 
@@ -546,17 +509,13 @@
 
   /**
    * L'e-mail ne se change qu'avec un mot de passe : Memberstack masque ou retire tout
-   * ce qui porte `data-ms-content="has-password"`. On lit la ligne e-mail de la
-   * nouvelle carte (l'ancien bloc, lui, est masqué par ce script).
+   * ce qui porte `data-ms-content="has-password"`, dont la ligne e-mail de Connexion et
+   * sécurité (la première de la page), même quand son formulaire est passé dans Contact.
    */
   function emailEditable() {
     if (!FORMS.email()) return false;
-    var gated = document.querySelectorAll('[data-ms-content="has-password"]');
-    for (var i = 0; i < gated.length; i++) {
-      if (gated[i].closest('[data-ordo-v2]')) return window.getComputedStyle(gated[i]).display !== 'none';
-    }
-    var gate = FORMS.email().closest('[data-ms-content="has-password"]');
-    return !gate || gate.style.display !== 'none';
+    var gate = document.querySelector('[data-ordo-v2] [data-ms-content="has-password"]');
+    return !gate || window.getComputedStyle(gate).display !== 'none';
   }
 
   function bindForm(block, section) {
@@ -721,35 +680,14 @@
   }
 
   /**
-   * Le bouton Google d'origine vit dans le conteneur Memberstack `manage-providers`, qui affiche
-   * « Compte Google connecté » et la croix de déliaison. Dessiné directement dans la carte, il y
-   * reste (un bouton remplaçant oublié à côté est masqué). Resté dans les anciens blocs, on le
-   * déplace à la place du bouton remplaçant de la carte ; sans lui, le remplaçant relaie le clic.
+   * Le bouton Google est le conteneur Memberstack `manage-providers`, posé dans la carte : il
+   * affiche « Compte Google connecté » et la croix de dissociation.
    */
-  function placeGoogle() {
-    if (!securite) return;
-    var providers = outsideV2('[data-ms-auth="manage-providers"]');
-    var direct = !!(providers && providers.closest('[data-ordo-v2]'));
-    var btn = securite.querySelector('[data-ordo-google]');
-    if (!btn && !direct) return;
+  function bindGoogle() {
+    var providers = securite && securite.querySelector('[data-ms-auth="manage-providers"]');
+    if (!providers) return;
     trackGoogleState();
-    if (providers) guardGoogle(providers);
-    if (direct) {
-      show(btn, false);
-      return;
-    }
-    if (providers) {
-      move(providers, btn.parentNode, btn);
-      show(btn, false);
-      return;
-    }
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      var original = outsideV2('[data-ms-auth-provider="google"]');
-      track('google', 'connexion', original ? 'click' : 'missing');
-      if (original && original !== btn) original.click();
-      else report('ProfileOverviewNoGoogle', 'Google link not found');
-    });
+    guardGoogle(providers);
   }
 
   var GOOGLE_CONFIRM = 'Dissocier votre compte Google ?\n\n'
@@ -911,9 +849,9 @@
   // --- Double authentification -----------------------------------------------------------------
 
   /**
-   * Le module TOTP (auth-bundle) écrit data-ordo-2fa-state sur la carte quand il
-   * rend APRÈS le déplacement. S'il a rendu avant, l'état se lit sur son
-   * conteneur. La carte ne s'affiche qu'aux membres soumis au code de connexion.
+   * Le module TOTP (auth-bundle), posé dans la carte, y écrit data-ordo-2fa-state. Faute
+   * d'attribut, l'état se lit sur son conteneur. La carte ne s'affiche qu'aux membres
+   * soumis au code de connexion.
    */
   function totpState(block, container) {
     var s = block.getAttribute('data-ordo-2fa-state');
@@ -928,9 +866,7 @@
   function placeTotp() {
     var block = securite && securite.querySelector('[data-ordo-2fa-block]');
     if (!block) return;
-    var slot = block.querySelector('[data-ordo-totp-slot]');
     var container = document.getElementById('ordotype-totp-section');
-    if (container && slot) move(container, slot);
     var last = null;
     function update() {
       var state = totpState(block, container);
@@ -951,10 +887,6 @@
   // --- Styles ----------------------------------------------------------------------------------
 
   var CSS = [
-    // Anciens blocs des deux onglets concernés (et d'eux seuls : l'onglet facturation a les
-    // siens), masqués seulement une fois la nouvelle présentation rendue.
-    'html.' + HTML_CLASS + ' .ordo-v2-host > .inner-block-wraper{display:none!important}',
-    'html.' + HTML_CLASS + ' [data-ordo-v2]{display:flex!important}',
     '[data-ordo-v2] .ordo-siren{margin:0;max-width:none}',
     '[data-ordo-v2] .ordo-siren-banner{display:none}',
     // Le SIREN a sa propre carte : sa cellule d'origine ne s'affiche plus dans le formulaire pro.
@@ -974,9 +906,9 @@
     '[data-ordo-v2] .ot-totp__badge{border-radius:4px;background:#106820;color:#fff}',
     // Croix de dissociation Google : pas pour un compte sans mot de passe, ni une fois dissocié.
     '[data-ordo-google-sans-mdp] [data-ms-auth-disconnect],[data-ordo-google-dissocie] [data-ms-auth-disconnect]{display:none!important}'
-    // Le bouton Google (conteneur Memberstack déplacé dans la carte) est dessiné dans le Designer :
+    // Le bouton Google (conteneur Memberstack posé dans la carte) est dessiné dans le Designer :
     // classes compte-v2_google, compte-v2_btn is-avec-logo, compte-v2_google-contenu, compte-v2_google-logo.
-    // Les formulaires déplacés aussi (compte-form-wrapper sans marge ; séparateur = gabarit « separateur »).
+    // Les formulaires aussi (compte-form-wrapper sans marge ; séparateur = gabarit « separateur »).
   ].join('\n');
 
   function injectStyles() {
@@ -1039,12 +971,10 @@
     try {
       injectStyles();
       render();
-      if (profil && profil.parentNode) profil.parentNode.classList.add('ordo-v2-host');
-      if (securite && securite.parentNode) securite.parentNode.classList.add('ordo-v2-host');
       placeSirenFinder();
       placeRppsFinder();
       placeDelete();
-      placeGoogle();
+      bindGoogle();
       placeTotp();
       listenEdits();
       // Un autre script a enregistré un champ du membre (vérification du RPPS) : la lecture suit.
