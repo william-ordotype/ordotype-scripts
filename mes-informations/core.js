@@ -80,7 +80,9 @@
 
     getPlan: function(planId) {
       return ms.getPlan ? ms.getPlan(planId) : null;
-    }
+    },
+
+    isPaymentReturn: isPaymentReturn
   };
 
   console.log('[OrdoMesInfos] Core loaded',

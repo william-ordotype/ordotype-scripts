@@ -25,6 +25,7 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | `statut-selectors.js` | Shows/hides semestre, mode-exercice, specialite based on statut |
 | `required-if-visible.js` | Sets `required` on visible `[ms-code="required-if-visible"]` inputs |
 | `phone-input.js` | intl-tel-input initialization on `[ms-code-phone-number]` inputs |
+| `payment-return.js` | After a payment (`ordo_checkout=cs_…` or `fromCheckout=true`), a visitor who is not logged in gets « Paiement bien reçu » and a login button instead of an empty card (Memberstack removes the profile form); `locat` brings them back after login. Test: `node test/mes-infos-payment-return.js` |
 | `checkout.js` | Stripe checkout form handler — sends `payment_method_types` to Netlify (praticien-sepa only) |
 | `partnership-city.js` | Partnership city from sessionStorage/cookie (internes-assos only) |
 
@@ -197,6 +198,8 @@ loader.js
   -> memberstack-sync.js (reads config.syncFields + config.forceStatut)
   -> statut-selectors.js (reads config.showStatutSelectors)
   -> required-if-visible.js (reads config.showRequiredIfVisible)
+  -> ga4-events.js
+  -> payment-return.js (payment return, visitor not logged in)
   -> phone-input.js
   -> checkout.js      (only if config.enableCheckout)
   -> partnership-city.js (only if config.enablePartnershipCity)
