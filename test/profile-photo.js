@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Photo de profil dans l'en-tête de « Mon profil » (account/profile-photo.js), avec la vraie
- * structure de la page (test/fixtures/compte-profil-securite.html) et profile-overview.js chargé
+ * structure de la page (test/fixtures/compte-servie.html) et profile-overview.js chargé
  * avant lui, comme le fait le chargeur. Memberstack et le canvas sont simulés.
  *
  * Deux présentations, mêmes comportements :
@@ -20,7 +20,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const PHOTO = fs.readFileSync(path.join(ROOT, 'account/profile-photo.js'), 'utf8');
 const OVERVIEW = fs.readFileSync(path.join(ROOT, 'account/profile-overview.js'), 'utf8');
-const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-profil-securite.html'), 'utf8');
+const FIXTURE = fs.readFileSync(path.join(ROOT, 'test/fixtures/compte-servie.html'), 'utf8');
 
 const UPLOADED = 'https://ms-application-assets.s3.us-east-1.amazonaws.com/app/photo-123.jpg';
 const GOOGLE = 'https://lh3.googleusercontent.com/a/abc=s96-c';
