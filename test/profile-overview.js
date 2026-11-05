@@ -5,7 +5,8 @@
  * La page est celle que www sert (test/fixtures/compte-servie.html, capturée le 03/11/2026) : les
  * onglets dessinés dans le Designer, formulaires et pièces Memberstack posés dans leurs cartes,
  * listes accentuées. Couvre la lecture, les internes, les valeurs hors liste, l'ouverture des
- * formulaires, la double authentification, Google, la suppression, le secours.
+ * formulaires, la double authentification, Google, le premier mot de passe d'un compte Google, la
+ * suppression, le secours.
  *
  * Usage : node test/profile-overview.js
  */
@@ -999,6 +1000,61 @@ async function test(name, fn) {
     assert.strictEqual(nomLu(ctx.d).textContent, 'Martin');
     assert.strictEqual(nomLu(ctx.d).className, 'compte-v2_dd');
     assert.ok(nomLu(ctx.d).hasAttribute('data-ms-member'), 'toujours à Memberstack');
+  });
+
+  // --- Compte Google sans mot de passe : premier mot de passe (planche B du 05/11/2026) ----------------
+
+  const FACULTATIF = require('./fixtures/mot-de-passe-facultatif')(SERVIE);
+  // Ce que Memberstack pose selon le membre (feuille #dynamic-css) : l'un des deux contenus de la ligne.
+  const msCss = (avecMotDePasse) => (w) => {
+    const st = w.document.createElement('style');
+    st.id = 'dynamic-css';
+    st.textContent = avecMotDePasse ? "[data-ms-content='!has-password']{display:none !important}"
+      : "[data-ms-content='has-password']{display:none !important}";
+    w.document.head.appendChild(st);
+  };
+  const slotMdp = (d) => d.querySelector('[data-ordo-v2="securite"] [data-ordo-form-slot="password"]');
+  const boutonsMdp = (d) => [...d.querySelectorAll('[data-ordo-v2="securite"] [data-ordo-edit="password"]')];
+
+  await test('Google sans mot de passe : « Ajouter un mot de passe », ancien mot de passe non exigé, envoi possible', async () => {
+    const m = clone(MEDECIN);
+    m.auth.hasPassword = false;
+    m.auth.providers = [{ provider: 'google' }];
+    const { w, d, erreurs } = await page({ member: m, fixture: FACULTATIF, before: msCss(false) });
+    const [modifier, ajouter] = boutonsMdp(d);
+    assert.strictEqual(ajouter.textContent, 'Ajouter un mot de passe');
+    assert.ok(!visible(w, modifier) && visible(w, ajouter));
+    assert.ok(visible(w, slotMdp(d).closest('.compte-v2_ligne-bloc').querySelector('.compte-v2_badge')), 'badge « Non défini »');
+    ajouter.click();
+    assert.ok(visible(w, slotMdp(d)));
+    assert.ok(!visible(w, ajouter) && !visible(w, modifier), 'aucun bouton pendant la saisie');
+    const form = slotMdp(d).querySelector('form[data-ms-form="password"]');
+    assert.strictEqual(form.querySelector('[data-ms-member="current-password"]').required, false);
+    form.querySelector('[data-ms-member="new-password"]').value = 'UnMotDePasse2026';
+    assert.ok(form.checkValidity(), 'le navigateur laisse partir l\'envoi');
+    [...slotMdp(d).querySelectorAll('a')].find((a) => a.textContent.trim() === 'Annuler').click();
+    assert.ok(!visible(w, slotMdp(d)));
+    assert.ok(visible(w, ajouter) && !visible(w, modifier), 'la ligne revient avec le bouton que Memberstack montre');
+    assert.deepStrictEqual(erreurs, []);
+  });
+
+  await test('avec mot de passe : « Modifier » seul, ancien mot de passe toujours exigé', async () => {
+    const m = clone(MEDECIN);
+    m.auth.hasPassword = true;
+    const { w, d } = await page({ member: m, fixture: FACULTATIF, before: msCss(true) });
+    const [modifier, ajouter] = boutonsMdp(d);
+    assert.ok(visible(w, modifier) && !visible(w, ajouter));
+    assert.ok(!visible(w, slotMdp(d).closest('.compte-v2_ligne-bloc').querySelector('.compte-v2_badge')));
+    modifier.click();
+    const form = slotMdp(d).querySelector('form[data-ms-form="password"]');
+    assert.strictEqual(form.querySelector('[data-ms-member="current-password"]').required, true);
+    form.querySelector('[data-ms-member="new-password"]').value = 'UnMotDePasse2026';
+    assert.ok(!form.checkValidity(), 'sans l\'ancien, pas d\'envoi');
+  });
+
+  await test('mot de passe inconnu (copie du membre sans hasPassword) : ancien mot de passe exigé', async () => {
+    const { d } = await page();
+    assert.strictEqual(d.querySelector('[data-ordo-v2="securite"] [data-ms-member="current-password"]').required, true);
   });
 
   console.log(`profile-overview : ${passed} tests OK`);

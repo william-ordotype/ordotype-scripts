@@ -297,6 +297,7 @@
       show(vatRow(), false);
     }
     markGoogleNoPassword();
+    firstPassword();
   }
 
   /** Ligne « Numéro de TVA » de la carte : masquée pour tous, le numéro se modifie dans l'onglet facturation. */
@@ -397,10 +398,11 @@
     show(row, false);
   }
 
+  // Une section peut avoir plusieurs boutons, dont Memberstack ne montre qu'un : « Modifier » le mot de passe
+  // (`has-password`) ou « Ajouter un mot de passe » (`!has-password`).
   function card(section) {
-    var btn = document.querySelector('[data-ordo-v2] [data-ordo-edit="' + section + '"]');
     return {
-      button: btn,
+      buttons: document.querySelectorAll('[data-ordo-v2] [data-ordo-edit="' + section + '"]'),
       slot: document.querySelector('[data-ordo-v2] [data-ordo-form-slot="' + section + '"]'),
       lecture: document.querySelector('[data-ordo-v2] [data-ordo-lecture="' + section + '"]')
     };
@@ -441,11 +443,16 @@
       bindForm(blocks[i], section);
     }
     show(c.lecture, false);
-    show(c.button, false);
+    for (var b = 0; b < c.buttons.length; b++) show(c.buttons[b], false);
     show(c.slot, true, 'block');
     ouvertes[section] = true;
     announce('ordo:edit-open', section, c.slot);
-    var focus = c.slot.querySelector('input:not([type=hidden]):not([type=checkbox]), select');
+    // Le premier champ affiché : « Ancien mot de passe » est masqué par Memberstack pour un compte qui n'en a pas.
+    var champs = c.slot.querySelectorAll('input:not([type=hidden]):not([type=checkbox]), select');
+    var focus = champs[0];
+    for (var f = 0; f < champs.length; f++) {
+      if (champs[f].getClientRects().length) { focus = champs[f]; break; }
+    }
     if (focus && typeof focus.focus === 'function') focus.focus();
     track('edit', section, 'open');
     return true;
@@ -474,7 +481,7 @@
     if (!c.slot) return;
     show(c.slot, false);
     show(c.lecture, true);
-    show(c.button, true);
+    for (var b = 0; b < c.buttons.length; b++) show(c.buttons[b], true);
     var blocks = c.slot.querySelectorAll('.w-form, form');
     for (var i = 0; i < blocks.length; i++) refill(blocks[i]);
     // Statut remis à sa valeur : les scripts qui en dépendent (mode d'exercice, finder SIREN) doivent le savoir.
@@ -828,6 +835,17 @@
       if (noPassword) links[i].setAttribute('data-ordo-google-sans-mdp', '1');
       else links[i].removeAttribute('data-ordo-google-sans-mdp');
     }
+  }
+
+  /**
+   * Sans mot de passe (compte Google seul), « Ancien mot de passe » est masqué par Memberstack (`has-password`)
+   * mais resterait obligatoire : le navigateur refuserait l'envoi sans rien dire. Memberstack pose alors le
+   * premier mot de passe avec le seul nouveau. Un compte qui en a un garde l'ancien obligatoire.
+   */
+  function firstPassword() {
+    var noPassword = !!(member.auth && member.auth.hasPassword === false);
+    var fields = document.querySelectorAll('[data-ordo-v2] [data-ms-member="current-password"]');
+    for (var i = 0; i < fields.length; i++) fields[i].required = !noPassword;
   }
 
   /** Secours : bandeau de message de Memberstack (celui de ses propres réponses), sinon une alerte. */
