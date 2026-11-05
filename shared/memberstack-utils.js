@@ -47,12 +47,21 @@
 
     // --- Shared constants ---
 
+    // French territory names, in English and in French.
     var FRENCH_TERRITORIES = [
-        'French Guiana', 'Guadeloupe', 'Martinique', 'Mayotte', 'Réunion',
-        'Saint Barthélemy', 'Saint Martin', 'Saint Pierre and Miquelon',
-        'French Polynesia', 'Wallis and Futuna', 'New Caledonia',
-        'Clipperton Island', 'The French Southern and Antarctic Lands', 'France'
+        'France', 'Guadeloupe', 'Martinique', 'Mayotte',
+        'French Guiana', 'Guyane française', 'Guyane',
+        'Réunion', 'La Réunion',
+        'Saint Barthélemy', 'Saint-Barthélemy',
+        'Saint Martin', 'Saint-Martin',
+        'Saint Pierre and Miquelon', 'St. Pierre and Miquelon', 'Saint-Pierre-et-Miquelon',
+        'French Polynesia', 'Polynésie française',
+        'Wallis and Futuna', 'Wallis and Futuna Islands', 'Wallis-et-Futuna',
+        'New Caledonia', 'Nouvelle-Calédonie',
+        'Clipperton Island', 'Île Clipperton',
+        'The French Southern and Antarctic Lands', 'Terres australes françaises'
     ];
+    var FRENCH_TERRITORY_KEYS = FRENCH_TERRITORIES.map(countryKey);
 
     var ALLOWED_INTERN_PLAN_IDS = [
         'pln_brique-google-internes-paris-i31as0w8p',
@@ -198,10 +207,20 @@
     }
 
     /**
-     * Check if a country is a French territory.
+     * Comparison key of a country name: no accents, no case, punctuation and hyphens as spaces.
+     */
+    function countryKey(value) {
+        var s = typeof value === 'string' ? value : '';
+        if (s.normalize) s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return s.toLowerCase().replace(/[-'\u2019.,()]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    /**
+     * Check if a country is a French territory (English or French name, any case or spacing).
      */
     function isFrenchTerritory(country) {
-        return FRENCH_TERRITORIES.indexOf(country) !== -1;
+        var key = countryKey(country);
+        return key !== '' && FRENCH_TERRITORY_KEYS.indexOf(key) !== -1;
     }
 
     /**
