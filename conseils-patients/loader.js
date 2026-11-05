@@ -43,7 +43,12 @@
         var s = document.createElement('script');
         s.crossOrigin = 'anonymous';
         s.src = `${BASE}/copy-handler.js`;
-        s.onload = function() { btn.click(); };
+        // Replay WITHOUT bubbling: copy-handler listens on the button itself, while GTM's click
+        // trigger listens on the document. A bubbling .click() reached GTM too, so every first copy
+        // of a page was sent twice to GA4 (from 18/05/2026 to the fix).
+        s.onload = function() {
+          btn.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
+        };
         document.head.appendChild(s);
       };
       btn.addEventListener('click', lazyCopy);
