@@ -857,11 +857,11 @@ Parses Memberstack data from `localStorage` (`_ms-mem` key) and exposes it as `w
 - `isActive(planId)` — returns `true` if the plan is active
 - `safeDate(fieldName)` — returns a `Date` from a custom field, or `null` (never `Invalid Date`)
 - `daysSince(date)` / `daysUntil(date)` — returns a number or `null`
-- `FRENCH_TERRITORIES` — array of French territory codes
+- `FRENCH_TERRITORIES` — French territory names, in English and in French
 - `ALLOWED_INTERN_PLAN_IDS` — array of intern plan IDs
 - `SPECIALIZATION_DURATIONS` — map of specialization durations
 - `getRequiredSemester(specialization)` — returns required semester number
-- `isFrenchTerritory(country)` — returns `true` if country is a French territory
+- `isFrenchTerritory(country)` — returns `true` if country is a French territory (English or French name, accents, case and spacing ignored)
 
 ### Console Prefix
 
