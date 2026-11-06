@@ -327,5 +327,161 @@ async function test(name, fn) {
     assert.strictEqual(byText(root, 'button', /^Rechercher$/).className, 'button no-full-width w-button ordo-siren-btn');
   });
 
+  // --- Carte SIREN aussi dans « Abonnements et facturation » (06/11/2026) ---------------------------
+
+  /** La carte posée dans le Designer, entre « Adresse de facturation » et « Factures ». */
+  function carteFacturation(doc) {
+    const zone = doc.querySelector('[data-ordo-facturation]') || doc.querySelector('[data-w-tab="billing"]');
+    const carte = doc.createElement('div');
+    carte.setAttribute('data-ordo-siren-carte', 'facturation');
+    carte.className = 'compte-v2_card';
+    carte.innerHTML = '<div class="compte-v2_card-head is-start"><h3 class="compte-v2_card-title">SIREN de votre activité</h3></div>'
+      + '<div class="compte-v2_muted">Nous le demandons dès maintenant…</div><div data-ordo-siren-slot="1" class="compte-v2_edit is-open"></div>';
+    zone.insertBefore(carte, zone.querySelector('[data-ordo-section="factures"]'));
+  }
+  /** Ce que fait Webflow au clic sur un onglet : la classe w--tab-active change de volet. */
+  function ouvrir(doc, nom) {
+    for (const p of doc.querySelectorAll('.w-tab-pane')) p.classList.toggle('w--tab-active', p.getAttribute('data-w-tab') === nom);
+  }
+  /** jsdom n'a pas d'IntersectionObserver : on garde les rappels pour simuler l'entrée à l'écran. */
+  function ioFactice(doc) {
+    const w = doc.defaultView;
+    w.__io = [];
+    w.IntersectionObserver = function(cb) { this.observe = (el) => w.__io.push({ cb, el }); this.disconnect = () => {}; };
+  }
+  const aLEcran = (w) => w.__io.forEach((o) => o.cb([{ isIntersecting: true, target: o.el }]));
+  const slotProfil = (d) => d.querySelector('[data-ordo-v2="profil"] [data-ordo-siren-slot]');
+  const slotFact = (d) => d.querySelector('[data-ordo-siren-carte="facturation"] [data-ordo-siren-slot]');
+  const classeFact = (d) => d.documentElement.classList.contains('ordo-siren-facturation');
+
+  await test('[facturation] un seul finder : il suit l’onglet ouvert, aller et retour', async () => {
+    const { d, root, erreurs } = await page({ search: nameSearch(), avant: carteFacturation });
+    assert.deepStrictEqual(erreurs, []);
+    assert.strictEqual(d.querySelectorAll('[data-ordo-finder="siren"]').length, 1);
+    assert.strictEqual(root.parentNode, slotProfil(d), 'Mon profil ouvert : finder dans sa carte');
+    assert.ok(classeFact(d), 'carte de la Facturation activée');
+    ouvrir(d, 'billing');
+    await settle();
+    assert.strictEqual(root.parentNode, slotFact(d), 'Facturation ouverte : finder dans la carte de la Facturation');
+    ouvrir(d, 'information');
+    await settle();
+    assert.strictEqual(root.parentNode, slotProfil(d), 'retour dans Mon profil');
+    assert.strictEqual(d.querySelectorAll('#SIRET').length, 1, 'champ Memberstack jamais copié');
+  });
+
+  await test('[facturation] arrivée directe sur #abonnements : le finder est déjà dans la Facturation', async () => {
+    const { d, root } = await page({ search: nameSearch(), avant: (doc) => { carteFacturation(doc); ouvrir(doc, 'billing'); } });
+    assert.strictEqual(root.parentNode, slotFact(d));
+  });
+
+  await test('[facturation] interne : carte de la Facturation jamais activée', async () => {
+    const m = clone(MEMBRE);
+    m.customFields.statut = 'Interne';
+    const { d } = await page({ member: m, avant: carteFacturation });
+    assert.ok(!classeFact(d));
+  });
+
+  await test('[facturation] le statut passe à Interne dans le formulaire : la carte se cache', async () => {
+    const { d } = await page({ search: nameSearch(), avant: carteFacturation });
+    assert.ok(classeFact(d));
+    const sel = d.getElementById('mon-statut-2');
+    assert.ok(sel, 'sélecteur de statut présent dans la page servie');
+    if (![...sel.options].some((o) => o.value === 'Interne')) sel.add(new d.defaultView.Option('Interne', 'Interne'));
+    sel.value = 'Interne';
+    sel.dispatchEvent(new d.defaultView.Event('change'));
+    await settle();
+    assert.ok(!classeFact(d), 'finder masqué : plus de carte vide en Facturation');
+  });
+
+  await test('[facturation] statut Interne relu chez Memberstack : la carte se cache au rendu suivant', async () => {
+    const { w, d } = await page({ search: nameSearch(), avant: carteFacturation });
+    assert.ok(classeFact(d));
+    w.OrdoAccount.member.customFields.statut = 'Interne';
+    d.dispatchEvent(new w.Event('ordo:member-updated'));
+    await settle();
+    assert.ok(!classeFact(d));
+  });
+
+  await test('[facturation] sans carte dans le Designer (page actuelle) : rien ne change', async () => {
+    const { d, root } = await page({ search: nameSearch() });
+    assert.strictEqual(root.parentNode, slotProfil(d));
+    assert.ok(!classeFact(d));
+    ouvrir(d, 'billing');
+    await settle();
+    assert.strictEqual(root.parentNode, slotProfil(d));
+  });
+
+  await test('[facturation] présentation d’origine (gabarits incomplets) : le finder reste dans Mon profil', async () => {
+    const { d, root } = await page({
+      search: nameSearch(),
+      avant: (doc) => { carteFacturation(doc); doc.querySelector('[data-ordo-gabarit="finder-bandeau"]').removeAttribute('data-ordo-gabarit'); }
+    });
+    ouvrir(d, 'billing');
+    await settle();
+    assert.notStrictEqual(root.parentNode, slotFact(d));
+    assert.ok(!classeFact(d));
+  });
+
+  await test('[facturation] GA4 : chaque événement dit son onglet', async () => {
+    const { d, root, pushed } = await page({ search: nameSearch(), avant: carteFacturation });
+    const siren = (l) => l.filter((p) => /^siren_/.test(p.event));
+    assert.ok(siren(pushed).length > 0);
+    // Avant que profile-overview ne place le bloc : « chargement » ; après, l'onglet ouvert (ici Mon profil).
+    assert.strictEqual(siren(pushed)[0].onglet, 'chargement', 'ouverture du bloc, avant son placement');
+    assert.ok(siren(pushed).every((p) => p.onglet === 'chargement' || p.onglet === 'profil'), JSON.stringify(siren(pushed).map((p) => [p.event, p.onglet])));
+    ouvrir(d, 'information');
+    await settle();
+    const avantProfil = pushed.length;
+    const modeNumero = byText(root, 'button', /J'ai mon numéro/) || byText(root, 'a', /J'ai mon numéro/);
+    if (modeNumero) modeNumero.click();
+    const champP = root.querySelector('input[aria-label="SIREN ou SIRET"]');
+    champP.value = SIREN;
+    champP.dispatchEvent(new d.defaultView.Event('input'));
+    const verifierP = byText(root, 'button', /Vérifier|Rechercher|Valider/);
+    if (verifierP) verifierP.click();
+    await settle();
+    const dansProfil = siren(pushed.slice(avantProfil));
+    assert.ok(dansProfil.some((p) => p.event === 'siren_search') && dansProfil.every((p) => p.onglet === 'profil'),
+      JSON.stringify(dansProfil.map((p) => [p.event, p.onglet])));
+    ouvrir(d, 'billing');
+    await settle();
+    const avant = pushed.length;
+    const num = byText(root, 'button', /J'ai mon numéro/) || byText(root, 'a', /J'ai mon numéro/);
+    if (num) num.click();
+    const champ = root.querySelector('input[aria-label="SIREN ou SIRET"]');
+    champ.value = SIREN;
+    champ.dispatchEvent(new d.defaultView.Event('input'));
+    const verifier = byText(root, 'button', /Vérifier|Rechercher|Valider/);
+    if (verifier) verifier.click();
+    await settle();
+    const nouveaux = siren(pushed.slice(avant));
+    assert.ok(nouveaux.some((p) => p.event === 'siren_search'), 'une recherche par numéro est suivie');
+    assert.ok(nouveaux.every((p) => p.onglet === 'facturation'), JSON.stringify(nouveaux.map((p) => [p.event, p.onglet])));
+  });
+
+  await test('[facturation] carte vue : une fois par onglet, seulement si le SIREN manque', async () => {
+    const { w, d, pushed } = await page({ search: nameSearch(), avant: (doc) => { carteFacturation(doc); ioFactice(doc); } });
+    const vues = () => pushed.filter((p) => p.event === 'siren_carte_vue').map((p) => p.onglet);
+    aLEcran(w); aLEcran(w);
+    assert.deepStrictEqual(vues(), ['profil']);
+    ouvrir(d, 'billing');
+    await settle();
+    aLEcran(w);
+    ouvrir(d, 'information');
+    await settle();
+    aLEcran(w);
+    assert.deepStrictEqual(vues(), ['profil', 'facturation']);
+    const rempli = clone(MEMBRE);
+    rempli.customFields.siret = SIREN;
+    const r = await page({ member: rempli, avant: (doc) => { carteFacturation(doc); ioFactice(doc); } });
+    aLEcran(r.w);
+    assert.ok(!r.pushed.some((p) => p.event === 'siren_carte_vue'), 'SIREN déjà enregistré : pas une carte à remplir');
+    const m = clone(MEMBRE);
+    m.customFields.statut = 'Interne';
+    const i = await page({ member: m, avant: (doc) => { carteFacturation(doc); ioFactice(doc); } });
+    aLEcran(i.w);
+    assert.ok(!i.pushed.some((p) => p.event === 'siren_carte_vue'), 'interne : bloc caché, rien de vu');
+  });
+
   console.log(`siren-finder : ${passed} tests OK`);
 })();

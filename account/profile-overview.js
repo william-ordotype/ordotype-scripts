@@ -294,6 +294,7 @@
       }
       var interne = profil.querySelectorAll('[data-ordo-si-pas-interne]');
       for (var j = 0; j < interne.length; j++) show(interne[j], !isInterne());
+      sirenFacturationVisible();
       show(vatRow(), false);
     }
     markGoogleNoPassword();
@@ -654,6 +655,42 @@
     // Présentation du Designer : le finder ne redessine plus le bandeau une fois dans la carte.
     var bandeau = root.querySelector('[data-ordo-finder-bandeau]');
     if (bandeau && root.getAttribute('data-ordo-dessin') === 'designer') bandeau.parentNode.removeChild(bandeau);
+    suivreOngletSiren(root, slot);
+  }
+
+  /**
+   * La carte SIREN est aussi dans « Abonnements et facturation » (demande William 06/11/2026 : plus de
+   * saisies ; les membres qui arrivent par #abonnements ne voient jamais Mon profil). Un seul finder,
+   * jamais copié (ids et état uniques) : il va dans la carte de l'onglet ouvert. La carte de la
+   * Facturation reste cachée par l'en-tête tant que la classe SIREN_FACTURATION n'est pas posée : sans
+   * finder, ou pour un interne, elle ne s'affiche pas.
+   */
+  var SIREN_FACTURATION = 'ordo-siren-facturation';
+  function slotFacturation() {
+    return document.querySelector('[data-ordo-siren-carte="facturation"] [data-ordo-siren-slot]');
+  }
+  function sirenFacturationVisible() {
+    var root = document.querySelector('[data-ordo-finder="siren"], .ordo-siren');
+    // Présentation d'origine (gabarits incomplets) : son bandeau et ses marges ne sont réglés que dans Mon profil.
+    var on = !!root && root.getAttribute('data-ordo-dessin') === 'designer' && !root.hidden && !!slotFacturation() && !isInterne();
+    document.documentElement.classList.toggle(SIREN_FACTURATION, on);
+  }
+  function suivreOngletSiren(root, slotProfil) {
+    var slot = slotFacturation();
+    var pane = slot && slot.closest('.w-tab-pane');
+    if (!pane || root.getAttribute('data-ordo-dessin') !== 'designer') return;
+    function placer() {
+      var cible = pane.classList.contains('w--tab-active') ? slot : slotProfil;
+      if (root.parentNode !== cible) cible.appendChild(root);
+      sirenFacturationVisible();
+    }
+    placer();
+    if (typeof MutationObserver === 'function') {
+      var obs = new MutationObserver(placer);
+      obs.observe(pane, { attributes: true, attributeFilter: ['class'] });
+      // Le finder se cache quand le statut passe à Interne dans le formulaire.
+      obs.observe(root, { attributes: true, attributeFilter: ['hidden'] });
+    }
   }
 
   /** La vérification du RPPS se place juste sous la ligne « Numéro RPPS » de la carte. */
@@ -1001,6 +1038,7 @@
       console.log(PREFIX, 'Shown');
     } catch (err) {
       document.documentElement.classList.remove(HTML_CLASS);
+      document.documentElement.classList.remove(SIREN_FACTURATION);
       restoreMoved();
       fallback();
       track('view', '', 'failed');

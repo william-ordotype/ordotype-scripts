@@ -128,6 +128,19 @@ async function test(name, fn) {
     assert.strictEqual(d.querySelectorAll('.is-secours').length, 0);
   });
 
+  await test('carte SIREN de la Facturation : cachée tant que profile-overview ne l\'a pas activée', async () => {
+    const carte = '<div data-ordo-siren-carte="facturation" class="compte-v2_card"><div data-ordo-siren-slot="1"></div></div>';
+    const avecCarte = FIXTURE.replace('data-w-tab="billing" class="compte_tab-pane w-tab-pane">', '$&' + carte);
+    assert.notStrictEqual(avecCarte, FIXTURE, 'carte posée dans la Facturation');
+    const sel = '[data-ordo-siren-carte="facturation"]';
+    let r = page({ head: false, fixture: avecCarte });
+    assert.ok(visible(r.w, r.d.querySelector(sel)), 'Designer : visible pour l\'entretien');
+    r = page({ fixture: avecCarte });
+    assert.ok(!visible(r.w, r.d.querySelector(sel)), 'site, avant le script : cachée');
+    r.d.documentElement.classList.add('ordo-siren-facturation');
+    assert.ok(visible(r.w, r.d.querySelector(sel)), 'site, activée : visible');
+  });
+
   await test('Designer (sans le code d\'en-tête) : nouvelle présentation visible, anciens blocs masqués, encart visible', async () => {
     const { w, d } = page({ head: false });
     for (const el of v2(d)) assert.ok(visible(w, el));
