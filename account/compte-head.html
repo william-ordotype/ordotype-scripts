@@ -97,6 +97,9 @@ html:not(.ordo-profil-v2) [data-ordo-v2="profil"] [data-ordo-rpps-entete] { visi
 [data-ordo-facturation] [data-ordo-gabarit] { display: none !important; }
 html:not(.ordo-subs-v2) [data-ordo-facturation] [data-ordo-liste],
 html:not(.ordo-subs-v2) [data-ordo-facturation] [data-ordo-section]:not([data-ordo-section="abonnements"]) { display: none; }
+/* Carte SIREN de la Facturation : profile-overview.js l'affiche quand le finder SIREN peut y aller (finder chargé
+   dans sa présentation du Designer, membre non interne). Sans lui, jamais de carte vide. */
+html:not(.ordo-siren-facturation) [data-ordo-siren-carte="facturation"] { display: none !important; }
 /* Ce que le Designer ne sait pas dessiner : pulsation des squelettes, bouton occupé. */
 @keyframes compte-v2-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 .compte-v2_squelette, .compte-v2_interrupteur.is-chargement { animation: compte-v2-pulse 1.2s ease-in-out infinite; }

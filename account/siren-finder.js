@@ -185,12 +185,42 @@
       payload.rollout_bucket = rollout.bucket;
       payload.rollout_reason = rollout.reason; // 'bucket' = cohorte réelle ; 'override' = testeur
     }
+    // Onglet où se trouve le bloc au moment de l'événement : la carte SIREN est dans « Mon profil » ET
+    // dans « Abonnements et facturation » (06/11/2026), pour comparer les deux emplacements.
+    payload.onglet = ongletCourant();
     if (params) {
       for (var k in params) {
         if (Object.prototype.hasOwnProperty.call(params, k)) payload[k] = params[k];
       }
     }
     try { window.dataLayer.push(payload); } catch (e) { /* no-op */ }
+  }
+
+  var ONGLETS = { information: 'profil', billing: 'facturation' };
+  function ongletCourant() {
+    var pane = typeof root !== 'undefined' && root && root.closest ? root.closest('[data-w-tab]') : null;
+    var nom = pane && pane.getAttribute('data-w-tab');
+    return (nom && ONGLETS[nom]) || 'autre';
+  }
+
+  /**
+   * « Carte vue » : le bloc à remplir (SIREN absent) entre à l'écran, une fois par onglet et par page.
+   * C'est le dénominateur de la comparaison Profil / Facturation (saisies ÷ cartes vues). Un bloc
+   * caché (interne, onglet fermé) n'entre jamais à l'écran.
+   */
+  var cartesVues = {};
+  function suivreCarteVue() {
+    if (typeof window.IntersectionObserver !== 'function') return;
+    var io = new window.IntersectionObserver(function(entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (!entries[i].isIntersecting) continue;
+        var onglet = ongletCourant();
+        if (cartesVues[onglet] || root.hidden || normalizeNumber(state.siret || state.siren)) continue;
+        cartesVues[onglet] = true;
+        track('siren_carte_vue');
+      }
+    }, { threshold: 0.5 });
+    io.observe(root);
   }
 
   function debounce(fn, wait) {
@@ -1029,6 +1059,7 @@
     // l'ouverture AVANT ce masquage gonflerait l'étape « widget vu » de
     // l'entonnoir GA4 (cf. dimension rollout_enabled).
     if (!current && !root.hidden) track('siren_finder_open', { from: 'empty' });
+    suivreCarteVue();
     var statutSelector = document.getElementById('mon-statut-2');
     if (statutSelector) {
       statutSelector.addEventListener('change', function(e) { applyStatut(e.target.value); });
