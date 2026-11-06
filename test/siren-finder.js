@@ -483,5 +483,122 @@ async function test(name, fn) {
     assert.ok(!i.pushed.some((p) => p.event === 'siren_carte_vue'), 'interne : bloc caché, rien de vu');
   });
 
+  // --- Carte plus visible tant que le SIREN manque (06/11/2026, variante B) --------------------------
+
+  const aCompleter = (d) => d.documentElement.classList.contains('ordo-siren-a-completer');
+  const carteP = (d) => d.querySelector('[data-ordo-v2="profil"] [data-ordo-section="siren"]');
+  const carteF = (d) => d.querySelector('[data-ordo-siren-carte="facturation"]');
+  const suivante = (n) => n && n.nextElementSibling;
+  const ordreProfil = (d) => [...carteP(d).parentNode.children].map((n) => n.getAttribute('data-ordo-section')).filter(Boolean);
+  const ordreFact = (d) => [...carteF(d).parentNode.children]
+    .map((n) => n.getAttribute('data-ordo-section') || (n.hasAttribute('data-ordo-siren-carte') ? 'SIREN' : null)).filter(Boolean);
+  const choisir = () => reply(200, { siren: SIREN, siret: CABINET.siret, name: 'CLAIRE MARTIN', commune: 'PARIS', source: 'search', name_match: 'yes', stripe: 'ok' });
+
+  await test('[visible] SIREN vide : carte en tête de Mon profil, sous « Mes abonnements » en Facturation, badge affiché', async () => {
+    const { d, root, erreurs, reports } = await page({ search: nameSearch(), avant: carteFacturation });
+    assert.deepStrictEqual(erreurs, []);
+    assert.deepStrictEqual(reports, []);
+    assert.strictEqual(root.getAttribute('data-ordo-siren-etat'), 'vide');
+    assert.strictEqual(ordreProfil(d)[0], 'siren', 'Mon profil : ' + ordreProfil(d));
+    assert.strictEqual(suivante(carteP(d)).getAttribute('data-ordo-section'), 'perso');
+    assert.deepStrictEqual(ordreFact(d).slice(0, 2), ['abonnements', 'SIREN'], 'Facturation : ' + ordreFact(d));
+    assert.ok(aCompleter(d), 'badge « À compléter » visible');
+    assert.strictEqual(root.parentNode, slotProfil(d), 'le finder est toujours dans la carte de l’onglet ouvert');
+    ouvrir(d, 'billing');
+    await settle();
+    assert.strictEqual(root.parentNode, slotFact(d));
+    assert.deepStrictEqual(ordreFact(d).slice(0, 2), ['abonnements', 'SIREN'], 'un changement d’onglet ne déplace pas les cartes');
+  });
+
+  await test('[visible] enregistré : le badge part, la carte reste sous les yeux du membre', async () => {
+    const { d, root } = await page({ search: nameSearch(), select: choisir, avant: carteFacturation });
+    const avantP = ordreProfil(d).join(), avantF = ordreFact(d).join();
+    byText(root, 'button', /C'est moi/).click();
+    await settle();
+    assert.strictEqual(root.getAttribute('data-ordo-siren-etat'), 'renseigne');
+    assert.ok(/SIREN 123 456 78/.test(root.textContent), 'état « Renseigné » affiché');
+    assert.ok(!aCompleter(d), 'badge retiré');
+    assert.strictEqual(ordreProfil(d).join(), avantP, 'Mon profil : la carte ne bouge pas');
+    assert.strictEqual(ordreFact(d).join(), avantF, 'Facturation : la carte ne bouge pas');
+    byText(root, 'button', /Modifier/).click();
+    await settle();
+    assert.strictEqual(root.getAttribute('data-ordo-siren-etat'), 'renseigne', 'rouvrir le formulaire ne remet pas le badge');
+    assert.ok(!aCompleter(d));
+  });
+
+  await test('[visible] SIREN déjà enregistré : cartes à leur place du Designer, pas de badge', async () => {
+    const rempli = clone(MEMBRE);
+    rempli.customFields.siret = SIREN;
+    const { d, root } = await page({ member: rempli, avant: carteFacturation });
+    assert.strictEqual(root.getAttribute('data-ordo-siren-etat'), 'renseigne');
+    assert.deepStrictEqual(ordreProfil(d), ['perso', 'contact', 'emails', 'pro', 'siren']);
+    assert.deepStrictEqual(ordreFact(d), ['abonnements', 'moyen-de-paiement', 'adresse', 'SIREN', 'factures']);
+    assert.ok(!aCompleter(d));
+  });
+
+  await test('[visible] valeur héritée invalide : traitée comme vide (carte remontée, badge)', async () => {
+    const vieux = clone(MEMBRE);
+    vieux.customFields.siret = '123';
+    const { d, root } = await page({ member: vieux, search: nameSearch(), avant: carteFacturation });
+    assert.strictEqual(root.getAttribute('data-ordo-siren-etat'), 'vide');
+    assert.strictEqual(ordreProfil(d)[0], 'siren');
+    assert.ok(aCompleter(d));
+  });
+
+  await test('[visible] interne : rien ne bouge, pas de badge, même s’il le devient en cours de route', async () => {
+    const m = clone(MEMBRE);
+    m.customFields.statut = 'Interne';
+    const i = await page({ member: m, avant: carteFacturation });
+    assert.deepStrictEqual(ordreProfil(i.d), ['perso', 'contact', 'emails', 'pro', 'siren']);
+    assert.ok(!aCompleter(i.d));
+    const { w, d } = await page({ search: nameSearch(), avant: carteFacturation });
+    assert.ok(aCompleter(d));
+    w.OrdoAccount.member.customFields.statut = 'Interne';
+    d.dispatchEvent(new w.Event('ordo:member-updated'));
+    await settle();
+    assert.ok(!aCompleter(d), 'statut Interne relu : badge retiré');
+  });
+
+  await test('[visible] sans carte Facturation dans le Designer : seule la carte de Mon profil remonte', async () => {
+    const { d, erreurs } = await page({ search: nameSearch() });
+    assert.deepStrictEqual(erreurs, []);
+    assert.strictEqual(ordreProfil(d)[0], 'siren');
+    assert.ok(aCompleter(d));
+  });
+
+  await test('[visible] présentation d’origine (gabarits incomplets) : rien ne bouge, pas de badge', async () => {
+    const { d } = await page({
+      search: nameSearch(),
+      avant: (doc) => { carteFacturation(doc); doc.querySelector('[data-ordo-gabarit="finder-bandeau"]').removeAttribute('data-ordo-gabarit'); }
+    });
+    assert.deepStrictEqual(ordreProfil(d), ['perso', 'contact', 'emails', 'pro', 'siren']);
+    assert.ok(!aCompleter(d));
+  });
+
+  await test('[visible] profile-overview chargé avant que la recherche ne connaisse l’état : la carte remonte quand même', async () => {
+    // L'état de la recherche est retenu au chargement, puis posé plus tard (premier rendu tardif).
+    const r = await page({
+      search: nameSearch(),
+      avant: (doc) => {
+        carteFacturation(doc);
+        const W = doc.defaultView;
+        const orig = W.Element.prototype.setAttribute;
+        let retenu = null;
+        W.Element.prototype.setAttribute = function(k, v) {
+          if (k === 'data-ordo-siren-etat' && !W.__libre) { retenu = [this, v]; return; }
+          return orig.call(this, k, v);
+        };
+        W.__poser = () => { W.__libre = true; if (retenu) orig.call(retenu[0], 'data-ordo-siren-etat', retenu[1]); };
+      }
+    });
+    assert.deepStrictEqual(ordreProfil(r.d), ['perso', 'contact', 'emails', 'pro', 'siren'], 'état inconnu : on ne décide rien');
+    assert.ok(!aCompleter(r.d));
+    r.w.__poser();
+    await settle();
+    assert.strictEqual(ordreProfil(r.d)[0], 'siren', 'état connu : la carte remonte');
+    assert.deepStrictEqual(ordreFact(r.d).slice(0, 2), ['abonnements', 'SIREN']);
+    assert.ok(aCompleter(r.d));
+  });
+
   console.log(`siren-finder : ${passed} tests OK`);
 })();
