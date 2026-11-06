@@ -9,7 +9,7 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | `mes-informations` | Full form: RPPS, statut selectors, sync 5 fields |
 | `mes-informations-praticien` | Forces statut=Medecin, justPaidTs au retour d'un paiement |
 | `mes-informations-praticien-sepa` | Same as praticien + Stripe checkout redirect |
-| `mes-informations-internes` | Forces statut=Interne, different RPPS text |
+| `mes-informations-internes` | Forces statut=Interne |
 | `mes-informations-internes-assos` | Partnership city from sessionStorage/cookie, no RPPS |
 | `mes-informations-module` | Statut selectors, sync 3 fields |
 
@@ -23,11 +23,12 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | `rpps.js` | RPPS checkbox — text configurable via `rppsText`, null to disable |
 | `memberstack-sync.js` | Syncs localStorage fields to Memberstack + optional forced statut |
 | `statut-selectors.js` | Shows/hides semestre, mode-exercice, specialite based on statut |
+| `keep-unlisted-values.js` | A saved semestre missing from the list is added as an option for this member and shown, so saving the form keeps it (also loaded by the CMS pages). Test: `node test/mes-infos-valeurs-hors-liste.js` |
 | `required-if-visible.js` | Sets `required` on visible `[ms-code="required-if-visible"]` inputs |
 | `phone-input.js` | intl-tel-input initialization on `[ms-code-phone-number]` inputs |
 | `payment-return.js` | After a payment (`ordo_checkout=cs_…` or `fromCheckout=true`), a visitor who is not logged in gets « Paiement bien reçu » and a login button instead of an empty card (Memberstack removes the profile form); `locat` brings them back after login. Test: `node test/mes-infos-payment-return.js` |
 | `checkout.js` | Stripe checkout form handler — sends `payment_method_types` to Netlify (praticien-sepa only) |
-| `partnership-city.js` | Partnership city from sessionStorage/cookie (internes-assos only) |
+| `partnership-city.js` | Partnership city from sessionStorage/cookie (internes-assos only); none found and none saved: reported, the field is left as it is. Test: `node test/partnership-city.js` |
 
 ## Webflow setup
 
@@ -71,7 +72,7 @@ t.parentNode.insertBefore(y,t);
 
 ```js
 window.MES_INFOS_CONFIG = {
-  rppsText: 'Pas de RPPS',       // string = checkbox text, null = disable RPPS
+  rppsText: 'RPPS absent ou obtention en attente', // string = checkbox text (this one when omitted), null = disable RPPS
   forceStatut: null,              // 'Medecin' | 'Interne' | 'Paramédical' | null
   syncFields: [],                 // [{ key: 'localStorage-key', msField: 'memberstack-field' }]
   fillOnlyFields: [],             // same shape; only fills an empty field on an account < 24 h old
@@ -101,7 +102,7 @@ values are moving to the accented form, 11/2026). Test: `node test/force-statut.
 ### mes-informations (default)
 ```js
 window.MES_INFOS_CONFIG = {
-  rppsText: 'Pas de RPPS',
+  rppsText: 'RPPS absent ou obtention en attente',
   syncFields: [
     { key: 'signup-comment', msField: 'comment' },
     { key: 'signup-type-de-compte', msField: 'type-de-compte' },
@@ -128,7 +129,7 @@ Fill-only fields describe the member rather than the offer. They are written onl
 ### mes-informations-praticien
 ```js
 window.MES_INFOS_CONFIG = {
-  rppsText: 'Pas de RPPS',
+  rppsText: 'RPPS absent ou obtention en attente',
   forceStatut: 'Medecin',
   syncFields: [{ key: 'userId', msField: 'airtablerecordid' }],
   setJustPaidTs: true,
@@ -139,7 +140,7 @@ window.MES_INFOS_CONFIG = {
 ### mes-informations-praticien-sepa
 ```js
 window.MES_INFOS_CONFIG = {
-  rppsText: 'Pas de RPPS',
+  rppsText: 'RPPS absent ou obtention en attente',
   forceStatut: 'Medecin',
   syncFields: [{ key: 'userId', msField: 'airtablerecordid' }],
   setJustPaidTs: true,
@@ -174,7 +175,7 @@ window.MES_INFOS_CONFIG = {
 ### mes-informations-module
 ```js
 window.MES_INFOS_CONFIG = {
-  rppsText: 'Pas de RPPS',
+  rppsText: 'RPPS absent ou obtention en attente',
   syncFields: [
     { key: 'signup-comment', msField: 'comment' },
     { key: 'signup-type-de-compte', msField: 'type-de-compte' },
@@ -197,6 +198,7 @@ loader.js
   -> rpps.js          (reads config.rppsText)
   -> memberstack-sync.js (reads config.syncFields + config.forceStatut)
   -> statut-selectors.js (reads config.showStatutSelectors)
+  -> keep-unlisted-values.js
   -> required-if-visible.js (reads config.showRequiredIfVisible)
   -> ga4-events.js
   -> payment-return.js (payment return, visitor not logged in)

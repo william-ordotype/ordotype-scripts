@@ -11,6 +11,8 @@
  *     sans espaces, à l'envoi comme à la sortie du champ ;
  *   - toute autre valeur reste telle quelle (clé fausse, 11 chiffres, texte de
  *     la case « pas de RPPS ») ;
+ *   - case « pas de RPPS » : le même texte sur toutes les pages d'un RPPS,
+ *     « Pas de {numéro} » pour un autre pays ;
  *   - pages CMS : seulement quand le numéro est un RPPS, jamais sur une page
  *     d'un autre pays (INAMI, GLN, CNS…).
  *
@@ -23,9 +25,11 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const MES_INFOS = fs.readFileSync(path.join(ROOT, 'mes-informations/rpps.js'), 'utf8');
 const CMS = fs.readFileSync(path.join(ROOT, 'mes-informations-cms/rpps-handler.js'), 'utf8');
+const CORE = fs.readFileSync(path.join(ROOT, 'mes-informations/core.js'), 'utf8');
 
 // Numéro fictif à clé de Luhn valide (déjà utilisé par les autres tests).
 const RPPS = '10000668540';
+const TEXTE = 'RPPS absent ou obtention en attente';
 
 const PAGE = `<!doctype html><body>
   <form id="profil" data-ms-form="profile">
@@ -42,7 +46,7 @@ const PAGE = `<!doctype html><body>
  * 'autre-envoi' (envoi d'un autre formulaire de la page).
  * Rend la valeur lue par le faux Memberstack (ou celle du champ) et les erreurs.
  */
-async function jouer({ script, saisie, action = 'envoi', config = { rppsText: 'Pas de RPPS' }, cms, html = PAGE, cocher = false }) {
+async function jouer({ script, saisie, action = 'envoi', config = { rppsText: TEXTE }, cms, html = PAGE, cocher = false }) {
     const erreurs = [];
     const virtualConsole = new VirtualConsole();
     virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -110,7 +114,7 @@ const CAS = [
     }],
     ['case « pas de RPPS » cochée : le texte part tel quel', async () => {
         const r = await jouer({ script: MES_INFOS, cocher: true });
-        return [[r.lu, 'Pas de RPPS', 'valeur lue']];
+        return [[r.lu, TEXTE, 'valeur lue']];
     }],
     ['envoi d\'un autre formulaire : champ RPPS non touché', async () => {
         const r = await jouer({ script: MES_INFOS, saisie: `8${RPPS}`, action: 'autre-envoi' });
@@ -142,6 +146,30 @@ const CAS = [
     ['CMS « Numéro GLN », sortie du champ : laissé tel quel', async () => {
         const r = await jouer({ script: CMS, saisie: `8${RPPS}`, config: null, cms: 'Numéro GLN', action: 'sortie' });
         return [[r.lu, `8${RPPS}`, 'valeur du champ']];
+    }],
+    ['CMS « RPPS », case cochée : texte de mes-informations', async () => {
+        const r = await jouer({ script: CMS, config: null, cms: 'RPPS', cocher: true });
+        return [[r.lu, TEXTE, 'valeur lue'], sansErreur(r)];
+    }],
+    ['CMS « Numéro RPPS », case cochée : texte de mes-informations', async () => {
+        const r = await jouer({ script: CMS, config: null, cms: 'Numéro RPPS', cocher: true });
+        return [[r.lu, TEXTE, 'valeur lue']];
+    }],
+    ['CMS sans nom d\'équivalent, case cochée : texte de mes-informations', async () => {
+        const r = await jouer({ script: CMS, config: null, cms: '', cocher: true });
+        return [[r.lu, TEXTE, 'valeur lue']];
+    }],
+    ['core.js sans rppsText : texte par défaut', async () => {
+        const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://www.ordotype.fr/membership/mes-informations', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
+        dom.window.MES_INFOS_CONFIG = {};
+        dom.window.eval(CORE);
+        const avecTexte = new JSDOM('<!doctype html><body></body>', { url: 'https://www.ordotype.fr/membership/mes-informations', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
+        avecTexte.window.MES_INFOS_CONFIG = { rppsText: null };
+        avecTexte.window.eval(CORE);
+        const r = [[dom.window.OrdoMesInfos.config.rppsText, TEXTE, 'défaut'], [avecTexte.window.OrdoMesInfos.config.rppsText, null, 'null gardé']];
+        dom.window.close();
+        avecTexte.window.close();
+        return r;
     }],
     ['CMS case cochée : « Pas de Numéro INAMI »', async () => {
         const r = await jouer({ script: CMS, config: null, cms: 'Numéro INAMI', cocher: true });
