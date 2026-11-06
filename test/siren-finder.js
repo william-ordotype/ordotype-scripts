@@ -426,7 +426,23 @@ async function test(name, fn) {
     const { d, root, pushed } = await page({ search: nameSearch(), avant: carteFacturation });
     const siren = (l) => l.filter((p) => /^siren_/.test(p.event));
     assert.ok(siren(pushed).length > 0);
-    assert.ok(siren(pushed).every((p) => p.onglet === 'profil'), 'au chargement : Mon profil');
+    // Avant que profile-overview ne place le bloc : « chargement » ; après, l'onglet ouvert (ici Mon profil).
+    assert.strictEqual(siren(pushed)[0].onglet, 'chargement', 'ouverture du bloc, avant son placement');
+    assert.ok(siren(pushed).every((p) => p.onglet === 'chargement' || p.onglet === 'profil'), JSON.stringify(siren(pushed).map((p) => [p.event, p.onglet])));
+    ouvrir(d, 'information');
+    await settle();
+    const avantProfil = pushed.length;
+    const modeNumero = byText(root, 'button', /J'ai mon numéro/) || byText(root, 'a', /J'ai mon numéro/);
+    if (modeNumero) modeNumero.click();
+    const champP = root.querySelector('input[aria-label="SIREN ou SIRET"]');
+    champP.value = SIREN;
+    champP.dispatchEvent(new d.defaultView.Event('input'));
+    const verifierP = byText(root, 'button', /Vérifier|Rechercher|Valider/);
+    if (verifierP) verifierP.click();
+    await settle();
+    const dansProfil = siren(pushed.slice(avantProfil));
+    assert.ok(dansProfil.some((p) => p.event === 'siren_search') && dansProfil.every((p) => p.onglet === 'profil'),
+      JSON.stringify(dansProfil.map((p) => [p.event, p.onglet])));
     ouvrir(d, 'billing');
     await settle();
     const avant = pushed.length;

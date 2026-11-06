@@ -196,9 +196,13 @@
     try { window.dataLayer.push(payload); } catch (e) { /* no-op */ }
   }
 
+  // « chargement » : le bloc n'est pas encore dans une carte (profile-overview le place après ce script) ;
+  // la recherche lancée d'office au chargement ne doit pas compter pour un onglet.
   var ONGLETS = { information: 'profil', billing: 'facturation' };
   function ongletCourant() {
-    var pane = typeof root !== 'undefined' && root && root.closest ? root.closest('[data-w-tab]') : null;
+    var carte = typeof root !== 'undefined' && root && root.closest ? root.closest('[data-ordo-siren-slot]') : null;
+    if (!carte) return 'chargement';
+    var pane = carte.closest('[data-w-tab]');
     var nom = pane && pane.getAttribute('data-w-tab');
     return (nom && ONGLETS[nom]) || 'autre';
   }
