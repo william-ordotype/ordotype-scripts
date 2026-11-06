@@ -522,6 +522,17 @@
     });
     box.appendChild(el('div', C['finder-note'])).appendChild(edit);
     root.appendChild(box);
+    marquerEtat(true);
+  }
+
+  /**
+   * État lu par profile-overview.js (carte remontée et badge « À compléter » tant que le SIREN manque) :
+   * « renseigne » à l'état « Renseigné » et quand le membre rouvre le formulaire par « Modifier » (un SIRET
+   * refusé par la clé n'efface pas un SIREN valide), « vide » sinon.
+   */
+  function marquerEtat(renseigne) {
+    var ok = renseigne || !!(normalizeNumber(state.siret) || normalizeNumber(state.siren));
+    root.setAttribute('data-ordo-siren-etat', ok ? 'renseigne' : 'vide');
   }
 
   // --- État « Vide » : bandeau + onglets ------------------------------------------
@@ -543,6 +554,7 @@
     var panel = el('div', DESSIN ? '' : 'ordo-siren-panel');
     root.appendChild(panel);
     if (activeTab === 'search') renderSearch(panel); else renderNumber(panel);
+    marquerEtat();
   }
 
   function switchMode(mode) {

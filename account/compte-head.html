@@ -100,6 +100,8 @@ html:not(.ordo-subs-v2) [data-ordo-facturation] [data-ordo-section]:not([data-or
 /* Carte SIREN de la Facturation : profile-overview.js l'affiche quand le finder SIREN peut y aller (finder chargé
    dans sa présentation du Designer, membre non interne). Sans lui, jamais de carte vide. */
 html:not(.ordo-siren-facturation) [data-ordo-siren-carte="facturation"] { display: none !important; }
+/* Badge « À compléter » des cartes SIREN : profile-overview.js le montre tant que le SIREN manque. */
+html:not(.ordo-siren-a-completer) [data-ordo-siren-badge] { display: none !important; }
 /* Ce que le Designer ne sait pas dessiner : pulsation des squelettes, bouton occupé. */
 @keyframes compte-v2-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 .compte-v2_squelette, .compte-v2_interrupteur.is-chargement { animation: compte-v2-pulse 1.2s ease-in-out infinite; }

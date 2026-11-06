@@ -141,6 +141,20 @@ async function test(name, fn) {
     assert.ok(visible(r.w, r.d.querySelector(sel)), 'site, activée : visible');
   });
 
+  await test('badge « À compléter » des cartes SIREN : caché tant que profile-overview ne l\'a pas affiché', async () => {
+    const badge = '<div class="compte-v2_ligne-titre"><h3 class="compte-v2_card-title">SIREN de votre activité</h3>'
+      + '<div data-ordo-siren-badge="1" class="compte-v2_badge is-en-cours">À compléter</div></div>';
+    const avecBadge = FIXTURE.replace(/(data-ordo-section="siren"[^>]*>)/, '$1' + badge);
+    assert.notStrictEqual(avecBadge, FIXTURE, 'badge posé dans la carte SIREN de Mon profil');
+    const sel = '[data-ordo-siren-badge]';
+    let r = page({ head: false, fixture: avecBadge });
+    assert.ok(visible(r.w, r.d.querySelector(sel)), 'Designer : visible pour l\'entretien');
+    r = page({ fixture: avecBadge });
+    assert.ok(!visible(r.w, r.d.querySelector(sel)), 'site, avant le script ou SIREN déjà là : caché');
+    r.d.documentElement.classList.add('ordo-siren-a-completer');
+    assert.ok(visible(r.w, r.d.querySelector(sel)), 'site, SIREN à compléter : visible');
+  });
+
   await test('Designer (sans le code d\'en-tête) : nouvelle présentation visible, anciens blocs masqués, encart visible', async () => {
     const { w, d } = page({ head: false });
     for (const el of v2(d)) assert.ok(visible(w, el));

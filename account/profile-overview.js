@@ -295,6 +295,7 @@
       var interne = profil.querySelectorAll('[data-ordo-si-pas-interne]');
       for (var j = 0; j < interne.length; j++) show(interne[j], !isInterne());
       sirenFacturationVisible();
+      sirenACompleter();
       show(vatRow(), false);
     }
     markGoogleNoPassword();
@@ -656,6 +657,57 @@
     var bandeau = root.querySelector('[data-ordo-finder-bandeau]');
     if (bandeau && root.getAttribute('data-ordo-dessin') === 'designer') bandeau.parentNode.removeChild(bandeau);
     suivreOngletSiren(root, slot);
+    suivreEtatSiren(root);
+  }
+
+  /**
+   * Carte SIREN plus visible tant que le SIREN manque (demande William 06/11/2026, variante B de la planche :
+   * avant, la carte n'était dans le premier écran ni sur ordinateur ni sur mobile). Dans Mon profil elle passe
+   * en tête des cartes, sous l'en-tête du membre ; dans « Abonnements et facturation », juste sous « Mes
+   * abonnements » (les liens #abonnements, résiliation, pause ou offres, gardent les abonnements en premier).
+   * Placement décidé une fois, dès que la recherche connaît l'état : la carte ne quitte pas l'écran du membre
+   * qui vient d'enregistrer, elle reprend sa place au chargement suivant. Le badge « À compléter », dessiné
+   * dans le Designer et caché par l'en-tête sans la classe SIREN_A_COMPLETER, suit l'état en direct.
+   */
+  var SIREN_A_COMPLETER = 'ordo-siren-a-completer';
+  var sirenPlace = false;
+  function sirenVide(root) {
+    return !!root && root.getAttribute('data-ordo-dessin') === 'designer' && !root.hidden
+      && root.getAttribute('data-ordo-siren-etat') === 'vide' && !isInterne();
+  }
+  function sirenACompleter() {
+    document.documentElement.classList.toggle(SIREN_A_COMPLETER, sirenVide(document.querySelector('[data-ordo-finder="siren"], .ordo-siren')));
+  }
+  /** Déplacement noté dans `moved` : une erreur d'init remet la page comme le Designer l'a dessinée. */
+  function placerAvant(node, ref) {
+    if (!node || !ref || !ref.parentNode || node === ref || node.nextSibling === ref) return;
+    moved.push({ node: node, parent: node.parentNode, next: node.nextSibling });
+    ref.parentNode.insertBefore(node, ref);
+  }
+  function remonterCartesSiren(root) {
+    if (sirenPlace || !root.hasAttribute('data-ordo-siren-etat')) return;
+    sirenPlace = true;
+    if (!sirenVide(root)) return;
+    placerAvant(profil && profil.querySelector('[data-ordo-section="siren"]'), profil && profil.querySelector('[data-ordo-section="perso"]'));
+    var abonnements = document.querySelector('[data-ordo-facturation] [data-ordo-section="abonnements"]');
+    var carte = document.querySelector('[data-ordo-siren-carte="facturation"]');
+    if (abonnements && carte && abonnements.nextSibling !== carte) {
+      if (abonnements.nextSibling) placerAvant(carte, abonnements.nextSibling);
+      else {
+        moved.push({ node: carte, parent: carte.parentNode, next: carte.nextSibling });
+        abonnements.parentNode.appendChild(carte);
+      }
+    }
+  }
+  function suivreEtatSiren(root) {
+    function maj() {
+      remonterCartesSiren(root);
+      sirenACompleter();
+    }
+    maj();
+    if (typeof MutationObserver === 'function') {
+      new MutationObserver(maj).observe(root, { attributes: true, attributeFilter: ['data-ordo-siren-etat', 'hidden'] });
+    }
   }
 
   /**
@@ -1039,6 +1091,7 @@
     } catch (err) {
       document.documentElement.classList.remove(HTML_CLASS);
       document.documentElement.classList.remove(SIREN_FACTURATION);
+      document.documentElement.classList.remove(SIREN_A_COMPLETER);
       restoreMoved();
       fallback();
       track('view', '', 'failed');
