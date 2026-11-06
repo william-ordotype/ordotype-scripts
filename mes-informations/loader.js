@@ -5,7 +5,7 @@
  *
  * Usage in Webflow:
  * <script>
- * window.MES_INFOS_CONFIG = { rppsText: 'Pas de RPPS', showStatutSelectors: true, ... };
+ * window.MES_INFOS_CONFIG = { rppsText: 'RPPS absent ou obtention en attente', showStatutSelectors: true, ... };
  * </script>
  * <script defer src="https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/mes-informations/loader.js"></script>
  *
@@ -36,6 +36,7 @@
     'rpps.js',
     'memberstack-sync.js',
     'statut-selectors.js',
+    'keep-unlisted-values.js',
     'required-if-visible.js',
     'ga4-events.js',
     'payment-return.js'

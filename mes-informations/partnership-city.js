@@ -20,6 +20,7 @@
 
   async function setCityAfterSignup() {
     var attempts = 0;
+    var reported = false;
 
     while (attempts < 10) {
       try {
@@ -91,14 +92,16 @@
           return;
         }
 
-        // No city in storage - debug value if no existing city
+        // No city in storage and none saved: report it, the field stays as it is.
         if (!storageCity && (!existingCity || existingCity.indexOf('DBG') === 0)) {
-          await window.$memberstackDom.updateMember({
-            customFields: {
-              'partnership-city': 'DBG__READ_MISS_ALL_' + new Date().toISOString(),
-              statut: 'Interne'
-            }
-          });
+          if (!reported && window.OrdoErrorReporter) {
+            reported = true;
+            window.OrdoErrorReporter.report('PartnershipCity', new Error('No partnership city found after signup'));
+          }
+          var currentStatut = result.data.customFields ? result.data.customFields.statut : null;
+          if (String(currentStatut || '').trim().toLowerCase() !== 'interne') {
+            await window.$memberstackDom.updateMember({ customFields: { statut: 'Interne' } });
+          }
         }
 
         // Flush userId if present but not needed

@@ -1,6 +1,7 @@
 /**
  * Ordotype Mes Informations CMS - RPPS Handler
- * 1. Sets RPPS value to "Pas de {equivalent}" when notRPPS checkbox is checked.
+ * 1. When the notRPPS checkbox is checked, sets the field to
+ *    "RPPS absent ou obtention en attente" (RPPS pages) or "Pas de {equivalent}".
  * 2. On pages where the number is an RPPS (equivalent name containing « RPPS »),
  *    a number typed as the national identifier (« 8 » + RPPS, 12 digits) is
  *    saved as the 11-digit RPPS: the leading 8 is removed when the field changes
@@ -18,11 +19,15 @@
   if (!rpps) return;
 
   var equivalentName = (window.OrdoMesInfosCMS && window.OrdoMesInfosCMS.rppsEquivalentName) || 'RPPS';
+  // Same text as mes-informations/core.js for an RPPS; other numbers keep « Pas de {equivalent} ».
+  var noNumberText = /rpps/i.test(equivalentName)
+    ? 'RPPS absent ou obtention en attente'
+    : 'Pas de ' + equivalentName;
 
   if (notRPPS) {
     notRPPS.addEventListener('change', function() {
       if (notRPPS.checked) {
-        rpps.value = 'Pas de ' + equivalentName;
+        rpps.value = noNumberText;
       }
     });
   }

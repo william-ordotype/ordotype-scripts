@@ -69,7 +69,8 @@
   function loadAll() {
     console.log('[' + LOADER_NAME + '] Loading...');
     var ordered = [ROOT + '/shared/error-reporter.js']
-      .concat(scripts.map(function(file) { return BASE + '/' + file; }));
+      .concat(scripts.map(function(file) { return BASE + '/' + file; }))
+      .concat([ROOT + '/mes-informations/keep-unlisted-values.js']);
 
     addScript(CRISP_URL, false).catch(function(err) { logFailure(err.message); });
     var done = runInOrder(ordered.concat([ROOT + '/mes-informations/phone-input.js']));

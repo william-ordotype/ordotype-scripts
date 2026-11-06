@@ -32,7 +32,7 @@
       ? "https://ordotype.webflow.io"
       : "https://www.ordotype.fr",
     isLoggedIn: Boolean(memberData.id),
-    rppsText: pageConfig.rppsText !== undefined ? pageConfig.rppsText : 'Pas de RPPS',
+    rppsText: pageConfig.rppsText !== undefined ? pageConfig.rppsText : 'RPPS absent ou obtention en attente',
     forceStatut: pageConfig.forceStatut || null,
     syncFields: pageConfig.syncFields || [],
     fillOnlyFields: pageConfig.fillOnlyFields || [],
