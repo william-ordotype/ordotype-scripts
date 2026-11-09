@@ -1961,6 +1961,29 @@
     return D.root.parentElement || D.root;
   }
 
+  // Name of the Webflow tab whose pane holds the Facturation (data-w-tab, shared by the pane and its link),
+  // or null when the Facturation is not in a tab: then nothing hides it.
+  function billingTab() {
+    var pane = D.root.closest ? D.root.closest('.w-tab-pane') : null;
+    return (pane && pane.getAttribute('data-w-tab')) || null;
+  }
+
+  // Runs `run` once, the first time the member aims at the link of tab `name`: pointer over it, press,
+  // keyboard focus or click. Listened on the document, not on the link: the tab component can be drawn
+  // again after this script has run.
+  function whenAimedAt(name, run) {
+    var TYPES = ['mouseover', 'pointerdown', 'touchstart', 'focusin', 'click'];
+    var opts = { capture: true, passive: true };
+    function onEvent(e) {
+      var t = e.target;
+      var link = t && t.closest ? t.closest('.w-tab-link') : null;
+      if (!link || link.getAttribute('data-w-tab') !== name) return;
+      for (var i = 0; i < TYPES.length; i++) document.removeEventListener(TYPES[i], onEvent, opts);
+      run();
+    }
+    for (var j = 0; j < TYPES.length; j++) document.addEventListener(TYPES[j], onEvent, opts);
+  }
+
   function whenVisible(run) {
     var done = false;
     function fire() {
@@ -1997,8 +2020,13 @@
     }
     anchor = D.root;
     listenClicks();
-    // The list is requested with the page, not when its tab opens: it is usually ready (and rendered,
-    // replacing the page's own blocks) before the member gets there. The skeleton only shows if not.
+    // The list is requested when the Facturation is about to be seen, not with the page: the page opens on
+    // another tab, and most visits never open this one, so a list requested with the page was usually a
+    // server call for nothing. It starts at the first of: the Facturation becomes visible (its tab opened,
+    // or the page reached with its hash, which opens it), or the member aims at its tab (pointer over it,
+    // press, keyboard focus), which gives the request a head start on the click. The skeleton shows while
+    // it is on its way. Without IntersectionObserver, or when the Facturation is not in a tab, it is
+    // requested at once, as before.
     var settled = false;
     var instant = null;
     var seen = false;
@@ -2027,43 +2055,56 @@
       track('subscriptions_list', { subs_outcome: 'instant', subs_status: statusesOf(cards) });
       console.log(PREFIX + ' Shown before the list: ' + cards.length + ' free plan(s)');
     }
-    if (freePlans) {
-      showInstant(storedPlans());
-      fetchPlans().then(showInstant);
+
+    var started = false;
+    function start() {
+      if (started) return;
+      started = true;
+      if (freePlans) {
+        showInstant(storedPlans());
+        fetchPlans().then(showInstant);
+      }
+      requestList();
     }
 
-    load().then(function(data) {
-      stopWaiting();
-      render(data.list, null, data.pms, data.invoices, data.others, data.address, data.taxId, data.taxIdAllowed);
-      if (!instant) {
-        track('subscriptions_list', { subs_outcome: data.hedged ? 'shown-retry' : 'shown', subs_status: statusesOf(data.list) });
-      } else if (paidIn(data.list)) {
-        reportProblem('SubscriptionsInstantMismatch', 'free plans only in the member data, list: ' + statusesOf(data.list));
-      }
-      console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
-    }).catch(function(err) {
-      stopWaiting();
-      var timedOut = Boolean(err && err.status === 'timeout');
-      if (instant) {
-        // The free plans stay shown: only the check is missing.
-        console.error(PREFIX + ' Load error after the free plans were shown:', err && err.message);
-        if (!timedOut) reportIfActionable(err);
-        return;
-      }
-      // A wait the member did not see (tab in the background, section never on screen) is not a failure.
-      var unseen = timedOut && (hidden || !seen);
-      // `timeout` goes in subs_outcome, the dimension registered in GA4: subs_status is sent but
-      // not registered, so a value placed there alone would never be readable.
-      track('subscriptions_list', {
-        subs_outcome: timedOut ? (unseen ? 'timeout-unseen' : 'timeout') : 'failed',
-        subs_status: err && err.status ? String(err.status) : 'network'
+    function requestList() {
+      load().then(function(data) {
+        stopWaiting();
+        render(data.list, null, data.pms, data.invoices, data.others, data.address, data.taxId, data.taxIdAllowed);
+        if (!instant) {
+          track('subscriptions_list', { subs_outcome: data.hedged ? 'shown-retry' : 'shown', subs_status: statusesOf(data.list) });
+        } else if (paidIn(data.list)) {
+          reportProblem('SubscriptionsInstantMismatch', 'free plans only in the member data, list: ' + statusesOf(data.list));
+        }
+        console.log(PREFIX + ' Rendered ' + data.list.length + ' subscription(s)');
+      }).catch(function(err) {
+        stopWaiting();
+        var timedOut = Boolean(err && err.status === 'timeout');
+        if (instant) {
+          // The free plans stay shown: only the check is missing.
+          console.error(PREFIX + ' Load error after the free plans were shown:', err && err.message);
+          if (!timedOut) reportIfActionable(err);
+          return;
+        }
+        // A wait the member did not see (tab in the background, section never on screen) is not a failure.
+        var unseen = timedOut && (hidden || !seen);
+        // `timeout` goes in subs_outcome, the dimension registered in GA4: subs_status is sent but
+        // not registered, so a value placed there alone would never be readable.
+        track('subscriptions_list', {
+          subs_outcome: timedOut ? (unseen ? 'timeout-unseen' : 'timeout') : 'failed',
+          subs_status: err && err.status ? String(err.status) : 'network'
+        });
+        failed(D);
+        console.error(PREFIX + ' Load error:', err && err.message);
+        if (!unseen) reportIfActionable(err);
       });
-      failed(D);
-      console.error(PREFIX + ' Load error:', err && err.message);
-      if (!unseen) reportIfActionable(err);
-    });
+    }
+
+    if (!billingTab()) start();
+    else whenAimedAt(billingTab(), start);
     whenVisible(function() {
       seen = true;
+      start();
       if (settled || instant) return;
       skeletonTimer = setTimeout(function() {
         if (!settled && !instant) skeletonD();

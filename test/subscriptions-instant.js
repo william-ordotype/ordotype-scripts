@@ -126,8 +126,14 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // The script starts on DOMContentLoaded: open() returns once it has.
-async function open(opts) {
+// The fake observer says the section is on screen one tick after it is observed, and the list (with the
+// free cards before it) starts then. On screen, open() returns once the list is requested, so each check
+// counts from the request, whatever the machine's speed; off screen, nothing is requested.
+async function open(opts = {}) {
   const p = page(opts);
+  const visible = opts.visible !== false;
+  for (let i = 0; visible && !p.calls.list.length && i < 500; i++) await wait(1);
+  if (visible) assert.ok(p.calls.list.length, 'the list is requested once the section is on screen');
   await wait(1);
   return p;
 }
@@ -378,9 +384,22 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.strictEqual(none.skeletons(), 1);
   });
 
-  await check('a timeout on a section never on screen: `timeout-unseen`, not reported, failure said', async () => {
-    const p = await open({ plans: [paid('pln_mg')], list: hang, visible: false });
+  await check('a section never on screen: neither the list nor the plans are requested, nothing recorded', async () => {
+    const p = await open({ plans: [free('pln_interne')], stored: { at: Date.now(), plans: PUBLIC }, list: hang, visible: false });
     await wait(300);
+    assert.strictEqual(p.calls.list.length, 0, 'no list request');
+    assert.strictEqual(p.calls.plans.length, 0, 'no plans request');
+    assert.deepStrictEqual(p.events(), [], 'not even the stored free cards');
+    assert.strictEqual(p.reports.length, 0);
+    assert.ok(!p.failed());
+  });
+
+  await check('a timeout after the member aimed at the tab but never opened it: `timeout-unseen`, not reported, failure said', async () => {
+    const p = await open({ plans: [paid('pln_mg')], list: hang, visible: false });
+    p.w.document.body.insertAdjacentHTML('afterbegin', '<a data-w-tab="billing" class="w-tab-link">Abonnements et facturation</a>');
+    p.w.document.querySelector('.w-tab-link').dispatchEvent(new p.w.Event('mouseover', { bubbles: true }));
+    await wait(300);
+    assert.strictEqual(p.calls.list.length, 2, 'requested, then sent a second time');
     assert.deepStrictEqual(p.events(), ['timeout-unseen']);
     assert.strictEqual(p.reports.length, 0);
     assert.ok(p.failed());
