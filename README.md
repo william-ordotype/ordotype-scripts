@@ -333,7 +333,7 @@ Console messages for retry/fallback:
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order |
+| `loader.js` | Fetches all scripts at once, runs them in order with the payment first: shared/memberstack-utils.js, shared/error-reporter.js, stripe-checkout.js, then core.js, hash-tabs.js, tabs-bg.js, ga4-events.js (`script.async = false`, shared loader-queue block: a failed file is skipped and reported). Test: `node test/pricing-loader-paiement-en-tete.js` |
 | `core.js` | Stores URL for tracking |
 | `ab-test.js` | A/B test redirect (10% to /nos-offres-v2) |
 | `geo-redirect.js` | Geographic redirection |
@@ -389,7 +389,7 @@ This is the B variant of the A/B test. Main differences from V1:
 
 | File | Purpose |
 |------|---------|
-| `loader.js` | Loads all scripts in correct order |
+| `loader.js` | Same as V1: all at once, payment first (memberstack-utils, error-reporter, stripe-checkout, then core.js, tabs-bg.js) |
 | `core.js` | Stores URL for tracking |
 | `geo-redirect.js` | Geographic redirection (different ID than V1) |
 | `belgium-redirect.js` | Belgium users redirect to /nos-offres-belgique |
