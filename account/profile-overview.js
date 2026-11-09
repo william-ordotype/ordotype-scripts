@@ -790,6 +790,10 @@
   var GOOGLE_OK = 'C’est fait : votre compte Google est dissocié. Connectez-vous désormais avec votre adresse e-mail et votre mot de passe.';
   var GOOGLE_SANS_MDP = 'Pour dissocier Google, définissez d’abord un mot de passe, puis réessayez.';
   var GOOGLE_ECHEC = 'La dissociation n’a pas abouti. Réessayez, ou écrivez-nous à securite@ordotype.fr.';
+  // Clics que le script arrête : le membre lit pourquoi rien ne se passe (planche A1 du 09/11/2026).
+  var GOOGLE_CROIX = 'Pour dissocier Google, cliquez sur la croix à droite du bouton.';
+  var GOOGLE_AJOUTER_MDP = 'Pour dissocier Google, ajoutez d’abord un mot de passe, juste au-dessus.';
+  var GOOGLE_APRES = 'Google vient d’être dissocié. Pour le relier de nouveau, revenez sur cette page plus tard.';
 
   /**
    * Memberstack dissocie Google au clic sur TOUT le bouton dès que la croix `data-ms-auth-disconnect`
@@ -809,6 +813,7 @@
         e.preventDefault();
         e.stopPropagation();
         track('google', 'connexion', 'apres-dissociation');
+        googleNotice(link, GOOGLE_APRES, 'info');
         return;
       }
       if (!googleLinked(link)) {
@@ -819,6 +824,8 @@
       e.stopPropagation();
       if (!e.target.closest('[data-ms-auth-disconnect]')) {
         track('google', 'connexion', 'deja-connecte');
+        // Sans mot de passe, la croix n'est pas affichée : le message dit où en poser un.
+        googleNotice(link, link.hasAttribute('data-ordo-google-sans-mdp') ? GOOGLE_AJOUTER_MDP : GOOGLE_CROIX, 'info');
         return;
       }
       if (busy) return;
@@ -871,12 +878,12 @@
       if (code === 'account-not-connected') return googleDisconnected(link, 'deja');
       if (code === 'account-set-password-before-disconnect') {
         track('google', 'dissociation', 'sans-mot-de-passe');
-        googleNotice(link, GOOGLE_SANS_MDP, true);
+        googleNotice(link, GOOGLE_SANS_MDP, 'erreur');
         return;
       }
       track('google', 'dissociation', 'echec');
       report('ProfileOverviewGoogleDisconnect', code || (err && err.message) || 'unknown');
-      googleNotice(link, GOOGLE_ECHEC, true);
+      googleNotice(link, GOOGLE_ECHEC, 'erreur');
     }).catch(function(err) {
       report('ProfileOverviewGoogleDisconnect', err);
     });
@@ -888,31 +895,46 @@
     var original = label && label.getAttribute('data-ms-original-text');
     if (original) label.textContent = original;
     track('google', 'dissociation', outcome);
-    googleNotice(link, GOOGLE_OK, false);
+    googleNotice(link, GOOGLE_OK, 'ok');
+  }
+
+  // Gabarit de chaque message : réussite et erreur de l'onglet Facturation ; information = encadré
+  // d'avertissement de la double authentification (bloc GABARITS du profil).
+  var GOOGLE_GABARITS = { ok: ['flash', 'facturation'], erreur: ['erreur', 'facturation'], info: ['totp-alerte', 'profil'] };
+
+  /** Le message affiché sous la ligne Google de `link`, ou null. */
+  function googleMessage(link) {
+    var ligne = link.closest('.compte-v2_ligne');
+    return ligne && ligne.parentNode ? ligne.parentNode.querySelector('[data-ordo-google-message]') : null;
   }
 
   /**
-   * Réponse sous la ligne Google, là où le membre a cliqué, avec les gabarits « flash » (réussite)
-   * et « erreur » de l'onglet Facturation ; elle reste jusqu'au rechargement. Sans ces gabarits,
-   * le bandeau de Memberstack.
+   * Réponse sous la ligne Google, là où le membre a cliqué (`kind` : ok, erreur ou info) ; elle reste
+   * jusqu'au rechargement et remplace la précédente. Sans son gabarit, le bandeau de Memberstack.
    */
-  function googleNotice(link, msg, isError) {
+  function googleNotice(link, msg, kind) {
     var ligne = link.closest('.compte-v2_ligne');
-    var node = copie(isError ? 'erreur' : 'flash', 'facturation');
+    var g = GOOGLE_GABARITS[kind];
+    var node = copie(g[0], g[1]);
     if (!ligne || !ligne.parentNode || !node) {
-      showMessage(msg, isError);
+      showMessage(msg, kind === 'erreur');
       return;
     }
-    var old = ligne.parentNode.querySelector('[data-ordo-google-message]');
+    var old = googleMessage(link);
     if (old) old.parentNode.removeChild(old);
-    node.setAttribute('data-ordo-google-message', isError ? 'erreur' : 'ok');
-    node.setAttribute('role', isError ? 'alert' : 'status');
+    node.setAttribute('data-ordo-google-message', kind);
+    node.setAttribute('role', kind === 'erreur' ? 'alert' : 'status');
     node.textContent = msg;
     // Aligné sur le titre et la description de la ligne (le pictogramme est masqué en mobile).
     var texte = ligne.querySelector('.compte-v2_ligne-texte');
     var indent = texte ? Math.max(0, Math.round(texte.getBoundingClientRect().left - ligne.getBoundingClientRect().left)) : 0;
-    node.style.padding = '0 0 16px ' + indent + 'px';
-    node.style.marginTop = '-4px';
+    if (kind === 'info') {
+      // Encadré : il a son propre espace intérieur, il se décale par sa marge.
+      node.style.margin = '-4px 0 16px ' + indent + 'px';
+    } else {
+      node.style.padding = '0 0 16px ' + indent + 'px';
+      node.style.marginTop = '-4px';
+    }
     ligne.parentNode.insertBefore(node, ligne.nextSibling);
   }
 
@@ -921,8 +943,14 @@
     var noPassword = !!(member.auth && member.auth.hasPassword === false);
     var links = document.querySelectorAll('[data-ms-auth-provider="google"]');
     for (var i = 0; i < links.length; i++) {
-      if (noPassword) links[i].setAttribute('data-ordo-google-sans-mdp', '1');
-      else links[i].removeAttribute('data-ordo-google-sans-mdp');
+      if (noPassword) {
+        links[i].setAttribute('data-ordo-google-sans-mdp', '1');
+      } else if (links[i].hasAttribute('data-ordo-google-sans-mdp')) {
+        links[i].removeAttribute('data-ordo-google-sans-mdp');
+        // Mot de passe posé : la croix revient, un message « ajoutez d'abord un mot de passe » ne vaut plus.
+        var old = googleMessage(links[i]);
+        if (old) old.parentNode.removeChild(old);
+      }
     }
   }
 
