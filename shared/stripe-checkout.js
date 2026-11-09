@@ -111,6 +111,54 @@ async function initStripeCheckout() {
         return node;
     }
 
+    // Le bouton Stripe est visible dès que le client Stripe est connu, mais sa
+    // session n'arrive qu'avec la réponse du serveur, une à quelques secondes
+    // plus tard. Un clic dans cet intervalle ne faisait rien, sans un mot. Il est
+    // désormais gardé : « Patientez… » tout de suite, puis Stripe dès que la
+    // session est prête, ou le bouton Memberstack si sa création échoue.
+    const WAIT_LABEL = 'Patientez…';
+    let sessionId = null;
+    let checkoutUrl = null;
+    let isRedirecting = false;
+    let heldAt = null;      // horodatage d'un clic arrivé avant la session
+    let savedLabel = null;
+
+    function now() {
+        return (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+    }
+    function showWaiting() {
+        const label = labelOf(signupBtnStripe);
+        if (savedLabel === null) savedLabel = label.textContent;
+        label.textContent = WAIT_LABEL;
+    }
+    function restoreLabel() {
+        if (savedLabel !== null) labelOf(signupBtnStripe).textContent = savedLabel;
+        savedLabel = null;
+    }
+    // Libère le clic gardé et rend son attente en ms, ou null s'il n'y en a pas.
+    function takeHeldClick() {
+        if (heldAt === null) return null;
+        const waitMs = Math.round(now() - heldAt);
+        heldAt = null;
+        return waitMs;
+    }
+    // Sans cet événement, un clic arrivé trop tôt ne laisse aucune trace : il
+    // compte les clics gardés, leur attente et leur issue. Le corps est construit
+    // sous try : sur le chemin du succès, la redirection vers Stripe le suit.
+    function trackHeldClick(waitMs, outcome) {
+        try {
+            track({
+                event: 'checkout_click_held',
+                checkout_source: config.checkoutSource || 'shared',
+                option: config.option || 'default',
+                outcome,
+                wait_ms: waitMs
+            });
+        } catch (err) {
+            reportSideEffect(err);
+        }
+    }
+
     // HTTP 409 from the checkout function: the member already has a subscription
     // to this offer's family, or a payment on it is pending. The Stripe button
     // becomes a link to the account page. The fallback button stays hidden and a
@@ -119,12 +167,15 @@ async function initStripeCheckout() {
     function showCurrentOffer(reason) {
         const pending = reason === 'payment-pending';
         window.ORDO_PENDING_CHECKOUT_CLICK = false;
+        detachClick();
+        const dropped = takeHeldClick();
         if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'none';
         signupBtnStripe.setAttribute('href', ACCOUNT_URL);
         labelOf(signupBtnStripe).textContent = pending ? 'Régulariser mon paiement' : 'Mon offre actuelle';
         signupBtnStripe.style.display = 'flex';
         console.log(PREFIX, 'Already subscribed, linking to the account page');
         trackCheckoutFailure(pending ? 'payment_pending' : 'already_subscribed');
+        if (dropped !== null) trackHeldClick(dropped, 'current_offer');
     }
 
     // Memberstack data (from shared utility)
@@ -188,67 +239,6 @@ async function initStripeCheckout() {
         });
     }
 
-    // Fetch sessionId + URL
-    let sessionId, checkoutUrl;
-    try {
-        const payload = {
-            stripeCustomerId,
-            cancelUrl,
-            successUrl,
-            payment_method_types: paymentMethods,
-            priceId,
-            couponId
-        };
-
-        const resp = await fetchWithRetry(fnUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }, 2, 1000);
-
-        if (resp.status === 409) {
-            let refusal = {};
-            try { refusal = (await resp.json()) || {}; } catch (ignored) {}
-            showCurrentOffer(refusal.error);
-            return;
-        }
-
-        // fetchWithRetry only retries network errors, so a 4xx/5xx arrives here
-        // as a readable Response whose JSON error body parses fine. Without this
-        // check an HTTP failure was reported as `invalid_payload`, hiding the
-        // status code that says which side broke.
-        if (!resp.ok) throw new Error('Session API error: ' + resp.status);
-
-        const data = await resp.json();
-
-        if (!data || !data.sessionId || !data.url) {
-            console.error(PREFIX, 'Invalid response');
-            if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', 'Invalid checkout session response');
-            // Restore the Memberstack fallback first: the user must never wait
-            // on a tag callback, and dataLayer.push runs GTM's callbacks
-            // synchronously.
-            if (signupBtnStripe) signupBtnStripe.style.display = 'none';
-            if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
-            resumeHeldClick(signupBtnNoStripe);
-            trackCheckoutFailure('invalid_payload');
-            return;
-        }
-        sessionId = data.sessionId;
-        checkoutUrl = data.url;
-        console.log(PREFIX, 'Checkout session ready');
-
-    } catch (err) {
-        console.error(PREFIX, 'Error creating checkout session:', err);
-        if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', err);
-        // Restore the Memberstack fallback first: the user must never wait on a
-        // tag callback, and dataLayer.push runs GTM's callbacks synchronously.
-        if (signupBtnStripe) signupBtnStripe.style.display = 'none';
-        if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
-        resumeHeldClick(signupBtnNoStripe);
-        trackCheckoutFailure(checkoutFailureReason(err));
-        return;
-    }
-
     // Helper to send abandon-cart payload via proxy
     // Uses sendBeacon to survive page navigation (no CORS preflight with text/plain)
     function notifyAbandonCart(payload) {
@@ -261,16 +251,9 @@ async function initStripeCheckout() {
         }
     }
 
-    // Double-click prevention
-    let isRedirecting = false;
-
-    signupBtnStripe.addEventListener('click', e => {
-        e.preventDefault();
-
-        if (isRedirecting) return;
+    function goToCheckout() {
         isRedirecting = true;
-        signupBtnStripe.innerText = 'Patientez…';
-        signupBtnStripe.disabled = true;
+        showWaiting();
 
         const timestamp = new Date().toISOString();
         const originPage = window.location.href;
@@ -308,7 +291,110 @@ async function initStripeCheckout() {
             // Redirect to Stripe Checkout
             window.location.href = checkoutUrl;
         }
+    }
+
+    function onStripeClick(e) {
+        e.preventDefault();
+        // Double-click prevention, y compris pendant l'attente de la session.
+        if (isRedirecting || heldAt !== null) return;
+        if (checkoutUrl) {
+            goToCheckout();
+            return;
+        }
+        heldAt = now();
+        showWaiting();
+        console.log(PREFIX, 'Click held until the checkout session is ready');
+    }
+    function detachClick() {
+        signupBtnStripe.removeEventListener('click', onStripeClick);
+    }
+    signupBtnStripe.addEventListener('click', onStripeClick);
+
+    // Retour arrière depuis Stripe : le navigateur peut ressortir la page de son
+    // cache telle qu'on l'a quittée, bouton sur « Patientez… » et clic verrouillé.
+    // La session reste valable : on rend la main.
+    window.addEventListener('pageshow', e => {
+        if (!e.persisted || !isRedirecting) return;
+        isRedirecting = false;
+        restoreLabel();
     });
+
+    // Fetch sessionId + URL
+    try {
+        const payload = {
+            stripeCustomerId,
+            cancelUrl,
+            successUrl,
+            payment_method_types: paymentMethods,
+            priceId,
+            couponId
+        };
+
+        const resp = await fetchWithRetry(fnUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }, 2, 1000);
+
+        if (resp.status === 409) {
+            let refusal = {};
+            try { refusal = (await resp.json()) || {}; } catch (ignored) {}
+            showCurrentOffer(refusal.error);
+            return;
+        }
+
+        // fetchWithRetry only retries network errors, so a 4xx/5xx arrives here
+        // as a readable Response whose JSON error body parses fine. Without this
+        // check an HTTP failure was reported as `invalid_payload`, hiding the
+        // status code that says which side broke.
+        if (!resp.ok) throw new Error('Session API error: ' + resp.status);
+
+        const data = await resp.json();
+
+        if (!data || !data.sessionId || !data.url) {
+            console.error(PREFIX, 'Invalid response');
+            if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', 'Invalid checkout session response');
+            // Restore the Memberstack fallback first: the user must never wait
+            // on a tag callback, and dataLayer.push runs GTM's callbacks
+            // synchronously.
+            detachClick();
+            restoreLabel();
+            const lost = takeHeldClick();
+            if (lost !== null) window.ORDO_PENDING_CHECKOUT_CLICK = true;
+            if (signupBtnStripe) signupBtnStripe.style.display = 'none';
+            if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
+            resumeHeldClick(signupBtnNoStripe);
+            trackCheckoutFailure('invalid_payload');
+            if (lost !== null) trackHeldClick(lost, 'fallback');
+            return;
+        }
+        sessionId = data.sessionId;
+        checkoutUrl = data.url;
+        console.log(PREFIX, 'Checkout session ready');
+
+    } catch (err) {
+        console.error(PREFIX, 'Error creating checkout session:', err);
+        if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', err);
+        // Restore the Memberstack fallback first: the user must never wait on a
+        // tag callback, and dataLayer.push runs GTM's callbacks synchronously.
+        detachClick();
+        restoreLabel();
+        const lost = takeHeldClick();
+        // Le clic gardé suit le membre sur le bouton Memberstack.
+        if (lost !== null) window.ORDO_PENDING_CHECKOUT_CLICK = true;
+        if (signupBtnStripe) signupBtnStripe.style.display = 'none';
+        if (signupBtnNoStripe) signupBtnNoStripe.style.display = 'flex';
+        resumeHeldClick(signupBtnNoStripe);
+        trackCheckoutFailure(checkoutFailureReason(err));
+        if (lost !== null) trackHeldClick(lost, 'fallback');
+        return;
+    }
+
+    const waited = takeHeldClick();
+    if (waited !== null) {
+        trackHeldClick(waited, 'redirect');
+        goToCheckout();
+    }
 
     resumeHeldClick(signupBtnStripe);
 }
