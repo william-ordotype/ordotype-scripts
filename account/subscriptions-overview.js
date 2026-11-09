@@ -1222,14 +1222,20 @@
     return ts > 0 && Date.now() - ts < JUST_PAID_MS;
   }
 
-  // The active free plans, or null as soon as anything else is there: a paid plan (cancelled ones
-  // included), a connection without a type, no active free plan, a pause, or a payment just made.
+  // The active free plans, or null as soon as anything else is there: a paid plan not cancelled, a
+  // connection without a type, no active free plan, a pause, or a payment just made. A cancelled paid plan
+  // does not count: the list shows a paid card only for a Stripe subscription in progress (a pause, which
+  // has a card, is in the member's metadata, checked below).
   function freeOnlyPlans() {
     var conns = Array.isArray(member.planConnections) ? member.planConnections : [];
     var free = [];
     for (var i = 0; i < conns.length; i++) {
       var c = conns[i];
-      if (!c || c.type !== 'FREE') return null;
+      if (!c || !c.type) return null;
+      if (c.type !== 'FREE') {
+        if (c.status === 'CANCELED') continue;
+        return null;
+      }
       if (c.status === 'ACTIVE' && typeof c.planId === 'string' && c.planId) free.push(c.planId);
     }
     if (!free.length) return null;
@@ -1966,7 +1972,8 @@
       types: types,
       moyens: nombre(f.moyens, 4),
       adresse: f.adresse === 1,
-      tva: f.tva === 1,
+      // 1 : la question « Vous avez un numéro de TVA ? », 2 : le numéro enregistré.
+      tva: f.tva === 1 || f.tva === 2 ? f.tva : 0,
       // -1 : factures illisibles, la carte s'affiche sans son tableau.
       factures: f.factures === -1 ? -1 : nombre(f.factures, FACTURES_MAX),
       h: { moyen: px(h.moyen), adresse: px(h.adresse), factures: px(h.factures) }
@@ -1994,13 +2001,13 @@
     for (var k = skeletonCount(); k > 0; k--) abos.push(0);
     var interne = String((member.customFields || {}).statut || '').trim().toLowerCase() === 'interne';
     return {
-      w: 0, abos: abos, types: types.slice(0, abos.length), moyens: live ? 1 : 0, adresse: paid, tva: paid && !interne,
+      w: 0, abos: abos, types: types.slice(0, abos.length), moyens: live ? 1 : 0, adresse: paid, tva: paid && !interne ? 1 : 0,
       factures: paid ? FACTURES_MAX : 0, h: { moyen: 0, adresse: 0, factures: 0 }
     };
   }
 
-  // Une carte d'abonnement courante de chaque sorte, pour mesurer la place qu'elle prend : un payant au mois,
-  // son prochain prélèvement et « Résilier » (la plupart des plans payants), un gratuit sans bouton.
+  // Une carte d'abonnement courante de chaque sorte, montrée en squelette (voir enSquelette) : un payant au
+  // mois, son prochain prélèvement et « Résilier » (la plupart des plans payants), un gratuit sans bouton.
   var CARTE_TYPE = {
     payant: { status: 'active', price: { amount: 3000, current: 3000, currency: 'eur', interval: 'month', intervalCount: 1 },
       next: { amount: 3000 }, action: { label: 'Résilier', href: CANCEL_WARNING } },
@@ -2008,11 +2015,14 @@
   };
 
   function carteType(type) {
-    var base = { label: 'Abonnement', icon: null, status: 'active', price: null, discount: null, offeredUntil: null, next: null,
+    var base = { label: 'Module de Médecine générale', icon: null, status: 'active', price: null, discount: null, offeredUntil: null, next: null,
       endsOn: null, resumesOn: null, action: null, note: null, reactivation: null };
     var t = CARTE_TYPE[type];
     for (var k in t) base[k] = t[k];
     if (base.next) base.next = { date: new Date().toISOString().slice(0, 10), amount: base.next.amount };
+    // Le logo de l'exemple du Designer : la plupart des cartes en ont un, il compte dans la hauteur.
+    var logo = D.g.abonnement.querySelector('img');
+    base.icon = logo ? logo.getAttribute('src') : null;
     return base;
   }
 
@@ -2048,52 +2058,77 @@
       types: list.slice(0, 6).map(typeDeCarte),
       moyens: Array.isArray(data.pms) ? data.pms.length : 0,
       adresse: D.cards.adresse.hidden ? 0 : 1,
-      tva: !D.cards.adresse.hidden && !D.zoneTva.hidden && D.zoneTva.firstChild ? 1 : 0,
+      tva: !D.cards.adresse.hidden && !D.zoneTva.hidden && D.zoneTva.firstChild ? (taxIdOf(data.taxId) ? 2 : 1) : 0,
       factures: Array.isArray(data.invoices) ? data.invoices.length : -1,
       h: { moyen: h(D.cards['moyen-de-paiement']), adresse: h(D.cards.adresse), factures: h(D.cards.factures) }
     };
     try { window.localStorage.setItem(FORME_KEY, JSON.stringify(f)); } catch (e) { /* no-op */ }
   }
 
-  // Un bloc squelette du Designer, à la hauteur de ce qu'il remplace quand on la connaît.
-  function ombre(height) {
+  // Le bloc squelette du Designer, pour une carte d'abonnement dont on ne connaît pas la sorte.
+  function ombre() {
     var s = rendu(copie('squelette'));
+    s.setAttribute('data-ordo-squelette', '1');
     s.setAttribute('aria-hidden', 'true');
-    if (height) s.style.height = height + 'px';
     return s;
   }
 
-  // Hauteur que prend `node` dans `parent` à la largeur actuelle, mesurée sans être vue ; 0 sans mise en page.
-  function hauteurDans(parent, node) {
-    node.style.visibility = 'hidden';
-    parent.appendChild(node);
-    var h = px(node.offsetHeight);
-    retirer(node);
-    return h;
+  // Un exemple aux valeurs courantes, montré en squelette : chaque valeur (texte d'un `data-ordo-champ`, ou tout
+  // le texte avec `tout`) devient une barre de sa longueur, dessinée par la classe du squelette du Designer ;
+  // boutons, liens, pastilles et icônes gardent leur place sans se montrer ; les intitulés du Designer restent
+  // lisibles. La hauteur est celle que la liste affichera.
+  var MASQUES = 'a, button, img, svg, input, select, [class*="badge"], [class*="picto"]';
+  function enSquelette(node, tout) {
+    rendu(node);
+    node.setAttribute('data-ordo-squelette', '1');
+    node.setAttribute('aria-hidden', 'true');
+    node.removeAttribute('role');
+    var caches = node.querySelectorAll(MASQUES);
+    for (var i = 0; i < caches.length; i++) caches[i].style.visibility = 'hidden';
+    var textes = [];
+    var walker = document.createTreeWalker(node, 4, null);
+    while (walker.nextNode()) textes.push(walker.currentNode);
+    for (var j = 0; j < textes.length; j++) {
+      var t = textes[j];
+      var el = t.parentNode;
+      if (!/\S/.test(t.nodeValue) || el.closest(MASQUES)) continue;
+      if (!tout && !el.closest('[data-ordo-champ]')) continue;
+      var barre = document.createElement('span');
+      barre.className = D.g.squelette.className;
+      barre.style.display = 'inline';
+      barre.style.color = 'transparent';
+      barre.textContent = t.nodeValue;
+      el.replaceChild(barre, t);
+    }
+    return node;
   }
 
-  // Les cartes qui viennent avec la liste, à leur place, chaque ligne remplacée par un squelette de sa taille
-  // (les exemples du Designer, mesurés). À la largeur de la dernière visite, chaque carte garde en plus la
-  // hauteur qu'elle avait alors : rien ne bouge quand la liste arrive, si rien n'a changé.
-  function ombresD(f, memeLargeur) {
+  // Une adresse courante : nom, rue, code postal et ville, pays.
+  var ADRESSE_TYPE = { name: 'Dr Camille Martin', line1: '12 rue des Lilas', postalCode: '69003', city: 'Lyon', country: 'FR' };
+
+  // A la largeur de la dernière visite, les hauteurs notées alors valent pour celle-ci.
+  function memeLargeur(connue) {
+    return Boolean(connue && connue.w && connue.w === px(D.liste.clientWidth));
+  }
+
+  // Les cartes qui viennent avec la liste, à leur place, leurs lignes en squelette (voir enSquelette). A la
+  // largeur de la dernière visite, chaque carte garde en plus la hauteur qu'elle avait alors : rien ne bouge
+  // quand la liste arrive, si rien n'a changé.
+  function ombresD(f, largeur) {
     var moyen = D.cards['moyen-de-paiement'];
     afficher(moyen, f.moyens > 0);
-    if (f.moyens > 0) {
-      var hm = hauteurDans(moyen, copie('moyen'));
-      for (var i = 0; i < f.moyens; i++) moyen.appendChild(ombre(hm));
-    }
+    for (var i = 0; i < f.moyens; i++) moyen.appendChild(enSquelette(copie('moyen')));
     afficher(D.cards.adresse, f.adresse);
     if (f.adresse) {
-      // Une adresse courante : nom, rue, code postal et ville, pays.
-      var lecture = ui.addressRead({ name: 'Nom', line1: 'Rue', postalCode: '75000', city: 'Ville', country: 'FR' }).root;
-      D.zoneAdresse.appendChild(ombre(hauteurDans(D.zoneAdresse, lecture)));
-      afficher(D.zoneTva, f.tva);
-      if (f.tva) D.zoneTva.appendChild(ombre(hauteurDans(D.zoneTva, copie('tva-demande'))));
+      D.zoneAdresse.appendChild(enSquelette(ui.addressRead(ADRESSE_TYPE).root));
+      afficher(D.zoneTva, f.tva > 0);
+      // La question n'est pas encore sûre : tout son texte en squelette ; le numéro, son intitulé lisible.
+      if (f.tva) D.zoneTva.appendChild(enSquelette(copie(f.tva === 2 ? 'tva-lecture' : 'tva-demande'), f.tva !== 2));
     }
     var factures = f.factures !== 0;
     afficher(D.cards.factures, factures);
     afficher(D.table, f.factures > 0);
-    if (f.factures > 0) D.table.appendChild(ombre(f.factures * hauteurDans(D.table, copie('facture'))));
+    for (var k = 0; k < f.factures; k++) D.table.appendChild(enSquelette(copie('facture')));
     if (factures) {
       afficher(D.portail, portalAvailable());
       whenInvoiceEmails(function() {
@@ -2104,7 +2139,7 @@
     for (var nom in cartes) {
       if (D.cards[nom].hidden) continue;
       D.cards[nom].setAttribute('aria-busy', 'true');
-      if (memeLargeur && cartes[nom]) D.cards[nom].style.minHeight = cartes[nom] + 'px';
+      if (largeur && cartes[nom]) D.cards[nom].style.minHeight = cartes[nom] + 'px';
     }
   }
 
@@ -2116,22 +2151,24 @@
     showD();
     var connue = formeConnue();
     var f = connue || formeDevinee();
-    var memeLargeur = Boolean(connue && connue.w && connue.w === px(D.liste.clientWidth));
+    var largeur = memeLargeur(connue);
     var subs = D.cards.abonnements;
     subs.setAttribute('aria-busy', 'true');
     afficher(D.attente, false);
-    // Hauteur de chaque carte : celle de la dernière visite à cette largeur, sinon celle d'une carte courante
-    // de sa sorte, sinon celle du squelette du Designer.
-    var parType = {};
+    // Chaque carte : une carte courante de sa sorte en squelette, sinon le bloc du Designer ; à la largeur de
+    // la dernière visite, à la hauteur qu'elle avait alors.
     for (var i = 0; i < f.abos.length; i++) {
-      var type = f.types[i];
-      if (type && !(type in parType)) parType[type] = hauteurDans(D.liste, cardD(carteType(type)));
-      D.liste.appendChild(ombre(memeLargeur && f.abos[i] ? f.abos[i] : (type ? parType[type] : 0)));
+      var s = f.types[i] ? enSquelette(cardD(carteType(f.types[i]))) : ombre();
+      if (largeur && f.abos[i]) {
+        s.style.height = f.abos[i] + 'px';
+        s.style.overflow = 'hidden';
+      }
+      D.liste.appendChild(s);
     }
     var sr = rendu(copie('sr'));
     sr.textContent = 'Chargement de vos abonnements…';
     subs.appendChild(sr);
-    ombresD(f, memeLargeur);
+    ombresD(f, largeur);
     afficher(D.aide, true);
     clearTimeout(slowTimer);
     slowTimer = setTimeout(function() {
@@ -2253,11 +2290,9 @@
       document.removeEventListener('visibilitychange', onVisibility);
     }
 
-    // Free plans only: their cards are shown at once, and the list, still requested, replaces them. Not when
-    // the last visit showed cards that come from Stripe (invoices of a former subscription): shown without
-    // them, the page would grow when the list arrives; the skeleton keeps their place instead.
-    var connue = formeConnue();
-    var freePlans = connue && !sansCarteStripe(connue) ? null : freeOnlyPlans();
+    // Free plans only: their cards are shown at once, and the list, still requested, replaces them. The cards
+    // that come from Stripe (address, invoices of a former subscription) are drawn in their place as skeletons.
+    var freePlans = freeOnlyPlans();
     function showInstant(plans) {
       if (settled || instant || !plans) return;
       var cards = freeCards(freePlans, plans);
@@ -2265,6 +2300,9 @@
       instant = cards;
       clearTimeout(slowTimer);
       render(cards, null, [], [], [], null);
+      var connue = formeConnue();
+      var f = connue || formeDevinee();
+      if (!sansCarteStripe(f)) ombresD(f, memeLargeur(connue));
       track('subscriptions_list', { subs_outcome: 'instant', subs_status: statusesOf(cards) });
       console.log(PREFIX + ' Shown before the list: ' + cards.length + ' free plan(s)');
     }

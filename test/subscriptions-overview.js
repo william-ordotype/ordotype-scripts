@@ -1096,11 +1096,12 @@ async function main() {
   // no shape known on this browser, the member's plans give it: a live paid plan has a payment method, a
   // paid plan, even cancelled, an address (with the VAT number line, except for an intern) and invoices;
   // free plans only, none of them.
-  const ombres = (w, name) => Array.from(sectionOf(w, name).querySelectorAll('.compte-v2_squelette'));
+  const ombres = (w, name) => Array.from(sectionOf(w, name).querySelectorAll('[data-ordo-squelette]'));
   for (const [cas, conns, attendu, statut] of [
-    ['paid', [{ type: 'SUBSCRIPTION', status: 'ACTIVE' }], { moyen: 1, adresse: 2, factures: 1 }],
-    ['paid intern', [{ type: 'SUBSCRIPTION', status: 'ACTIVE' }], { moyen: 1, adresse: 1, factures: 1 }, 'Interne'],
-    ['cancelled paid', [{ type: 'SUBSCRIPTION', status: 'CANCELED' }, { type: 'FREE', status: 'ACTIVE' }], { moyen: 0, adresse: 2, factures: 1 }],
+    ['paid', [{ type: 'SUBSCRIPTION', status: 'ACTIVE' }], { moyen: 1, adresse: 2, factures: 3 }],
+    ['paid intern', [{ type: 'SUBSCRIPTION', status: 'ACTIVE' }], { moyen: 1, adresse: 1, factures: 3 }, 'Interne'],
+    ['cancelled paid', [{ type: 'SUBSCRIPTION', status: 'CANCELED' }, { type: 'SUBSCRIPTION', status: 'ACTIVE' }], { moyen: 1, adresse: 2, factures: 3 }],
+    ['cancelled paid only', [{ type: 'SUBSCRIPTION', status: 'CANCELED' }], { moyen: 0, adresse: 2, factures: 3 }],
     ['no plan', [], { moyen: 0, adresse: 0, factures: 0 }],
   ]) {
     const t = page({ visible: false });
@@ -1124,6 +1125,40 @@ async function main() {
     }
     assert.ok(shown(sectionOf(t.w, 'moyen-de-paiement')), cas + ': the list decides in the end');
     assert.ok(!shown(sectionOf(t.w, 'factures')), cas + ': no invoice, no invoices card');
+  }
+
+  // What a skeleton shows: the Designer's labels stay readable, each value becomes a bar of its length (the
+  // Designer's skeleton class, text transparent), buttons, badges and icons keep their place unseen, and
+  // nothing in it is read out or counted as a subscription
+  {
+    const t = page({ visible: false });
+    t.w.OrdoAccount.member.planConnections = [{ type: 'SUBSCRIPTION', status: 'ACTIVE' }];
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS }, delay: 150 }]);
+    t.w.eval(SCRIPT);
+    await wait(30);
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(5);
+    const barres = (n) => Array.from(n.querySelectorAll('span.compte-v2_squelette'));
+    const adresse = sectionOf(t.w, 'adresse').querySelector('[data-ordo-zone="adresse"] [data-ordo-squelette]');
+    assert.strictEqual(adresse.getAttribute('aria-hidden'), 'true', 'not read out');
+    assert.ok(/Nom sur les factures/.test(adresse.textContent), 'the label is there');
+    assert.ok(!barres(adresse).some((b) => /Nom sur les factures|Adresse$/.test(b.textContent)), 'labels are not bars');
+    assert.ok(barres(adresse).length >= 3, 'name and address lines are bars');
+    assert.ok(barres(adresse).every((b) => b.style.color === 'transparent' && b.style.display === 'inline'), 'bars: text hidden, inline');
+    const bouton = adresse.querySelector('a, button');
+    assert.strictEqual(bouton.style.visibility, 'hidden', 'the button keeps its place, unseen');
+    const tva = sectionOf(t.w, 'adresse').querySelector('[data-ordo-zone="tva"] [data-ordo-squelette]');
+    assert.ok(barres(tva).some((b) => /TVA/.test(b.textContent)), 'the VAT question, not yet sure, is a bar too');
+    const carte = root(t.w).querySelector('[data-ordo-liste] > [data-ordo-squelette]');
+    assert.ok(!carte.hasAttribute('role'), 'not a list item');
+    assert.strictEqual(cards(t.w).length, 0, 'not counted as a subscription');
+    assert.ok(barres(carte).some((b) => /Médecine générale/.test(b.textContent)), 'the name is a bar');
+    assert.strictEqual(carte.querySelector('.compte-v2_badge').style.visibility, 'hidden', 'the status badge unseen');
+    const ligne = root(t.w).querySelector('[role="table"] [data-ordo-squelette]');
+    assert.strictEqual(ligne.querySelector('a').style.visibility, 'hidden', 'the PDF link unseen');
+    assert.ok(barres(ligne).length >= 3, 'date, label and amount are bars');
+    await wait(250);
+    assert.strictEqual(root(t.w).querySelectorAll('[data-ordo-squelette]').length, 0, 'all gone with the list');
   }
 
   // The shape of the last visit on this browser: counts, and heights at that width. Stored after the list,
@@ -1192,6 +1227,26 @@ async function main() {
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
 
+  // The VAT number line of the last visit: a registered number keeps its label readable (only the number is a
+  // bar), the question is all bars; noted from the list (a number given = 2, the question = 1)
+  for (const [tva, label] of [[2, true], [1, false]]) {
+    const t = page({ visible: false });
+    t.w.localStorage.setItem('ordo_subs_forme', JSON.stringify({ v: 1, m: 'mem_test', at: Date.now(), w: 0, abos: [0], moyens: 0, adresse: 1, tva,
+      factures: 0, h: {} }));
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS, billingAddress: { name: 'X', line1: 'Y', postalCode: '1', city: 'Z', country: 'FR' },
+      taxId: { value: 'FR38912531324', status: 'verified' }, taxIdAllowed: true }, delay: 150 }]);
+    layout(t.w, { on: true, width: 600 });
+    t.w.eval(SCRIPT);
+    await wait(30);
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(5);
+    const zone = sectionOf(t.w, 'adresse').querySelector('[data-ordo-zone="tva"] [data-ordo-squelette]');
+    const lisible = Array.from(zone.querySelectorAll('*')).some((n) => !n.closest('span.compte-v2_squelette') && /Numéro de TVA intracommunautaire/.test(n.textContent) && n.children.length === 0);
+    assert.strictEqual(lisible, label, 'tva ' + tva + (label ? ': the label readable' : ': no readable label'));
+    await wait(250);
+    assert.strictEqual(forme(t.w).tva, 2, 'a number given: noted as 2');
+  }
+
   // A known shape draws the skeleton: its counts always, its heights only at the same width; a shape stored
   // for another member, too old or unreadable is ignored
   const stored = (over) => JSON.stringify(Object.assign({ v: 1, m: 'mem_test', at: Date.now(), w: 600, abos: [160, 200], moyens: 2, adresse: 0,
@@ -1199,7 +1254,7 @@ async function main() {
   for (const [cas, value, width, attendu] of [
     ['same width', stored({}), 600, { abos: ['160px', '200px'], moyens: 2, factures: true, table: false, min: ['150px', '90px'] }],
     ['other width', stored({}), 500, { abos: ['', ''], moyens: 2, factures: true, table: false, min: ['', ''] }],
-    ['other width, kinds of cards known', stored({ types: ['payant', 'gratuit'] }), 500, { abos: ['40px', '40px'], moyens: 2, factures: true, table: false, min: ['', ''] }],
+    ['other width, kinds of cards known', stored({ types: ['payant', 'gratuit'] }), 500, { abos: ['', ''], moyens: 2, factures: true, table: false, min: ['', ''] }],
     ['same width, a height missing', stored({ abos: [160, 0], types: ['payant', 'x'] }), 600, { abos: ['160px', ''], moyens: 2, factures: true, table: false, min: ['150px', '90px'] }],
     ['other member', stored({ m: 'mem_autre' }), 600, { abos: [''], moyens: 0, factures: false, min: ['', ''] }],
     ['too old', stored({ at: Date.now() - 91 * 24 * 3600 * 1000 }), 600, { abos: [''], moyens: 0, factures: false, min: ['', ''] }],
@@ -1213,7 +1268,7 @@ async function main() {
     await wait(30);
     t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
     await wait(5);
-    const liste = Array.from(root(t.w).querySelectorAll('[data-ordo-liste] > .compte-v2_squelette'));
+    const liste = Array.from(root(t.w).querySelectorAll('[data-ordo-liste] > [data-ordo-squelette]'));
     assert.deepStrictEqual(liste.map((n) => n.style.height), attendu.abos, cas + ': subscription skeletons');
     assert.strictEqual(ombres(t.w, 'moyen-de-paiement').length, attendu.moyens, cas + ': payment method rows');
     assert.ok(!shown(sectionOf(t.w, 'adresse')), cas + ': no address card');

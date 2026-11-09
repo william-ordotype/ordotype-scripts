@@ -3,9 +3,11 @@
  * « Mes abonnements » for a member who only has free plans: shown at once, then replaced by the list.
  *
  * What must hold:
- *   - eligible = every plan connection is FREE, at least one is active, no pause, no payment in the
- *     last day. A paid plan, even cancelled, a connection without a type, or an empty snapshot is
- *     never eligible: the list is awaited as before, and the plans endpoint is not even called;
+ *   - eligible = every plan connection is FREE or a cancelled paid plan, at least one free plan is
+ *     active, no pause, no payment in the last day. A paid plan in progress, a connection without a
+ *     type, or an empty snapshot is never eligible: the list is awaited as before, and the plans
+ *     endpoint is not even called. The cards that come from Stripe (address, invoices of a former
+ *     subscription) are drawn in their place as skeletons next to the free cards;
  *   - with a stored copy of the plans, the cards are rendered before any answer; without one, as
  *     soon as the plans endpoint answers, and the copy is stored;
  *   - the plans request is a simple one (no credentials, no Authorization header);
@@ -111,7 +113,7 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
   w.eval(SOURCE);
   const doc = w.document;
   const root = doc.querySelector('[data-ordo-facturation]');
-  const cards = () => Array.from(root.querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu]'));
+  const cards = () => Array.from(root.querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu]:not([data-ordo-squelette])'));
   return {
     w, calls, reports,
     // The member opens the tab: the section comes on screen.
@@ -121,7 +123,8 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
     statuses: () => cards().map((n) => n.querySelector('.compte-v2_abo-head > .compte-v2_badge')).filter(Boolean).map((n) => n.textContent),
     logo: () => cards().map((n) => n.querySelector('img')).filter(Boolean)[0] || null,
     text: () => root.querySelector('[data-ordo-section="abonnements"]').textContent,
-    skeletons: () => root.querySelectorAll('[data-ordo-liste="abonnements"] > .compte-v2_squelette').length,
+    skeletons: () => root.querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-squelette]').length,
+    stripeSkeletons: (section) => root.querySelectorAll('[data-ordo-section="' + section + '"] [data-ordo-squelette]').length,
     waiting: () => doc.querySelector('[data-ordo-attente]'),
     failed: () => /n’ont pas pu s’afficher/.test(root.textContent),
   };
@@ -167,14 +170,20 @@ const COPY = { at: Date.now(), plans: PUBLIC };
   });
 
   await check('no copy: rendered when the plans answer, before the list; the copy is stored', async () => {
-    const p = await open({ plans: [free('pln_interne')], list: reply(200, LIST_FREE, 60) });
+    // The plans answer when the test says so, right after checking that nothing is shown: no race with the
+    // machine's speed (the plans timeout is 50 ms here, the list answers at 150 ms).
+    const plansAnswer = deferred();
+    const p = await open({ plans: [free('pln_interne')], list: reply(200, LIST_FREE, 150),
+      plansReply: () => plansAnswer.promise.then(() => ({ ok: true, status: 200, json: () => Promise.resolve({ plans: PUBLIC }) })) });
     await wait(1);
     assert.deepStrictEqual(p.labels(), [], 'no copy: nothing yet');
-    await wait(30);
-    assert.deepStrictEqual(p.labels(), ['Interne MG'], 'from the plans endpoint, before the list');
+    plansAnswer.resolve();
+    await wait(10);
+    assert.deepStrictEqual(p.events(), ['instant'], 'from the plans endpoint, before the list');
+    assert.deepStrictEqual(p.labels(), ['Interne MG']);
     const saved = JSON.parse(p.w.localStorage.getItem('ordo_subs_plans'));
     assert.ok(saved && typeof saved.at === 'number' && saved.plans.pln_interne.label === 'Interne MG');
-    await wait(80);
+    await wait(150);
     assert.deepStrictEqual(p.events(), ['instant']);
   });
 
@@ -195,7 +204,6 @@ const COPY = { at: Date.now(), plans: PUBLIC };
   });
 
   const notEligible = [
-    ['a cancelled paid plan', { plans: [free('pln_interne'), paid('pln_mg', 'CANCELED')] }],
     ['an active paid plan', { plans: [free('pln_interne'), paid('pln_mg')] }],
     ['a one-time plan', { plans: [free('pln_interne'), { planId: 'pln_x', status: 'ACTIVE', type: 'ONETIME' }] }],
     ['a connection without a type', { plans: [free('pln_interne'), { planId: 'pln_x', status: 'ACTIVE' }] }],
@@ -373,25 +381,35 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.strictEqual(r[0].message, 'abonnements-affiches 404: no plans');
   });
 
-  await check('free plans only, but the last visit showed invoices (former subscription): no instant cards, the skeleton keeps their place', async () => {
+  await check('a cancelled paid plan next to the free ones: free cards at once, the address and invoices of the former subscription as skeletons', async () => {
+    const p = await open({ plans: [free('pln_interne'), paid('pln_mg', 'CANCELED')], stored: COPY, list: hang });
+    await wait(5);
+    assert.deepStrictEqual(p.labels(), ['Interne MG'], 'the free card at once');
+    assert.deepStrictEqual(p.events(), ['instant']);
+    assert.strictEqual(p.skeletons(), 0, 'no skeleton in « Mes abonnements »');
+    assert.strictEqual(p.stripeSkeletons('adresse'), 2, 'address and VAT number line drawn as skeletons');
+    assert.strictEqual(p.stripeSkeletons('factures'), 3, 'three invoice rows drawn as skeletons');
+    assert.strictEqual(p.stripeSkeletons('moyen-de-paiement'), 0, 'no payment method: nothing is billed any more');
+  });
+
+  await check('free plans only, the last visit showed invoices: free cards at once, the invoices as skeletons; without them, nothing else', async () => {
     const forme = (over) => ({ v: 1, m: 'mem_test', at: Date.now(), w: 600, abos: [100], moyens: 0, adresse: 0, factures: 0, h: {}, ...over });
-    const withInvoices = page({ plans: [free('pln_interne')], stored: { at: Date.now(), plans: PUBLIC }, list: hang, visible: false });
+    const withInvoices = page({ plans: [free('pln_interne')], stored: COPY, list: hang, visible: false });
     withInvoices.w.localStorage.setItem('ordo_subs_forme', JSON.stringify(forme({ factures: 2 })));
-    // Read at start: the shape is set before the script runs (stored copy, then DOMContentLoaded).
+    // Read when the cards are shown, after the script started (DOMContentLoaded).
     await wait(20);
     withInvoices.openTab();
     await wait(30);
-    assert.deepStrictEqual(withInvoices.labels(), [], 'no instant card');
-    assert.ok(!withInvoices.events().includes('instant'));
-    assert.strictEqual(withInvoices.calls.plans.length, 0, 'the plans are not requested');
-    const root = withInvoices.w.document.querySelector('[data-ordo-section="factures"]');
-    assert.ok(root.querySelector('.compte-v2_squelette'), 'the invoices card drawn as a skeleton');
-    const without = page({ plans: [free('pln_interne')], stored: { at: Date.now(), plans: PUBLIC }, list: hang, visible: false });
+    assert.deepStrictEqual(withInvoices.labels(), ['Interne MG'], 'the free card at once');
+    assert.strictEqual(withInvoices.stripeSkeletons('factures'), 2, 'the two invoice rows of the last visit');
+    assert.strictEqual(withInvoices.stripeSkeletons('adresse'), 0);
+    const without = page({ plans: [free('pln_interne')], stored: COPY, list: hang, visible: false });
     without.w.localStorage.setItem('ordo_subs_forme', JSON.stringify(forme({})));
     await wait(20);
     without.openTab();
     await wait(30);
-    assert.deepStrictEqual(without.labels(), ['Interne MG'], 'a last visit without Stripe cards keeps the instant cards');
+    assert.deepStrictEqual(without.labels(), ['Interne MG']);
+    assert.strictEqual(without.stripeSkeletons('factures') + without.stripeSkeletons('adresse') + without.stripeSkeletons('moyen-de-paiement'), 0, 'nothing else');
   });
 
   await check('skeleton: one placeholder per plan that is not cancelled (1 to 3), then a long-wait line', async () => {
