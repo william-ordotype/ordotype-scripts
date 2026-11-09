@@ -1066,8 +1066,8 @@ async function main() {
     assert.strictEqual(calls.length, atLoad, hash + (atLoad ? ': requested at load' : ': not requested while the tab is closed'));
   }
 
-  // The tab opened without its list: the skeleton at once (no waiting text first), and the SIREN card and
-  // the help box wait for the list, so that everything below « Mes abonnements » shows in one go
+  // The tab opened without its list: the skeleton at once (no waiting text first). What does not come from
+  // Stripe is in place from the start and never moves: the SIREN card is not touched, the help box shows.
   for (const outcome of ['list', 'failure']) {
     const t = page({ visible: false });
     const carte = t.w.document.createElement('div');
@@ -1080,18 +1080,151 @@ async function main() {
     installFetch(t.w, [body]);
     t.w.eval(SCRIPT);
     await wait(30);
-    assert.strictEqual(carte.style.display, 'flex', outcome + ': nothing held while the tab is closed');
     t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
     await wait(5);
     assert.ok(root(t.w).querySelector('.compte-v2_squelette'), outcome + ': the skeleton at once');
     assert.ok(!shown(waiting(t.w)), outcome + ': no waiting text before it');
-    assert.strictEqual(carte.style.display, 'none', outcome + ': the SIREN card waits');
-    assert.ok(!shown(helpBox(t.w)), outcome + ': the help box waits');
+    assert.strictEqual(carte.style.display, 'flex', outcome + ': the SIREN card untouched');
+    assert.ok(shown(helpBox(t.w)), outcome + ': the help box from the start');
     await wait(250);
-    assert.strictEqual(carte.style.display, 'flex', outcome + ': the SIREN card back, with its own style');
-    assert.ok(!carte.hasAttribute('data-ordo-attend-liste'), outcome + ': no mark left');
-    assert.ok(shown(helpBox(t.w)), outcome + ': the help box back');
+    assert.strictEqual(carte.style.display, 'flex', outcome + ': the SIREN card still untouched');
+    assert.ok(shown(helpBox(t.w)), outcome + ': the help box still there');
     if (outcome === 'list') assert.strictEqual(cards(t.w).length, CARDS.length);
+  }
+
+  // The cards that come with the list are drawn in their place while it is on its way, as skeletons. With
+  // no shape known on this browser, the member's plans give it: a live paid plan has a payment method, a
+  // paid plan, even cancelled, an address (with the VAT number line, except for an intern) and invoices;
+  // free plans only, none of them.
+  const ombres = (w, name) => Array.from(sectionOf(w, name).querySelectorAll('.compte-v2_squelette'));
+  for (const [cas, conns, attendu, statut] of [
+    ['paid', [{ type: 'SUBSCRIPTION', status: 'ACTIVE' }], { moyen: 1, adresse: 2, factures: 1 }],
+    ['paid intern', [{ type: 'SUBSCRIPTION', status: 'ACTIVE' }], { moyen: 1, adresse: 1, factures: 1 }, 'Interne'],
+    ['cancelled paid', [{ type: 'SUBSCRIPTION', status: 'CANCELED' }, { type: 'FREE', status: 'ACTIVE' }], { moyen: 0, adresse: 2, factures: 1 }],
+    ['no plan', [], { moyen: 0, adresse: 0, factures: 0 }],
+  ]) {
+    const t = page({ visible: false });
+    t.w.OrdoAccount.member.planConnections = conns;
+    if (statut) t.w.OrdoAccount.member.customFields = { statut };
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS, paymentMethods: [VISA], invoices: [] }, delay: 150 }]);
+    t.w.eval(SCRIPT);
+    await wait(30);
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(5);
+    for (const [name, section] of [['moyen', 'moyen-de-paiement'], ['adresse', 'adresse'], ['factures', 'factures']]) {
+      assert.strictEqual(shown(sectionOf(t.w, section)), attendu[name] > 0, cas + ': ' + section + (attendu[name] ? ' drawn' : ' not drawn'));
+      assert.strictEqual(ombres(t.w, section).length, attendu[name], cas + ': ' + section + ' skeleton');
+      if (attendu[name]) assert.strictEqual(sectionOf(t.w, section).getAttribute('aria-busy'), 'true', cas + ': ' + section + ' busy');
+    }
+    if (attendu.factures) assert.ok(shown(root(t.w).querySelector('[role="table"]')), cas + ': the invoices table, header in place');
+    await wait(250);
+    for (const section of ['moyen-de-paiement', 'adresse', 'factures']) {
+      assert.strictEqual(ombres(t.w, section).length, 0, cas + ': ' + section + ' skeleton gone with the list');
+      assert.ok(!sectionOf(t.w, section).hasAttribute('aria-busy'), cas + ': ' + section + ' no longer busy');
+    }
+    assert.ok(shown(sectionOf(t.w, 'moyen-de-paiement')), cas + ': the list decides in the end');
+    assert.ok(!shown(sectionOf(t.w, 'factures')), cas + ': no invoice, no invoices card');
+  }
+
+  // The shape of the last visit on this browser: counts, and heights at that width. Stored after the list,
+  // tab open; a list that arrived with the tab closed is measured when it opens.
+  function layout(w, state) {
+    Object.defineProperty(w.HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return state.on ? state.width : 0; } });
+    Object.defineProperty(w.HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return state.on ? 40 : 0; } });
+  }
+  const forme = (w) => JSON.parse(w.localStorage.getItem('ordo_subs_forme') || 'null');
+  {
+    const t = page({ visible: false });
+    const state = { on: false, width: 600 };
+    layout(t.w, state);
+    t.w.document.body.insertAdjacentHTML('afterbegin', '<div class="w-tab-menu"><a data-w-tab="billing" class="w-tab-link">Abonnements et facturation</a></div>');
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS.slice(0, 2), paymentMethods: [VISA, VISA], invoices: null,
+      billingAddress: { name: 'X', line1: 'Y', postalCode: '1', city: 'Z', country: 'FR' } } }]);
+    t.w.eval(SCRIPT);
+    await wait(30);
+    t.w.document.querySelector('.w-tab-link[data-w-tab="billing"]').dispatchEvent(new t.w.Event('mouseover', { bubbles: true }));
+    await wait(60);
+    assert.strictEqual(cards(t.w).length, 2, 'rendered with the tab closed');
+    assert.strictEqual(forme(t.w), null, 'nothing measured with the tab closed');
+    state.on = true;
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(5);
+    const f = forme(t.w);
+    assert.strictEqual(f.m, 'mem_test', 'stored for this member');
+    assert.deepStrictEqual([f.w, f.abos, f.types, f.moyens, f.adresse, f.factures], [600, [40, 40], ['payant', 'payant'], 2, 1, -1], 'counts and heights');
+    assert.strictEqual(f.tva, 0, 'no VAT number line: not proposed to this member');
+    assert.deepStrictEqual(f.h, { moyen: 40, adresse: 40, factures: 40 }, 'card heights');
+    assert.deepStrictEqual(Object.keys(f).sort(), ['abos', 'adresse', 'at', 'factures', 'h', 'm', 'moyens', 'tva', 'types', 'v', 'w'], 'counts and heights only');
+    assert.ok(!/visa|4242|Médecine|"Y"|"Z"/i.test(JSON.stringify(f)), 'no value of the list stored');
+  }
+
+  // The tab's first image already has its shape: the skeleton is drawn when the Facturation gets a size
+  // (ResizeObserver, before the paint), not only when the IntersectionObserver reports it (after)
+  {
+    const t = page({ visible: false });
+    const state = { on: false, width: 600 };
+    layout(t.w, state);
+    Object.defineProperty(t.w.HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return state.on ? 600 : 0; } });
+    const ro = { callback: null, target: null, disconnected: false };
+    t.w.ResizeObserver = function(cb) {
+      ro.callback = cb;
+      this.observe = (target) => { ro.target = target; };
+      this.disconnect = () => { ro.disconnected = true; };
+    };
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS }, delay: 150 }]);
+    t.w.eval(SCRIPT);
+    await wait(30);
+    assert.strictEqual(ro.target, t.observer.target, 'the same container as the IntersectionObserver');
+    ro.callback([]);
+    await wait(5);
+    assert.strictEqual(calls.length, 0, 'no size (tab closed): nothing');
+    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null);
+    state.on = true;
+    ro.callback([]);
+    assert.ok(root(t.w).querySelector('[data-ordo-liste] > .compte-v2_squelette'), 'the skeleton drawn in the same callback');
+    await wait(5);
+    assert.strictEqual(calls.length, 1, 'the list requested');
+    assert.ok(ro.disconnected, 'observed once');
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(5);
+    assert.strictEqual(calls.length, 1, 'the IntersectionObserver after it changes nothing');
+    await wait(250);
+    assert.strictEqual(cards(t.w).length, CARDS.length);
+  }
+
+  // A known shape draws the skeleton: its counts always, its heights only at the same width; a shape stored
+  // for another member, too old or unreadable is ignored
+  const stored = (over) => JSON.stringify(Object.assign({ v: 1, m: 'mem_test', at: Date.now(), w: 600, abos: [160, 200], moyens: 2, adresse: 0,
+    factures: -1, h: { moyen: 150, adresse: 0, factures: 90 } }, over));
+  for (const [cas, value, width, attendu] of [
+    ['same width', stored({}), 600, { abos: ['160px', '200px'], moyens: 2, factures: true, table: false, min: ['150px', '90px'] }],
+    ['other width', stored({}), 500, { abos: ['', ''], moyens: 2, factures: true, table: false, min: ['', ''] }],
+    ['other width, kinds of cards known', stored({ types: ['payant', 'gratuit'] }), 500, { abos: ['40px', '40px'], moyens: 2, factures: true, table: false, min: ['', ''] }],
+    ['same width, a height missing', stored({ abos: [160, 0], types: ['payant', 'x'] }), 600, { abos: ['160px', ''], moyens: 2, factures: true, table: false, min: ['150px', '90px'] }],
+    ['other member', stored({ m: 'mem_autre' }), 600, { abos: [''], moyens: 0, factures: false, min: ['', ''] }],
+    ['too old', stored({ at: Date.now() - 91 * 24 * 3600 * 1000 }), 600, { abos: [''], moyens: 0, factures: false, min: ['', ''] }],
+    ['unreadable', '{x', 600, { abos: [''], moyens: 0, factures: false, min: ['', ''] }],
+  ]) {
+    const t = page({ visible: false });
+    layout(t.w, { on: true, width });
+    t.w.localStorage.setItem('ordo_subs_forme', value);
+    installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS, paymentMethods: [VISA], invoices: [] }, delay: 150 }]);
+    t.w.eval(SCRIPT);
+    await wait(30);
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(5);
+    const liste = Array.from(root(t.w).querySelectorAll('[data-ordo-liste] > .compte-v2_squelette'));
+    assert.deepStrictEqual(liste.map((n) => n.style.height), attendu.abos, cas + ': subscription skeletons');
+    assert.strictEqual(ombres(t.w, 'moyen-de-paiement').length, attendu.moyens, cas + ': payment method rows');
+    assert.ok(!shown(sectionOf(t.w, 'adresse')), cas + ': no address card');
+    assert.strictEqual(shown(sectionOf(t.w, 'factures')), attendu.factures, cas + ': invoices card');
+    if (attendu.factures) assert.strictEqual(shown(root(t.w).querySelector('[role="table"]')), attendu.table, cas + ': unreadable invoices, no table');
+    assert.deepStrictEqual([sectionOf(t.w, 'moyen-de-paiement').style.minHeight, sectionOf(t.w, 'factures').style.minHeight], attendu.min, cas + ': card heights');
+    await wait(250);
+    assert.strictEqual(root(t.w).querySelectorAll('.compte-v2_squelette').length, 0, cas + ': no skeleton left');
+    assert.deepStrictEqual([sectionOf(t.w, 'moyen-de-paiement').style.minHeight, sectionOf(t.w, 'factures').style.minHeight], ['', ''], cas + ': heights given back to the content');
+    assert.strictEqual(cards(t.w).length, CARDS.length, cas + ': the list');
+    assert.strictEqual(forme(t.w).abos.length, Math.min(6, CARDS.length), cas + ': the new shape stored');
   }
 
   // Without IntersectionObserver (old browsers), the list is requested at once

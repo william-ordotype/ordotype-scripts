@@ -692,8 +692,10 @@ async function main() {
     assert.strictEqual(section(t, 'abonnements').getAttribute('aria-busy'), 'true');
     assert.ok(text(section(t, 'abonnements')).includes('Chargement de vos abonnements…'));
     assert.ok(!visibleIn(t, attente(t)), 'le squelette remplace l\'attente');
-    assert.ok(!visibleIn(t, section(t, 'moyen-de-paiement')));
-    assert.ok(!visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')), 'l\'aide attend la liste, pour tout montrer d\'un coup');
+    // Abonnement payant en cours : la carte du moyen de paiement est à sa place, en squelette.
+    assert.ok(visibleIn(t, section(t, 'moyen-de-paiement')), 'la carte du moyen de paiement à sa place');
+    assert.ok(section(t, 'moyen-de-paiement').querySelector('.compte-v2_squelette'), 'en squelette');
+    assert.ok(visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')), 'l\'aide à sa place dès l\'ouverture');
     await wait(250);
     assert.strictEqual(section(t, 'abonnements').querySelectorAll('.compte-v2_squelette').length, 0);
     assert.strictEqual(section(t, 'abonnements').hasAttribute('aria-busy'), false);
