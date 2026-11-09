@@ -979,19 +979,90 @@ async function main() {
     assert.ok(text(sectionOf(t.w, 'abonnements')).endsWith('Vous n’avez pas d’abonnement en cours.'));
   }
 
-  // The list is requested with the page, before its tab is open, and is already there when it opens
+  // The list is not requested while its tab is closed: it is requested when the tab opens, with the
+  // placeholder until it is there
   {
     const t = page({ visible: false });
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS }, delay: 300 }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(calls.length, 0, 'not requested while the tab is closed');
+    assert.ok(shown(waiting(t.w)), 'the page\'s waiting text');
+    assert.strictEqual(t.observer.target, root(t.w).parentElement, 'the tab\'s content, never the Facturation it hides');
+    t.observer.callback([{ target: t.observer.target, isIntersecting: false }]);
+    await wait(30);
+    assert.strictEqual(calls.length, 0, 'an entry that is not on screen requests nothing');
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(260);
+    assert.strictEqual(calls.length, 1, 'requested when the tab opens');
+    assert.ok(root(t.w).querySelector('.compte-v2_squelette'), 'placeholder while it is on its way');
+    await wait(200);
+    assert.strictEqual(calls.length, 1, 'not requested again');
+    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null);
+    assert.strictEqual(cards(t.w).length, CARDS.length);
+  }
+
+  // Aiming at the Facturation tab (pointer over it, press, touch, keyboard focus, click) requests the list
+  // before the tab opens; the tab opening then sends nothing more, and a second aim neither
+  for (const type of ['mouseover', 'pointerdown', 'touchstart', 'focusin', 'click']) {
+    const t = page({ visible: false });
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    t.w.eval(SCRIPT);
+    t.w.document.body.insertAdjacentHTML('afterbegin',
+      '<div class="w-tab-menu"><a data-w-tab="information" class="w-tab-link w--current"><div>Mon profil</div></a>'
+      + '<a data-w-tab="billing" class="w-tab-link"><div>Abonnements et facturation</div></a></div>');
+    await wait(30);
+    const other = t.w.document.querySelector('.w-tab-link[data-w-tab="information"] div');
+    other.dispatchEvent(new t.w.Event(type, { bubbles: true }));
+    await wait(30);
+    assert.strictEqual(calls.length, 0, type + ' on another tab requests nothing');
+    const label = t.w.document.querySelector('.w-tab-link[data-w-tab="billing"] div');
+    label.dispatchEvent(new t.w.Event(type, { bubbles: true }));
+    await wait(60);
+    assert.strictEqual(calls.length, 1, type + ' on the Facturation tab, even on its label, requests the list');
+    assert.strictEqual(cards(t.w).length, CARDS.length, type + ': rendered, ready when the tab opens');
+    label.dispatchEvent(new t.w.Event(type, { bubbles: true }));
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(260);
+    assert.strictEqual(calls.length, 1, type + ': requested once');
+    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null, type + ': no placeholder over the list');
+  }
+
+  // A tab menu drawn again after the script ran (members-only component): its new link still counts
+  {
+    const t = page({ visible: false });
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    const menu = '<div class="w-tab-menu"><a data-w-tab="billing" class="w-tab-link">Abonnements et facturation</a></div>';
+    t.w.document.body.insertAdjacentHTML('afterbegin', menu);
+    t.w.eval(SCRIPT);
+    await wait(30);
+    t.w.document.querySelector('.w-tab-menu').remove();
+    t.w.document.body.insertAdjacentHTML('afterbegin', menu);
+    t.w.document.querySelector('.w-tab-link[data-w-tab="billing"]').dispatchEvent(new t.w.Event('click', { bubbles: true }));
+    await wait(60);
+    assert.strictEqual(calls.length, 1, 'the redrawn link requests the list');
+  }
+
+  // A Facturation that is not in a tab pane: nothing hides it, the list is requested at once
+  {
+    const t = page({ visible: false });
+    const pane = root(t.w).closest('.w-tab-pane');
+    pane.classList.remove('w-tab-pane');
     const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
     t.w.eval(SCRIPT);
     await wait(60);
     assert.strictEqual(calls.length, 1, 'requested at load');
-    assert.strictEqual(cards(t.w).length, CARDS.length, 'rendered while the tab is closed');
-    assert.strictEqual(t.observer.target, root(t.w).parentElement, 'the tab\'s content, never the Facturation it hides');
-    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
-    await wait(260);
-    assert.strictEqual(calls.length, 1, 'not requested again');
-    assert.strictEqual(root(t.w).querySelector('.compte-v2_squelette'), null, 'no placeholder over the list');
+    assert.strictEqual(cards(t.w).length, CARDS.length);
+  }
+
+  // Without IntersectionObserver (old browsers), the list is requested at once
+  {
+    const t = page({ visible: false });
+    delete t.w.IntersectionObserver;
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(calls.length, 1, 'requested at load');
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
   {
