@@ -466,6 +466,28 @@ includes a 409 with any other `error` (`failure_reason` `api_409`).
 `pricing/` and `pricing-v2/` send the member cookie as Bearer when available,
 and `v: 2` in the body. Test: `node test/pricing-stripe-checkout-jeton.js`.
 
+**Click before the session exists.** The Stripe button is shown as soon as the
+Stripe customer is known, but its session only arrives with the function's
+answer, one to a few seconds later. `shared/stripe-checkout.js`, `pricing/` and
+`pricing-v2/` bind the click **before** the fetch: a click in that window shows
+« Patientez… » at once (button structure kept) and is held. Session ready → the
+member goes to Stripe without a second click. Failure → the Memberstack button of
+the same offer is clicked for them. 409 → nothing is replayed and the button
+becomes the account link, which is no longer intercepted. Further clicks while
+one is held are ignored (one departure only). On a back navigation from Stripe
+that restores the page from the browser cache (`pageshow` with `persisted`), the
+button gets its label back and can be clicked again. Test:
+`node test/stripe-checkout-clic-avant-session.js`.
+
+**`checkout_click_held`** — one per held click, pushed once its fate is known.
+
+| Parameter | Values |
+|-----------------|-------------------------------------------------------------|
+| `checkout_source` | `pricing`, `pricing-v2`, `shared` (or `config.checkoutSource`) |
+| `option`          | same value as the page's `stripe_signup_click` |
+| `outcome`         | `redirect` (went to Stripe), `fallback` (Memberstack button), `current_offer` (409, nothing replayed) |
+| `wait_ms`         | time between the click and that outcome |
+
 Each emitter also reports to Sentry through `OrdoErrorReporter` when it is
 loaded on the page; the dataLayer event is what makes the failure *rate*
 readable per page, next to the click. On a failure path the push runs **after**

@@ -152,6 +152,11 @@
     function showCurrentOffer(reason) {
       var pending = reason === 'payment-pending';
       var label = pending ? 'Régulariser mon paiement' : 'Mon offre actuelle';
+      // Les boutons deviennent de vrais liens vers le compte : on cesse de
+      // capturer leur clic, et un clic gardé ne part nulle part (il ouvrirait
+      // un second abonnement).
+      detachClicks();
+      var dropped = takeHeldClick();
       if (noStripe1) noStripe1.style.display = 'none';
       if (noStripe2) noStripe2.style.display = 'none';
       [btn1, btn2].forEach(function(btn) {
@@ -160,6 +165,7 @@
         btn.style.display = 'flex';
       });
       trackCheckoutFailure(pending ? 'payment_pending' : 'already_subscribed');
+      if (dropped) trackHeldClick(dropped, 'current_offer');
     }
 
     var paymentMethods = ['sepa_debit'];
@@ -180,12 +186,165 @@
       });
     }
 
+    // Les boutons Stripe sont visibles dès maintenant, mais leurs sessions
+    // n'arrivent qu'avec la réponse du serveur, une à quelques secondes plus
+    // tard. Un clic dans cet intervalle ne faisait rien, sans un mot. Il est
+    // désormais gardé : « Patientez… » tout de suite, puis Stripe dès que la
+    // session est prête, ou le bouton Memberstack si sa création échoue.
+    var WAIT_LABEL = 'Patientez…';
+    var OFFERS = {
+      praticien: { btn: btn1, fallback: noStripe1, priceId: priceId1, couponId: couponId1, stash: 'praticien-sepa' },
+      rempla: { btn: btn2, fallback: noStripe2, priceId: priceId2, couponId: couponId2, stash: 'rempla-sepa' }
+    };
+    var sessions = null;      // { praticien: { id, url }, rempla: { id, url } }
+    var isRedirecting = false;
+    var heldClick = null;     // { option, at } : clic arrivé avant les sessions
+    var savedLabels = {};
+
+    function now() {
+      return (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+    }
+    function showWaiting(option) {
+      var label = labelOf(OFFERS[option].btn);
+      if (!(option in savedLabels)) savedLabels[option] = label.textContent;
+      label.textContent = WAIT_LABEL;
+    }
+    function restoreLabels() {
+      Object.keys(savedLabels).forEach(function(option) {
+        labelOf(OFFERS[option].btn).textContent = savedLabels[option];
+      });
+      savedLabels = {};
+    }
+    function takeHeldClick() {
+      var held = heldClick;
+      heldClick = null;
+      return held;
+    }
+    // Sans cet événement, un clic arrivé trop tôt ne laisse aucune trace : il
+    // compte les clics gardés, leur attente et leur issue. Le corps est construit
+    // sous try : sur le chemin du succès, la redirection vers Stripe le suit.
+    function trackHeldClick(held, outcome) {
+      try {
+        track({
+          event: 'checkout_click_held',
+          checkout_source: 'pricing',
+          option: held.option,
+          outcome: outcome,
+          wait_ms: Math.round(now() - held.at)
+        });
+      } catch (err) {
+        reportSideEffect(err);
+      }
+    }
+
+    // Fire-and-forget webhook helper via proxy
+    // Uses sendBeacon to survive page navigation (no CORS preflight with text/plain)
+    function notifyWebhook(payload) {
+      var url = 'https://pricing.ordotype.fr/.netlify/functions/notify-webhook';
+      var data = JSON.stringify({ type: 'abandon-cart', ...payload });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));
+      } else {
+        fetch(url, {
+          method: 'POST',
+          keepalive: true,
+          body: data
+        }).catch(function() {});
+      }
+    }
+
+    // Stash the Stripe Checkout Session URL so the "comeback" page
+    // (/inscription-non-terminee/[slug]) can re-open the EXACT session the
+    // user abandoned instead of creating a new one. Stripe session URLs are
+    // valid ~24h; we store a timestamp so the comeback page can fall back to
+    // a fresh session if it has expired. Keyed by option so each comeback
+    // page reads its own pending session.
+    function stashCheckoutSession(option, sessionId, url) {
+      try {
+        localStorage.setItem('ordo-pending-checkout-' + option, JSON.stringify({
+          url: url,
+          sessionId: sessionId,
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+        // localStorage unavailable (private mode / quota) — non-fatal
+        console.warn('[StripeCheckout] Could not stash checkout session:', e);
+      }
+    }
+
+    function goToCheckout(option) {
+      var offer = OFFERS[option];
+      var session = sessions[option];
+      isRedirecting = true;
+      showWaiting(option);
+      // Stash, webhook et mesure sont accessoires : ils s'exécutent sous try,
+      // la redirection part du finally. Un accessoire qui jette ne peut donc
+      // pas laisser l'utilisateur sur un bouton « Patientez… » mort. Les
+      // pushs restent avant la navigation pour que sendBeacon parte.
+      try {
+        stashCheckoutSession(offer.stash, session.id, session.url);
+        notifyWebhook({
+          timestamp: new Date().toISOString(),
+          checkoutSessionId: session.id,
+          url: session.url,
+          stripeCustomerId: stripeCustomerId,
+          memberstackUserId: memberstackUserId,
+          memberstackEmail: memberstackEmail,
+          option: option,
+          priceId: offer.priceId,
+          coupon: offer.couponId,
+          originPage: window.location.href,
+          paymentMethods: paymentMethods
+        });
+        track({
+          event: 'stripe_signup_click',
+          option: option,
+          priceId: offer.priceId,
+          coupon: offer.couponId,
+          checkoutSessionId: session.id
+        });
+      } catch (err) {
+        reportSideEffect(err);
+      } finally {
+        window.location.href = session.url;
+      }
+    }
+
+    function onStripeClick(option) {
+      return function(e) {
+        e.preventDefault();
+        // Double-click prevention, y compris pendant l'attente des sessions.
+        if (isRedirecting || heldClick) return;
+        if (sessions) {
+          goToCheckout(option);
+          return;
+        }
+        heldClick = { option: option, at: now() };
+        showWaiting(option);
+        console.log('[StripeCheckout] Click held until the checkout sessions are ready:', option);
+      };
+    }
+    var clickHandlers = { praticien: onStripeClick('praticien'), rempla: onStripeClick('rempla') };
+    function detachClicks() {
+      btn1.removeEventListener('click', clickHandlers.praticien);
+      btn2.removeEventListener('click', clickHandlers.rempla);
+    }
+    btn1.addEventListener('click', clickHandlers.praticien);
+    btn2.addEventListener('click', clickHandlers.rempla);
+
+    // Retour arrière depuis Stripe : le navigateur peut ressortir la page de
+    // son cache telle qu'on l'a quittée, bouton sur « Patientez… » et clic
+    // verrouillé. Les sessions restent valables : on rend la main.
+    window.addEventListener('pageshow', function(e) {
+      if (!e.persisted || !isRedirecting) return;
+      isRedirecting = false;
+      restoreLabels();
+    });
+
     // Fetch both sessions
     fetchCheckoutSessions();
 
     async function fetchCheckoutSessions() {
-      var sessionId1, url1, sessionId2, url2;
-
       try {
         // Without a member token the request goes out without the header.
         var token = await memberToken().catch(function() { return ''; });
@@ -238,140 +397,35 @@
 
         if (!data || !data.url1 || !data.url2) throw new Error('Invalid session payload');
 
-        sessionId1 = data.sessionId1;
-        url1 = data.url1;
-        sessionId2 = data.sessionId2;
-        url2 = data.url2;
+        sessions = {
+          praticien: { id: data.sessionId1, url: data.url1 },
+          rempla: { id: data.sessionId2, url: data.url2 }
+        };
       } catch (err) {
         console.error('[StripeCheckout] Fetch error:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout (pricing)', err);
         // Restore the Memberstack fallback first: the user must never wait on a
         // tag callback, and dataLayer.push runs GTM's callbacks synchronously.
+        detachClicks();
+        restoreLabels();
+        var held = takeHeldClick();
         if (btn1) btn1.style.display = 'none';
         if (btn2) btn2.style.display = 'none';
         if (noStripe1) noStripe1.style.display = 'flex';
         if (noStripe2) noStripe2.style.display = 'flex';
+        // Le clic gardé suit le membre sur le bouton Memberstack de la même offre.
+        if (held && OFFERS[held.option].fallback) OFFERS[held.option].fallback.click();
         trackCheckoutFailure(checkoutFailureReason(err));
+        if (held) trackHeldClick(held, 'fallback');
         return;
       }
 
-      // Fire-and-forget webhook helper via proxy
-      // Uses sendBeacon to survive page navigation (no CORS preflight with text/plain)
-      function notifyWebhook(payload) {
-        var url = 'https://pricing.ordotype.fr/.netlify/functions/notify-webhook';
-        var data = JSON.stringify({ type: 'abandon-cart', ...payload });
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(url, new Blob([data], { type: 'text/plain' }));
-        } else {
-          fetch(url, {
-            method: 'POST',
-            keepalive: true,
-            body: data
-          }).catch(function() {});
-        }
+      console.log('[StripeCheckout] Sessions ready');
+      var held = takeHeldClick();
+      if (held) {
+        trackHeldClick(held, 'redirect');
+        goToCheckout(held.option);
       }
-
-      // Stash the Stripe Checkout Session URL so the "comeback" page
-      // (/inscription-non-terminee/[slug]) can re-open the EXACT session the
-      // user abandoned instead of creating a new one. Stripe session URLs are
-      // valid ~24h; we store a timestamp so the comeback page can fall back to
-      // a fresh session if it has expired. Keyed by option so each comeback
-      // page reads its own pending session.
-      function stashCheckoutSession(option, sessionId, url) {
-        try {
-          localStorage.setItem('ordo-pending-checkout-' + option, JSON.stringify({
-            url: url,
-            sessionId: sessionId,
-            timestamp: Date.now()
-          }));
-        } catch (e) {
-          // localStorage unavailable (private mode / quota) — non-fatal
-          console.warn('[StripeCheckout] Could not stash checkout session:', e);
-        }
-      }
-
-      // Double-click prevention
-      var isRedirecting = false;
-
-      // Bind button #1
-      btn1.addEventListener('click', function(e) {
-        e.preventDefault();
-        if (isRedirecting) return;
-        isRedirecting = true;
-        btn1.innerText = 'Patientez…';
-        btn1.disabled = true;
-        // Stash, webhook et mesure sont accessoires : ils s'exécutent sous try,
-        // la redirection part du finally. Un accessoire qui jette ne peut donc
-        // pas laisser l'utilisateur sur un bouton « Patientez… » mort. Les
-        // pushs restent avant la navigation pour que sendBeacon parte.
-        try {
-          stashCheckoutSession('praticien-sepa', sessionId1, url1);
-          notifyWebhook({
-            timestamp: new Date().toISOString(),
-            checkoutSessionId: sessionId1,
-            url: url1,
-            stripeCustomerId: stripeCustomerId,
-            memberstackUserId: memberstackUserId,
-            memberstackEmail: memberstackEmail,
-            option: 'praticien',
-            priceId: priceId1,
-            coupon: couponId1,
-            originPage: window.location.href,
-            paymentMethods: paymentMethods
-          });
-          track({
-            event: 'stripe_signup_click',
-            option: 'praticien',
-            priceId: priceId1,
-            coupon: couponId1,
-            checkoutSessionId: sessionId1
-          });
-        } catch (err) {
-          reportSideEffect(err);
-        } finally {
-          window.location.href = url1;
-        }
-      });
-
-      // Bind button #2
-      btn2.addEventListener('click', function(e) {
-        e.preventDefault();
-        if (isRedirecting) return;
-        isRedirecting = true;
-        btn2.innerText = 'Patientez…';
-        btn2.disabled = true;
-        // Même contrat que le bouton #1 : accessoires sous try, navigation
-        // dans le finally.
-        try {
-          stashCheckoutSession('rempla-sepa', sessionId2, url2);
-          notifyWebhook({
-            timestamp: new Date().toISOString(),
-            checkoutSessionId: sessionId2,
-            url: url2,
-            stripeCustomerId: stripeCustomerId,
-            memberstackUserId: memberstackUserId,
-            memberstackEmail: memberstackEmail,
-            option: 'rempla',
-            priceId: priceId2,
-            coupon: couponId2,
-            originPage: window.location.href,
-            paymentMethods: paymentMethods
-          });
-          track({
-            event: 'stripe_signup_click',
-            option: 'rempla',
-            priceId: priceId2,
-            coupon: couponId2,
-            checkoutSessionId: sessionId2
-          });
-        } catch (err) {
-          reportSideEffect(err);
-        } finally {
-          window.location.href = url2;
-        }
-      });
-
-      console.log('[StripeCheckout] Buttons bound');
     }
   }
 
