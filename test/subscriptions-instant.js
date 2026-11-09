@@ -121,7 +121,7 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
     statuses: () => cards().map((n) => n.querySelector('.compte-v2_abo-head > .compte-v2_badge')).filter(Boolean).map((n) => n.textContent),
     logo: () => cards().map((n) => n.querySelector('img')).filter(Boolean)[0] || null,
     text: () => root.querySelector('[data-ordo-section="abonnements"]').textContent,
-    skeletons: () => root.querySelectorAll('.compte-v2_squelette').length,
+    skeletons: () => root.querySelectorAll('[data-ordo-liste="abonnements"] > .compte-v2_squelette').length,
     waiting: () => doc.querySelector('[data-ordo-attente]'),
     failed: () => /n’ont pas pu s’afficher/.test(root.textContent),
   };
@@ -371,6 +371,27 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     const r = p.reports.filter((x) => x.name === 'SubscriptionsPlansUnavailable');
     assert.strictEqual(r.length, 1);
     assert.strictEqual(r[0].message, 'abonnements-affiches 404: no plans');
+  });
+
+  await check('free plans only, but the last visit showed invoices (former subscription): no instant cards, the skeleton keeps their place', async () => {
+    const forme = (over) => ({ v: 1, m: 'mem_test', at: Date.now(), w: 600, abos: [100], moyens: 0, adresse: 0, factures: 0, h: {}, ...over });
+    const withInvoices = page({ plans: [free('pln_interne')], stored: { at: Date.now(), plans: PUBLIC }, list: hang, visible: false });
+    withInvoices.w.localStorage.setItem('ordo_subs_forme', JSON.stringify(forme({ factures: 2 })));
+    // Read at start: the shape is set before the script runs (stored copy, then DOMContentLoaded).
+    await wait(20);
+    withInvoices.openTab();
+    await wait(30);
+    assert.deepStrictEqual(withInvoices.labels(), [], 'no instant card');
+    assert.ok(!withInvoices.events().includes('instant'));
+    assert.strictEqual(withInvoices.calls.plans.length, 0, 'the plans are not requested');
+    const root = withInvoices.w.document.querySelector('[data-ordo-section="factures"]');
+    assert.ok(root.querySelector('.compte-v2_squelette'), 'the invoices card drawn as a skeleton');
+    const without = page({ plans: [free('pln_interne')], stored: { at: Date.now(), plans: PUBLIC }, list: hang, visible: false });
+    without.w.localStorage.setItem('ordo_subs_forme', JSON.stringify(forme({})));
+    await wait(20);
+    without.openTab();
+    await wait(30);
+    assert.deepStrictEqual(without.labels(), ['Interne MG'], 'a last visit without Stripe cards keeps the instant cards');
   });
 
   await check('skeleton: one placeholder per plan that is not cancelled (1 to 3), then a long-wait line', async () => {

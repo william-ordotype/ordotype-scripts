@@ -1705,7 +1705,6 @@
   // the sections that need the list stay hidden (page head rules). `d` is D, or null when the Designer is
   // incomplete.
   function failed(d) {
-    holdSiren(false);
     var root = d ? d.root : document.querySelector('[data-ordo-facturation]');
     var attente = d ? d.attente : (root && root.querySelector('[data-ordo-attente]'));
     if (d) {
@@ -1736,7 +1735,10 @@
     for (var i = 0; i < added.length; i++) retirer(added[i]);
     D.zoneAdresse.textContent = '';
     D.zoneTva.textContent = '';
-    D.cards.abonnements.removeAttribute('aria-busy');
+    for (var k = 0; k < SECTIONS.length; k++) {
+      D.cards[SECTIONS[k]].removeAttribute('aria-busy');
+      D.cards[SECTIONS[k]].style.minHeight = '';
+    }
   }
 
   function logoD(img, src) {
@@ -1924,34 +1926,213 @@
     afficher(D.cards.adresse, withAddress);
     if (withAddress) addressSection(address, taxId, taxIdAllowed);
     placeInvoicesD(invoices);
-    holdSiren(false);
     // Once a list is shown, no failure can follow it (see init): the waiting block goes for good.
     retirer(D.attente);
     D.attente = null;
     showD();
   }
 
-  // Only « Mes abonnements » shows while the list is on its way: the cards that come with the list (payment
-  // method, address) sit above the SIREN card and the invoices, and arriving one after the other they pushed
-  // those down. The SIREN card (placed by profile-overview.js) and the help box therefore wait for the list
-  // too, and everything shows in one go (render, or failed).
+  // --- Forme de l'onglet pendant l'attente ---------------------------------------------------------
+  // Le membre ne doit pas voir la page sauter quand la liste arrive. Ce qui ne dépend pas de Stripe (carte
+  // SIREN, aide) est à sa place dès l'ouverture ; les cartes qui viennent avec la liste (moyen de paiement,
+  // adresse, factures) aussi, en squelette de leur taille. Leur forme est celle de la dernière visite du
+  // membre sur ce navigateur (nombre de cartes et de lignes, hauteurs à cette largeur : des comptes et des
+  // pixels, jamais une donnée), à défaut celle que ses plans Memberstack annoncent.
+  var FORME_KEY = 'ordo_subs_forme';
+  var FORME_MAX_AGE_MS = 90 * 24 * 3600 * 1000;
+  // Factures montrées par la liste, au plus (FACTURES_MONTREES de account-subscriptions.mjs).
+  var FACTURES_MAX = 3;
+  // Forme d'une liste arrivée pendant que l'onglet était fermé : mesurée à son ouverture.
+  var formeEnAttente = null;
+
+  function px(v) {
+    return typeof v === 'number' && v > 0 && v < 5000 ? Math.round(v) : 0;
+  }
+
+  function nombre(v, max) {
+    return typeof v === 'number' && v > 0 ? Math.min(max, Math.floor(v)) : 0;
+  }
+
+  function formeConnue() {
+    var f = null;
+    try { f = JSON.parse(readStorage(FORME_KEY) || 'null'); } catch (e) { return null; }
+    if (!f || f.v !== 1 || f.m !== member.id || typeof f.at !== 'number' || !(Date.now() - f.at < FORME_MAX_AGE_MS)) return null;
+    var abos = Array.isArray(f.abos) ? f.abos.slice(0, 6).map(px) : [];
+    var types = Array.isArray(f.types) ? f.types.slice(0, 6).map(function(t) { return CARTE_TYPE[t] ? t : null; }) : [];
+    var h = f.h && typeof f.h === 'object' ? f.h : {};
+    return {
+      w: px(f.w),
+      abos: abos.length ? abos : [0],
+      types: types,
+      moyens: nombre(f.moyens, 4),
+      adresse: f.adresse === 1,
+      tva: f.tva === 1,
+      // -1 : factures illisibles, la carte s'affiche sans son tableau.
+      factures: f.factures === -1 ? -1 : nombre(f.factures, FACTURES_MAX),
+      h: { moyen: px(h.moyen), adresse: px(h.adresse), factures: px(h.factures) }
+    };
+  }
+
+  // Sans forme connue : un plan payant, même résilié, a des factures et une adresse (avec la ligne du numéro
+  // de TVA, proposée à tous sauf aux internes) ; un plan payant en cours, un moyen de paiement et une carte
+  // d'abonnement payant. La liste corrige ce qui diffère.
+  function formeDevinee() {
+    var conns = Array.isArray(member.planConnections) ? member.planConnections : [];
+    var paid = false;
+    var live = false;
+    var types = [];
+    for (var i = 0; i < conns.length; i++) {
+      var c = conns[i];
+      if (!c) continue;
+      var payant = c.type !== 'FREE';
+      if (payant) paid = true;
+      if (c.status === 'CANCELED') continue;
+      if (payant) live = true;
+      if (c.status) types.push(payant ? 'payant' : 'gratuit');
+    }
+    var abos = [];
+    for (var k = skeletonCount(); k > 0; k--) abos.push(0);
+    var interne = String((member.customFields || {}).statut || '').trim().toLowerCase() === 'interne';
+    return {
+      w: 0, abos: abos, types: types.slice(0, abos.length), moyens: live ? 1 : 0, adresse: paid, tva: paid && !interne,
+      factures: paid ? FACTURES_MAX : 0, h: { moyen: 0, adresse: 0, factures: 0 }
+    };
+  }
+
+  // Une carte d'abonnement courante de chaque sorte, pour mesurer la place qu'elle prend : un payant au mois,
+  // son prochain prélèvement et « Résilier » (la plupart des plans payants), un gratuit sans bouton.
+  var CARTE_TYPE = {
+    payant: { status: 'active', price: { amount: 3000, current: 3000, currency: 'eur', interval: 'month', intervalCount: 1 },
+      next: { amount: 3000 }, action: { label: 'Résilier', href: CANCEL_WARNING } },
+    gratuit: { status: 'free' }
+  };
+
+  function carteType(type) {
+    var base = { label: 'Abonnement', icon: null, status: 'active', price: null, discount: null, offeredUntil: null, next: null,
+      endsOn: null, resumesOn: null, action: null, note: null, reactivation: null };
+    var t = CARTE_TYPE[type];
+    for (var k in t) base[k] = t[k];
+    if (base.next) base.next = { date: new Date().toISOString().slice(0, 10), amount: base.next.amount };
+    return base;
+  }
+
+  function typeDeCarte(c) {
+    return c && (c.status === 'free' || c.status === 'ended') ? 'gratuit' : 'payant';
+  }
+
+  function sansCarteStripe(f) {
+    return !f.moyens && !f.adresse && !f.factures;
+  }
+
+  // La forme de ce qui vient d'être affiché, pour la prochaine attente. Mesurée onglet ouvert seulement :
+  // une liste arrivée onglet fermé (lien survolé, ancre) attend son ouverture (voir init).
+  function noterForme(data) {
+    var w = px(D.liste.clientWidth);
+    if (!w) {
+      formeEnAttente = data;
+      return;
+    }
+    formeEnAttente = null;
+    var abos = [];
+    for (var i = 0; i < D.liste.children.length && i < 6; i++) abos.push(px(D.liste.children[i].offsetHeight));
+    function h(card) {
+      return card.hidden ? 0 : px(card.offsetHeight);
+    }
+    var list = Array.isArray(data.list) ? data.list : [];
+    var f = {
+      v: 1,
+      m: member.id,
+      at: Date.now(),
+      w: w,
+      abos: abos,
+      types: list.slice(0, 6).map(typeDeCarte),
+      moyens: Array.isArray(data.pms) ? data.pms.length : 0,
+      adresse: D.cards.adresse.hidden ? 0 : 1,
+      tva: !D.cards.adresse.hidden && !D.zoneTva.hidden && D.zoneTva.firstChild ? 1 : 0,
+      factures: Array.isArray(data.invoices) ? data.invoices.length : -1,
+      h: { moyen: h(D.cards['moyen-de-paiement']), adresse: h(D.cards.adresse), factures: h(D.cards.factures) }
+    };
+    try { window.localStorage.setItem(FORME_KEY, JSON.stringify(f)); } catch (e) { /* no-op */ }
+  }
+
+  // Un bloc squelette du Designer, à la hauteur de ce qu'il remplace quand on la connaît.
+  function ombre(height) {
+    var s = rendu(copie('squelette'));
+    s.setAttribute('aria-hidden', 'true');
+    if (height) s.style.height = height + 'px';
+    return s;
+  }
+
+  // Hauteur que prend `node` dans `parent` à la largeur actuelle, mesurée sans être vue ; 0 sans mise en page.
+  function hauteurDans(parent, node) {
+    node.style.visibility = 'hidden';
+    parent.appendChild(node);
+    var h = px(node.offsetHeight);
+    retirer(node);
+    return h;
+  }
+
+  // Les cartes qui viennent avec la liste, à leur place, chaque ligne remplacée par un squelette de sa taille
+  // (les exemples du Designer, mesurés). À la largeur de la dernière visite, chaque carte garde en plus la
+  // hauteur qu'elle avait alors : rien ne bouge quand la liste arrive, si rien n'a changé.
+  function ombresD(f, memeLargeur) {
+    var moyen = D.cards['moyen-de-paiement'];
+    afficher(moyen, f.moyens > 0);
+    if (f.moyens > 0) {
+      var hm = hauteurDans(moyen, copie('moyen'));
+      for (var i = 0; i < f.moyens; i++) moyen.appendChild(ombre(hm));
+    }
+    afficher(D.cards.adresse, f.adresse);
+    if (f.adresse) {
+      // Une adresse courante : nom, rue, code postal et ville, pays.
+      var lecture = ui.addressRead({ name: 'Nom', line1: 'Rue', postalCode: '75000', city: 'Ville', country: 'FR' }).root;
+      D.zoneAdresse.appendChild(ombre(hauteurDans(D.zoneAdresse, lecture)));
+      afficher(D.zoneTva, f.tva);
+      if (f.tva) D.zoneTva.appendChild(ombre(hauteurDans(D.zoneTva, copie('tva-demande'))));
+    }
+    var factures = f.factures !== 0;
+    afficher(D.cards.factures, factures);
+    afficher(D.table, f.factures > 0);
+    if (f.factures > 0) D.table.appendChild(ombre(f.factures * hauteurDans(D.table, copie('facture'))));
+    if (factures) {
+      afficher(D.portail, portalAvailable());
+      whenInvoiceEmails(function() {
+        if (!D.cards.factures.hidden && moveToggle(D.slot)) toggleAway = false;
+      });
+    }
+    var cartes = { 'moyen-de-paiement': f.h.moyen, adresse: f.h.adresse, factures: f.h.factures };
+    for (var nom in cartes) {
+      if (D.cards[nom].hidden) continue;
+      D.cards[nom].setAttribute('aria-busy', 'true');
+      if (memeLargeur && cartes[nom]) D.cards[nom].style.minHeight = cartes[nom] + 'px';
+    }
+  }
+
+  // Pendant la liste, l'onglet a déjà sa forme finale (voir ombresD) : la liste n'y remplace que des squelettes.
   function skeletonD() {
     resetD();
+    // Les règles de l'en-tête cachent les cartes tant que la Facturation n'est pas remplie : levées d'abord,
+    // pour que les cartes soient mesurables.
+    showD();
+    var connue = formeConnue();
+    var f = connue || formeDevinee();
+    var memeLargeur = Boolean(connue && connue.w && connue.w === px(D.liste.clientWidth));
     var subs = D.cards.abonnements;
     subs.setAttribute('aria-busy', 'true');
-    for (var k = 0; k < SECTIONS.length; k++) afficher(D.cards[SECTIONS[k]], SECTIONS[k] === 'abonnements');
     afficher(D.attente, false);
-    afficher(D.aide, false);
-    holdSiren(true);
-    for (var i = skeletonCount(); i > 0; i--) {
-      var s = rendu(copie('squelette'));
-      s.setAttribute('aria-hidden', 'true');
-      D.liste.appendChild(s);
+    // Hauteur de chaque carte : celle de la dernière visite à cette largeur, sinon celle d'une carte courante
+    // de sa sorte, sinon celle du squelette du Designer.
+    var parType = {};
+    for (var i = 0; i < f.abos.length; i++) {
+      var type = f.types[i];
+      if (type && !(type in parType)) parType[type] = hauteurDans(D.liste, cardD(carteType(type)));
+      D.liste.appendChild(ombre(memeLargeur && f.abos[i] ? f.abos[i] : (type ? parType[type] : 0)));
     }
     var sr = rendu(copie('sr'));
     sr.textContent = 'Chargement de vos abonnements…';
     subs.appendChild(sr);
-    showD();
+    ombresD(f, memeLargeur);
+    afficher(D.aide, true);
     clearTimeout(slowTimer);
     slowTimer = setTimeout(function() {
       if (subs.getAttribute('aria-busy') !== 'true') return;
@@ -1980,22 +2161,6 @@
     return h === 'abonnements' || h === 'abonnements-facturation' || h === 'facturation' || h === 'billing';
   }
 
-  // The SIREN card of the Facturation waits for the list (see skeletonD). Hidden by an inline style, kept
-  // apart from the page head rule that decides whether it shows at all, and given back as it was.
-  var SIREN_CARTE = '[data-ordo-siren-carte="facturation"]';
-  function holdSiren(on) {
-    var carte = document.querySelector(SIREN_CARTE);
-    if (!carte) return;
-    if (on) {
-      if (carte.hasAttribute('data-ordo-attend-liste')) return;
-      carte.setAttribute('data-ordo-attend-liste', carte.style.display || '');
-      carte.style.display = 'none';
-    } else if (carte.hasAttribute('data-ordo-attend-liste')) {
-      carte.style.display = carte.getAttribute('data-ordo-attend-liste');
-      carte.removeAttribute('data-ordo-attend-liste');
-    }
-  }
-
   // Runs `run` once, the first time the member aims at the link of tab `name`: pointer over it, press,
   // keyboard focus or click. Listened on the document, not on the link: the tab component can be drawn
   // again after this script has run.
@@ -2020,6 +2185,7 @@
       run();
     }
     if (typeof window.IntersectionObserver !== 'function') return fire();
+    var target = observed();
     var obs = new window.IntersectionObserver(function(entries) {
       for (var i = 0; i < entries.length; i++) {
         if (entries[i].isIntersecting) {
@@ -2029,7 +2195,23 @@
         }
       }
     }, { rootMargin: '200px' });
-    obs.observe(observed());
+    obs.observe(target);
+    // Its tab opened: the IntersectionObserver says so only after the browser has painted the tab once,
+    // without the skeleton (the SIREN card and the help box higher, then pushed down). The ResizeObserver
+    // answers before that paint: the tab's first image already has its shape.
+    if (typeof window.ResizeObserver !== 'function') return;
+    var ro = new window.ResizeObserver(function() {
+      if (done) {
+        ro.disconnect();
+        return;
+      }
+      if (target.offsetWidth > 0 || target.offsetHeight > 0) {
+        ro.disconnect();
+        obs.disconnect();
+        fire();
+      }
+    });
+    ro.observe(target);
   }
 
   function init() {
@@ -2055,8 +2237,8 @@
     // press, keyboard focus), which gives the request a head start on the click. A page reached with the
     // Facturation's hash requests it at once: its tab is about to open. Without IntersectionObserver, or
     // when the Facturation is not in a tab, it is requested at once too, as before.
-    // The tab shows in two steps, never more: the skeleton as soon as it is on screen without its list,
-    // then everything with the list (see skeletonD).
+    // The tab takes its final shape as soon as it is on screen without its list, skeletons in place of what
+    // the list brings, and the list only fills them (see skeletonD).
     var settled = false;
     var instant = null;
     var seen = false;
@@ -2071,8 +2253,11 @@
       document.removeEventListener('visibilitychange', onVisibility);
     }
 
-    // Free plans only: their cards are shown at once, and the list, still requested, replaces them.
-    var freePlans = freeOnlyPlans();
+    // Free plans only: their cards are shown at once, and the list, still requested, replaces them. Not when
+    // the last visit showed cards that come from Stripe (invoices of a former subscription): shown without
+    // them, the page would grow when the list arrives; the skeleton keeps their place instead.
+    var connue = formeConnue();
+    var freePlans = connue && !sansCarteStripe(connue) ? null : freeOnlyPlans();
     function showInstant(plans) {
       if (settled || instant || !plans) return;
       var cards = freeCards(freePlans, plans);
@@ -2102,6 +2287,7 @@
       load().then(function(data) {
         stopWaiting();
         render(data.list, null, data.pms, data.invoices, data.others, data.address, data.taxId, data.taxIdAllowed);
+        noterForme(data);
         if (!instant) {
           track('subscriptions_list', { subs_outcome: data.hedged ? 'shown-retry' : 'shown', subs_status: statusesOf(data.list) });
         } else if (paidIn(data.list)) {
@@ -2137,6 +2323,7 @@
       seen = true;
       start();
       if (!settled && !instant) skeletonD();
+      if (formeEnAttente) noterForme(formeEnAttente);
     });
   }
 
