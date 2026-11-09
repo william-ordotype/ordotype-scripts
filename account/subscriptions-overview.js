@@ -11,7 +11,6 @@
   var API_URL = 'https://webhooks.ordotype.fr/.netlify/functions/account-subscriptions';
   var PAYMENT_URL = '/membership/moyen-de-paiement';
   var MS_MAX_ATTEMPTS = 50;
-  var SKELETON_DELAY_MS = 200;
   var RETRY_DELAY_MS = 400;
   // Past it, the member is told the list could not be shown, and the list is recorded as timed out.
   var LIST_TIMEOUT_MS = 8000;
@@ -31,7 +30,6 @@
   if (!member || !member.id) return;
 
   var anchor = null;
-  var skeletonTimer = null;
   var slowTimer = null;
   var startedAt = Date.now();
 
@@ -1707,6 +1705,7 @@
   // the sections that need the list stay hidden (page head rules). `d` is D, or null when the Designer is
   // incomplete.
   function failed(d) {
+    holdSiren(false);
     var root = d ? d.root : document.querySelector('[data-ordo-facturation]');
     var attente = d ? d.attente : (root && root.querySelector('[data-ordo-attente]'));
     if (d) {
@@ -1925,19 +1924,25 @@
     afficher(D.cards.adresse, withAddress);
     if (withAddress) addressSection(address, taxId, taxIdAllowed);
     placeInvoicesD(invoices);
+    holdSiren(false);
     // Once a list is shown, no failure can follow it (see init): the waiting block goes for good.
     retirer(D.attente);
     D.attente = null;
     showD();
   }
 
-  // The help box, shown by the page from the start, stays put.
+  // Only « Mes abonnements » shows while the list is on its way: the cards that come with the list (payment
+  // method, address) sit above the SIREN card and the invoices, and arriving one after the other they pushed
+  // those down. The SIREN card (placed by profile-overview.js) and the help box therefore wait for the list
+  // too, and everything shows in one go (render, or failed).
   function skeletonD() {
     resetD();
     var subs = D.cards.abonnements;
     subs.setAttribute('aria-busy', 'true');
     for (var k = 0; k < SECTIONS.length; k++) afficher(D.cards[SECTIONS[k]], SECTIONS[k] === 'abonnements');
     afficher(D.attente, false);
+    afficher(D.aide, false);
+    holdSiren(true);
     for (var i = skeletonCount(); i > 0; i--) {
       var s = rendu(copie('squelette'));
       s.setAttribute('aria-hidden', 'true');
@@ -1966,6 +1971,29 @@
   function billingTab() {
     var pane = D.root.closest ? D.root.closest('.w-tab-pane') : null;
     return (pane && pane.getAttribute('data-w-tab')) || null;
+  }
+
+  // A page reached with the Facturation's hash: tab-hash.js opens its tab (same words as its keyword map).
+  function hashOpensBilling() {
+    var h = '';
+    try { h = decodeURIComponent(String(window.location.hash || '').slice(1)).toLowerCase(); } catch (e) { return false; }
+    return h === 'abonnements' || h === 'abonnements-facturation' || h === 'facturation' || h === 'billing';
+  }
+
+  // The SIREN card of the Facturation waits for the list (see skeletonD). Hidden by an inline style, kept
+  // apart from the page head rule that decides whether it shows at all, and given back as it was.
+  var SIREN_CARTE = '[data-ordo-siren-carte="facturation"]';
+  function holdSiren(on) {
+    var carte = document.querySelector(SIREN_CARTE);
+    if (!carte) return;
+    if (on) {
+      if (carte.hasAttribute('data-ordo-attend-liste')) return;
+      carte.setAttribute('data-ordo-attend-liste', carte.style.display || '');
+      carte.style.display = 'none';
+    } else if (carte.hasAttribute('data-ordo-attend-liste')) {
+      carte.style.display = carte.getAttribute('data-ordo-attend-liste');
+      carte.removeAttribute('data-ordo-attend-liste');
+    }
   }
 
   // Runs `run` once, the first time the member aims at the link of tab `name`: pointer over it, press,
@@ -2024,9 +2052,11 @@
     // another tab, and most visits never open this one, so a list requested with the page was usually a
     // server call for nothing. It starts at the first of: the Facturation becomes visible (its tab opened,
     // or the page reached with its hash, which opens it), or the member aims at its tab (pointer over it,
-    // press, keyboard focus), which gives the request a head start on the click. The skeleton shows while
-    // it is on its way. Without IntersectionObserver, or when the Facturation is not in a tab, it is
-    // requested at once, as before.
+    // press, keyboard focus), which gives the request a head start on the click. A page reached with the
+    // Facturation's hash requests it at once: its tab is about to open. Without IntersectionObserver, or
+    // when the Facturation is not in a tab, it is requested at once too, as before.
+    // The tab shows in two steps, never more: the skeleton as soon as it is on screen without its list,
+    // then everything with the list (see skeletonD).
     var settled = false;
     var instant = null;
     var seen = false;
@@ -2037,7 +2067,6 @@
     document.addEventListener('visibilitychange', onVisibility);
     function stopWaiting() {
       settled = true;
-      clearTimeout(skeletonTimer);
       clearTimeout(slowTimer);
       document.removeEventListener('visibilitychange', onVisibility);
     }
@@ -2049,7 +2078,6 @@
       var cards = freeCards(freePlans, plans);
       if (!cards) return;
       instant = cards;
-      clearTimeout(skeletonTimer);
       clearTimeout(slowTimer);
       render(cards, null, [], [], [], null);
       track('subscriptions_list', { subs_outcome: 'instant', subs_status: statusesOf(cards) });
@@ -2060,6 +2088,9 @@
     function start() {
       if (started) return;
       started = true;
+      // The long wait is counted from the request, not from the page: the member may stay on another tab
+      // for a while before this one is opened.
+      startedAt = Date.now();
       if (freePlans) {
         showInstant(storedPlans());
         fetchPlans().then(showInstant);
@@ -2100,15 +2131,12 @@
       });
     }
 
-    if (!billingTab()) start();
+    if (!billingTab() || hashOpensBilling()) start();
     else whenAimedAt(billingTab(), start);
     whenVisible(function() {
       seen = true;
       start();
-      if (settled || instant) return;
-      skeletonTimer = setTimeout(function() {
-        if (!settled && !instant) skeletonD();
-      }, SKELETON_DELAY_MS);
+      if (!settled && !instant) skeletonD();
     });
   }
 
