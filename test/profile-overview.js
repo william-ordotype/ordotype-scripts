@@ -633,11 +633,73 @@ async function test(name, fn) {
     assert.ok(!visible(w, croix(d)), 'croix masquée');
     assert.ok(step(pushed, 'google:dissociation:confirme') && step(pushed, 'google:dissociation:ok'));
     assert.deepStrictEqual(reports, []);
-    // Memberstack croit encore le compte lié : son clic ne doit pas repartir.
+    // Memberstack croit encore le compte lié : son clic ne doit pas repartir, le membre lit pourquoi.
     libelle(d).click();
     assert.strictEqual(s.ms, 0);
     assert.strictEqual(s.calls.length, 1);
     assert.ok(step(pushed, 'google:connexion:apres-dissociation'));
+    assert.strictEqual(d.querySelectorAll('[data-ordo-google-message]').length, 1, 'remplace « C’est fait »');
+    assert.strictEqual(notice(d).className, 'compte-v2_totp-alerte');
+    assert.strictEqual(notice(d).textContent, 'Google vient d’être dissocié. Pour le relier de nouveau, revenez sur cette page plus tard.');
+  });
+
+  // --- Clics arrêtés par le script : encadré d'information (planche A1 du 09/11/2026) ------------------
+
+  await test('Google lié avec mot de passe : clic sur le bouton = encadré « cliquez sur la croix » sous la ligne, un seul', async () => {
+    const s = google();
+    const { w, d, pushed, reports } = await page({ before: s.before });
+    libelle(d).click();
+    const n = notice(d);
+    assert.ok(n, 'message affiché');
+    assert.strictEqual(n.className, 'compte-v2_totp-alerte', 'encadré d’avertissement de la double authentification');
+    assert.strictEqual(n.getAttribute('data-ordo-google-message'), 'info');
+    assert.strictEqual(n.getAttribute('role'), 'status');
+    assert.ok(!n.hasAttribute('data-ordo-gabarit'));
+    assert.strictEqual(n.textContent, 'Pour dissocier Google, cliquez sur la croix à droite du bouton.');
+    const ligne = d.querySelector('[data-ordo-v2] [data-ms-auth-provider="google"]').closest('.compte-v2_ligne');
+    assert.strictEqual(ligne.nextElementSibling, n, 'juste sous la ligne Google');
+    assert.ok(visible(w, n));
+    assert.strictEqual(n.style.padding, '', 'encadré décalé par sa marge, pas par son espace intérieur');
+    libelle(d).click();
+    assert.strictEqual(d.querySelectorAll('[data-ordo-google-message]').length, 1, 'deux clics, un message');
+    assert.strictEqual(s.ms, 0);
+    assert.deepStrictEqual(s.calls, []);
+    assert.deepStrictEqual(s.msgs, [], 'pas de bandeau Memberstack');
+    assert.strictEqual(pushed.filter((p) => p.profile_step === 'google:connexion:deja-connecte').length, 2, 'mesure inchangée');
+    assert.deepStrictEqual(reports, []);
+  });
+
+  await test('Google lié sans mot de passe : clic = « ajoutez d’abord un mot de passe », effacé quand un mot de passe est posé', async () => {
+    const s = google();
+    const m = clone(MEDECIN);
+    m.auth.hasPassword = false;
+    const { w, d } = await page({ member: m, before: s.before });
+    libelle(d).click();
+    assert.strictEqual(notice(d).textContent, 'Pour dissocier Google, ajoutez d’abord un mot de passe, juste au-dessus.');
+    assert.strictEqual(notice(d).className, 'compte-v2_totp-alerte');
+    assert.deepStrictEqual(s.calls, []);
+    // Mot de passe posé puis relu : la croix revient, le message ne vaut plus.
+    w.OrdoAccount.member.auth.hasPassword = true;
+    d.dispatchEvent(new w.CustomEvent('ordo:member-updated'));
+    assert.ok(!notice(d), 'message retiré');
+    assert.ok(visible(w, croix(d)), 'croix rendue');
+    libelle(d).click();
+    assert.strictEqual(notice(d).textContent, 'Pour dissocier Google, cliquez sur la croix à droite du bouton.');
+  });
+
+  await test('Google : sans l’encadré du profil, le bandeau Memberstack prend le relais pour l’information', async () => {
+    const s = google();
+    const before = (w) => {
+      s.before(w);
+      const g = w.document.querySelector('[data-ordo-gabarits="profil"] [data-ordo-gabarit="totp-alerte"]');
+      g.parentNode.removeChild(g);
+    };
+    const { d } = await page({ before });
+    libelle(d).click();
+    assert.strictEqual(s.msgs.length, 1);
+    assert.strictEqual(s.msgs[0].isError, false);
+    assert.ok(/cliquez sur la croix/.test(s.msgs[0].m));
+    assert.ok(!notice(d));
   });
 
   await test('Google : « account-not-connected » vaut réussite (liste Memberstack en retard)', async () => {
