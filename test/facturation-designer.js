@@ -693,11 +693,12 @@ async function main() {
     assert.ok(text(section(t, 'abonnements')).includes('Chargement de vos abonnements…'));
     assert.ok(!visibleIn(t, attente(t)), 'le squelette remplace l\'attente');
     assert.ok(!visibleIn(t, section(t, 'moyen-de-paiement')));
-    assert.ok(visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')), 'l\'aide, visible dès le départ, reste');
+    assert.ok(!visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')), 'l\'aide attend la liste, pour tout montrer d\'un coup');
     await wait(250);
     assert.strictEqual(section(t, 'abonnements').querySelectorAll('.compte-v2_squelette').length, 0);
     assert.strictEqual(section(t, 'abonnements').hasAttribute('aria-busy'), false);
     assert.strictEqual(designerCards(t).length, 1);
+    assert.ok(visibleIn(t, root(t).querySelector('[data-ordo-aide-bloc]')), 'l\'aide revient avec la liste');
     t.dom.window.close();
   }
 

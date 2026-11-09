@@ -44,7 +44,6 @@ let SOURCE = shorten(REAL, 'var LIST_TIMEOUT_MS = 8000;', 'var LIST_TIMEOUT_MS =
 SOURCE = shorten(SOURCE, 'var HEDGE_MS = 4000;', 'var HEDGE_MS = 80;');
 const SLOW_SHORT_MS = 80;
 SOURCE = shorten(SOURCE, 'var SLOW_MS = 3000;', 'var SLOW_MS = ' + SLOW_SHORT_MS + ';');
-SOURCE = shorten(SOURCE, 'var SKELETON_DELAY_MS = 200;', 'var SKELETON_DELAY_MS = 5;');
 const PLANS_SHORT_MS = 50;
 SOURCE = shorten(SOURCE, 'var PLANS_TIMEOUT_MS = 2500;', 'var PLANS_TIMEOUT_MS = ' + PLANS_SHORT_MS + ';');
 
@@ -95,8 +94,10 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
   w.$memberstackDom = { getMemberCookie: () => Promise.resolve('test-token') };
   const reports = [];
   w.OrdoErrorReporter = { report: (ctx, err) => reports.push({ ctx, name: err && err.name, message: err && err.message }), reportNetwork: (ctx, err) => reports.push({ ctx, network: true, message: err && err.message }) };
+  const observer = { callback: null, target: null };
   w.IntersectionObserver = function(cb) {
-    this.observe = (target) => { if (visible) setTimeout(() => cb([{ target, isIntersecting: true }]), 0); };
+    observer.callback = cb;
+    this.observe = (target) => { observer.target = target; if (visible) setTimeout(() => cb([{ target, isIntersecting: true }]), 0); };
     this.disconnect = () => {};
   };
   if (stored) w.localStorage.setItem('ordo_subs_plans', JSON.stringify(stored));
@@ -113,6 +114,8 @@ function page({ plans, meta = {}, stored = null, justPaid = null, list = reply(2
   const cards = () => Array.from(root.querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu]'));
   return {
     w, calls, reports,
+    // The member opens the tab: the section comes on screen.
+    openTab: () => observer.callback([{ target: observer.target, isIntersecting: true }]),
     events: () => w.dataLayer.filter((e) => e.event === 'subscriptions_list').map((e) => e.subs_outcome),
     labels: () => cards().map((n) => n.querySelector('[data-ordo-champ="libelle"]')).filter(Boolean).map((n) => n.textContent),
     statuses: () => cards().map((n) => n.querySelector('.compte-v2_abo-head > .compte-v2_badge')).filter(Boolean).map((n) => n.textContent),
@@ -392,6 +395,19 @@ const COPY = { at: Date.now(), plans: PUBLIC };
     assert.deepStrictEqual(p.events(), [], 'not even the stored free cards');
     assert.strictEqual(p.reports.length, 0);
     assert.ok(!p.failed());
+  });
+
+  await check('the long wait is counted from the request, not from the page', async () => {
+    const p = await open({ plans: [paid('pln_mg')], list: hang, visible: false });
+    await wait(SLOW_SHORT_MS * 2);
+    assert.strictEqual(p.calls.list.length, 0, 'nothing requested while the tab is closed');
+    p.openTab();
+    await wait(10);
+    assert.strictEqual(p.calls.list.length, 1, 'requested when the tab opens');
+    assert.strictEqual(p.skeletons(), 1, 'the skeleton at once');
+    assert.ok(!/plus de temps/.test(p.text()), 'no long-wait line at once after a long stay on another tab');
+    await wait(SLOW_SHORT_MS + 20);
+    assert.ok(/plus de temps/.test(p.text()), 'said once the request itself is long');
   });
 
   await check('a timeout after the member aimed at the tab but never opened it: `timeout-unseen`, not reported, failure said', async () => {

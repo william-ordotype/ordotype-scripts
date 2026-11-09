@@ -1055,6 +1055,45 @@ async function main() {
     assert.strictEqual(cards(t.w).length, CARDS.length);
   }
 
+  // A page reached with the Facturation's hash requests the list at once, before its tab opens; any other
+  // hash waits for the tab
+  for (const [hash, atLoad] of [['#abonnements', 1], ['#Abonnements-facturation', 1], ['#facturation', 1], ['#profil', 0], ['#connexion', 0]]) {
+    const t = page({ visible: false });
+    t.w.location.hash = hash;
+    const calls = installFetch(t.w, [{ status: 200, body: { subscriptions: CARDS } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(calls.length, atLoad, hash + (atLoad ? ': requested at load' : ': not requested while the tab is closed'));
+  }
+
+  // The tab opened without its list: the skeleton at once (no waiting text first), and the SIREN card and
+  // the help box wait for the list, so that everything below « Mes abonnements » shows in one go
+  for (const outcome of ['list', 'failure']) {
+    const t = page({ visible: false });
+    const carte = t.w.document.createElement('div');
+    carte.setAttribute('data-ordo-siren-carte', 'facturation');
+    carte.style.display = 'flex';
+    root(t.w).appendChild(carte);
+    const body = outcome === 'list'
+      ? { status: 200, body: { subscriptions: CARDS, paymentMethods: [VISA], invoices: [] }, delay: 150 }
+      : { status: 500, body: { error: 'x' }, delay: 150 };
+    installFetch(t.w, [body]);
+    t.w.eval(SCRIPT);
+    await wait(30);
+    assert.strictEqual(carte.style.display, 'flex', outcome + ': nothing held while the tab is closed');
+    t.observer.callback([{ target: t.observer.target, isIntersecting: true }]);
+    await wait(5);
+    assert.ok(root(t.w).querySelector('.compte-v2_squelette'), outcome + ': the skeleton at once');
+    assert.ok(!shown(waiting(t.w)), outcome + ': no waiting text before it');
+    assert.strictEqual(carte.style.display, 'none', outcome + ': the SIREN card waits');
+    assert.ok(!shown(helpBox(t.w)), outcome + ': the help box waits');
+    await wait(250);
+    assert.strictEqual(carte.style.display, 'flex', outcome + ': the SIREN card back, with its own style');
+    assert.ok(!carte.hasAttribute('data-ordo-attend-liste'), outcome + ': no mark left');
+    assert.ok(shown(helpBox(t.w)), outcome + ': the help box back');
+    if (outcome === 'list') assert.strictEqual(cards(t.w).length, CARDS.length);
+  }
+
   // Without IntersectionObserver (old browsers), the list is requested at once
   {
     const t = page({ visible: false });
