@@ -170,14 +170,20 @@ const COPY = { at: Date.now(), plans: PUBLIC };
   });
 
   await check('no copy: rendered when the plans answer, before the list; the copy is stored', async () => {
-    const p = await open({ plans: [free('pln_interne')], list: reply(200, LIST_FREE, 60) });
+    // The plans answer when the test says so, right after checking that nothing is shown: no race with the
+    // machine's speed (the plans timeout is 50 ms here, the list answers at 150 ms).
+    const plansAnswer = deferred();
+    const p = await open({ plans: [free('pln_interne')], list: reply(200, LIST_FREE, 150),
+      plansReply: () => plansAnswer.promise.then(() => ({ ok: true, status: 200, json: () => Promise.resolve({ plans: PUBLIC }) })) });
     await wait(1);
     assert.deepStrictEqual(p.labels(), [], 'no copy: nothing yet');
-    await wait(30);
-    assert.deepStrictEqual(p.labels(), ['Interne MG'], 'from the plans endpoint, before the list');
+    plansAnswer.resolve();
+    await wait(10);
+    assert.deepStrictEqual(p.events(), ['instant'], 'from the plans endpoint, before the list');
+    assert.deepStrictEqual(p.labels(), ['Interne MG']);
     const saved = JSON.parse(p.w.localStorage.getItem('ordo_subs_plans'));
     assert.ok(saved && typeof saved.at === 'number' && saved.plans.pln_interne.label === 'Interne MG');
-    await wait(80);
+    await wait(150);
     assert.deepStrictEqual(p.events(), ['instant']);
   });
 
