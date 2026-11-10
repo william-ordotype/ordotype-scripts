@@ -14,6 +14,14 @@
   const UTILS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/utils.js';
   const UTILS_TIMEOUT_MS = 8000;
 
+  // Séparateurs qu'une saisie ajoute sans changer le numéro.
+  const SEPARATORS = /[\s.()-]/g;
+  const E164 = /^\+[1-9]\d{1,14}$/;
+
+  // Champs construits, relus à l'envoi : { input, form, iti }.
+  const fields = [];
+  let submitFailureReported = false;
+
   function report(message) {
     console.warn('[PhoneInput] ' + message);
     if (window.OrdoErrorReporter && typeof window.OrdoErrorReporter.reportNetwork === 'function') {
@@ -130,7 +138,7 @@
         }
       });
 
-      // Format on change/keyup
+      // Affichage pendant la saisie : forme internationale espacée, lisible.
       function formatNumber() {
         // getNumber() guards on the helpers internally, but the format argument
         // is read before the call, so it has to be checked here first.
@@ -143,14 +151,49 @@
       input.addEventListener('change', formatNumber);
       input.addEventListener('keyup', formatNumber);
 
-      // Format on form submit
-      const form = input.closest('form');
-      if (form) {
-        form.addEventListener('submit', formatNumber);
-      }
+      // Plus d'écouteur `submit` sur le formulaire : posé après celui de
+      // Memberstack, il passait après sa lecture ; posé avant, il remettrait la
+      // forme espacée par-dessus l'E.164. L'envoi passe par onSubmit().
+      fields.push({ input: input, form: input.closest('form'), iti: iti });
     });
 
     console.log('[PhoneInput] Initialized', inputs.length, 'input(s)');
+  }
+
+  /**
+   * Le numéro part en E.164 (`+33612345678`) ; l'affichage reste espacé pendant
+   * la saisie. Converti seulement si les aides jugent le numéro valide et si
+   * l'E.164 est la saisie affichée sans ses séparateurs (mêmes chiffres, même
+   * indicatif). Sinon il part tel quel : aides absentes, numéro invalide,
+   * extension ou texte autour, saisie nationale jamais mise en forme.
+   */
+  function toFinalForm(field) {
+    const utils = window.intlTelInputUtils;
+    if (!utils || !utils.numberFormat) return;
+    if (field.iti.isValidNumber() !== true) return;
+    const e164 = field.iti.getNumber(utils.numberFormat.E164);
+    if (E164.test(e164) && e164 === field.input.value.replace(SEPARATORS, '')) field.input.value = e164;
+  }
+
+  /**
+   * Écouteur en CAPTURE sur le document. Memberstack (script v2) pose son
+   * écouteur `submit` sur le formulaire lui-même, y lit tous les
+   * `[data-ms-member]` d'un coup, avant toute attente, puis arrête la
+   * propagation. La capture sur le document passe avant lui, quel que soit
+   * l'ordre dans lequel les deux ont été posés. L'envoi n'est jamais bloqué.
+   */
+  function onSubmit(event) {
+    const form = event.target;
+    fields.forEach(function(field) {
+      if (!form || field.form !== form) return;
+      try {
+        toFinalForm(field);
+      } catch (e) {
+        if (submitFailureReported) return;
+        submitFailureReported = true;
+        report('Number not converted on submit: ' + e.message);
+      }
+    });
   }
 
   /**
@@ -265,13 +308,14 @@
 
     // Once the library lands the field is built without waiting for the
     // helpers: that is DOM work, no network, and it carries the country
-    // selector plus the listener that normalises the value on submit.
+    // selector plus the instance that onSubmit() reads to normalise the value.
     // Building before the helpers costs only the generated example
     // placeholder, and `autoPlaceholder: 'polite'` leaves an input that
     // already has a placeholder alone. All four pages that carry this field
     // hardcode one, so nothing is lost. `getNumber` reads the helpers off the
     // global at call time, so formatting starts working the moment they land.
     watchEarlySubmit(inputs);
+    document.addEventListener('submit', onSubmit, true);
 
     whenVisible(inputs, function() {
       loadAndBuild(inputs);

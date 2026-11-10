@@ -167,7 +167,7 @@ ordotype-scripts/
 | `delete-account.js` | Account deletion flow. Sends only the member session token (`Authorization: Bearer`) to `webhooks.ordotype.fr/.netlify/functions/account-delete`, which reads the account from that session; the form's action and hidden fields are not used. A refusal or no answer shows the error, gives the form back and is reported. Test: `node test/delete-account.js` |
 | `billing-portal.js` | Stripe billing portal access (member cookie as Bearer when available). Prefetches the portal on load; a click after a failed prefetch asks again, once more after 1 s on 502, 503, 504 or no answer. `window.OrdoBillingPortal.open(btn, options)` shows « Patientez… » then « Réessayer » with a title on the button it is given, and resolves true (opening) or false; with `options.retryLabel === false` a failure gives the button its own label back (title kept). `subscriptions-overview.js` passes it for the « Toutes mes factures » link and shows the failure under the button in the Designer's `erreur` template (role=alert). Test: `node test/billing-portal.js` |
 | `pause-state.js` | `window.OrdoPause`, used by the subscriptions list to resume or cancel a pause. Resume and definitive cancel are sent to `webhooks.ordotype.fr/.netlify/functions/member-forms` (actions `resume-pause` / `cancel-pause`) with the member session token (`Authorization: Bearer`) and no other data; the server reads the member from the session. Success only on HTTP 200. Test: `node test/pause-state-api.js` |
-| `phone-input.js` | International phone formatting |
+| `phone-input.js` | International phone formatting: spaced while typing (`+33 6 12 34 56 78`); on submit, a number the helpers find valid leaves in E.164 (`+33612345678`), only its separators dropped. Done by a capture `submit` listener on the document, which runs before Memberstack reads the form in its own listener on the form. Invalid numbers, extensions and never-formatted national entries leave as typed. Tests: `node test/phone-input-utils.js`, `node test/phone-input-e164.js` (real intl-tel-input 17.0.8 against libphonenumber-js/max) |
 | `compte-head.html` | **Not loaded by the loader**: reference copy of the block pasted in the page head code (`/membership/compte`, page settings). The Designer shows the new « Mon profil » / « Connexion et Sécurité » (combo `is-on`) and hides the old blocks (combo `is-secours`); the Designer does not run head code, the site does: nothing while loading, the new layout once `profile-overview.js` set `ordo-profil-v2`, the old blocks when the script is cut by the loader (`OrdoRollout[file].enabled === false`), does not download, fails (`ordo-profil-fallback`) or rendered nothing in 8 s (a script arriving later renders nothing, measured `view:-:late`). Same contract for the billing tab (`subscriptions-overview.js`, `ordo-subs-fallback`, `ordo-keep`), with one difference: its list is requested only when the tab is about to be seen (opened, reached by its hash, or aimed at), so `ordo-subs-fallback` is also set 8 s after load on a visit that never opens the tab. The class has no rule and no measurement for that reason, and the list still renders when the tab opens: keep it without effect. Every fallback except the loader's deliberate cut is measured in GA4 (`profile_step` `view:-:fallback-<reason>`, `subs_outcome` `fallback-<reason>`); a missing `loader.js` also goes to Sentry (`CompteChargeurAbsent`, via `ErrorEvent`). Fallback rules never use `!important`, so a block Memberstack hides stays hidden. Edit here first, then paste into Webflow. Test: `node test/compte-head.js` |
 
 ### Usage in Webflow
@@ -569,6 +569,9 @@ node test/belgique-tracking.js         # jsdom sur la page captée
 node test/error-reporter-network.js    # une requête morte avec sa page n'est pas signalée
 node test/invoice-emails-retry.js      # rejeu d'une lecture sans réponse
 node test/phone-input-utils.js         # le champ tél. survit à des aides absentes
+node test/phone-input-e164.js          # à l'envoi, l'E.164 de libphonenumber-js/max (vraie bibliothèque)
+node test/profile-submit-trim.js       # spécialité, prénom, nom rognés à l'envoi
+node test/mes-infos-sans-reecriture.js # Mes informations : rien n'est réécrit à l'identique
 node test/loader-resilience.js         # un chargeur survit à une dépendance tierce absente
 node test/geo-redirect-reveal.js       # la page de tarifs ne reste jamais invisible
 node test/preferences-email.js         # préférences e-mail : clé, requête simple, échappement
@@ -888,6 +891,12 @@ Parses Memberstack data from `localStorage` (`_ms-mem` key) and exposes it as `w
 ### Console Prefix
 
 - `[OrdoMemberstack]` - Memberstack utils
+
+---
+
+### profile-submit-trim.js
+
+`specialite`, `prnom` and `nom` leave Memberstack forms (`form[data-ms-form]`) without edge spaces (`trim()`, nothing when the trimmed value is empty). Options are left untouched on load so a saved value with a trailing space still pre-fills its option; only the chosen option is trimmed, on submit. Case is not changed. Capture `submit` listener on the document, before Memberstack reads the form. Loaded by `account/loader.js`, `mes-informations/loader.js` and `mes-informations-cms/loader.js`. Test: `node test/profile-submit-trim.js`
 
 ---
 
@@ -2135,6 +2144,7 @@ Crisp chat integration with Memberstack data and custom button handler.
 
 - Repository scripts are inserted at once with `async = false`: fetched in parallel, run in insertion order. A script that fails to load is skipped and reported once the queue has run, so `error-reporter.js` is there to send it. A script that never answers still holds the ones after it.
 - Crisp loads on its own and never holds the queue.
+- `shared/profile-submit-trim.js` follows `error-reporter.js` in the account, mes-informations and mes-informations-cms queues: it only adds a capture `submit` listener.
 - `phone-input.js` is the last entry of the ordered queue, so it is fetched in parallel with the others and runs last. It owns intl-tel-input: the library, its stylesheet and its formatting helpers are fetched only once a phone field is on screen, so a page whose field stays hidden asks cdnjs for nothing. The stylesheet is requested first and the field waits for it (2 s ceiling) because the library measures the flag to compute the field padding. A library that fails, or is still missing after 15 s, is reported and the field stays a plain input; if it lands later the field is still built (`test/phone-input-utils.js`).
 - A form submitted while the field is still unbuilt (hidden the whole time) is reported once per page and never blocked: the raw value posts, but it does not go unnoticed.
 - 🔴 Deploying that split: `loader.js` and `phone-input.js` must change together. A visitor holding a fresh `loader.js` (no library) and a 7-day-old cached `phone-input.js` (waits for a library nobody loads) would get no phone field at all. Pinned pages are safe, since `phone-input.js` inherits the loader's pin; `@main` pages are not, so pin them in the same deploy, or purge both URLs before the loaders go out.
@@ -2182,6 +2192,7 @@ only live after its own purge, so its URL is part of this list.
 https://purge.jsdelivr.net/gh/william-ordotype/crisp@main/crisp-loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/memberstack-utils.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/error-reporter.js
+https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/profile-submit-trim.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/shared/crisp-loader.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/connexion-2fa/crisp.js
 https://purge.jsdelivr.net/gh/william-ordotype/ordotype-scripts@main/account/loader.js

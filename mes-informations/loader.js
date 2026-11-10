@@ -86,7 +86,8 @@
     console.log('[' + LOADER_NAME + '] Loading...');
     var config = window.MES_INFOS_CONFIG || {};
 
-    var ordered = [SHARED_BASE + '/memberstack-utils.js', SHARED_BASE + '/error-reporter.js']
+    // profile-submit-trim.js : spécialité, prénom et nom rognés à l'envoi du profil.
+    var ordered = [SHARED_BASE + '/memberstack-utils.js', SHARED_BASE + '/error-reporter.js', SHARED_BASE + '/profile-submit-trim.js']
       .concat(scripts.map(function(file) { return BASE + '/' + file; }));
     if (config.enableCheckout) ordered.push(BASE + '/checkout.js');
     if (config.enablePartnershipCity) ordered.push(BASE + '/partnership-city.js');
