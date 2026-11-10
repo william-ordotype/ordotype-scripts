@@ -21,14 +21,14 @@ Consolidated scripts for the 6 `/membership/mes-informations*` Webflow pages. Al
 | `core.js` | Reads `MES_INFOS_CONFIG`, exposes `window.OrdoMesInfos`, sets `locat` |
 | `styles.js` | Injects `.iti` CSS width fixes |
 | `rpps.js` | RPPS checkbox — text configurable via `rppsText`, null to disable |
-| `memberstack-sync.js` | Syncs localStorage fields to Memberstack + optional forced statut |
+| `memberstack-sync.js` | Syncs localStorage fields to Memberstack + optional forced statut. Only fields whose value differs from the member are sent, nothing at all when everything is already saved (each `updateMember` is one `member.updated`). Publishes `OrdoMesInfos.syncDone` (the fields it wrote). Test: `node test/mes-infos-sans-reecriture.js` |
 | `statut-selectors.js` | Shows/hides semestre, mode-exercice, specialite based on statut |
 | `keep-unlisted-values.js` | A saved semestre missing from the list is added as an option for this member and shown, so saving the form keeps it (also loaded by the CMS pages). Test: `node test/mes-infos-valeurs-hors-liste.js` |
 | `required-if-visible.js` | Sets `required` on visible `[ms-code="required-if-visible"]` inputs |
-| `phone-input.js` | intl-tel-input initialization on `[ms-code-phone-number]` inputs |
+| `phone-input.js` | intl-tel-input initialization on `[ms-code-phone-number]` inputs; spaced while typing, E.164 on submit (see the root README) |
 | `payment-return.js` | After a payment (`ordo_checkout=cs_…` or `fromCheckout=true`), a visitor who is not logged in gets « Paiement bien reçu » and a login button instead of an empty card (Memberstack removes the profile form); `locat` brings them back after login. Test: `node test/mes-infos-payment-return.js` |
 | `checkout.js` | Stripe checkout form handler — sends `payment_method_types` to Netlify (praticien-sepa only) |
-| `partnership-city.js` | Partnership city from sessionStorage/cookie (internes-assos only); none found and none saved: reported, the field is left as it is. Test: `node test/partnership-city.js` |
+| `partnership-city.js` | Partnership city from sessionStorage/cookie (internes-assos only); none found and none saved: reported, the field is left as it is. Waits for `memberstack-sync.js` (15 s ceiling), which also writes `airtablerecordid` from `userId`, then sends only what changes: one write per load unless both scripts have a real change. Tests: `node test/partnership-city.js`, `node test/mes-infos-sans-reecriture.js` |
 
 ## Webflow setup
 
@@ -192,6 +192,7 @@ window.MES_INFOS_CONFIG = {
 loader.js
   -> shared/memberstack-utils.js
   -> shared/error-reporter.js
+  -> shared/profile-submit-trim.js (spécialité, prénom, nom rognés à l'envoi)
   -> shared/crisp-loader.js
   -> styles.js
   -> core.js          (reads MES_INFOS_CONFIG, exposes OrdoMesInfos)

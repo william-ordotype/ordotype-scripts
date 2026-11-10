@@ -68,7 +68,8 @@
 
   function loadAll() {
     console.log('[' + LOADER_NAME + '] Loading...');
-    var ordered = [ROOT + '/shared/error-reporter.js']
+    // profile-submit-trim.js : spécialité, prénom et nom rognés à l'envoi du profil.
+    var ordered = [ROOT + '/shared/error-reporter.js', ROOT + '/shared/profile-submit-trim.js']
       .concat(scripts.map(function(file) { return BASE + '/' + file; }))
       .concat([ROOT + '/mes-informations/keep-unlisted-values.js']);
 

@@ -103,8 +103,20 @@
     setTimeout(function() { observer.disconnect(); }, FILL_FORM_TIMEOUT_MS);
   }
 
+  // Une valeur déjà enregistrée à l'identique n'est pas réécrite.
+  function alreadySaved(member, msField, value) {
+    var current = member.customFields ? member.customFields[msField] : null;
+    return current != null && String(current) === value;
+  }
+
   var config = window.OrdoMesInfos && window.OrdoMesInfos.config;
   if (!config) return;
+
+  // Fin de ce script, avec les champs écrits ({} si rien) : partnership-city.js, chargé après, écrit
+  // aussi `airtablerecordid` depuis la même clé `userId`. Il attend cette fin et compare à ce qui
+  // vient d'être écrit, au lieu d'envoyer la même valeur une seconde fois.
+  var finish;
+  window.OrdoMesInfos.syncDone = new Promise(function(resolve) { finish = resolve; });
 
   var fields = config.syncFields.map(function(field) {
     return { key: field.key, msField: field.msField, fillOnly: isFillOnly(field.msField) };
@@ -115,6 +127,7 @@
   // Skip if nothing to do
   if (!fields.length && !config.forceStatut) {
     console.log(PREFIX, 'No fields to sync and no statut to force, skipping');
+    finish({});
     return;
   }
 
@@ -128,6 +141,7 @@
     var memberstack = window.$memberstackDom;
     if (!memberstack) {
       console.warn(PREFIX, 'Memberstack SDK not available');
+      finish({});
       return;
     }
 
@@ -143,6 +157,7 @@
       // independently of this client-side custom-field sync.
       if (!member || !member.id) {
         console.warn(PREFIX, 'No authenticated member — skipping sync (session not available). member hint:', getMemberIdHint());
+        finish({});
         return;
       }
 
@@ -157,6 +172,11 @@
 
         if (value && value.trim() !== '') {
           if (field.fillOnly && !canFill(member, field.msField)) {
+            try { localStorage.removeItem(field.key); } catch (e) {}
+            return;
+          }
+          // Déjà en place : la clé a servi, rien à écrire.
+          if (alreadySaved(member, field.msField, value)) {
             try { localStorage.removeItem(field.key); } catch (e) {}
             return;
           }
@@ -187,12 +207,15 @@
           } catch (e) {}
         });
         console.log(PREFIX, 'No updates needed');
+        finish({});
         return;
       }
 
       // Push to Memberstack
       memberstack.updateMember({ customFields: customFields })
         .then(function() {
+          finish(customFields);
+
           // Clear localStorage keys that were synced
           keysToRemove.forEach(function(key) {
             try { localStorage.removeItem(key); } catch (e) {}
@@ -213,6 +236,7 @@
           console.log(PREFIX, 'Synced', Object.keys(customFields).length, 'field(s)');
         })
         .catch(function(err) {
+          finish({});
           var detail = err;
           try { detail = JSON.stringify(err); } catch (e) {}
 
@@ -233,6 +257,7 @@
           }
         });
     }).catch(function(err) {
+      finish({});
       console.error(PREFIX, 'Failed to get current member:', err);
     });
   }
@@ -247,6 +272,7 @@
       setTimeout(waitForMemberstack, 200);
     } else {
       console.warn(PREFIX, 'Memberstack SDK not available after', MAX_ATTEMPTS, 'attempts');
+      finish({});
     }
   }
 

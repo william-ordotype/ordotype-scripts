@@ -2,6 +2,8 @@
  * Ordotype Mes Informations - Partnership City
  * Reads partnership-city from sessionStorage/cookie after signup.
  * Forces statut to 'Interne' and syncs airtablerecordid.
+ * Only the fields that change are written, after memberstack-sync.js; nothing
+ * at all when everything is already saved.
  * Only loaded when config.enablePartnershipCity is true (internes-assos page).
  *
  * Depends on: core.js, Memberstack frontend SDK ($memberstackDom)
@@ -12,15 +14,41 @@
   var PREFIX = '[PartnershipCity]';
   var KEY = 'signup-partnership-city';
   var MS_KEY = 'partnership-city';
+  var SYNC_WAIT_MS = 15000;
 
   function getCookie(key) {
     var match = document.cookie.match(new RegExp(key + '=([^;]+)'));
     return match ? decodeURIComponent(match[1]) : null;
   }
 
+  function isInterne(statut) {
+    return String(statut || '').trim().toLowerCase() === 'interne';
+  }
+
+  /**
+   * memberstack-sync.js (chargé avant) écrit aussi `airtablerecordid` depuis la même clé `userId`.
+   * On attend qu'il ait fini, borné, et on reçoit ce qu'il a écrit : sans ça les deux scripts
+   * envoyaient la même valeur, soit deux `member.updated` pour un seul changement.
+   */
+  function waitForSync() {
+    var pending = window.OrdoMesInfos && window.OrdoMesInfos.syncDone;
+    if (!pending || typeof pending.then !== 'function') return Promise.resolve({});
+    return new Promise(function(resolve) {
+      var timer = setTimeout(function() { resolve({}); }, SYNC_WAIT_MS);
+      pending.then(function(written) {
+        clearTimeout(timer);
+        resolve(written || {});
+      }, function() {
+        clearTimeout(timer);
+        resolve({});
+      });
+    });
+  }
+
   async function setCityAfterSignup() {
     var attempts = 0;
     var reported = false;
+    var written = await waitForSync();
 
     while (attempts < 10) {
       try {
@@ -56,29 +84,24 @@
         var userId = null;
         try { userId = localStorage.getItem('userId'); } catch (e) {}
 
-        var existingCity = result.data.customFields
-          ? result.data.customFields[MS_KEY]
-          : null;
-        var existingAirtableId = result.data.customFields
-          ? result.data.customFields.airtablerecordid
-          : null;
+        // Ce que le membre a maintenant : sa fiche, plus ce que memberstack-sync.js vient d'écrire.
+        var current = Object.assign({}, result.data.customFields || {}, written);
+        var existingCity = current[MS_KEY];
+        var existingAirtableId = current.airtablerecordid;
 
-        // Prepare custom fields
-        var customFields = { statut: 'Interne' };
-        var needsUpdate = false;
+        var cityChanged = Boolean(storageCity && existingCity !== storageCity);
+        var airtableChanged = Boolean(userId && userId.trim() !== '' && existingAirtableId !== userId);
 
-        if (storageCity && existingCity !== storageCity) {
-          customFields[MS_KEY] = storageCity;
-          needsUpdate = true;
-        }
+        if (cityChanged || airtableChanged || storageCity) {
+          // Seuls les champs qui changent partent ; rien du tout si tout est déjà en place.
+          var customFields = {};
+          if (!isInterne(current.statut)) customFields.statut = 'Interne';
+          if (cityChanged) customFields[MS_KEY] = storageCity;
+          if (airtableChanged) customFields.airtablerecordid = userId;
 
-        if (userId && userId.trim() !== '' && existingAirtableId !== userId) {
-          customFields.airtablerecordid = userId;
-          needsUpdate = true;
-        }
-
-        if (needsUpdate || storageCity) {
-          await window.$memberstackDom.updateMember({ customFields: customFields });
+          if (Object.keys(customFields).length) {
+            await window.$memberstackDom.updateMember({ customFields: customFields });
+          }
 
           // Flush storage
           try { sessionStorage.removeItem(KEY); } catch (e) {}
@@ -88,7 +111,7 @@
             try { localStorage.removeItem('userId'); } catch (e) {}
           }
 
-          console.log(PREFIX, 'Updated from', source, '| city:', storageCity);
+          console.log(PREFIX, Object.keys(customFields).length ? 'Updated from' : 'Already saved, from', source, '| city:', storageCity);
           return;
         }
 
@@ -98,8 +121,7 @@
             reported = true;
             window.OrdoErrorReporter.report('PartnershipCity', new Error('No partnership city found after signup'));
           }
-          var currentStatut = result.data.customFields ? result.data.customFields.statut : null;
-          if (String(currentStatut || '').trim().toLowerCase() !== 'interne') {
+          if (!isInterne(current.statut)) {
             await window.$memberstackDom.updateMember({ customFields: { statut: 'Interne' } });
           }
         }

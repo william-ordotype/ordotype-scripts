@@ -287,7 +287,8 @@
     if (skippedHost.length) console.log('[OrdoAccount] Skipped on ' + HOST + ':', skippedHost.join(', '));
     if (skippedRollout.length) console.log('[OrdoAccount] Not in rollout:', skippedRollout.join(', '));
 
-    var ordered = [SHARED_BASE + '/memberstack-utils.js', SHARED_BASE + '/error-reporter.js'];
+    // profile-submit-trim.js : spécialité, prénom et nom rognés à l'envoi du profil.
+    var ordered = [SHARED_BASE + '/memberstack-utils.js', SHARED_BASE + '/error-reporter.js', SHARED_BASE + '/profile-submit-trim.js'];
     var phoneInputUrl = null;
     loaded.forEach(function(file) {
       if (file === 'phone-input.js') phoneInputUrl = BASE + '/' + file;

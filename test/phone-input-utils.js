@@ -39,7 +39,19 @@
  *   - sans les aides, la frappe ne lève pas et n'efface pas la saisie ;
  *   - la dégradation est signalée par le canal du dépôt, pas seulement dans
  *     une console que personne ne lit ;
- *   - bibliothèque déjà présente : elle n'est pas redemandée.
+ *   - bibliothèque déjà présente : elle n'est pas redemandée ;
+ *   - à l'envoi, un numéro valide part en E.164 (`+33612345678`). La
+ *     conversion passe par un
+ *     écouteur en CAPTURE sur le document : Memberstack lit le formulaire dans
+ *     son propre écouteur, posé sur le formulaire, et arrête la propagation.
+ *     Plus aucun écouteur `submit` sur le formulaire : posé avant celui de
+ *     Memberstack, il remettrait la forme espacée par-dessus l'E.164 ;
+ *   - seuls les séparateurs tombent : un numéro invalide, une extension, une
+ *     saisie nationale jamais mise en forme ou un autre formulaire ne sont pas
+ *     touchés, et une conversion qui lève ne bloque pas l'envoi.
+ *
+ * La forme exacte face à libphonenumber-js/max, avec la vraie bibliothèque,
+ * est vérifiée par test/phone-input-e164.js.
  *
  * Les cas sont rejoués sur les DEUX copies servies en production.
  *
@@ -147,7 +159,7 @@ function env(source, opts) {
     inputs.forEach = Array.prototype.forEach.bind(inputs);
 
     const win = {
-        intlTelInputUtils: opts.utilsLoad === 'deja' ? { numberFormat: { INTERNATIONAL: 1 } } : undefined,
+        intlTelInputUtils: opts.utilsLoad === 'deja' ? AIDES() : undefined,
         intlTelInput: null,
         OrdoErrorReporter: {
             reportNetwork(contexte, err) { trace.signalements.push(contexte + ': ' + err.message); },
@@ -220,15 +232,37 @@ function env(source, opts) {
 
     if (opts.observer !== 'absent') win.IntersectionObserver = fauxObserver;
 
+    /**
+     * Instance factice, française seulement, qui LIT le champ comme la vraie :
+     * 9 chiffres nationaux = valide. Sans les aides, `getNumber` rend '' et
+     * `isValidNumber` null, comme intl-tel-input 17.0.8.
+     */
     function faireBibliotheque() {
         return (el, options) => {
             trace.initCount += 1;
             trace.initOptions = options;
             trace.utilsAuMomentDuInit = Boolean(win.intlTelInputUtils);
+            const national = () => {
+                // Une extension ne compte pas, comme chez libphonenumber, qui la
+                // laisse aussi hors de l'E.164.
+                const v = el.value.trim().replace(/\s*(?:ext\.?|poste|x)\s*\d+$/i, '');
+                const chiffres = v.replace(/\D/g, '');
+                if (v.startsWith('+33')) return chiffres.slice(2);
+                return chiffres.replace(/^0/, '');
+            };
             return {
                 getNumber(format) {
-                    if (format !== 1) throw new Error('format inattendu: ' + format);
-                    return '+33 6 12 34 56 78';
+                    if (!win.intlTelInputUtils) return '';
+                    if (opts.leve) throw new Error('aides cassées');
+                    const n = national();
+                    if (format === 0) return '+33' + n;
+                    if (format === 1) return '+33 ' + n.charAt(0) + n.slice(1).replace(/(\d{2})/g, ' $1');
+                    throw new Error('format inattendu: ' + format);
+                },
+                isValidNumber() {
+                    if (!win.intlTelInputUtils) return null;
+                    if (opts.leve) throw new Error('aides cassées');
+                    return /^[1-9]\d{8}$/.test(national());
                 },
             };
         };
@@ -304,7 +338,7 @@ function env(source, opts) {
                 if (opts.utilsLoad === 'fail') {
                     appeler(el, 'onerror');
                 } else {
-                    win.intlTelInputUtils = { numberFormat: { INTERNATIONAL: 1 } };
+                    win.intlTelInputUtils = AIDES();
                     appeler(el, 'onload');
                 }
             });
@@ -315,7 +349,10 @@ function env(source, opts) {
         readyState: 'complete',
         body: conteneur,
         head: conteneur,
-        addEventListener() {},
+        capture: {},
+        addEventListener(t, fn, useCapture) {
+            if (useCapture) this.capture[t] = fn;
+        },
         createElement(tag) { return { tagName: (tag || '').toUpperCase() }; },
         querySelectorAll() { return inputs; },
     };
@@ -343,7 +380,7 @@ function env(source, opts) {
     // restaurer, la console factice reste en place pour tout le reste de la
     // suite, et 36 cas échouent SANS AFFICHER UNE LIGNE — un code de sortie 1
     // muet, qu'on prend pour n'importe quoi d'autre.
-    courant = { trace, input, win, horloge: h, restaure() { Object.assign(global, sauvegarde); } };
+    courant = { trace, input, inputs, win, doc, horloge: h, restaure() { Object.assign(global, sauvegarde); } };
 
     // La console factice et l'horloge restent en place le temps du cas : le
     // chargement des aides se résout APRÈS le retour de cette fonction. Le
@@ -358,6 +395,20 @@ let courant = null;
 
 // Laisse les promesses et micro-tâches se dérouler.
 const repos = () => new Promise((r) => setImmediate(r));
+
+// Les aides de formatage telles que les expose utils.js 17.0.8.
+const AIDES = () => ({ numberFormat: { E164: 0, INTERNATIONAL: 1, NATIONAL: 2, RFC3966: 3 } });
+
+/**
+ * Envoi du formulaire tel que le vit la page : la capture sur le document
+ * passe d'abord, puis l'écouteur de Memberstack sur le formulaire, qui lit la
+ * valeur à ce moment-là. Rend la valeur que Memberstack aurait lue.
+ */
+function envoyer(e, form) {
+    const cible = form || e.input.form;
+    if (typeof e.doc.capture.submit === 'function') e.doc.capture.submit({ target: cible });
+    return e.input.value;
+}
 
 const CAS = [
     ['utilsScript n est jamais passé à la bibliothèque', async (src) => {
@@ -377,7 +428,7 @@ const CAS = [
             return 'champ non construit : une boîte de texte nue au moment où le membre s en sert';
         }
         if (typeof e.input.listeners.keyup !== 'function') return 'écouteur de frappe non posé';
-        if (typeof e.input.form.listeners.submit !== 'function') {
+        if (typeof e.doc.capture.submit !== 'function') {
             return 'écouteur d envoi non posé : un envoi partirait avec un numéro non normalisé';
         }
         return '';
@@ -397,9 +448,8 @@ const CAS = [
         if (e.trace.utilsAuMomentDuInit !== false) {
             return 'ce cas ne prouve rien si les aides étaient déjà là à la construction';
         }
-        e.input.value = '0612345678';
-        e.input.form.listeners.submit();
-        if (e.input.value !== '+33 6 12 34 56 78') {
+        e.input.value = '+33 6 12 34 56 78';
+        if (envoyer(e) !== '+33612345678') {
             return 'getNumber ne relit pas les aides au moment de l appel : le différé casserait l envoi';
         }
         return '';
@@ -729,6 +779,106 @@ const CAS = [
         await repos();
         if (e.trace.scripts.length !== 0) return 'utils.js chargé sur une page sans champ téléphone';
         if (e.trace.initCount !== 0) return 'la bibliothèque a été initialisée sans champ';
+        return '';
+    }],
+
+    // --- Envoi : la valeur que Memberstack lit -------------------------------
+
+    ['envoi : numéro valide en E.164, la frappe reste espacée', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        e.input.value = '06 12 34 56 78';
+        e.input.listeners.keyup();
+        if (e.input.value !== '+33 6 12 34 56 78') return 'la frappe ne garde plus la forme espacée : ' + e.input.value;
+        const lu = envoyer(e);
+        if (lu !== '+33612345678') return 'Memberstack lirait « ' + lu + ' » au lieu de l E.164';
+        e.input.listeners.keyup();
+        if (e.input.value !== '+33 6 12 34 56 78') return 'après un envoi, la frappe ne remet pas la forme espacée';
+        return '';
+    }],
+
+    ['envoi : plus aucun écouteur submit sur le formulaire', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        if (e.input.form.listeners.submit) {
+            return 'un écouteur submit sur le formulaire, posé avant Memberstack, remettrait la forme espacée par-dessus l E.164';
+        }
+        return '';
+    }],
+
+    ['envoi : numéro invalide laissé tel quel', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        e.input.value = '+33 6 12 34';
+        const lu = envoyer(e);
+        if (lu !== '+33 6 12 34') return 'numéro invalide réécrit : « ' + lu + ' »';
+        return '';
+    }],
+
+    ['envoi : extension laissée telle quelle, même si le numéro est valide', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        e.input.value = '+33 6 12 34 56 78 poste 12';
+        const lu = envoyer(e);
+        if (lu !== '+33 6 12 34 56 78 poste 12') return 'l E.164 a effacé l extension : « ' + lu + ' »';
+        return '';
+    }],
+
+    ['envoi : saisie nationale jamais mise en forme laissée telle quelle', async (src) => {
+        // Les aides arrivées après la frappe : le drapeau seul ne tranche pas le
+        // pays, la saisie part telle quelle.
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        e.input.value = '0612345678';
+        const lu = envoyer(e);
+        if (lu !== '0612345678') return 'saisie nationale réécrite avec le drapeau : « ' + lu + ' »';
+        return '';
+    }],
+
+    ['envoi d un autre formulaire : le champ n est pas touché', async (src) => {
+        const e = env(src, { utilsLoad: 'ok' });
+        await repos();
+        e.input.value = '+33 6 12 34 56 78';
+        envoyer(e, { autre: true });
+        if (e.input.value !== '+33 6 12 34 56 78') return 'champ d un autre formulaire converti';
+        return '';
+    }],
+
+    ['deux formulaires : seul celui envoyé est converti', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', inputs: 2 });
+        await repos();
+        const [a, b] = e.inputs;
+        a.value = '+33 6 12 34 56 78';
+        b.value = '+33 6 12 34 56 78';
+        e.doc.capture.submit({ target: b.form });
+        if (b.value !== '+33612345678') return 'le champ du formulaire envoyé n est pas converti';
+        if (a.value !== '+33 6 12 34 56 78') return 'le champ de l autre formulaire est converti';
+        return '';
+    }],
+
+    ['envoi sans les aides : laissé tel quel, rien ne lève', async (src) => {
+        const e = env(src, { utilsLoad: 'fail' });
+        await repos();
+        e.input.value = '+33 6 12 34 56 78';
+        let lu;
+        try { lu = envoyer(e); } catch (err) { return 'l envoi a levé : ' + err.message; }
+        if (lu !== '+33 6 12 34 56 78') return 'valeur changée sans les aides : « ' + lu + ' »';
+        return '';
+    }],
+
+    ['conversion qui lève : l envoi continue, signalé une seule fois', async (src) => {
+        const e = env(src, { utilsLoad: 'ok', leve: true });
+        await repos();
+        e.input.value = '+33 6 12 34 56 78';
+        try {
+            envoyer(e);
+            envoyer(e);
+        } catch (err) {
+            return 'l exception a remonté jusqu à l envoi : ' + err.message;
+        }
+        if (e.input.value !== '+33 6 12 34 56 78') return 'valeur abîmée par l échec';
+        const vus = e.trace.signalements.filter((m) => /not converted on submit/.test(m));
+        if (vus.length !== 1) return vus.length + ' signalement(s) au lieu d un';
         return '';
     }],
 ];
