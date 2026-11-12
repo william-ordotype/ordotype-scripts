@@ -1495,6 +1495,8 @@ async function main() {
     assert.ok(text(s1).includes('69002 Lyon'));
     assert.ok(text(s1).includes('France'));
     assert.ok(text(s1).includes('Modifier'));
+    // Le code postal (et lui seul) est publié pour la carte SIREN, avec un événement (12/11/2026).
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(t.w.OrdoAccount.billingPostal)), { postalCode: '69002', country: 'FR' });
 
     // Sans client Stripe : pas de section ; nom absent : « Non renseigné » ; sans adresse : « Ajouter »
     t = page();
@@ -1553,6 +1555,24 @@ async function main() {
     });
     assert.ok(text(section(t.w)).includes('Adresse enregistrée.'));
     assert.ok(text(section(t.w)).includes('3 place Bellecour'));
+    assert.strictEqual(t.w.OrdoAccount.billingPostal.postalCode, '69002', 'même code postal après une modification de rue');
+
+    // Code postal changé : publié, un événement de plus pour la carte SIREN
+    t = page();
+    let evenements = 0;
+    t.w.document.addEventListener('ordo:adresse-facturation', () => { evenements += 1; });
+    calls = installFetch(t.w, [{ status: 200, body: corps(ADRESSE) }, { status: 200, body: { ok: true, billingAddress: { ...ADRESSE, postalCode: '75011', city: 'Paris' } } }]);
+    t.w.eval(SCRIPT);
+    await wait(60);
+    assert.strictEqual(evenements, 1, 'un événement à la lecture');
+    editAdresse(t.w).click();
+    form = section(t.w).querySelector('form');
+    form.elements.postalCode.value = '75011';
+    form.elements.city.value = 'Paris';
+    form.dispatchEvent(new t.w.Event('submit', { cancelable: true }));
+    await wait(60);
+    assert.strictEqual(t.w.OrdoAccount.billingPostal.postalCode, '75011');
+    assert.strictEqual(evenements, 2, 'un événement de plus au changement de code postal');
 
     // Nom vidé : non envoyé (le nom actuel est gardé) ; changement de pays envoyé
     t = page();
