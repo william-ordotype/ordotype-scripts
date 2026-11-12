@@ -602,6 +602,12 @@ ul {
         margin-top: 0;
     }
 
+    /* Source vide (« Aucune » du CMS, tout le contenu masqué par Webflow) :
+       sans marge, elle décalait la liste de 1,5px (lipome). */
+    .sources-internal-grid .collection-item-11:has(> .flex_horizontal.w-condition-invisible) {
+        margin-top: 0;
+    }
+
     .sources-internal-grid > .sources-div > :first-child,
     .sources-internal-grid > :not(.sources-div) {
         margin-top: 0;
@@ -648,17 +654,20 @@ ul {
     font-size: 12px;
 }
 
-/* Coupures : permises dans le titre et entre deux auteurs ; jamais dans le
-   bloc du tiret (« &nbsp;-&nbsp; », un « - » reste sinon un point de coupure)
-   ni avant le premier auteur. La bulle d'un auteur coupe son texte. */
+/* Coupures : permises dans le titre, avant le premier auteur (le tiret reste
+   alors en fin de ligne) et entre deux auteurs ; jamais dans le bloc du tiret
+   (« &nbsp;-&nbsp; », un « - » reste sinon un point de coupure), donc jamais de
+   tiret en début de ligne. Le premier auteur n'est PAS collé au tiret : un nom
+   long (« Rafael José Vieira, Bernardo Sousa-Pinto, … ») ne pouvait plus passer
+   à la ligne et sortait de l'encadré (jusqu'à 103px à 390px, 12/11). La bulle
+   d'un auteur coupe son texte. */
 .sources-internal-grid .collection-item-11 > .flex_horizontal > :not(.w-dyn-list),
 .sources-internal-grid .collection-item-11 .w-dyn-items,
 .sources-internal-grid .collection-item-11 .tooltiptext {
     white-space: normal;
 }
 
-.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list),
-.sources-internal-grid .collection-item-11 .w-dyn-item:first-child {
+.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list) {
     white-space: nowrap;
 }
 
