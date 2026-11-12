@@ -69,7 +69,7 @@ function sansDesigner(d) {
  * search : (params) => réponse de siren-search (params = query string décodée).
  * select : (body) => réponse de siren-select.
  */
-async function page({ member = MEMBRE, overview = true, search, select, mode = MODE, avant } = {}) {
+async function page({ member = MEMBRE, overview = true, search, select, mode = MODE, avant, billing } = {}) {
   const erreurs = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => erreurs.push(e.message));
@@ -87,7 +87,7 @@ async function page({ member = MEMBRE, overview = true, search, select, mode = M
   w.dataLayer.push = (p) => { pushed.push(p); return 0; };
   w.OrdoErrorReporter = { report: (ctx, err) => reports.push({ ctx, message: err && err.message }) };
   const m = clone(member);
-  w.OrdoAccount = { member: m };
+  w.OrdoAccount = { member: m, ...(billing ? { billingPostal: billing } : {}) };
   w.OrdoMemberstack = { member: m, customFields: m.customFields };
   w.localStorage.setItem('_ms-mem', JSON.stringify({ id: m.id, customFields: clone(m.customFields), metaData: {} }));
   w.$memberstackDom = {
@@ -598,6 +598,53 @@ async function test(name, fn) {
     assert.strictEqual(ordreProfil(r.d)[0], 'siren', 'état connu : la carte remonte');
     assert.deepStrictEqual(ordreFact(r.d).slice(0, 2), ['abonnements', 'SIREN']);
     assert.ok(aCompleter(r.d));
+  });
+
+  // --- Code postal de l'adresse de facturation (12/11/2026) ---------------------------------
+  // 1 241 médecins sans SIREN sur 14 010 avaient un code postal dans leur profil : la suggestion
+  // (département de facturation) ne partait presque jamais. L'onglet Facturation publie le sien.
+  MODE = 'designer';
+  const SANS_CP = (() => { const m = clone(MEMBRE); m.customFields['zip-code'] = ''; return m; })();
+  const suggereEtNom = (p) => reply(200, p.mode === 'suggest' ? { results: [CABINET] } : { results: [CABINET], total: 1 });
+
+  await test('sans code postal au profil, adresse de facturation déjà lue : suggestion au chargement, département de facturation', async () => {
+    const { root, calls } = await page({ member: SANS_CP, billing: { postalCode: '75011', country: 'FR' }, search: suggereEtNom });
+    assert.strictEqual(root.querySelectorAll('input')[1].value, '75011');
+    assert.strictEqual(calls[0].params.mode, 'suggest', 'la suggestion part en premier');
+    assert.strictEqual(calls[0].params.dep, '75');
+    assert.ok(/Est-ce votre entreprise/.test(root.textContent));
+  });
+
+  await test('adresse de facturation lue APRÈS le chargement : une seule recherche, au premier événement', async () => {
+    const { w, root, calls } = await page({ member: SANS_CP, search: suggereEtNom });
+    assert.deepStrictEqual(calls, [], 'rien au chargement sans code postal');
+    w.OrdoAccount.billingPostal = { postalCode: '69003', country: 'FR' };
+    w.document.dispatchEvent(new w.CustomEvent('ordo:adresse-facturation'));
+    await settle();
+    assert.strictEqual(calls[0].params.mode, 'suggest');
+    assert.strictEqual(calls[0].params.dep, '69');
+    assert.strictEqual(root.querySelectorAll('input')[1].value, '69003');
+    assert.ok(/Est-ce votre entreprise/.test(root.textContent));
+    const n = calls.length;
+    w.document.dispatchEvent(new w.CustomEvent('ordo:adresse-facturation'));
+    await settle();
+    assert.strictEqual(calls.length, n, 'pas de seconde recherche');
+  });
+
+  await test('NÉGATIF : adresse hors de France, ou membre déjà en train de chercher : on ne touche à rien', async () => {
+    const etranger = await page({ member: SANS_CP, billing: { postalCode: '10115', country: 'DE' }, search: suggereEtNom });
+    assert.deepStrictEqual(etranger.calls, [], 'pas de département français : pas de suggestion');
+    assert.strictEqual(etranger.root.querySelectorAll('input')[1].value, '');
+    const actif = await page({ member: SANS_CP, search: suggereEtNom });
+    const champs = actif.root.querySelectorAll('input');
+    champs[0].dispatchEvent(new actif.w.FocusEvent('focus'));
+    await settle();
+    const avant = actif.calls.length;
+    actif.w.OrdoAccount.billingPostal = { postalCode: '75011', country: 'FR' };
+    actif.w.document.dispatchEvent(new actif.w.CustomEvent('ordo:adresse-facturation'));
+    await settle();
+    assert.strictEqual(actif.calls.length, avant, 'sa recherche à lui reste la seule');
+    assert.strictEqual(champs[1].value, '', 'son champ n’est pas réécrit');
   });
 
   console.log(`siren-finder : ${passed} tests OK`);

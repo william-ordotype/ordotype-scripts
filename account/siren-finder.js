@@ -139,6 +139,19 @@
     return '';
   }
 
+  /**
+   * Code postal de l'adresse de facturation Stripe, publié par subscriptions-overview.js
+   * (onglet Facturation) dès qu'il l'a lue (12/11/2026). Sert seulement quand le profil n'a
+   * pas de code postal : 1 241 médecins sans SIREN sur 14 010 en avaient un, la suggestion
+   * (département de facturation, règle T4) ne partait donc presque jamais. France seulement.
+   */
+  function billingPostalCode() {
+    var b = account && account.billingPostal;
+    if (!b || (b.country && String(b.country).toUpperCase() !== 'FR')) return '';
+    var d = digits(b.postalCode || '');
+    return d.length === 5 ? d : '';
+  }
+
   function safeGet(key) {
     try { return localStorage.getItem(key); } catch (e) { return null; }
   }
@@ -584,7 +597,7 @@
     var cpInput = el('input', C['finder-champ-cp']);
     cpInput.type = 'text';
     cpInput.placeholder = 'CP ou département (facultatif)';
-    cpInput.value = memberPostalCode();
+    cpInput.value = memberPostalCode() || billingPostalCode();
     cpInput.setAttribute('aria-label', 'Code postal ou département (facultatif)');
     cpInput.maxLength = 5;
     var btn = el('button', C['finder-bouton'], 'Rechercher');
@@ -806,6 +819,20 @@
       };
       nameInput.addEventListener('focus', once);
       cpInput.addEventListener('focus', once);
+      // L'adresse de facturation arrive après coup (ouverture de l'onglet Facturation) : son
+      // code postal lance la recherche, une seule fois, si le membre n'a encore rien fait.
+      var surAdresse = function() {
+        if (!panel.isConnected || searchedOnce) {
+          document.removeEventListener('ordo:adresse-facturation', surAdresse);
+          return;
+        }
+        var cp = billingPostalCode();
+        if (!cp || cpInput.value || isInterneMember() || nameInput.value.length < 3) return;
+        document.removeEventListener('ordo:adresse-facturation', surAdresse);
+        cpInput.value = cp;
+        run(false);
+      };
+      document.addEventListener('ordo:adresse-facturation', surAdresse);
     }
   }
 

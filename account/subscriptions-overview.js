@@ -905,6 +905,7 @@
             throw bad;
           }
           addr = payload.billingAddress;
+          publierCodePostal(addr);
           trackOutcome('adresse_enregistrer', '', 'ok');
           showRead('Adresse enregistrée.', true);
           // La réponse porte aussi l'état du numéro de TVA, appliqué au bloc qui l'affiche.
@@ -1138,6 +1139,22 @@
     });
   }
 
+  // Le code postal de l'adresse de facturation, pour la carte SIREN (siren-finder.js) : sans
+  // code postal dans le profil, elle en tire le département de sa suggestion (12/11/2026).
+  // Rien d'autre de l'adresse n'est publié ; un événement seulement si le code change.
+  function publierCodePostal(address) {
+    var account = window.OrdoAccount;
+    var cp = address && typeof address === 'object' && address.postalCode ? String(address.postalCode) : '';
+    if (!account || !cp) return;
+    var pays = String(address.country || '');
+    var avant = account.billingPostal;
+    account.billingPostal = { postalCode: cp, country: pays };
+    if (avant && avant.postalCode === cp && avant.country === pays) return;
+    try {
+      document.dispatchEvent(new CustomEvent('ordo:adresse-facturation'));
+    } catch (e) { /* navigateur sans CustomEvent : la carte garde la recherche à la demande */ }
+  }
+
   function request(body, timeoutMs) {
     return call(body, timeoutMs).then(function(payload) {
       if (!payload || !Array.isArray(payload.subscriptions)) {
@@ -1145,6 +1162,7 @@
         bad.status = 200;
         throw bad;
       }
+      publierCodePostal(payload.billingAddress);
       return {
         list: payload.subscriptions,
         pms: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [],
