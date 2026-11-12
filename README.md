@@ -1770,9 +1770,9 @@ The `access-guard.js` script:
 1. Redirects non-logged users to homepage
 2. Checks if any plan has `REQUIRES_PAYMENT` status
 3. Checks if user has SEPA temporary plan (`pln_sepa-temporary-lj4w0oky`)
-4. If no payment issue OR has SEPA temporary plan:
-   - Adds past-due plan (`pln_brique-past-due-os1c808ai`)
-   - Redirects to homepage
+4. If no payment issue OR has SEPA temporary plan: redirects to homepage, **without adding any plan**
+
+The past-due plan (`pln_brique-past-due-os1c808ai`) means "the member chose to continue with limited access": the homepage and pathology pages then stop sending them here on a failed payment. It is added only by the page's "Continuer avec un accès limité" button (`data-ms-plan:add`), never by the guard. The homepage ↔ payment page round trip is cut by the `paymentPageSeenTs` marker (set by `loader.js`, read by `isPaymentPageSeenRecently` in `shared/memberstack-utils.js`). Test: `node test/access-guard-sans-brique.js`
 
 ### Button Requirements
 
