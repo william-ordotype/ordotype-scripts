@@ -172,7 +172,9 @@ function page({ outcomes = [], visible = true, removeGabarit = null, emails = fa
   w.fetch = (url, options) => {
     if (String(url).indexOf('invoice-emails') !== -1) {
       emailCalls.push({ url, options });
-      if (options && options.method === 'POST') {
+      // Requête simple depuis le 12/11/2026 : lecture ET choix sont des POST text/plain, jeton dans le
+      // corps. Le choix porte `enabled`, la lecture `action: 'read'`.
+      if (ecriture({ options })) {
         const r = emailsWrite || { status: 200, body: { ok: true } };
         return Promise.resolve({ ok: r.status < 400, status: r.status, json: () => Promise.resolve(r.body || {}) });
       }
@@ -197,6 +199,18 @@ function page({ outcomes = [], visible = true, removeGabarit = null, emails = fa
 }
 
 const doc = (t) => t.w.document;
+// Un appel d'invoice-emails qui écrit le choix (et pas la lecture) ; son corps sans le jeton.
+function ecriture(c) {
+  if (!c.options || c.options.method !== 'POST' || typeof c.options.body !== 'string') return false;
+  return 'enabled' in JSON.parse(c.options.body);
+}
+function choix(c) {
+  const corps = JSON.parse(c.options.body);
+  assert.strictEqual(typeof corps.token, 'string', 'jeton dans le corps');
+  assert.ok(!c.options.headers.Authorization, 'requête simple : pas d’en-tête Authorization');
+  delete corps.token;
+  return corps;
+}
 const root = (t) => doc(t).querySelector('[data-ordo-facturation]');
 const section = (t, name) => root(t).querySelector('[data-ordo-section="' + name + '"]');
 const designerCards = (t) => Array.from(root(t).querySelectorAll('[data-ordo-liste="abonnements"] > [data-ordo-rendu]'));
@@ -480,8 +494,8 @@ async function main() {
     await wait(40);
     assert.strictEqual(sw.getAttribute('aria-checked'), 'false');
     assert.ok(!sw.classList.contains('is-coche') && !knob.classList.contains('is-coche'));
-    const post = t.emailCalls.find((c) => c.options && c.options.method === 'POST');
-    assert.deepStrictEqual(JSON.parse(post.options.body), { enabled: false });
+    const post = t.emailCalls.find(ecriture);
+    assert.deepStrictEqual(choix(post), { enabled: false });
     const etat = section(t, 'factures').querySelector('[data-ordo-champ="etat"]');
     assert.strictEqual(etat.textContent, 'C’est noté, vous ne recevrez plus vos factures par e-mail.');
     assert.strictEqual(etat.className, 'compte-v2_muted');
@@ -775,9 +789,9 @@ async function main() {
     assert.strictEqual(doc(t).querySelectorAll('#invoice-emails-toggle').length, 1);
     sw.click();
     await wait(40);
-    const post = t.emailCalls.find((c) => c.options && c.options.method === 'POST');
+    const post = t.emailCalls.find(ecriture);
     assert.ok(post);
-    assert.deepStrictEqual(JSON.parse(post.options.body), { enabled: true });
+    assert.deepStrictEqual(choix(post), { enabled: true });
     assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }
@@ -822,7 +836,7 @@ async function main() {
     assert.deepStrictEqual(t.network.map((r) => r.err.message), ['invoice-emails: Designer row without switch or state']);
     input.click();
     await wait(40);
-    assert.ok(t.emailCalls.some((c) => c.options && c.options.method === 'POST'));
+    assert.ok(t.emailCalls.some(ecriture));
     assert.deepStrictEqual(t.erreurs, []);
     t.dom.window.close();
   }
