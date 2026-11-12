@@ -580,6 +580,34 @@ ul {
     }
 }
 
+/* Bloc Sources/Auteurs : libellé de gauche (« Sources et recommandations »,
+   « Auteur(s) ») et texte de droite centrés sur la même ligne (12/11). Ils
+   étaient décalés de 1,5px (≥ 1440px) à 4px (sous 992px) :
+   - chaque auteur porte 3px de marge d'un seul côté (au-dessus ≥ 1440px, en
+     dessous plus bas) : ils deviennent 1,5px de chaque côté, même écart
+     entre deux auteurs, même hauteur ;
+   - chaque source a 3px au-dessus à partir de 1440px : la première les perd,
+     l'écart entre deux sources ne change pas ;
+   - le libellé a 5px de marge au-dessus sous 992px.
+   Sur téléphone les deux colonnes sont empilées : rien ne change. */
+@media only screen and (min-width: 480px) {
+    .sources-internal-grid .author-bio-text-block {
+        margin-top: 0;
+        margin-bottom: 0;
+        padding-top: 1.5px;
+        padding-bottom: 1.5px;
+    }
+
+    .sources-internal-grid .collection-item-11:first-child {
+        margin-top: 0;
+    }
+
+    .sources-internal-grid > .sources-div > :first-child,
+    .sources-internal-grid > :not(.sources-div) {
+        margin-top: 0;
+    }
+}
+
 /* Téléphones : le bloc des rappels (.rappels-cliniques-content) est un
    élément de grille à marges automatiques (règle Webflow « margin: auto »).
    Il prend donc la largeur de son contenu au lieu de celle de la colonne :
