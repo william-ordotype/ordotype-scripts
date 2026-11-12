@@ -608,6 +608,67 @@ ul {
     }
 }
 
+/* Bloc Sources : « - Auteur » ne part plus seul à la ligne (12/11). Titre,
+   tiret et auteurs étaient des blocs côte à côte : dès que le titre prenait
+   toute la largeur, le tiret et les auteurs passaient seuls sur la ligne
+   suivante, avec une espace devant (2 628 sources : 337 à 1 912 cas selon la
+   largeur, sur 401 des 454 fiches). Ils forment maintenant un seul texte :
+   coupures dans le titre et entre deux auteurs, jamais autour du tiret
+   (« (2025) - HAS » reste ensemble). Vérifié à 10 largeurs (1920 à 320px) :
+   0 tiret en début ou en fin de ligne, 0 débordement, texte inchangé. */
+.sources-internal-grid .collection-item-11 > .flex_horizontal {
+    display: block;
+    font-size: 12px;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.sources-internal-grid .collection-item-11 > .flex_horizontal > div,
+.sources-internal-grid .collection-item-11 > .flex_horizontal > div > div,
+.sources-internal-grid .collection-item-11 .w-dyn-items,
+.sources-internal-grid .collection-item-11 .w-dyn-item,
+.sources-internal-grid .collection-item-11 .auteur-ref-html {
+    display: inline;
+}
+
+/* Le clearfix Webflow des .w-embed (::before/::after en display: table)
+   forcerait un retour à la ligne. */
+.sources-internal-grid .collection-item-11 .w-embed::before,
+.sources-internal-grid .collection-item-11 .w-embed::after {
+    display: none;
+}
+
+/* Les retours à la ligne du code des auteurs deviendraient des espaces en
+   plus (« -  ESC », « CEMV  CFCVE ») : largeur nulle hors du nom. */
+.sources-internal-grid .collection-item-11 .auteur-ref-html > a {
+    font-size: 0;
+}
+
+.sources-internal-grid .collection-item-11 .auteur-ref-html .tooltip {
+    font-size: 12px;
+}
+
+/* Coupures : permises dans le titre et entre deux auteurs ; jamais dans le
+   bloc du tiret (« &nbsp;-&nbsp; », un « - » reste sinon un point de coupure)
+   ni avant le premier auteur. La bulle d'un auteur coupe son texte. */
+.sources-internal-grid .collection-item-11 > .flex_horizontal > :not(.w-dyn-list),
+.sources-internal-grid .collection-item-11 .w-dyn-items,
+.sources-internal-grid .collection-item-11 .tooltiptext {
+    white-space: normal;
+}
+
+.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list),
+.sources-internal-grid .collection-item-11 .w-dyn-item:first-child {
+    white-space: nowrap;
+}
+
+@media only screen and (min-width: 1440px) {
+    .sources-internal-grid .collection-item-11 > .flex_horizontal,
+    .sources-internal-grid .collection-item-11 .auteur-ref-html .tooltip {
+        font-size: 14.4px;
+    }
+}
+
 /* Téléphones : le bloc des rappels (.rappels-cliniques-content) est un
    élément de grille à marges automatiques (règle Webflow « margin: auto »).
    Il prend donc la largeur de son contenu au lieu de celle de la colonne :
