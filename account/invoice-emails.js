@@ -174,20 +174,27 @@
     });
   }
 
-  function request(method, body) {
+  // Requête simple (12/11/2026) : POST `text/plain`, jeton dans le corps. Sans en-tête
+  // Authorization ni JSON déclaré, le navigateur n'envoie pas de préflight OPTIONS : une
+  // invocation Netlify au lieu de deux (même règle que la liste des abonnements). Lecture =
+  // { action: 'read' }, choix = { enabled }. Le serveur accepte encore l'ancienne forme.
+  function request(fields) {
     return memberToken().then(function(token) {
       if (!token) {
         var e = new Error('no member token');
         e.status = 401;
         throw e;
       }
-      var opts = {
-        method: method,
+      var payload = { token: token };
+      for (var k in fields) {
+        if (Object.prototype.hasOwnProperty.call(fields, k)) payload[k] = fields[k];
+      }
+      return fetch(API_URL, {
+        method: 'POST',
         credentials: 'omit',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }
-      };
-      if (body) opts.body = JSON.stringify(body);
-      return fetch(API_URL, opts);
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload)
+      });
     }).then(function(res) {
       return res.json().catch(function() { return {}; }).then(function(payload) {
         if (!res.ok) {
@@ -219,12 +226,12 @@
   var RETRY_DELAY_MS = 400;
 
   function readState() {
-    return request('GET').catch(function(err) {
+    return request({ action: 'read' }).catch(function(err) {
       if (err && err.status) throw err;
       return new Promise(function(resolve) {
         setTimeout(resolve, RETRY_DELAY_MS);
       }).then(function() {
-        return request('GET');
+        return request({ action: 'read' });
       });
     });
   }
@@ -573,7 +580,7 @@
       setOn(isOn());
     }
 
-    request('POST', { enabled: wanted }).then(function(payload) {
+    request({ enabled: wanted }).then(function(payload) {
       // Un 200 sans `ok` est le corps d'une autre réponse, pas un succès
       // d'écriture : le traiter comme tel afficherait une confirmation pour un
       // choix jamais transmis.

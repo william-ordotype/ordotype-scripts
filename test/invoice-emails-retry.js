@@ -50,7 +50,8 @@ function element(tag) {
 function fetchStub(outcomes) {
     const calls = [];
     function fn(url, opts) {
-        calls.push({ url, method: (opts && opts.method) || 'GET' });
+        const corps = opts && typeof opts.body === 'string' ? JSON.parse(opts.body) : null;
+        calls.push({ url, method: (opts && opts.method) || 'GET', corps, headers: (opts && opts.headers) || {} });
         const outcome = outcomes[calls.length - 1] || outcomes[outcomes.length - 1];
         // Une requête qui n'a produit aucune réponse : c'est ce que rend fetch
         // quand la connexion tombe, que le préflight est refusé ou que l'onglet
@@ -231,7 +232,10 @@ const CASES = [
         outcomes: [{ transport: 'Load failed' }, { status: 200, body: { eligible: true, enabled: true } }],
         attendu: (r) => {
             if (r.calls.length !== 2) return 'attendu 2 appels, vu ' + r.calls.length;
-            if (r.calls.some((c) => c.method !== 'GET')) return 'la relance doit rester une lecture';
+            if (r.calls.some((c) => !c.corps || c.corps.action !== 'read' || 'enabled' in c.corps)) return 'la relance doit rester une lecture';
+            // Requête simple (12/11/2026) : sans en-tête Authorization ni JSON déclaré, pas de préflight.
+            if (r.calls.some((c) => c.method !== 'POST' || c.headers.Authorization || !/^text\/plain/.test(c.headers['Content-Type'] || ''))) return 'la lecture doit être une requête simple';
+            if (r.calls.some((c) => c.corps.token !== 'jeton-de-test')) return 'jeton absent du corps';
             if (!r.pushed.some((p) => p && p.event === 'invoice_emails_shown')) return 'interrupteur non affiché';
             if (!r.anchor.children.length) return 'rien n a été rendu dans l ancrage';
             if (r.reported.length || r.network.length) return 'incident remonté alors que la lecture a fini par aboutir';

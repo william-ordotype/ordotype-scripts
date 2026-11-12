@@ -90,6 +90,17 @@ async function main() {
     t.w.OrdoInvoiceEmails.relocate(doc.getElementById('slot'));
     assert.ok(doc.querySelector('#slot input[type="checkbox"]') === input, 'same toggle, moved');
     assert.strictEqual(t.observers[0].targets.length, 1, 'no observer re-armed once shown');
+    // Simple requests (12/11/2026): read and write are POST text/plain with the token in the
+    // body, no Authorization header, so the browser sends no billed OPTIONS preflight.
+    const simple = (c) => c.options.method === 'POST' && !c.options.headers.Authorization
+      && /^text\/plain/.test(c.options.headers['Content-Type']);
+    assert.ok(t.calls.length === 1 && simple(t.calls[0]), 'read is a simple request');
+    assert.deepStrictEqual(JSON.parse(t.calls[0].options.body), { token: 'jeton-de-test', action: 'read' });
+    input.checked = true;
+    input.dispatchEvent(new t.w.Event('change'));
+    await wait();
+    assert.ok(t.calls.length === 2 && simple(t.calls[1]), 'write is a simple request');
+    assert.deepStrictEqual(JSON.parse(t.calls[1].options.body), { token: 'jeton-de-test', enabled: true });
     t.dom.window.close();
   }
 
