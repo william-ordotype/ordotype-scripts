@@ -31,6 +31,10 @@
   var SELECT_URL = API_BASE + '/siren-select';
   var DECLINE_KEY = 'ordo_siren_suggestion_declined_at';
   var DECLINE_DAYS = 30;
+  // Suggestion demandée sans résultat : pas redemandée pour le même nom et le même département
+  // pendant ce délai (12/11/2026 : elle repartait à chaque visite et à chaque pause de frappe).
+  var SUGGEST_NONE_KEY = 'ordo_siren_suggestion_none';
+  var SUGGEST_NONE_DAYS = 7;
   var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
   var DEBOUNCE_MS = 600;
   // Champ Memberstack réel = `zip-code` (« Code postal », rempli sur ~2 000 membres) ;
@@ -623,6 +627,62 @@
     var withoutActivity = false;
     var searchedOnce = false;
     var pausedUntil = 0; // après un 429/503 : plus de recherche automatique jusque-là
+    var suggestPending = null; // { k, p } : une seule demande de suggestion en vol par nom et département
+
+    function canSuggest(dep) {
+      return !state.suggestionShown && !withoutActivity && !suggestionDeclined() && !!state.nom && !!state.prenom
+        && !!dep && !suggestionKnownNone(dep);
+    }
+
+    // La suggestion d'un département, partagée entre la recherche automatique et celle du membre
+    // si les deux se croisent. « Rien » est retenu (SUGGEST_NONE_DAYS) ; un échec ne l'est pas.
+    function fetchSuggest(dep) {
+      var k = suggestKey(dep);
+      if (suggestPending && suggestPending.k === k) return suggestPending.p;
+      var p = apiSearch({ mode: 'suggest', prenom: state.prenom, nom: state.nom, dep: dep }).then(function(sug) {
+        var list = (sug && sug.results) || [];
+        if (list.length !== 1) rememberSuggestionNone(dep);
+        return { results: list.length === 1 ? list : [] };
+      });
+      suggestPending = { k: k, p: p };
+      var done = function() { if (suggestPending && suggestPending.p === p) suggestPending = null; };
+      p.then(done, done);
+      return p;
+    }
+
+    function showSuggestion(s, dep) {
+      state.suggestionShown = true;
+      track('siren_suggestion_shown');
+      s.scope = 'dep:' + dep; // la suggestion est toujours départementale (T4)
+      renderSuggestion(results, s, function() {
+        // « Non » → recherche classique
+        safeSet(DECLINE_KEY, String(Date.now()));
+        track('siren_suggestion_declined');
+        lastKey = '';
+        run(true);
+      });
+    }
+
+    /**
+     * Recherche AUTOMATIQUE, sans geste du membre (chargement avec un code postal, arrivée de
+     * l'adresse de facturation) : la suggestion seule, un appel au plus, aucun si elle est déjà
+     * connue comme absente. Trouvée, elle s'affiche ; sinon rien ne change à l'écran. La recherche
+     * par nom et ses replis (jusqu'à 3 appels) attendent un geste : focus, frappe, Rechercher.
+     * Avant le 12/11/2026, l'échelle complète partait à chaque visite : ~100 appels vides par jour.
+     */
+    function suggestOnly() {
+      if (!nameInput.isConnected || Date.now() < pausedUntil) return;
+      var loc = locationFromInput(cpInput.value);
+      if (!loc.valid || !canSuggest(loc.dep)) return;
+      fetchSuggest(loc.dep).then(function(sug) {
+        // Le membre a lancé sa propre recherche entre-temps : elle seule écrit la zone.
+        if (lastKey || !nameInput.isConnected || state.suggestionShown) return;
+        if (sug.results.length === 1) showSuggestion(sug.results[0], loc.dep);
+      }, function(err) {
+        if (err && (err.status === 429 || err.status === 503)) pausedUntil = Date.now() + (err.status === 429 ? 20000 : 10000);
+        reportIfActionable('SirenFinder.suggest', err);
+      });
+    }
 
     // Une chaîne est vivante si elle est la dernière lancée ET si le panneau
     // n'a pas été remplacé (changement d'onglet : le minuteur du debounce et
@@ -678,10 +738,10 @@
       if (!force && key === lastKey) return;
       lastKey = key;
       // Échelle complète sur une recherche demandée (clic, Entrée) ET sur la
-      // toute première, celle qui part seule au chargement avec le nom et le
-      // code postal préremplis : c'est elle qui laissait le membre devant une
-      // liste vide. Les frappes suivantes restent au premier barreau pour ne
-      // pas multiplier les appels SIRENE à chaque pause de saisie.
+      // toute première du membre (premier focus, avec le nom et le code postal
+      // préremplis) : c'est elle qui le laissait devant une liste vide. Les
+      // frappes suivantes restent au premier barreau pour ne pas multiplier les
+      // appels SIRENE à chaque pause de saisie.
       var full = force || !searchedOnce;
       searchedOnce = true;
       setError(panel, '');
@@ -689,9 +749,7 @@
       results.appendChild(el('div', C['finder-note'], 'Recherche en cours…'));
       btn.disabled = true;
 
-      var first = !state.suggestionShown && !withoutActivity && !suggestionDeclined() && state.nom && state.prenom && loc.dep
-        ? apiSearch({ mode: 'suggest', prenom: state.prenom, nom: state.nom, dep: loc.dep })
-        : Promise.resolve({ results: [] });
+      var first = canSuggest(loc.dep) ? fetchSuggest(loc.dep) : Promise.resolve({ results: [] });
       var steps = ladder(loc, full);
 
       function step(i) {
@@ -718,16 +776,7 @@
       first.catch(function() { return { results: [] }; }).then(function(sug) {
         if (!alive(key)) return;
         if (sug && sug.results && sug.results.length === 1) {
-          state.suggestionShown = true;
-          track('siren_suggestion_shown');
-          sug.results[0].scope = 'dep:' + loc.dep; // la suggestion est toujours départementale (T4)
-          renderSuggestion(results, sug.results[0], function() {
-            // « Non » → recherche classique
-            safeSet(DECLINE_KEY, String(Date.now()));
-            track('siren_suggestion_declined');
-            lastKey = '';
-            run(true);
-          });
+          showSuggestion(sug.results[0], loc.dep);
           btn.disabled = false;
           return;
         }
@@ -806,21 +855,23 @@
     cpInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); run(true); } });
     btn.addEventListener('click', function() { run(true); });
 
-    // Recherche au chargement seulement si le membre a un code postal connu
-    // (liste courte et ciblée) ; sinon au premier focus d'un champ. Jamais pour
-    // un interne (bloc masqué) : pas de requête SIRENE sans intention.
+    // La recherche du membre part à son premier geste (focus d'un champ), échelle complète.
+    // Une suggestion déjà à l'écran reste : la frappe relancera la recherche.
+    var once = function() {
+      nameInput.removeEventListener('focus', once);
+      cpInput.removeEventListener('focus', once);
+      if (!state.suggestionShown) run(false);
+    };
+    nameInput.addEventListener('focus', once);
+    cpInput.addEventListener('focus', once);
+    // Sans geste, la suggestion seule (suggestOnly), quand le département est connu : au
+    // chargement par le code postal du profil, sinon à l'arrivée de l'adresse de facturation.
+    // Jamais pour un interne (bloc masqué) : pas de requête SIRENE sans intention.
     if (!isInterneMember() && nameInput.value.length >= 3 && locationFromInput(cpInput.value).dep) {
-      run(false);
+      suggestOnly();
     } else {
-      var once = function() {
-        nameInput.removeEventListener('focus', once);
-        cpInput.removeEventListener('focus', once);
-        run(false);
-      };
-      nameInput.addEventListener('focus', once);
-      cpInput.addEventListener('focus', once);
       // L'adresse de facturation arrive après coup (ouverture de l'onglet Facturation) : son
-      // code postal lance la recherche, une seule fois, si le membre n'a encore rien fait.
+      // code postal sert, une seule fois, si le membre n'a encore rien fait.
       var surAdresse = function() {
         if (!panel.isConnected || searchedOnce) {
           document.removeEventListener('ordo:adresse-facturation', surAdresse);
@@ -830,7 +881,7 @@
         if (!cp || cpInput.value || isInterneMember() || nameInput.value.length < 3) return;
         document.removeEventListener('ordo:adresse-facturation', surAdresse);
         cpInput.value = cp;
-        run(false);
+        suggestOnly();
       };
       document.addEventListener('ordo:adresse-facturation', surAdresse);
     }
@@ -839,6 +890,24 @@
   function suggestionDeclined() {
     var at = Number(safeGet(DECLINE_KEY) || 0);
     return at > 0 && (Date.now() - at) < DECLINE_DAYS * 86400000;
+  }
+
+  /** Clé d'une suggestion : elle ne dépend que du nom, du prénom et du département. */
+  function suggestKey(dep) {
+    return [state.nom, state.prenom, dep].join('|').toLowerCase();
+  }
+
+  function suggestionKnownNone(dep) {
+    try {
+      var v = JSON.parse(safeGet(SUGGEST_NONE_KEY) || 'null');
+      return !!v && v.k === suggestKey(dep) && (Date.now() - Number(v.at || 0)) < SUGGEST_NONE_DAYS * 86400000;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function rememberSuggestionNone(dep) {
+    safeSet(SUGGEST_NONE_KEY, JSON.stringify({ k: suggestKey(dep), at: Date.now() }));
   }
 
   // --- Suggestion (« Est-ce votre entreprise ? ») ----------------------------------------
