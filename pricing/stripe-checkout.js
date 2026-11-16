@@ -9,6 +9,8 @@
   // Stripe. Pairs with stripe_signup_click, which only fires once a session
   // exists — without this event a broken checkout leaves no trace in analytics.
   function checkoutFailureReason(err) {
+    if (err && err.name === 'MemberstackMissing') return 'memberstack_missing';
+    if (err && err.name === 'MemberTokenMissing') return 'no_token';
     var msg = (err && err.message) || '';
     var status = /Session API error:?\s*\(?(\d{3})/.exec(msg);
     if (status) return 'api_' + status[1];
@@ -36,9 +38,20 @@
     } catch (ignored) {}
   }
 
+  // Visites de test : `override` quand localStorage.ordo_rollout est posé,
+  // comme sur Mon compte, `open` sinon.
+  function trafficReason() {
+    try {
+      return window.localStorage.getItem('ordo_rollout') ? 'override' : 'open';
+    } catch (err) {
+      return 'open';
+    }
+  }
+
   // La mesure ne doit jamais casser la page : tout push passe par ici.
   function track(payload) {
     try {
+      payload.rollout_reason = trafficReason();
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push(payload);
     } catch (err) {
@@ -57,8 +70,26 @@
     });
   }
 
+  // 409 attendu (déjà abonné, paiement en attente) : l'offre actuelle est
+  // affichée, ce n'est pas un échec.
+  function trackCurrentOffer(reason, option) {
+    track({
+      event: 'checkout_current_offer',
+      checkout_source: 'pricing',
+      reason: reason,
+      option: option || ''
+    });
+  }
+
   var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
 
+  function namedError(name, message) {
+    var err = new Error(message);
+    err.name = name;
+    return err;
+  }
+
+  // Le serveur exige le jeton du membre : sans lui, la requête serait refusée.
   function memberToken() {
     return new Promise(function(resolve) {
       var attempts = 0;
@@ -68,9 +99,18 @@
         setTimeout(poll, 200);
       })();
     }).then(function(ms) {
-      if (!ms || typeof ms.getMemberCookie !== 'function') return '';
-      return Promise.resolve(ms.getMemberCookie()).then(function(t) {
+      if (!ms || typeof ms.getMemberCookie !== 'function') {
+        throw namedError('MemberstackMissing', 'Memberstack not ready after 10 s');
+      }
+      return Promise.resolve().then(function() {
+        return ms.getMemberCookie();
+      }).then(function(t) {
         return t ? String(t) : '';
+      }, function() {
+        return '';
+      }).then(function(t) {
+        if (!t) throw namedError('MemberTokenMissing', 'No member token');
+        return t;
       });
     });
   }
@@ -164,8 +204,29 @@
         labelOf(btn).textContent = label;
         btn.style.display = 'flex';
       });
-      trackCheckoutFailure(pending ? 'payment_pending' : 'already_subscribed');
+      trackCurrentOffer(pending ? 'payment_pending' : 'already_subscribed');
       if (dropped) trackHeldClick(dropped, 'current_offer');
+    }
+
+    // Memberstack absent : ni Stripe ni le bouton Memberstack ne peuvent
+    // partir. Les deux boutons proposent de recharger la page.
+    var RELOAD_LABEL = 'Recharger la page';
+    function reloadPage(e) {
+      e.preventDefault();
+      window.location.reload();
+    }
+    function showReload() {
+      detachClicks();
+      savedLabels = {};
+      var held = takeHeldClick();
+      if (noStripe1) noStripe1.style.display = 'none';
+      if (noStripe2) noStripe2.style.display = 'none';
+      [btn1, btn2].forEach(function(btn) {
+        labelOf(btn).textContent = RELOAD_LABEL;
+        btn.style.display = 'flex';
+        btn.addEventListener('click', reloadPage);
+      });
+      return held;
     }
 
     var paymentMethods = ['sepa_debit'];
@@ -346,10 +407,8 @@
 
     async function fetchCheckoutSessions() {
       try {
-        // Without a member token the request goes out without the header.
-        var token = await memberToken().catch(function() { return ''; });
-        var headers = { 'Content-Type': 'application/json' };
-        if (token) headers.Authorization = 'Bearer ' + token;
+        var token = await memberToken();
+        var headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
         var resp = await fetchWithRetry(
           'https://pricing.ordotype.fr/.netlify/functions/create-checkout-session',
           {
@@ -404,6 +463,13 @@
       } catch (err) {
         console.error('[StripeCheckout] Fetch error:', err);
         if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout (pricing)', err);
+        var reason = checkoutFailureReason(err);
+        if (reason === 'memberstack_missing') {
+          var stuck = showReload();
+          trackCheckoutFailure(reason);
+          if (stuck) trackHeldClick(stuck, 'reload');
+          return;
+        }
         // Restore the Memberstack fallback first: the user must never wait on a
         // tag callback, and dataLayer.push runs GTM's callbacks synchronously.
         detachClicks();
@@ -415,7 +481,7 @@
         if (noStripe2) noStripe2.style.display = 'flex';
         // Le clic gardé suit le membre sur le bouton Memberstack de la même offre.
         if (held && OFFERS[held.option].fallback) OFFERS[held.option].fallback.click();
-        trackCheckoutFailure(checkoutFailureReason(err));
+        trackCheckoutFailure(reason);
         if (held) trackHeldClick(held, 'fallback');
         return;
       }

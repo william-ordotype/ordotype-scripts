@@ -67,8 +67,19 @@
         } catch (ignored) {}
     }
 
+    // Visites de test : `override` quand localStorage.ordo_rollout est posé,
+    // comme sur Mon compte, `open` sinon.
+    function trafficReason() {
+        try {
+            return window.localStorage.getItem('ordo_rollout') ? 'override' : 'open';
+        } catch (err) {
+            return 'open';
+        }
+    }
+
     function track(payload) {
         try {
+            payload.rollout_reason = trafficReason();
             if (window.OrdoErrorReporter && window.OrdoErrorReporter.track) {
                 window.OrdoErrorReporter.track(payload);
                 return;
@@ -129,6 +140,17 @@
             checkout_source: 'inscription-en-cours',
             failure_reason: reason,
             option: option || resolveOption()
+        });
+    }
+
+    // 409 attendu (déjà abonné, paiement en attente) : direction le compte, ce
+    // n'est pas un échec.
+    function trackCurrentOffer(reason) {
+        track({
+            event: 'checkout_current_offer',
+            checkout_source: 'inscription-en-cours',
+            reason: reason,
+            option: resolveOption()
         });
     }
 
@@ -389,7 +411,7 @@
             try { refusal = await resp.json(); } catch (e) { /* corps illisible : erreur ordinaire */ }
             var refusalReason = refusal && refusal.error;
             if (refusalReason === 'already-subscribed' || refusalReason === 'payment-pending') {
-                trackCheckoutFailure(refusalReason === 'payment-pending' ? 'payment_pending' : 'already_subscribed');
+                trackCurrentOffer(refusalReason === 'payment-pending' ? 'payment_pending' : 'already_subscribed');
                 window.location.replace(new URL('/membership/compte', window.location.origin).toString());
                 return;
             }

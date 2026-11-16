@@ -4,7 +4,8 @@
  * paiement en attente), la page transforme le bouton Stripe en lien vers le compte
  * et ne bascule jamais sur le bouton Memberstack, qui créerait un second
  * abonnement. Sur une vraie erreur (500), le repli d'avant reste intact.
- * Sur pricing/ et pricing-v2/, seuls `already-subscribed` et `payment-pending`
+ * Ces 409 voulus sont mesurés par `checkout_current_offer`, jamais par
+ * `checkout_failed`. Sur pricing/ et pricing-v2/, seuls `already-subscribed` et `payment-pending`
  * mènent au compte : tout autre 409 prend le repli Memberstack.
  *
  * Couvre shared/stripe-checkout.js (pages d'offre) et pricing/ + pricing-v2/
@@ -58,6 +59,7 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
 const texte = (el) => el.textContent.trim();
 const visible = (el) => el.style.display !== 'none';
 const echecs = (w) => w.dataLayer.filter((e) => e.event === 'checkout_failed').map((e) => e.failure_reason);
+const offres = (w) => w.dataLayer.filter((e) => e.event === 'checkout_current_offer').map((e) => e.reason);
 
 const cas = [];
 const test = (nom, fn) => cas.push({ nom, fn });
@@ -76,7 +78,8 @@ test('page d’offre, déjà abonné : lien « Mon offre actuelle » vers le com
   assert.ok(!visible(ms));
   assert.deepStrictEqual(clics, [], 'aucun clic rejoué, surtout pas sur le bouton Memberstack');
   assert.strictEqual(w.ORDO_PENDING_CHECKOUT_CLICK, false);
-  assert.deepStrictEqual(echecs(w), ['already_subscribed']);
+  assert.deepStrictEqual(echecs(w), [], 'un 409 voulu n’est pas un échec');
+    assert.deepStrictEqual(offres(w), ['already_subscribed']);
 });
 
 test('page d’offre, paiement en attente : « Régulariser mon paiement »', async () => {
@@ -86,7 +89,8 @@ test('page d’offre, paiement en attente : « Régulariser mon paiement »', as
   const stripe = w.document.getElementById('signup-rempla-stripe-customer');
   assert.strictEqual(texte(stripe), 'Régulariser mon paiement');
   assert.strictEqual(stripe.getAttribute('href'), '/membership/compte');
-  assert.deepStrictEqual(echecs(w), ['payment_pending']);
+  assert.deepStrictEqual(echecs(w), [], 'un 409 voulu n’est pas un échec');
+    assert.deepStrictEqual(offres(w), ['payment_pending']);
 });
 
 test('page d’offre, corps de 409 illisible : lien vers le compte quand même', async () => {
@@ -105,6 +109,7 @@ test('page d’offre, erreur 500 : le repli Memberstack d’avant, clic rejoué 
   assert.ok(!visible(w.document.getElementById('signup-rempla-stripe-customer')));
   assert.deepStrictEqual(clics, ['signup-rempla-from-decouverte']);
   assert.deepStrictEqual(echecs(w), ['api_500']);
+  assert.deepStrictEqual(offres(w), []);
 });
 
 test('page d’offre, session créée : le bouton reste « En profiter »', async () => {
@@ -117,7 +122,29 @@ test('page d’offre, session créée : le bouton reste « En profiter »', asyn
   assert.deepStrictEqual(echecs(w), []);
 });
 
+test('page d’offre : rollout_reason « open », « override » si ordo_rollout est posé', async () => {
+  for (const [marque, attendu] of [[null, 'open'], ['siren-finder.js:on', 'override']]) {
+    const { w } = page(GABARIT_OFFRE, { status: 409, body: { error: 'already-subscribed' } }, OFFRE);
+    if (marque) w.localStorage.setItem('ordo_rollout', marque);
+    w.eval(SHARED);
+    await tick();
+    const evt = w.dataLayer.find((e) => e.event === 'checkout_current_offer');
+    assert.strictEqual(evt && evt.rollout_reason, attendu, String(marque));
+  }
+});
+
 for (const [nom, code] of Object.entries(PRICING)) {
+  test(`${nom} : rollout_reason sur chaque événement, « override » si ordo_rollout est posé`, async () => {
+    for (const [marque, attendu] of [[null, 'open'], ['x:on', 'override']]) {
+      const { w } = page(GABARIT_PRICING, { status: 500, body: {} }, 'https://www.ordotype.fr/nos-offres');
+      if (marque) w.localStorage.setItem('ordo_rollout', marque);
+      w.eval(code);
+      await tick();
+      assert.ok(w.dataLayer.length > 0);
+      for (const e of w.dataLayer) assert.strictEqual(e.rollout_reason, attendu, JSON.stringify(e));
+    }
+  });
+
   test(`${nom}, déjà abonné : les deux boutons mènent au compte, aucun bouton Memberstack`, async () => {
     const { w, clics } = page(GABARIT_PRICING, { status: 409, body: { error: 'already-subscribed' } }, `https://www.ordotype.fr/${nom === 'pricing' ? 'nos-offres' : 'nos-offres-v2'}`);
     w.eval(code);
@@ -132,7 +159,8 @@ for (const [nom, code] of Object.entries(PRICING)) {
       assert.ok(!visible(w.document.getElementById(id)), id);
     }
     assert.deepStrictEqual(clics, []);
-    assert.deepStrictEqual(echecs(w), ['already_subscribed']);
+    assert.deepStrictEqual(echecs(w), [], 'un 409 voulu n’est pas un échec');
+    assert.deepStrictEqual(offres(w), ['already_subscribed']);
   });
 
   test(`${nom}, paiement en attente : « Régulariser mon paiement »`, async () => {
@@ -140,7 +168,8 @@ for (const [nom, code] of Object.entries(PRICING)) {
     w.eval(code);
     await tick();
     assert.strictEqual(texte(w.document.getElementById('signup-prat-stripe-customer')), 'Régulariser mon paiement');
-    assert.deepStrictEqual(echecs(w), ['payment_pending']);
+    assert.deepStrictEqual(echecs(w), [], 'un 409 voulu n’est pas un échec');
+    assert.deepStrictEqual(offres(w), ['payment_pending']);
   });
 
   test(`${nom}, erreur 500 : repli Memberstack d’avant`, async () => {
