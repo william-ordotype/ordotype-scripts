@@ -39,11 +39,22 @@ async function initStripeCheckout() {
         } catch (ignored) {}
     }
 
+    // Visites de test : `override` quand localStorage.ordo_rollout est posé,
+    // comme sur Mon compte, `open` sinon.
+    function trafficReason() {
+        try {
+            return window.localStorage.getItem('ordo_rollout') ? 'override' : 'open';
+        } catch (err) {
+            return 'open';
+        }
+    }
+
     // La mesure ne doit jamais casser la page : tout push passe par ici.
     // Déclaration de fonction (hissée) et non const/arrow, pour rester
     // utilisable au-dessus de sa définition comme dans les autres émetteurs.
     function track(payload) {
         try {
+            payload.rollout_reason = trafficReason();
             window.dataLayer = window.dataLayer || [];
             window.dataLayer.push(payload);
         } catch (err) {
@@ -78,6 +89,17 @@ async function initStripeCheckout() {
             checkout_source: config.checkoutSource || 'shared',
             failure_reason: reason,
             option: option || config.option || 'default'
+        });
+    };
+
+    // 409 attendu (déjà abonné, paiement en attente) : l'offre actuelle est
+    // affichée, ce n'est pas un échec.
+    const trackCurrentOffer = (reason) => {
+        track({
+            event: 'checkout_current_offer',
+            checkout_source: config.checkoutSource || 'shared',
+            reason,
+            option: config.option || 'default'
         });
     };
 
@@ -174,7 +196,7 @@ async function initStripeCheckout() {
         labelOf(signupBtnStripe).textContent = pending ? 'Régulariser mon paiement' : 'Mon offre actuelle';
         signupBtnStripe.style.display = 'flex';
         console.log(PREFIX, 'Already subscribed, linking to the account page');
-        trackCheckoutFailure(pending ? 'payment_pending' : 'already_subscribed');
+        trackCurrentOffer(pending ? 'payment_pending' : 'already_subscribed');
         if (dropped !== null) trackHeldClick(dropped, 'current_offer');
     }
 

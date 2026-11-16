@@ -2,10 +2,12 @@
 /**
  * Pages tarifs (pricing/ et pricing-v2/) : la création des sessions part après
  * la lecture du jeton Memberstack. Avec un jeton, la requête porte
- * `Authorization: Bearer` ; sans jeton, elle part comme avant (pas d'en-tête,
- * même corps). Dans les deux cas le corps garde `stripeCustomerId` et ajoute
- * `v: 2`. Un 401 prend le repli Memberstack. Un visiteur sans client Stripe
- * n'attend rien et n'envoie rien.
+ * `Authorization: Bearer` ; le corps garde `stripeCustomerId` et ajoute `v: 2`.
+ * Sans jeton, aucune requête (le serveur la refuserait) : repli Memberstack,
+ * mesuré `no_token`. Memberstack absent après 10 s : aucune requête, les deux
+ * boutons proposent « Recharger la page », mesuré `memberstack_missing`. Un 401
+ * prend le repli Memberstack. Un visiteur sans client Stripe n'attend rien et
+ * n'envoie rien.
  *
  * Usage : node test/pricing-stripe-checkout-jeton.js
  */
@@ -60,8 +62,10 @@ const SESSIONS = { sessionId1: 'cs_1', url1: 'https://checkout.stripe.com/c/cs_1
 // jeton : ce que rend getMemberCookie() ; cookie 'jette' : il lève ;
 // memberstackApres : délai avant l'apparition de window.$memberstackDom.
 function page({ url, reponse = { status: 200, body: SESSIONS }, jeton = 'jeton-de-test', cookie = null, memberstackApres = null, client = 'cus_test' }) {
+  // jsdom ne recharge pas : il signale la navigation, qu'on compte.
+  const rechargements = [];
   const virtualConsole = new VirtualConsole();
-  virtualConsole.on('jsdomError', () => {});
+  virtualConsole.on('jsdomError', (e) => { if (/navigation/.test(e.message)) rechargements.push(1); });
   const dom = new JSDOM(GABARIT, { url, runScripts: 'outside-only', virtualConsole });
   const w = dom.window;
   w.console.log = () => {};
@@ -77,7 +81,7 @@ function page({ url, reponse = { status: 200, body: SESSIONS }, jeton = 'jeton-d
     },
   };
   if (memberstackApres === null) w.$memberstackDom = memberstack;
-  else setTimeout(() => { w.$memberstackDom = memberstack; }, memberstackApres);
+  else if (memberstackApres !== 'jamais') setTimeout(() => { w.$memberstackDom = memberstack; }, memberstackApres);
   w.OrdoErrorReporter = { report: () => {} };
   w.dataLayer = [];
   const requetes = [];
@@ -87,7 +91,7 @@ function page({ url, reponse = { status: 200, body: SESSIONS }, jeton = 'jeton-d
     return Promise.resolve({ ok: reponse.status < 300, status: reponse.status, json: () => Promise.resolve(reponse.body) });
   };
   w.navigator.sendBeacon = () => true;
-  return { w, requetes, evenements };
+  return { w, requetes, evenements, rechargements };
 }
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -110,15 +114,15 @@ for (const [nom, p] of Object.entries(PAGES)) {
     assert.deepStrictEqual(echecs(w), []);
   });
 
-  test(`${nom}, sans jeton : pas d'en-tête, corps d'avant plus v: 2`, async () => {
+  test(`${nom}, sans jeton : aucune requête, repli Memberstack, no_token`, async () => {
     for (const opts of [{ jeton: null }, { jeton: '' }, { cookie: 'jette' }]) {
       const { w, requetes } = page(Object.assign({ url: p.url }, opts));
       w.eval(p.code);
       await attendre(20);
-      assert.strictEqual(requetes.length, 1, JSON.stringify(opts));
-      assert.deepStrictEqual(Object.keys(requetes[0].headers), ['Content-Type'], JSON.stringify(opts));
-      assert.deepStrictEqual(requetes[0].body, Object.assign({ v: 2 }, p.corpsAvant), JSON.stringify(opts));
-      assert.ok(visible(w.document.getElementById('signup-prat-stripe-customer')), JSON.stringify(opts));
+      assert.strictEqual(requetes.length, 0, JSON.stringify(opts));
+      assert.ok(!visible(w.document.getElementById('signup-prat-stripe-customer')), JSON.stringify(opts));
+      assert.ok(visible(w.document.getElementById('signup-prat-from-decouverte')), JSON.stringify(opts));
+      assert.deepStrictEqual(echecs(w), ['no_token'], JSON.stringify(opts));
     }
   });
 
@@ -144,6 +148,32 @@ for (const [nom, p] of Object.entries(PAGES)) {
       assert.ok(visible(w.document.getElementById(id)), id);
     }
     assert.deepStrictEqual(echecs(w), ['api_401']);
+  });
+
+  test(`${nom}, Memberstack absent après 10 s : aucune requête, « Recharger la page », clic gardé compris`, async () => {
+    const { w, requetes, rechargements } = page({ url: p.url, memberstackApres: 'jamais' });
+    w.eval(p.code);
+    await attendre(50);
+    const prat = w.document.getElementById('signup-prat-stripe-customer');
+    prat.click();
+    assert.strictEqual(prat.textContent.trim(), 'Patientez…');
+    await attendre(10400);
+    assert.strictEqual(requetes.length, 0);
+    for (const id of ['signup-prat-stripe-customer', 'signup-rempla-stripe-customer']) {
+      const b = w.document.getElementById(id);
+      assert.ok(visible(b), id);
+      assert.strictEqual(b.textContent.trim(), 'Recharger la page', id);
+    }
+    for (const id of ['signup-prat-from-decouverte', 'signup-rempla-from-decouverte']) {
+      assert.ok(!visible(w.document.getElementById(id)), id);
+    }
+    assert.deepStrictEqual(echecs(w), ['memberstack_missing']);
+    const garde = w.dataLayer.filter((e) => e.event === 'checkout_click_held');
+    assert.deepStrictEqual(garde.map((e) => [e.option, e.outcome]), [['praticien', 'reload']]);
+    assert.deepStrictEqual(rechargements, [], 'le clic gardé ne recharge pas tout seul');
+    w.document.getElementById('signup-rempla-stripe-customer').click();
+    assert.deepStrictEqual(rechargements, [1]);
+    assert.deepStrictEqual(requetes.length, 0, 'un clic ne relance aucune requête');
   });
 
   test(`${nom}, visiteur sans client Stripe : ni jeton lu ni requête`, async () => {

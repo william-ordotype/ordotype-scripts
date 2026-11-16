@@ -121,7 +121,8 @@ test('connexion d’un membre déjà abonné (login-ms, clés absentes), refus 4
     assert.strictEqual(pertes().length, 0, `rien de perdu, ${raison}`);
     assert.ok(urls.includes(COMPTE), `${raison} : ${urls.join(' | ')}`);
     assert.strictEqual(navigations.length, 1, `une seule navigation, ${raison}`);
-    assert.ok(events().some((e) => e.event === 'checkout_failed' && e.failure_reason === mesure), `${raison} : ${JSON.stringify(events())}`);
+    assert.ok(events().some((e) => e.event === 'checkout_current_offer' && e.reason === mesure), `${raison} : ${JSON.stringify(events())}`);
+    assert.ok(!events().some((e) => e.event === 'checkout_failed'), `un 409 voulu n’est pas un échec, ${raison}`);
     assert.strictEqual(w.document.getElementById('checkoutStripe').style.display, 'none', `bouton mort masqué, ${raison}`);
   }
 });
