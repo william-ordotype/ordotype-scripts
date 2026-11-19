@@ -294,6 +294,7 @@
       }
       var interne = profil.querySelectorAll('[data-ordo-si-pas-interne]');
       for (var j = 0; j < interne.length; j++) show(interne[j], !isInterne());
+      sirenCarteProfil();
       sirenFacturationVisible();
       sirenACompleter();
       show(vatRow(), false);
@@ -699,9 +700,21 @@
       }
     }
   }
+  /**
+   * Carte SIREN de Mon profil : cachée quand le finder se cache, pas seulement pour un interne. Depuis
+   * le 19/11/2026 (décision William), le finder se cache aussi pour un salarié déclaré sans SIREN : la
+   * carte restait sinon affichée, titre et texte au-dessus d'un emplacement vide.
+   */
+  function sirenCarteProfil() {
+    var carte = profil && profil.querySelector('[data-ordo-section="siren"]');
+    var root = document.querySelector('[data-ordo-finder="siren"], .ordo-siren');
+    if (carte && root && root.hidden) show(carte, false);
+  }
   function suivreEtatSiren(root) {
     function maj() {
       remonterCartesSiren(root);
+      if (root.hidden) sirenCarteProfil();
+      else if (!isInterne()) show(profil && profil.querySelector('[data-ordo-section="siren"]'), true);
       sirenACompleter();
     }
     maj();

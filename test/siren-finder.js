@@ -123,8 +123,8 @@ async function page({ member = MEMBRE, overview = true, search, select, mode = M
 }
 
 const byText = (scope, sel, re) => [...scope.querySelectorAll(sel)].find((b) => re.test(b.textContent));
-// Premier geste du membre (focus du champ nom) : c'est lui, et plus le chargement, qui lance la
-// recherche par nom (12/11/2026).
+// Premier geste du membre (focus du champ nom). Du 12/11 au 19/11/2026 lui seul lançait la recherche
+// par nom ; depuis le 19/11 elle repart au chargement, et le geste ne la double pas.
 async function geste(r) {
   r.root.querySelector('input').dispatchEvent(new r.w.FocusEvent('focus'));
   await settle();
@@ -149,7 +149,7 @@ async function test(name, fn) {
   for (const mode of ['designer', 'ancienne']) {
     MODE = mode;
 
-    await test('vide, code postal connu : la suggestion seule au chargement, la liste au premier geste', async () => {
+    await test('vide, code postal connu : suggestion puis recherche par nom au chargement, le geste ne la double pas', async () => {
       const r = await page({ search: nameSearch([CABINET, AUTRE], 12) });
       const { root, calls, erreurs } = r;
       assert.deepStrictEqual(erreurs, []);
@@ -157,10 +157,9 @@ async function test(name, fn) {
       const inputs = root.querySelectorAll('input');
       assert.strictEqual(inputs[0].value, 'Claire Martin');
       assert.strictEqual(inputs[1].value, '75011');
-      assert.deepStrictEqual(calls.map((c) => c.params.mode), ['suggest'], 'sans geste : un seul appel, la suggestion');
-      assert.strictEqual(root.querySelectorAll('ul > li').length, 0, 'pas de liste sans geste');
+      assert.deepStrictEqual(calls.map((c) => c.params.mode), ['suggest', 'name'], 'sans geste : la suggestion, puis la recherche par nom');
       await geste(r);
-      assert.deepStrictEqual(calls.map((c) => c.params.mode), ['suggest', 'name'], 'au geste : la recherche par nom, pas une 2e suggestion');
+      assert.deepStrictEqual(calls.map((c) => c.params.mode), ['suggest', 'name'], 'le geste ne relance rien');
       const items = root.querySelectorAll('ul > li');
       assert.strictEqual(items.length, 2);
       assert.ok(items[0].querySelector('span').textContent.startsWith('CLAIRE MARTIN, SIREN '));
@@ -665,37 +664,65 @@ async function test(name, fn) {
     assert.strictEqual(champs[1].value, '', 'son champ n’est pas réécrit');
   });
 
-  // --- Appels SIRENE économisés (12/11/2026) ---------------------------------------------------
+  // --- Appels SIRENE économisés (12/11/2026), recherche automatique remise (19/11/2026) ---------
   // Décompte Netlify du 10/11 : 67 suggestions (14 trouvées) et 118 recherches par nom, dont ~100
-  // vides, refaites à chaque visite. Sans geste du membre : la suggestion seule, et « rien » retenu.
+  // vides, refaites à chaque visite. Le 12/11 : la suggestion seule sans geste, « rien » retenu ;
+  // les saisies par nom sont tombées de 17 à 12 par semaine. Le 19/11 (décision William) : la
+  // recherche par nom repart au chargement, et une recherche automatique VIDE est retenue 7 jours.
   const NONE_KEY = 'ordo_siren_suggestion_none';
+  const AUTO_KEY = 'ordo_siren_auto_none';
+  const AUTO_K = 'claire martin|cp:75011|1';
   const memo = (k, ilYa) => (doc) => doc.defaultView.localStorage.setItem(NONE_KEY, JSON.stringify({ k, at: Date.now() - ilYa }));
+  const memoAuto = (k, ilYa) => (doc) => doc.defaultView.localStorage.setItem(AUTO_KEY, JSON.stringify({ k, at: Date.now() - ilYa }));
+  const both = (...fs) => (doc) => fs.forEach((f) => f(doc));
+  const vide = (p) => reply(200, { results: [], total: 0 });
   const modes = (calls) => calls.map((c) => c.params.mode);
 
-  await test('suggestion absente : retenue pour ce nom et ce département, rien de plus au chargement', async () => {
+  await test('suggestion absente : retenue pour ce nom et ce département, la recherche par nom suit au chargement', async () => {
     const r = await page({ search: nameSearch() });
-    assert.deepStrictEqual(modes(r.calls), ['suggest']);
+    assert.deepStrictEqual(modes(r.calls), ['suggest', 'name']);
     const v = JSON.parse(r.w.localStorage.getItem(NONE_KEY));
     assert.strictEqual(v.k, 'martin|claire|75');
     assert.ok(Date.now() - v.at < 5000);
+    assert.ok(byText(r.root, 'button', /C'est moi/), 'la liste arrive sans geste');
+    assert.strictEqual(r.w.localStorage.getItem(AUTO_KEY), null, 'une recherche qui trouve n’est pas retenue');
   });
 
-  await test('visite suivante : aucune requête au chargement, la recherche du membre sans suggestion', async () => {
-    const r = await page({ search: nameSearch(), avant: memo('martin|claire|75', 86400000) });
+  await test('recherche automatique vide : retenue 7 jours pour ce nom et cette zone', async () => {
+    const r = await page({ search: vide });
+    assert.deepStrictEqual(modes(r.calls), ['suggest', 'name', 'name', 'name'], 'échelle complète : santé, toutes activités, puis le département');
+    const v = JSON.parse(r.w.localStorage.getItem(AUTO_KEY));
+    assert.strictEqual(v.k, AUTO_K);
+    assert.ok(Date.now() - v.at < 5000);
+  });
+
+  await test('visite suivante, tout retenu vide : aucune requête au chargement ; le geste cherche quand même', async () => {
+    const r = await page({ search: nameSearch(), avant: both(memo('martin|claire|75', 86400000), memoAuto(AUTO_K, 86400000)) });
     assert.deepStrictEqual(r.calls, [], 'rien sans geste');
     await geste(r);
     assert.deepStrictEqual(modes(r.calls), ['name'], 'la suggestion n’est pas redemandée');
     assert.ok(byText(r.root, 'button', /C'est moi/), 'la liste arrive au geste');
   });
 
-  await test('NÉGATIF : souvenir périmé (8 jours) ou d’un autre département : la suggestion repart', async () => {
-    const vieux = await page({ search: nameSearch(), avant: memo('martin|claire|75', 8 * 86400000) });
-    assert.deepStrictEqual(modes(vieux.calls), ['suggest']);
-    const ailleurs = await page({ search: nameSearch(), avant: memo('martin|claire|69', 3600000) });
-    assert.deepStrictEqual(modes(ailleurs.calls), ['suggest']);
+  await test('suggestion retenue absente seule : la recherche par nom part au chargement, sans suggestion', async () => {
+    const r = await page({ search: nameSearch(), avant: memo('martin|claire|75', 86400000) });
+    assert.deepStrictEqual(modes(r.calls), ['name']);
   });
 
-  await test('frappe après une suggestion absente : un appel par pause, jamais de suggestion', async () => {
+  await test('NÉGATIF : souvenirs périmés (8 jours) ou d’une autre zone : tout repart', async () => {
+    const vieux = await page({ search: nameSearch(), avant: both(memo('martin|claire|75', 8 * 86400000), memoAuto(AUTO_K, 8 * 86400000)) });
+    assert.deepStrictEqual(modes(vieux.calls), ['suggest', 'name']);
+    const ailleurs = await page({ search: nameSearch(), avant: both(memo('martin|claire|69', 3600000), memoAuto('claire martin|cp:69003|1', 3600000)) });
+    assert.deepStrictEqual(modes(ailleurs.calls), ['suggest', 'name']);
+  });
+
+  await test('NÉGATIF : recherche automatique en panne (503) : rien retenu', async () => {
+    const r = await page({ search: (p) => (p.mode === 'name' ? reply(503, { error: 'upstream' }) : reply(200, { results: [] })) });
+    assert.deepStrictEqual(modes(r.calls), ['suggest', 'name']);
+    assert.strictEqual(r.w.localStorage.getItem(AUTO_KEY), null, 'une panne ne vaut pas « rien »');
+  });
+
+  await test('frappe après le chargement : un appel par pause, jamais de suggestion', async () => {
     const r = await geste(await page({ search: nameSearch() }));
     const avant = r.calls.length;
     const champ = r.root.querySelector('input');
@@ -726,21 +753,70 @@ async function test(name, fn) {
     assert.ok(/Est-ce votre entreprise/.test(r.root.textContent));
   });
 
-  await test('adresse de facturation sans suggestion : un seul appel, pas de recherche par nom', async () => {
+  await test('adresse de facturation : la recherche automatique part avec son code postal', async () => {
     const r = await page({ member: SANS_CP, search: nameSearch() });
+    assert.deepStrictEqual(r.calls, [], 'rien avant l’adresse');
     r.w.OrdoAccount.billingPostal = { postalCode: '69003', country: 'FR' };
     r.w.document.dispatchEvent(new r.w.CustomEvent('ordo:adresse-facturation'));
     await settle();
-    assert.deepStrictEqual(modes(r.calls), ['suggest']);
-    assert.strictEqual(r.root.querySelectorAll('ul > li').length, 0);
+    assert.deepStrictEqual(modes(r.calls), ['suggest', 'name']);
+    assert.strictEqual(r.calls[1].params.cp, '69003');
   });
 
-  await test('NÉGATIF : suggestion en panne (503) : rien retenu, rien à l’écran, pas de signalement', async () => {
+  await test('NÉGATIF : suggestion en panne (503) : rien retenu pour elle, pas de signalement', async () => {
     const r = await page({ search: (p) => (p.mode === 'suggest' ? reply(503, { error: 'upstream' }) : reply(200, { results: [], total: 0 })) });
-    assert.deepStrictEqual(modes(r.calls), ['suggest']);
+    assert.strictEqual(modes(r.calls)[0], 'suggest');
     assert.strictEqual(r.w.localStorage.getItem(NONE_KEY), null, 'une panne ne vaut pas « rien »');
     assert.strictEqual(r.root.querySelectorAll('[data-ordo-message="erreur"]').length, 0);
     assert.deepStrictEqual(r.reports, []);
+  });
+
+  // --- Salariés (19/11/2026, décision William) -----------------------------------------------
+  // « Mode d'exercice » Salarié (valeur du formulaire « Salarie », ancienne saisie « Salarié »), SSA :
+  // pas de SIREN à donner. Carte masquée tant qu'aucun numéro n'est enregistré ; Mixte la garde.
+  const avecMode = (mode, siret = '') => { const m = clone(MEMBRE); m.customFields['mode-dexercice'] = mode; m.customFields.siret = siret; return m; };
+  const carteProfil = (d) => d.querySelector('[data-ordo-section="siren"]');
+
+  for (const mode of ['Salarie', 'Salarié', 'SSA', 'Salarie client']) {
+    await test(`salarié (${mode}) sans SIREN : carte masquée, aucun appel, pas de badge`, async () => {
+      const r = await page({ member: avecMode(mode), search: nameSearch() });
+      assert.ok(!shown(r.root), 'finder masqué');
+      assert.deepStrictEqual(r.calls, [], 'aucune requête SIRENE');
+      assert.ok(!shown(carteProfil(r.d)), 'carte du profil masquée');
+      assert.ok(!r.d.documentElement.classList.contains('ordo-siren-a-completer'), 'pas de badge « À compléter »');
+      assert.strictEqual(r.pushed.filter((p) => p.event === 'siren_finder_open').length, 0, 'pas compté comme ouvert');
+    });
+  }
+
+  await test('NÉGATIF : Mixte, Libéral ou mode vide : carte visible et recherche automatique', async () => {
+    for (const mode of ['Mixte', 'Liberal', '']) {
+      const r = await page({ member: avecMode(mode), search: nameSearch() });
+      assert.ok(shown(r.root), mode + ' : finder visible');
+      assert.ok(shown(carteProfil(r.d)), mode + ' : carte visible');
+      assert.deepStrictEqual(modes(r.calls), ['suggest', 'name'], mode);
+    }
+  });
+
+  await test('NÉGATIF : salarié qui a déjà un SIREN : la carte reste visible (renseignée)', async () => {
+    const r = await page({ member: avecMode('Salarie', SIREN) });
+    assert.ok(shown(r.root), 'finder visible');
+    assert.ok(shown(carteProfil(r.d)), 'carte visible');
+  });
+
+  await test('le mode passe à Salarié dans le formulaire : la carte se cache ; puis à Libéral : elle revient', async () => {
+    const r = await page({ search: nameSearch() });
+    const sel = r.d.querySelector('select[data-ms-member="mode-dexercice"]');
+    assert.ok(sel, 'sélecteur de mode présent dans la page servie');
+    sel.value = 'Salarie';
+    sel.dispatchEvent(new r.w.Event('change'));
+    await settle();
+    assert.ok(!shown(r.root), 'finder masqué');
+    assert.ok(!shown(carteProfil(r.d)), 'carte du profil masquée');
+    sel.value = 'Liberal';
+    sel.dispatchEvent(new r.w.Event('change'));
+    await settle();
+    assert.ok(shown(r.root), 'finder revenu');
+    assert.ok(shown(carteProfil(r.d)), 'carte revenue');
   });
 
   console.log(`siren-finder : ${passed} tests OK`);
