@@ -671,6 +671,17 @@ ul {
     white-space: nowrap;
 }
 
+/* Source sans auteur (aucun « Auteur de source » lié dans le CMS) : la règle
+   « display: inline » ci-dessus passait aussi sur le bloc « liste vide » de
+   Webflow (.empty-state-15, masqué par le CSS du site), qui s'affichait en
+   carré gris par-dessus le titre ; le tiret restait seul en fin de ligne
+   (paralysie-faciale-idiopathique, 19/11 : 9 fiches, 8 sources). On masque
+   les deux : la ligne finit sur l'année. */
+.sources-internal-grid .collection-item-11 > .flex_horizontal > .w-dyn-list > .w-dyn-empty,
+.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list > .w-dyn-empty) {
+    display: none;
+}
+
 @media only screen and (min-width: 1440px) {
     .sources-internal-grid .collection-item-11 > .flex_horizontal,
     .sources-internal-grid .collection-item-11 .auteur-ref-html .tooltip {
