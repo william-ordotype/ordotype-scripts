@@ -35,6 +35,16 @@
   // pendant ce délai (12/11/2026 : elle repartait à chaque visite et à chaque pause de frappe).
   var SUGGEST_NONE_KEY = 'ordo_siren_suggestion_none';
   var SUGGEST_NONE_DAYS = 7;
+  // Recherche AUTOMATIQUE (au chargement, sans geste) revenue vide : pas refaite pour le même nom
+  // et la même zone pendant ce délai. Remise en service le 19/11/2026 (décision William, avec
+  // l'idée « garder en mémoire la recherche auto d'un client pour éviter de la refaire tout le
+  // temps ») : ~100 recherches vides par jour avant le 12/11, refaites à chaque visite.
+  var AUTO_NONE_KEY = 'ordo_siren_auto_none';
+  var AUTO_NONE_DAYS = 7;
+  // Médecins déclarés salariés (champ « Mode d'exercice ») : pas de SIREN à donner, la carte leur
+  // est masquée tant qu'aucun numéro n'est enregistré (décision William 19/11/2026). « Mixte »
+  // (salarié + libéral) garde la carte.
+  var SALARIE_MODES = ['salarie', 'salarie client', 'ssa', 'hospitalier'];
   var MS_MAX_ATTEMPTS = 50; // 50 x 200 ms = 10 s
   var DEBOUNCE_MS = 600;
   // Champ Memberstack réel = `zip-code` (« Code postal », rempli sur ~2 000 membres) ;
@@ -54,6 +64,7 @@
   var customFields = member.customFields || {};
   var state = {
     statut: customFields.statut || '',
+    mode: String(customFields['mode-dexercice'] || ''),
     // Seul champ membre : `siret` (9 ou 14 chiffres). Le SIREN en est dérivé,
     // il n'existe pas de customField `siren` (reporting).
     siret: String(customFields.siret || ''),
@@ -663,27 +674,6 @@
       });
     }
 
-    /**
-     * Recherche AUTOMATIQUE, sans geste du membre (chargement avec un code postal, arrivée de
-     * l'adresse de facturation) : la suggestion seule, un appel au plus, aucun si elle est déjà
-     * connue comme absente. Trouvée, elle s'affiche ; sinon rien ne change à l'écran. La recherche
-     * par nom et ses replis (jusqu'à 3 appels) attendent un geste : focus, frappe, Rechercher.
-     * Avant le 12/11/2026, l'échelle complète partait à chaque visite : ~100 appels vides par jour.
-     */
-    function suggestOnly() {
-      if (!nameInput.isConnected || Date.now() < pausedUntil) return;
-      var loc = locationFromInput(cpInput.value);
-      if (!loc.valid || !canSuggest(loc.dep)) return;
-      fetchSuggest(loc.dep).then(function(sug) {
-        // Le membre a lancé sa propre recherche entre-temps : elle seule écrit la zone.
-        if (lastKey || !nameInput.isConnected || state.suggestionShown) return;
-        if (sug.results.length === 1) showSuggestion(sug.results[0], loc.dep);
-      }, function(err) {
-        if (err && (err.status === 429 || err.status === 503)) pausedUntil = Date.now() + (err.status === 429 ? 20000 : 10000);
-        reportIfActionable('SirenFinder.suggest', err);
-      });
-    }
-
     // Une chaîne est vivante si elle est la dernière lancée ET si le panneau
     // n'a pas été remplacé (changement d'onglet : le minuteur du debounce et
     // les requêtes en vol survivent aux inputs détachés).
@@ -722,7 +712,15 @@
       return steps;
     }
 
-    function run(force) {
+    /**
+     * `auto` : recherche AUTOMATIQUE, sans geste du membre (chargement avec un code postal,
+     * arrivée de l'adresse de facturation) : suggestion puis recherche par nom, échelle complète,
+     * comme avant le 12/11/2026. Revenue vide, elle est retenue (AUTO_NONE_DAYS) pour ce nom et
+     * cette zone et n'est pas refaite aux visites suivantes ; le geste du membre, lui, cherche
+     * toujours. Entre le 12/11 et le 19/11 seule la suggestion partait sans geste : les saisies
+     * par nom sont tombées de 17 à 12 par semaine.
+     */
+    function run(force, auto) {
       if (!nameInput.isConnected) return; // minuteur périmé d'un panneau remplacé
       if (!force && Date.now() < pausedUntil) return;
       var q = nameInput.value.replace(/\s+/g, ' ').trim();
@@ -735,6 +733,7 @@
         return;
       }
       var key = q + '|' + loc.scope + '|' + (withoutActivity ? 0 : 1);
+      if (auto && autoKnownNone(key)) return;
       if (!force && key === lastKey) return;
       lastKey = key;
       // Échelle complète sur une recherche demandée (clic, Entrée) ET sur la
@@ -759,6 +758,9 @@
           if (!alive(key)) return;
           var list = body.results || [];
           if (list.length || i === steps.length - 1) {
+            // Toute l'échelle automatique est revenue vide : pas refaite avant AUTO_NONE_DAYS.
+            // Un échec (barreau en panne, 429/503) n'est jamais retenu.
+            if (auto && !list.length) rememberAutoNone(key);
             renderResults(results, list, body.total || 0, s.loc, s.act === '0', s.note);
             return;
           }
@@ -864,11 +866,12 @@
     };
     nameInput.addEventListener('focus', once);
     cpInput.addEventListener('focus', once);
-    // Sans geste, la suggestion seule (suggestOnly), quand le département est connu : au
-    // chargement par le code postal du profil, sinon à l'arrivée de l'adresse de facturation.
-    // Jamais pour un interne (bloc masqué) : pas de requête SIRENE sans intention.
-    if (!isInterneMember() && nameInput.value.length >= 3 && locationFromInput(cpInput.value).dep) {
-      suggestOnly();
+    // Sans geste, la recherche automatique (run(false, true)), quand le département est connu :
+    // au chargement par le code postal du profil, sinon à l'arrivée de l'adresse de facturation.
+    // Jamais quand la carte est masquée (interne, salarié sans SIREN) : pas de requête SIRENE
+    // sans intention.
+    if (!carteMasquee() && nameInput.value.length >= 3 && locationFromInput(cpInput.value).dep) {
+      run(false, true);
     } else {
       // L'adresse de facturation arrive après coup (ouverture de l'onglet Facturation) : son
       // code postal sert, une seule fois, si le membre n'a encore rien fait.
@@ -878,10 +881,10 @@
           return;
         }
         var cp = billingPostalCode();
-        if (!cp || cpInput.value || isInterneMember() || nameInput.value.length < 3) return;
+        if (!cp || cpInput.value || carteMasquee() || nameInput.value.length < 3) return;
         document.removeEventListener('ordo:adresse-facturation', surAdresse);
         cpInput.value = cp;
-        suggestOnly();
+        run(false, true);
       };
       document.addEventListener('ordo:adresse-facturation', surAdresse);
     }
@@ -908,6 +911,20 @@
 
   function rememberSuggestionNone(dep) {
     safeSet(SUGGEST_NONE_KEY, JSON.stringify({ k: suggestKey(dep), at: Date.now() }));
+  }
+
+  /** Recherche automatique revenue vide : clé = nom cherché, zone, filtre d'activité. */
+  function autoKnownNone(key) {
+    try {
+      var v = JSON.parse(safeGet(AUTO_NONE_KEY) || 'null');
+      return !!v && v.k === String(key).toLowerCase() && (Date.now() - Number(v.at || 0)) < AUTO_NONE_DAYS * 86400000;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function rememberAutoNone(key) {
+    safeSet(AUTO_NONE_KEY, JSON.stringify({ k: String(key).toLowerCase(), at: Date.now() }));
   }
 
   // --- Suggestion (« Est-ce votre entreprise ? ») ----------------------------------------
@@ -1131,9 +1148,31 @@
     return String(state.statut).trim().toLowerCase() === 'interne';
   }
 
+  function plain(v) {
+    return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  }
+
+  /** Salarié déclaré (« Salarie », « Salarié », SSA…) sans SIREN enregistré : rien à lui demander. */
+  function isSalarieSansSiren() {
+    return SALARIE_MODES.indexOf(plain(state.mode)) !== -1 && !normalizeNumber(state.siret || state.siren);
+  }
+
+  function carteMasquee() {
+    return isInterneMember() || isSalarieSansSiren();
+  }
+
+  function applyVisibility() {
+    if (carteMasquee()) hideAll(); else showAll();
+  }
+
   function applyStatut(statut) {
     state.statut = statut || '';
-    if (isInterneMember()) hideAll(); else showAll();
+    applyVisibility();
+  }
+
+  function applyMode(mode) {
+    state.mode = mode || '';
+    applyVisibility();
   }
 
   // --- Init ------------------------------------------------------------------------------------
@@ -1176,7 +1215,12 @@
     if (statutSelector) {
       statutSelector.addEventListener('change', function(e) { applyStatut(e.target.value); });
     }
-    console.log(PREFIX, 'Initialized', current ? '(siren set)' : '(empty)', 'statut=' + (state.statut || '?'));
+    // Le mode d'exercice change dans le formulaire (salarié, ou plus salarié) : la carte suit.
+    var modeSelector = document.querySelector('select[data-ms-member="mode-dexercice"]');
+    if (modeSelector) {
+      modeSelector.addEventListener('change', function(e) { applyMode(e.target.value); });
+    }
+    console.log(PREFIX, 'Initialized', current ? '(siren set)' : '(empty)', 'statut=' + (state.statut || '?'), 'mode=' + (state.mode || '?'));
     if (!current) refreshFromMemberstack();
   }
 
@@ -1204,6 +1248,7 @@
       customFields.siret = state.siret;
       patchSnapshot({ siret: state.siret }, { 'siren-name': meta['siren-name'] || '', 'siren-etat': meta['siren-etat'] || 'A' });
       renderDone({ siren: cur.siren, name: meta['siren-name'] || '', commune: '', etat: meta['siren-etat'] || 'A' });
+      applyVisibility(); // un salarié qui a bien un SIREN le revoit
       console.log(PREFIX, 'Snapshot was stale: SIREN loaded from Memberstack');
     }).catch(function(err) {
       console.warn(PREFIX, 'Member refresh failed (best effort):', err && err.message);
