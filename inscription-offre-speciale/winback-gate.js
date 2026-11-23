@@ -39,7 +39,7 @@
  * ne contrôle pas : la page gatée ne doit exposer qu'un seul bouton vivant.
  *
  * Paramètres d'URL, pour les tests :
- * - ?winback_preview=login|expired|offer  affiche un écran sans rien demander au
+ * - ?winback_preview=login|expired|active|offer  affiche un écran sans rien demander au
  *   serveur et sans compter d'événement. Purement visuel : le coupon ne vit que
  *   dans create-checkout-session, qui refusera le clic d'un non-éligible.
  * - ?winback_test=cus_…                   fait juger l'éligibilité sur ce client
@@ -66,6 +66,7 @@
     var CHECKING_LABEL = 'Vérification…';
     var REDIRECT_LABEL = 'Patientez…';
     var OFFERS_URL = '/nos-offres';
+    var ACCOUNT_URL = '/membership/compte';
     // Repli, utilisé seulement si la réponse serveur n'annonce pas la fenêtre.
     // Le serveur fait autorité : cette valeur ne sert qu'à ne pas afficher un
     // écran vide, et doit suivre le défaut de la fonction d'éligibilité.
@@ -226,11 +227,14 @@
         return wrap;
     }
 
+    // Le texte ne nomme pas la remise : elle vit dans le CMS (titre de la page) et
+    // dans le coupon du serveur. L'écrire ici, c'est la laisser diverger : il a dit
+    // « 6 mois offerts » quand la page vendait « 6 mois à -50 % ».
     function expiredScreen(windowDays) {
         return card(
             'Cette offre n’est plus disponible',
             [
-                'Les 6 mois offerts étaient réservés aux médecins ayant résilié leur '
+                'Cette offre était réservée aux médecins ayant résilié leur '
                     + 'abonnement, pendant les ' + windowDays + ' jours suivant la fin de leur '
                     + 'accès. Ce délai est passé, ou cette offre a déjà été utilisée sur votre compte.',
                 'Vous pouvez reprendre votre abonnement à tout moment, sans engagement.'
@@ -240,6 +244,25 @@
                 { label: 'Retour à l’accueil', href: '/' }
             ]
         );
+    }
+
+    // Refus pour abonnement en cours (motif serveur `active_subscription` : un
+    // abonnement d'accès actif, en essai ou en impayé). L'écran « plus disponible »
+    // lui parlait d'un délai passé et de reprendre un abonnement qu'il n'a pas quitté.
+    function activeScreen() {
+        return card(
+            'Votre abonnement est en cours',
+            ['Cette offre est réservée aux médecins qui ont résilié leur abonnement.'],
+            [
+                { label: 'Accéder à mon compte', href: ACCOUNT_URL, primary: true },
+                { label: 'Retour à l’accueil', href: '/' }
+            ]
+        );
+    }
+
+    // Le motif sert à choisir l'écran, jamais à être affiché tel quel.
+    function refusedScreen(reason, windowDays) {
+        return reason === 'active_subscription' ? activeScreen() : expiredScreen(windowDays);
     }
 
     function loginUrl() {
@@ -254,7 +277,7 @@
         return card(
             'Connectez-vous pour récupérer votre offre',
             [
-                'Ces 6 mois offerts sont réservés à votre compte Ordotype. '
+                'Cette offre est réservée à votre compte Ordotype. '
                     + 'Connectez-vous pour que nous puissions vérifier votre éligibilité.',
                 'Vous reviendrez sur cette page automatiquement après la connexion.'
             ],
@@ -482,12 +505,13 @@
         // bouton part quand même vers create-checkout-session, qui refusera si le
         // visiteur ne l'est pas vraiment.
         var preview = param(PREVIEW_PARAM);
-        if (preview === 'login' || preview === 'expired' || preview === 'offer') {
+        if (preview === 'login' || preview === 'expired' || preview === 'active' || preview === 'offer') {
             previewing = true;
             console.log(PREFIX, 'Preview mode:', preview);
 
             if (preview === 'login') { showScreen(loginScreen(), 'Preview: login'); return; }
             if (preview === 'expired') { showScreen(expiredScreen(DEFAULT_WINDOW_DAYS), 'Preview: expired'); return; }
+            if (preview === 'active') { showScreen(activeScreen(), 'Preview: active'); return; }
 
             activate({ source: 'preview' }, DEFAULT_WINDOW_DAYS);
             var fakeDeadline = new Date(Date.now() + DEFAULT_WINDOW_DAYS * 86400000).toISOString();
@@ -544,7 +568,7 @@
 
                 if (!data || !data.eligible) {
                     console.log(PREFIX, 'Not eligible');
-                    showScreen(expiredScreen(windowDays), 'Not eligible');
+                    showScreen(refusedScreen(data && data.reason, windowDays), 'Not eligible');
                     track('winback_refused', { reason: (data && data.reason) || 'unknown' });
                     return;
                 }

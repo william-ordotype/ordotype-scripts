@@ -1663,7 +1663,12 @@ Le gate :
    `cus_…` du cache quand il est là, ce qui évite au serveur un appel à l'API
    Memberstack pour traduire `mem_` en `cus_` ;
 4. non éligible : remplace `.main-wrapper` par l'écran « offre expirée », en
-   gardant la barre de navigation et le footer qui l'encadrent. **Rien à ajouter
+   gardant la barre de navigation et le footer qui l'encadrent. Un abonné en
+   cours (motif serveur `active_subscription`) voit à la place « Votre abonnement
+   est en cours » : l'offre est réservée aux médecins qui ont résilié, et lui
+   parler d'un délai passé ou d'une reprise serait faux. Aucun écran ne nomme la
+   remise : elle vit dans le titre CMS de la page et dans le coupon du serveur
+   (le script disait « 6 mois offerts » quand la page vendait « 6 mois à -50 % »). **Rien à ajouter
    dans Webflow** : l'écran est construit par le script, comme la modale de
    `offre-annulation/cancel-reason-modal.js`. La durée annoncée vient du serveur
    (`windowDays`), pour qu'un changement de `WINBACK_WINDOW_DAYS` ne laisse pas
@@ -1709,7 +1714,7 @@ d'un client. Deux paramètres d'URL, qui répondent à deux besoins différents.
 
 | Paramètre | Ce qu'il fait | Ce qu'il n'est pas |
 |-----------|---------------|--------------------|
-| `?winback_preview=login\|expired\|offer` | Affiche l'écran demandé sans appeler le serveur | Il n'accorde rien : sur `offer`, le bouton part quand même vers `create-checkout-session`, qui refuse un non-éligible. Aucun événement GA4 n'est émis |
+| `?winback_preview=login\|expired\|active\|offer` | Affiche l'écran demandé sans appeler le serveur (`active` = refus d'un abonné en cours) | Il n'accorde rien : sur `offer`, le bouton part quand même vers `create-checkout-session`, qui refuse un non-éligible. Aucun événement GA4 n'est émis |
 | `?winback_test=cus_…` | Fait juger l'éligibilité sur ce client Stripe | Il ne prouve rien : le serveur ne l'honore que si le client est listé dans `WINBACK_TEST_CUSTOMERS`, vide en temps normal. La règle Stripe tourne pour de vrai sur ce dossier, un client de test qui ne la satisfait pas est refusé comme les autres |
 
 L'aperçu sert à relire textes et mise en page à deux. Le mode test sert à
