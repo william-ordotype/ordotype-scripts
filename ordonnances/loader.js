@@ -23,8 +23,23 @@
     return 'main';
   }
   const VERSION = detectVersion();
-  const BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/ordonnances';
-  const SHARED_BASE = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
+  // Adresse jsDelivr du chargeur lui-même (cdn, fastly, gcore, testingcf) : si
+  // cdn.jsdelivr.net tombe, basculer la balise du chargeur sur une autre adresse
+  // jsDelivr suffit, ses scripts suivent (page Notion « Plan sauvetage : jsDelivr
+  // outage »). Toute autre origine retombe sur cdn.jsdelivr.net.
+  function detectHost() {
+    var scripts = document.getElementsByTagName('script');
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i].src || '';
+      if (src.indexOf('/ordonnances/loader.js') === -1) continue;
+      var m = src.match(/^(https:\/\/[a-z0-9-]+\.jsdelivr\.net)\/gh\/william-ordotype\/ordotype-scripts@/);
+      if (m) return m[1];
+    }
+    return 'https://cdn.jsdelivr.net';
+  }
+  const HOST = detectHost();
+  const BASE = HOST + '/gh/william-ordotype/ordotype-scripts@' + VERSION + '/ordonnances';
+  const SHARED_BASE = HOST + '/gh/william-ordotype/ordotype-scripts@' + VERSION + '/shared';
 
   // Scripts to load (in order). print-handler.js and copy-handler.js are
   // intentionally absent — they're lazy-loaded on first button click via
