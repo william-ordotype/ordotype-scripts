@@ -49,10 +49,10 @@ form#wf-form-mutateDocument {
     display: none;
 }
 
-/* TEMPORAIRE, le temps du banc sur le staging : filtre actif de la recherche
- * (liste de l'accueil, combo is-dropdown ; page /search-result, combo is-page).
- * C'est l'état « Current » de ces combos dans le Designer, que l'API Webflow ne
- * sait pas écrire : à poser dans le Designer, puis à retirer d'ici avant la prod. */
+/* Filtre actif de la recherche (liste de l'accueil, combo is-dropdown ; page
+ * /search-result, combo is-page). C'est l'état « Current » de ces combos, que
+ * l'API Webflow ne sait pas écrire (choix de William le 23/11/2026 : laissé ici).
+ * Si quelqu'un pose un jour cet état dans le Designer, retirer ces deux règles. */
 .srt-tab-link.is-dropdown.w--current,
 .srt-tab-link.is-page.w--current {
     border-color: transparent;
