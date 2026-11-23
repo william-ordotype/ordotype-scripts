@@ -22,7 +22,22 @@
     }
     return 'main';
   }
-  var ROOT = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@' + detectVersion();
+  // Adresse jsDelivr du chargeur lui-même (cdn, fastly, gcore, testingcf) : si
+  // cdn.jsdelivr.net tombe, basculer la balise du chargeur sur une autre adresse
+  // jsDelivr suffit, ses scripts suivent (page Notion « Plan sauvetage : jsDelivr
+  // outage »). Toute autre origine retombe sur cdn.jsdelivr.net.
+  function detectHost() {
+    var scripts = document.getElementsByTagName('script');
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i].src || '';
+      if (src.indexOf('/homepage/loader.js') === -1) continue;
+      var m = src.match(/^(https:\/\/[a-z0-9-]+\.jsdelivr\.net)\/gh\/william-ordotype\/ordotype-scripts@/);
+      if (m) return m[1];
+    }
+    return 'https://cdn.jsdelivr.net';
+  }
+  var HOST = detectHost();
+  var ROOT = HOST + '/gh/william-ordotype/ordotype-scripts@' + detectVersion();
 
   // Bandeau « paiement échoué », que Memberstack affiche seul : masqué ici, avant
   // que Memberstack ne l'affiche (plus tard, dans member-redirects.js, il
