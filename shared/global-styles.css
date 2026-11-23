@@ -42,6 +42,13 @@ form#wf-form-mutateDocument {
     display: none;
 }
 
+/* Champ de l'accueil (barre de recherche, variante 1, 23/11/2026) : même règle,
+ * la croix n'apparaît que s'il y a du texte. Le reste du dessin est dans le
+ * Designer (combos is-hero). */
+#search-bar-main.is-hero:placeholder-shown + .search-nav .search-reset-button {
+    display: none;
+}
+
 /* Webflow's .button is a column flexbox (flex-direction: column;
  * justify-content: center). WebKit (Safari, every iOS browser) does not center
  * the label of an <input type="submit"> that way: "Vérifier" on the 2FA page
