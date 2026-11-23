@@ -40,6 +40,9 @@
  *     Safari) n'est PAS un recouvrement : remesuré, puis noté
  *     « controle_impossible » à la fermeture, sans alerte ; un vrai
  *     recouvrement une fois l'écran stable reste signalé ;
+ *   - panneau ouvert d'après ses classes mais masqué par la feuille de styles
+ *     (combo is-open retirée du Designer, 23/11/2026) : alerte bloquante
+ *     « panneau_invisible », panneau refermé, la loupe suit son lien ;
  *   - la liste des résultats est toujours posée sous l'en-tête ;
  *   - le panneau se ferme même si l'entête a changé entre-temps ;
  *   - chaque envoi porte toutes les clés ; une mesure en panne ne casse rien ;
@@ -69,7 +72,7 @@ const TAP_BACK = [26, 32]; // un appui au milieu de la flèche
 async function load(opts) {
     const o = Object.assign({ mobile: true, bucket: '10', engine: true, covered: false, storageBroken: false,
         pushBroken: false, random: 0.5, src: SRC, state: null, reporter: false, variantWriteBroken: false,
-        nullPoints: 0, viewport: null, inputHidden: false, neverPainted: false }, opts);
+        nullPoints: 0, viewport: null, inputHidden: false, neverPainted: false, hiddenByCss: false }, opts);
     const dom = new JSDOM(html, {
         url: 'https://www.ordotype.fr/pathologies/exemple',
         runScripts: 'outside-only',
@@ -107,13 +110,20 @@ async function load(opts) {
     }
     if (o.state) win.history.replaceState(o.state, '');
     if (o.viewport) win.visualViewport = o.viewport; // objet modifiable par le test
+    // Feuille de styles où la combo is-open n'existe plus (23/11/2026) : le panneau
+    // reste masqué même ouvert.
+    if (o.hiddenByCss) {
+        const st = doc.createElement('style');
+        st.textContent = '.search-panel_component{display:none}';
+        doc.head.appendChild(st);
+    }
     win.addEventListener('error', (e) => reported.push({ name: e.error && e.error.name, message: e.message }));
     // Géométrie fidèle au DOM : le panneau n'a une boîte que s'il est ouvert et
     // dans la page ; la flèche et le champ seulement à l'intérieur de ce panneau.
     const ZERO = { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
     const shownPanel = () => {
         const p = doc.querySelector('.search-panel_component.is-open');
-        return p && p.parentNode === doc.body ? p : null;
+        return p && p.parentNode === doc.body && !o.hiddenByCss ? p : null;
     };
     win.HTMLElement.prototype.getBoundingClientRect = function () {
         const p = shownPanel();
@@ -516,6 +526,25 @@ async function main() {
         check('champ_invisible signalé', events(pushed, 'search_panel_problem').some((p) => p.failure_reason === 'champ_invisible'),
             JSON.stringify(events(pushed, 'search_panel_problem')));
         check('alerte bloquante', blocking(reported).some((r) => /champ_invisible/.test(r.message)), JSON.stringify(reported));
+    }
+
+    console.log('panneau masqué par la feuille de styles (combo is-open absente) : alerte, puis la loupe suit son lien');
+    {
+        const { win, doc, pushed, reported } = await load({ hiddenByCss: true });
+        const link = doc.getElementById('logo-finder-mobile').closest('a');
+        const suivi = []; // pour chaque clic sur la loupe : le lien est-il suivi ?
+        link.addEventListener('click', (e) => suivi.push(!e.defaultPrevented));
+        tapLoupe(win, doc);
+        await wait(1600);
+        check('panneau_invisible signalé', events(pushed, 'search_panel_problem').some((p) => p.failure_reason === 'panneau_invisible'),
+            JSON.stringify(events(pushed, 'search_panel_problem')));
+        check('alerte bloquante', blocking(reported).some((r) => /panneau_invisible/.test(r.message)), JSON.stringify(reported));
+        check('panneau refermé', !panelOpen(doc), 'resté ouvert');
+        check('la loupe suit son lien (page de résultats)', suivi.length === 2 && suivi[0] === false && suivi[1] === true, JSON.stringify(suivi));
+        check('plus d’entrée d’historique du panneau', !(win.history.state && win.history.state.otSearch), JSON.stringify(win.history.state));
+        const close = events(pushed, 'search_panel_close')[0];
+        check('fermeture notée panneau_invisible', close && close.reason === 'panneau_invisible', JSON.stringify(close));
+        check('nouvel appui : lien direct, panneau pas rouvert', tapLoupe(win, doc) === false && !panelOpen(doc), 'panneau rouvert');
     }
 
     console.log('panneau jamais peint (page pas encore affichée) : pas d’alerte');

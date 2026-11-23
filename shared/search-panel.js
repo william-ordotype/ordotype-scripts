@@ -111,7 +111,7 @@
     var back = panel && panel.querySelector(".search-panel_back");
     var field = panel && panel.querySelector(".search-panel_field");
     var guard = null, built = false;
-    var open = false, leaving = false;
+    var open = false, leaving = false, broken = false;
     function panelReady() { return !!(panel && form && clear && back && field && clear.parentNode === form); }
 
     // Préparé au premier besoin seulement : posé en fin de page (au-dessus de
@@ -221,6 +221,14 @@
         if (!shown()) {
           resync();
           if (attempt < 3) return setTimeout(function () { if (open && S === s) selfCheck(attempt + 1); }, 400);
+          // Classes d'ouverture en place mais panneau masqué par la feuille de styles :
+          // c'est une panne, pas une page instable (23/11/2026, combo is-open retirée
+          // du Designer : loupe sans effet 4 h 30, sans alerte). Alerte, puis la loupe
+          // reprend son rôle d'avant le panneau : la page de résultats.
+          if (hiddenByStyles() && document.visibilityState !== "hidden") {
+            problem("panneau_invisible", "", true);
+            return fallBack();
+          }
           s.unchecked = true;
           return;
         }
@@ -238,6 +246,20 @@
         if (invisible) return problem("champ_invisible", "", true);
         if (!form.contains(hit2)) problem("champ_recouvert", describe(hit2), true);
       });
+    }
+
+    function hiddenByStyles() {
+      return panel.classList.contains("is-open") && document.documentElement.classList.contains("ot-search-open") &&
+        panel.parentNode === document.body && window.getComputedStyle(panel).display === "none";
+    }
+    // Panneau inutilisable sur cette page : refermé (sans entrée d'historique qui le
+    // rouvrirait au retour), puis la loupe suit son lien, comme sans panneau.
+    function fallBack() {
+      broken = true;
+      safely(function () { if (ours()) history.replaceState(null, ""); });
+      closeReason = "panneau_invisible";
+      hide();
+      link.click();
     }
 
     // Le panneau est-il à l'écran : classes en place, champ dedans, boîte non vide ?
@@ -330,7 +352,7 @@
     }
 
     link.addEventListener("click", function (e) {
-      if (!engineReady()) {
+      if (!engineReady() || broken) {
         track("search_panel_open", { reason: "repli" }); // la loupe garde son lien
         return;
       }
