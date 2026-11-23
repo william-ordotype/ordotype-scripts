@@ -42,6 +42,28 @@ form#wf-form-mutateDocument {
     display: none;
 }
 
+/* Champ de l'accueil (barre de recherche, variante 1, 23/11/2026) : même règle,
+ * la croix n'apparaît que s'il y a du texte. Le reste du dessin est dans le
+ * Designer (combos is-hero). */
+#search-bar-main.is-hero:placeholder-shown + .search-nav .search-reset-button {
+    display: none;
+}
+
+/* Filtre actif de la recherche (liste de l'accueil, combo is-dropdown ; page
+ * /search-result, combo is-page). C'est l'état « Current » de ces combos, que
+ * l'API Webflow ne sait pas écrire (choix de William le 23/11/2026 : laissé ici).
+ * Si quelqu'un pose un jour cet état dans le Designer, retirer ces deux règles. */
+.srt-tab-link.is-dropdown.w--current,
+.srt-tab-link.is-page.w--current {
+    border-color: transparent;
+    background-color: var(--primary-50);
+    color: var(--primary-600);
+}
+.srt-tab-link.is-dropdown.w--current .srt-tl-inner,
+.srt-tab-link.is-page.w--current .srt-tl-inner {
+    font-weight: 500;
+}
+
 /* Webflow's .button is a column flexbox (flex-direction: column;
  * justify-content: center). WebKit (Safari, every iOS browser) does not center
  * the label of an <input type="submit"> that way: "Vérifier" on the 2FA page
@@ -62,10 +84,11 @@ input.button {
     bottom: 0;
 }
 
-/* Autocomplete Styles */
+/* Autocomplete Styles : résultat choisi aux flèches du clavier. Plus de texte
+ * blanc (illisible sur ce fond) : les anciennes lignes le masquaient par leur
+ * couleur en ligne, les lignes recopiées du Designer (search-row) gardent la leur. */
 .autocomplete-active {
     background-color: rgb(240, 243, 255) !important;
-    color: #ffffff;
 }
 
 /* Alpine.js cloak */
