@@ -49,6 +49,21 @@ form#wf-form-mutateDocument {
     display: none;
 }
 
+/* TEMPORAIRE, le temps du banc sur le staging : filtre actif de la recherche
+ * (liste de l'accueil, combo is-dropdown ; page /search-result, combo is-page).
+ * C'est l'état « Current » de ces combos dans le Designer, que l'API Webflow ne
+ * sait pas écrire : à poser dans le Designer, puis à retirer d'ici avant la prod. */
+.srt-tab-link.is-dropdown.w--current,
+.srt-tab-link.is-page.w--current {
+    border-color: transparent;
+    background-color: var(--primary-50);
+    color: var(--primary-600);
+}
+.srt-tab-link.is-dropdown.w--current .srt-tl-inner,
+.srt-tab-link.is-page.w--current .srt-tl-inner {
+    font-weight: 500;
+}
+
 /* Webflow's .button is a column flexbox (flex-direction: column;
  * justify-content: center). WebKit (Safari, every iOS browser) does not center
  * the label of an <input type="submit"> that way: "Vérifier" on the 2FA page
