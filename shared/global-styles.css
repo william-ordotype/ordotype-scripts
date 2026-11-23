@@ -84,10 +84,11 @@ input.button {
     bottom: 0;
 }
 
-/* Autocomplete Styles */
+/* Autocomplete Styles : résultat choisi aux flèches du clavier. Plus de texte
+ * blanc (illisible sur ce fond) : les anciennes lignes le masquaient par leur
+ * couleur en ligne, les lignes recopiées du Designer (search-row) gardent la leur. */
 .autocomplete-active {
     background-color: rgb(240, 243, 255) !important;
-    color: #ffffff;
 }
 
 /* Alpine.js cloak */
