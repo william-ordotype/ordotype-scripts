@@ -124,6 +124,8 @@ ordotype-scripts/
 │   ├── geo-redirect.js
 │   ├── styles.js
 │   └── core.js
+├── module/             # Module pages (/module/<slug>)
+│   └── devise-locale.js
 ├── connexion-2fa/      # 2FA login page scripts
 │   └── crisp.js
 └── shared/             # Shared scripts used across pages
@@ -855,6 +857,59 @@ node test/formulaire-auteur.js
 - `[Tracking]` - DataLayer tracking
 - `[PrintHandler]` - Print functionality
 - `[CopyHandler]` - Copy functionality
+
+---
+
+## Module Pages (`/module/<slug>`)
+
+A Stripe customer cannot hold subscriptions in two currencies. The module
+buttons (`data-ms-price:add`) are priced in euros, so a member whose
+subscription is billed in another currency cannot take a module from them.
+
+`module/devise-locale.js` reads the currency of the member's live
+subscriptions (`planConnections[].payment.currency`, from the `_ms-mem` cache
+first, then `$memberstackDom.getCurrentMember()`). When it is not the euro:
+
+- each known euro module price is swapped for the same tier in that currency
+  (`LOCAL_PRICES`), and the « X €/mois » of the label is rewritten. Memberstack
+  reads `data-ms-price:add` when the button is clicked, so its own checkout runs
+  on the local price;
+- the euro line right under a button (« Prix sans le module Médecine générale »)
+  is hidden;
+- with no price for that currency and tier, the button gives way to a short
+  note with a contact link, and the gap is reported once through
+  `OrdoErrorReporter` (`shared/error-reporter.js` is loaded from the same pin
+  when the page does not have it).
+
+Members billed in euros, logged-out visitors and signup forms are untouched.
+Adding a currency: create the Memberstack price on the module plan, then add it
+to `LOCAL_PRICES`.
+
+### Usage in Webflow
+
+In the module template's custom code (before `</body>`):
+
+```html
+<script>
+  (function () {
+    if (!document.querySelector('a[data-ms-price\\:add]')) return;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/gh/william-ordotype/ordotype-scripts@<sha>/module/devise-locale.js';
+    s.crossOrigin = 'anonymous';
+    document.body.appendChild(s);
+  })();
+</script>
+```
+
+### Console Prefixes
+
+- `[ModuleDevise]`
+
+### Test
+
+```bash
+node test/module-devise-locale.js
+```
 
 ---
 
