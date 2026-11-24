@@ -444,7 +444,7 @@ left on the page (usually behind a fallback button).
 | Parameter | Values |
 |-----------------|-------------------------------------------------------------|
 | `checkout_source` | `pricing`, `pricing-v2`, `inscription-en-cours`, `comeback`, `shared`, `winback` |
-| `failure_reason`  | `network`, `api_<http status>`, `invalid_payload`, `no_customer_id`, `no_price_id`, `already_subscribed`, `payment_pending`, `other` |
+| `failure_reason`  | `network`, `api_<http status>`, `invalid_payload`, `no_customer_id`, `no_price_id`, `already_subscribed`, `payment_pending`, `currency_mismatch`, `other` |
 | `option`          | the offer slug — always the same value the page's `stripe_signup_click` reports |
 
 Emitted by `pricing/stripe-checkout.js`, `pricing-v2/stripe-checkout.js`,
@@ -467,6 +467,18 @@ includes a 409 with any other `error` (`failure_reason` `api_409`).
 
 `pricing/` and `pricing-v2/` send the member cookie as Bearer when available,
 and `v: 2` in the body. Test: `node test/pricing-stripe-checkout-jeton.js`.
+
+**Billing currency differs from the page.** A Stripe customer cannot hold
+subscriptions in two currencies. When the member's live subscription is billed
+in another currency than the page price, the checkout function answers 200
+`{ reason: "currency_mismatch", redirectUrl }` (same shape as `/nos-offres`).
+`shared/stripe-checkout.js` and `inscription-en-cours/auto-checkout.js` then go
+straight to that country offers page: no Memberstack fallback (it would hit the
+same refusal), held click dropped, `failure_reason` `currency_mismatch`. An
+address outside `https://www.ordotype.fr/` is never followed.
+`inscription-non-terminee/comeback-checkout.js` already followed it; the winback
+and parrainage gates and `mes-informations/checkout.js` follow `url`, which
+carries the same address. Test: `node test/checkout-currency-mismatch.js`.
 
 **Click before the session exists.** The Stripe button is shown as soon as the
 Stripe customer is known, but its session only arrives with the function's

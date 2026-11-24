@@ -373,6 +373,23 @@ async function initStripeCheckout() {
 
         const data = await resp.json();
 
+        // Billing currency of the member differs from the page: go to the country offers page.
+        if (data && data.reason === 'currency_mismatch' && typeof data.redirectUrl === 'string'
+            && data.redirectUrl.indexOf('https://www.ordotype.fr/') === 0) {
+            window.ORDO_PENDING_CHECKOUT_CLICK = false;
+            detachClick();
+            takeHeldClick();
+            console.log(PREFIX, 'Currency mismatch, redirecting to the country page');
+            try {
+                trackCheckoutFailure('currency_mismatch');
+            } catch (err) {
+                reportSideEffect(err);
+            } finally {
+                window.location.href = data.redirectUrl;
+            }
+            return;
+        }
+
         if (!data || !data.sessionId || !data.url) {
             console.error(PREFIX, 'Invalid response');
             if (window.OrdoErrorReporter) OrdoErrorReporter.report('StripeCheckout', 'Invalid checkout session response');
