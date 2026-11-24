@@ -19,7 +19,7 @@
         timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     } catch (err) {}
 
-    var ALWAYS_ASK_PATHS = ['/nos-offres-belgique'];
+    var EURO_DESTINATION_ZONES = ['Europe/Brussels', 'Europe/Luxembourg', 'Europe/Berlin'];
     var LIVE_STATUSES = ['ACTIVE', 'TRIALING', 'PAST_DUE', 'UNPAID', 'REQUIRES_PAYMENT', 'REQUIRES_AUTHENTICATION', 'INCOMPLETE'];
 
     function memberCurrency() {
@@ -43,13 +43,9 @@
         return found;
     }
 
-    var path = '';
-    try {
-        path = String(window.location.pathname || '').replace(/\/+$/, '');
-    } catch (err) {}
-    var alwaysAsk = ALWAYS_ASK_PATHS.indexOf(path) !== -1;
     var frenchZone = FRENCH_TIME_ZONES.indexOf(timeZone) !== -1;
-    var skipReason = alwaysAsk ? '' : frenchZone ? 'French time zone' : memberCurrency() === 'eur' ? 'euro subscriber' : '';
+    var euroDestination = EURO_DESTINATION_ZONES.indexOf(timeZone) !== -1;
+    var skipReason = frenchZone ? 'French time zone' : !euroDestination && memberCurrency() === 'eur' ? 'euro subscriber' : '';
     var hidden = !frenchZone && !skipReason;
     var revealed = false;
     var safety = null;

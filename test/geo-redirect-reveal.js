@@ -24,8 +24,9 @@
  * redirigé non plus, quel que soit son fuseau : la devise de l'abonnement prime
  * sur le pays (Stripe refuserait une autre devise). Un abonné hors euro garde
  * l'appel, et la garde du paiement le renvoie vers la page de sa devise.
- * /nos-offres-belgique garde l'appel pour tout le monde : elle partage
- * l'identifiant de /nos-offres et ses règles peuvent viser la France.
+ * Exception : les fuseaux de Bruxelles, Luxembourg et Berlin gardent l'appel
+ * même pour un abonné en euros, car les règles du service y envoient vers des
+ * pages en euros (offres belges, Luxembourg) qu'il faut continuer à atteindre.
  * Un fuseau illisible, vide ou UTC garde le comportement prudent : page cachée
  * jusqu'à la réponse. Une donnée de membre illisible aussi : service appelé.
  *
@@ -271,36 +272,6 @@ function casSansAppel(raison) {
 const CAS_FRANCE = casSansAppel('French time zone');
 const CAS_ABONNE_EURO = casSansAppel('euro subscriber');
 
-// /nos-offres-belgique en fuseau français : l'appel est gardé, mais la page
-// n'est pas cachée (comportement d'avant pour ce fuseau).
-const CAS_FRANCE_AVEC_APPEL = [
-    ['jamais cachée, service appelé, aucune minuterie', (e) => {
-        if (e.cachee()) return 'la page est cachée alors que la redirection ne concerne pas ce visiteur';
-        if (!e.serviceAppele()) return 'le service n est pas appelé sur une page qui doit le garder';
-        if (e.horloge.enAttente() !== 0) return 'un délai de secours est armé pour une page déjà visible';
-        return '';
-    }],
-
-    ['service MUET : rien à signaler, la page n a jamais attendu', (e) => {
-        e.horloge.avancer(DELAI * 2);
-        if (e.cachee()) return 'page cachée';
-        if (e.trace.signalements.length !== 0) return 'signalement pour une page qui n a jamais été cachée';
-        return '';
-    }],
-
-    ['réponse, redirection ou échec du service : rien ne casse', (e) => {
-        e.repondre(true);
-        e.horloge.avancer(DELAI + 1);
-        e.repondre(false);
-        e.horloge.avancer(1);
-        e.echouer();
-        if (e.cachee()) return 'page cachée';
-        if (e.trace.signalements.length !== 0) return 'signalement inattendu';
-        if (e.horloge.enAttente() !== 0) return 'une minuterie survit';
-        return '';
-    }],
-];
-
 // Fuseau illisible : on ne sait pas, donc on garde la prudence d'avant.
 const CAS_ILLISIBLE = [
     ['cachée et délai de secours armé, comme avant', (e) => {
@@ -348,10 +319,12 @@ function scenarios(source) {
             [FUSEAU_ETRANGER, CAS, { membre: '{' }, 'membre illisible'],
             [FUSEAU_ETRANGER, CAS, { stockageCasse: true }, 'stockage refusé'],
             ['Europe/Paris', CAS_FRANCE, { membre: membre(abo('mad')) }, 'abonné dirhams'],
-            ['Europe/Paris', CAS_FRANCE_AVEC_APPEL, { chemin: BELGE }, 'page belge'],
-            ['Europe/Paris', CAS_FRANCE_AVEC_APPEL, { chemin: BELGE + '/' }, 'page belge, barre finale'],
-            [FUSEAU_ETRANGER, CAS, { chemin: BELGE, membre: membre(abo('eur')) }, 'page belge, abonné euros'],
+            ['Europe/Paris', CAS_FRANCE, { chemin: BELGE }, 'page belge'],
             ['Europe/Brussels', CAS, { chemin: BELGE }, 'page belge'],
+            ['Europe/Brussels', CAS, { membre: membre(abo('eur')) }, 'abonné euros, destination en euros'],
+            ['Europe/Luxembourg', CAS, { membre: membre(abo('eur')) }, 'abonné euros, destination en euros'],
+            ['Europe/Berlin', CAS, { membre: membre(abo('eur')) }, 'abonné euros, destination en euros'],
+            ['Europe/Zurich', CAS_ABONNE_EURO, { membre: membre(abo('eur')) }, 'abonné euros'],
         ]);
 }
 
@@ -371,7 +344,7 @@ function controlerListes() {
     }
     const decision = (src) => {
         const texte = fs.readFileSync(path.join(ROOT, src), 'utf8');
-        const bloc = /var ALWAYS_ASK_PATHS[\s\S]*?var hidden = [^\n]*\n/.exec(texte);
+        const bloc = /var EURO_DESTINATION_ZONES[\s\S]*?var hidden = [^\n]*\n/.exec(texte);
         return bloc ? bloc[0].replace(/^[ \t]+/gm, '') : null;
     };
     const decisionReference = decision(SOURCES[0]);
@@ -379,7 +352,12 @@ function controlerListes() {
     for (const src of SOURCES.slice(1)) {
         if (decision(src) !== decisionReference) soucis.push(`${src} : bloc de décision différent de ${SOURCES[0]}`);
     }
-    for (const z of reference) {
+    const destinationsEuro = (() => {
+        const bloc = /EURO_DESTINATION_ZONES = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(ROOT, SOURCES[0]), 'utf8'));
+        return bloc ? bloc[1].split(',').map((z) => z.trim().replace(/^'|'$/g, '')).filter(Boolean) : [];
+    })();
+    if (destinationsEuro.length === 0) soucis.push(`${SOURCES[0]} : EURO_DESTINATION_ZONES introuvable`);
+    for (const z of reference.concat(destinationsEuro)) {
         let rendu = null;
         try {
             rendu = new IntlReel.DateTimeFormat('en', { timeZone: z }).resolvedOptions().timeZone;
