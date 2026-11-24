@@ -425,6 +425,20 @@
 
         const data = await resp.json();
 
+        // Billing currency of the member differs from the page: go to the country offers page.
+        if (data && data.reason === 'currency_mismatch' && typeof data.redirectUrl === 'string'
+            && data.redirectUrl.indexOf('https://www.ordotype.fr/') === 0) {
+            console.log(PREFIX, 'Currency mismatch, redirecting to the country page');
+            try {
+                trackCheckoutFailure('currency_mismatch');
+            } catch (err) {
+                reportSideEffect(err);
+            } finally {
+                window.location.replace(data.redirectUrl);
+            }
+            return;
+        }
+
         if (!data.sessionId || !data.url) {
             console.error(PREFIX, 'Invalid response:', data);
             throw new Error('Invalid session payload');
