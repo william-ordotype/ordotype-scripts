@@ -17,10 +17,18 @@
  *   - aucune minuterie ne survit : le délai est borné, pas simplement long.
  *
  * Un appareil réglé sur un fuseau français (métropole ou outre-mer) n'est pas
- * censé être redirigé : la page n'est jamais cachée, donc il n'y a ni attente,
- * ni délai de secours, ni signalement. Le service est quand même appelé, pour
- * qu'il puisse encore rediriger l'exception. Un fuseau illisible garde le
- * comportement prudent : page cachée jusqu'à la réponse.
+ * redirigé : la page n'est jamais cachée et le service n'est PAS appelé. Geo
+ * Targetly compte une vue à chaque appel, redirigé ou non ; l'appeler pour
+ * 95 % de visiteurs qui restent sur place consommait le quota pour rien.
+ * Un membre connecté dont les abonnements vivants sont tous en euros n'est pas
+ * redirigé non plus, quel que soit son fuseau : la devise de l'abonnement prime
+ * sur le pays (Stripe refuserait une autre devise). Un abonné hors euro garde
+ * l'appel, et la garde du paiement le renvoie vers la page de sa devise.
+ * Exception : les fuseaux de Bruxelles, Luxembourg et Berlin gardent l'appel
+ * même pour un abonné en euros, car les règles du service y envoient vers des
+ * pages en euros (offres belges, Luxembourg) qu'il faut continuer à atteindre.
+ * Un fuseau illisible, vide ou UTC garde le comportement prudent : page cachée
+ * jusqu'à la réponse. Une donnée de membre illisible aussi : service appelé.
  *
  * La liste des fuseaux est lue dans chaque fichier : toutes les copies doivent
  * porter la même, chaque nom doit être un fuseau que le moteur Intl reconnaît
@@ -100,8 +108,9 @@ function intlSimule(fuseau) {
     };
 }
 
-function env(source, fuseau) {
-    const trace = { signalements: [] };
+function env(source, fuseau, options) {
+    const opts = options || {};
+    const trace = { signalements: [], journal: [] };
     const style = { id: null, innerHTML: null };
     let balise = null;
     const inseres = [];
@@ -121,8 +130,16 @@ function env(source, fuseau) {
         createElement() { balise = {}; return balise; },
     };
 
+    const chemin = opts.chemin || '/nos-offres';
+    const adresse = 'https://www.ordotype.fr' + chemin;
     const win = {
-        location: 'https://www.ordotype.fr/nos-offres',
+        location: { href: adresse, pathname: chemin, toString() { return adresse; } },
+        localStorage: {
+            getItem(cle) {
+                if (opts.stockageCasse) throw new Error('SecurityError');
+                return cle === '_ms-mem' && opts.membre !== undefined ? opts.membre : null;
+            },
+        },
         OrdoErrorReporter: {
             reportNetwork(contexte, err) { trace.signalements.push(contexte + ': ' + err.message); },
         },
@@ -138,7 +155,7 @@ function env(source, fuseau) {
     global.document = doc;
     global.setTimeout = (fn, d) => h.set(fn, d);
     global.clearTimeout = (id) => h.clear(id);
-    global.console = { log() {}, warn() {}, error() {} };
+    global.console = { log(m) { trace.journal.push(String(m)); }, warn() {}, error() {} };
     global.Intl = intlSimule(fuseau === undefined ? FUSEAU_ETRANGER : fuseau);
 
     const restaure = () => Object.assign(global, sauvegarde);
@@ -155,6 +172,8 @@ function env(source, fuseau) {
         visible: () => style.id === null || /opacity:1\.0/.test(style.innerHTML),
         cachee: () => style.id !== null,
         serviceAppele: () => inseres.some((el) => el === balise && /\/gr\?id=/.test(el.src)),
+        baliseCreee: () => balise !== null,
+        adresseEnvoyee: () => (balise && balise.src) || '',
         repondre: (redirect) => win[rappel](redirect),
         echouer: () => balise.onerror(),
     };
@@ -228,35 +247,30 @@ const CAS = [
     }],
 ];
 
-// Appareil réglé sur un fuseau français : aucun de ces cas ne doit cacher la
-// page, ni armer le délai de secours, ni signaler quoi que ce soit.
-const CAS_FRANCE = [
-    ['jamais cachée, service appelé quand même, aucune minuterie', (e) => {
-        if (e.cachee()) return 'la page est cachée alors que la redirection ne concerne pas ce visiteur';
-        if (!e.serviceAppele()) return 'le service n est plus appelé : plus aucune redirection possible';
-        if (e.horloge.enAttente() !== 0) return 'un délai de secours est armé pour une page déjà visible';
-        return '';
-    }],
-
-    ['service MUET : rien à signaler, la page n a jamais attendu', (e) => {
-        e.horloge.avancer(DELAI * 2);
-        if (e.cachee()) return 'page cachée';
-        if (e.trace.signalements.length !== 0) return 'signalement pour une page qui n a jamais été cachée';
-        return '';
-    }],
-
-    ['réponse, redirection ou échec du service : rien ne casse', (e) => {
-        e.repondre(true);
-        e.horloge.avancer(DELAI + 1);
-        e.repondre(false);
-        e.horloge.avancer(1);
-        e.echouer();
-        if (e.cachee()) return 'page cachée';
-        if (e.trace.signalements.length !== 0) return 'signalement inattendu';
-        if (e.horloge.enAttente() !== 0) return 'une minuterie survit';
-        return '';
-    }],
-];
+// Fuseau français ou abonné en euros : aucun appel, donc aucune vue consommée,
+// page jamais cachée, aucune minuterie, rien à signaler.
+function casSansAppel(raison) {
+    return [
+        ['aucun appel au service, jamais cachée, aucune minuterie', (e) => {
+            if (e.baliseCreee() || e.serviceAppele()) return 'le service est appelé : une vue consommée pour rien';
+            if (e.cachee()) return 'la page est cachée alors qu aucune réponse ne viendra la révéler';
+            if (!e.visible()) return 'page invisible';
+            if (e.horloge.enAttente() !== 0) return 'une minuterie est armée pour une page déjà visible';
+            if (!e.trace.journal.some((l) => l.indexOf('No geo call: ' + raison) !== -1)) {
+                return 'la raison « ' + raison + ' » n est pas tracée : ' + e.trace.journal.join(' | ');
+            }
+            return '';
+        }],
+        ['longtemps après : toujours visible, rien à signaler', (e) => {
+            e.horloge.avancer(DELAI * 2);
+            if (e.cachee()) return 'page cachée';
+            if (e.trace.signalements.length !== 0) return 'signalement pour une page qui n a jamais été cachée';
+            return '';
+        }],
+    ];
+}
+const CAS_FRANCE = casSansAppel('French time zone');
+const CAS_ABONNE_EURO = casSansAppel('euro subscriber');
 
 // Fuseau illisible : on ne sait pas, donc on garde la prudence d'avant.
 const CAS_ILLISIBLE = [
@@ -270,10 +284,48 @@ const CAS_ILLISIBLE = [
     }],
 ];
 
+function membre(...connexions) {
+    return JSON.stringify({ id: 'mem_test', planConnections: connexions });
+}
+function abo(devise, statut, actif) {
+    return { status: statut || 'ACTIVE', active: actif === undefined ? true : actif, payment: { currency: devise } };
+}
+const GRATUIT = { status: 'ACTIVE', active: true, payment: null };
+const BELGE = '/nos-offres-belgique';
+
+// Le service doit être appelé quand l'adresse envoyée est celle de la page.
+const CAS_ADRESSE = [
+    ['adresse de la page transmise au service', (e) => {
+        const attendu = encodeURIComponent('https://www.ordotype.fr/nos-offres');
+        if (e.adresseEnvoyee().indexOf('&winurl=' + attendu) === -1) return 'winurl faux : ' + e.adresseEnvoyee();
+        return '';
+    }],
+];
+
 function scenarios(source) {
-    return [[FUSEAU_ETRANGER, CAS]]
+    return [[FUSEAU_ETRANGER, CAS], [FUSEAU_ETRANGER, CAS_ADRESSE], ['UTC', CAS]]
         .concat((fuseauxDe(source) || []).map((z) => [z, CAS_FRANCE]))
-        .concat([[ILLISIBLE, CAS_ILLISIBLE], [SANS_INTL, CAS_ILLISIBLE], ['', CAS_ILLISIBLE]]);
+        .concat([[ILLISIBLE, CAS_ILLISIBLE], [SANS_INTL, CAS_ILLISIBLE], ['', CAS_ILLISIBLE]])
+        .concat([
+            [FUSEAU_ETRANGER, CAS_ABONNE_EURO, { membre: membre(abo('eur')) }, 'abonné euros'],
+            [FUSEAU_ETRANGER, CAS_ABONNE_EURO, { membre: membre(abo('EUR', 'TRIALING')) }, 'essai en euros'],
+            [FUSEAU_ETRANGER, CAS_ABONNE_EURO, { membre: membre(abo('eur', 'PAST_DUE', false)) }, 'impayé en euros'],
+            [FUSEAU_ETRANGER, CAS_ABONNE_EURO, { membre: membre(GRATUIT, abo('eur')) }, 'gratuit + euros'],
+            [FUSEAU_ETRANGER, CAS, { membre: membre(abo('mad')) }, 'abonné dirhams'],
+            [FUSEAU_ETRANGER, CAS, { membre: membre(abo('eur'), abo('mad')) }, 'euros + dirhams'],
+            [FUSEAU_ETRANGER, CAS, { membre: membre(abo('eur', 'CANCELED', false)) }, 'euros résilié'],
+            [FUSEAU_ETRANGER, CAS, { membre: membre(GRATUIT) }, 'gratuit seul'],
+            [FUSEAU_ETRANGER, CAS, { membre: JSON.stringify({ id: 'mem_test' }) }, 'sans plans'],
+            [FUSEAU_ETRANGER, CAS, { membre: '{' }, 'membre illisible'],
+            [FUSEAU_ETRANGER, CAS, { stockageCasse: true }, 'stockage refusé'],
+            ['Europe/Paris', CAS_FRANCE, { membre: membre(abo('mad')) }, 'abonné dirhams'],
+            ['Europe/Paris', CAS_FRANCE, { chemin: BELGE }, 'page belge'],
+            ['Europe/Brussels', CAS, { chemin: BELGE }, 'page belge'],
+            ['Europe/Brussels', CAS, { membre: membre(abo('eur')) }, 'abonné euros, destination en euros'],
+            ['Europe/Luxembourg', CAS, { membre: membre(abo('eur')) }, 'abonné euros, destination en euros'],
+            ['Europe/Berlin', CAS, { membre: membre(abo('eur')) }, 'abonné euros, destination en euros'],
+            ['Europe/Zurich', CAS_ABONNE_EURO, { membre: membre(abo('eur')) }, 'abonné euros'],
+        ]);
 }
 
 /** Même liste partout, métropole incluse, et des noms que Intl rend tels quels. */
@@ -290,7 +342,22 @@ function controlerListes() {
             soucis.push(`${src} : liste différente de ${SOURCES[0]}\n        ${liste.join(', ')}`);
         }
     }
-    for (const z of reference) {
+    const decision = (src) => {
+        const texte = fs.readFileSync(path.join(ROOT, src), 'utf8');
+        const bloc = /var EURO_DESTINATION_ZONES[\s\S]*?var hidden = [^\n]*\n/.exec(texte);
+        return bloc ? bloc[0].replace(/^[ \t]+/gm, '') : null;
+    };
+    const decisionReference = decision(SOURCES[0]);
+    if (decisionReference === null) soucis.push(`${SOURCES[0]} : bloc de décision introuvable`);
+    for (const src of SOURCES.slice(1)) {
+        if (decision(src) !== decisionReference) soucis.push(`${src} : bloc de décision différent de ${SOURCES[0]}`);
+    }
+    const destinationsEuro = (() => {
+        const bloc = /EURO_DESTINATION_ZONES = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(ROOT, SOURCES[0]), 'utf8'));
+        return bloc ? bloc[1].split(',').map((z) => z.trim().replace(/^'|'$/g, '')).filter(Boolean) : [];
+    })();
+    if (destinationsEuro.length === 0) soucis.push(`${SOURCES[0]} : EURO_DESTINATION_ZONES introuvable`);
+    for (const z of reference.concat(destinationsEuro)) {
         let rendu = null;
         try {
             rendu = new IntlReel.DateTimeFormat('en', { timeZone: z }).resolvedOptions().timeZone;
@@ -318,12 +385,12 @@ if (soucisListes.length) {
     console.log(`ok    listes de fuseaux identiques dans les ${SOURCES.length} fichiers, noms reconnus par Intl`);
 }
 for (const src of SOURCES) {
-    for (const [fuseau, liste] of scenarios(src)) for (const [nom, cas] of liste) {
+    for (const [fuseau, liste, options, etiquette] of scenarios(src)) for (const [nom, cas] of liste) {
         total += 1;
         let e = null;
-        const titre = `${src} [${libelle(fuseau)}] — ${nom}`;
+        const titre = `${src} [${libelle(fuseau)}${etiquette ? ', ' + etiquette : ''}] : ${nom}`;
         try {
-            e = env(src, fuseau);
+            e = env(src, fuseau, options);
             const souci = cas(e);
             e.restaure();
             if (souci) { echecs += 1; console.log(`FAIL  ${titre}\n      ${souci}`); }
