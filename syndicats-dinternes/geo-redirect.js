@@ -20,10 +20,38 @@
         timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     } catch (err) {}
 
-    // A device set to a French time zone is not expected to be redirected,
-    // so the page is not hidden for it. The service still runs and can still
-    // redirect; the visitor then sees this page briefly before leaving.
-    var hidden = FRENCH_TIME_ZONES.indexOf(timeZone) === -1;
+    var ALWAYS_ASK_PATHS = ['/nos-offres-belgique'];
+    var LIVE_STATUSES = ['ACTIVE', 'TRIALING', 'PAST_DUE', 'UNPAID', 'REQUIRES_PAYMENT', 'REQUIRES_AUTHENTICATION', 'INCOMPLETE'];
+
+    function memberCurrency() {
+        var member = null;
+        try {
+            var raw = window.localStorage.getItem('_ms-mem');
+            member = raw ? JSON.parse(raw) : null;
+        } catch (err) {
+            return null;
+        }
+        var conns = member && Array.isArray(member.planConnections) ? member.planConnections : [];
+        var found = null;
+        for (var i = 0; i < conns.length; i++) {
+            var c = conns[i] || {};
+            var live = c.active === true || LIVE_STATUSES.indexOf(String(c.status || '').toUpperCase()) !== -1;
+            var cur = c.payment && c.payment.currency ? String(c.payment.currency).toLowerCase() : '';
+            if (!live || !cur) continue;
+            if (cur !== 'eur') return cur;
+            found = 'eur';
+        }
+        return found;
+    }
+
+    var path = '';
+    try {
+        path = String(window.location.pathname || '').replace(/\/+$/, '');
+    } catch (err) {}
+    var alwaysAsk = ALWAYS_ASK_PATHS.indexOf(path) !== -1;
+    var frenchZone = FRENCH_TIME_ZONES.indexOf(timeZone) !== -1;
+    var skipReason = alwaysAsk ? '' : frenchZone ? 'French time zone' : memberCurrency() === 'eur' ? 'euro subscriber' : '';
+    var hidden = !frenchZone && !skipReason;
     var revealed = false;
     var safety = null;
 
@@ -58,6 +86,12 @@
             }
         }, REVEAL_TIMEOUT_MS);
     }
+
+    if (skipReason) {
+        console.log('[GeoRedirect] No geo call: ' + skipReason);
+        return;
+    }
+
     t = g.getElementsByTagName(o)[0];
     y = g.createElement(e);
     y.async = true;
