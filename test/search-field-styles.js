@@ -4,7 +4,8 @@
  *
  * Trois feuilles dessinent le champ :
  *   - le Designer : barre de navigation sur ordinateur et tablette (combo
- *     search-bar + nav-bar-size, embed .html-reset-button-navbar) ; global-styles.css
+ *     search-bar_input + is-navbar, embed .search-bar_reset ; anciens noms
+ *     search-bar + nav-bar-size et .html-reset-button-navbar) ; global-styles.css
  *     n'en garde que la croix masquée quand le champ est vide ;
  *   - le Designer : panneau de la loupe sur téléphone (composant Navbar, classes
  *     search-panel_*) ; search-panel.js n'en garde que la logique ;
@@ -61,15 +62,19 @@ const uses = (value, token) => new RegExp('var\\(--' + token + '\\b').test(value
 // --- Barre de navigation (ordinateur, tablette)
 console.log('barre de navigation : dessin dans le Designer, shared/global-styles.css garde la logique seule');
 {
-    // Le dessin du champ de la barre (combo search-bar + nav-bar-size, états Focus et
-    // Placeholder, classe html-reset-button-navbar, croix de l'embed Navbar) vit dans
+    // Le dessin du champ de la barre (combo search-bar_input + is-navbar, états Focus et
+    // Placeholder, classe search-bar_reset, croix de l'embed Navbar) vit dans
     // le Designer depuis le 08/10/2026 : le canvas doit montrer le vrai rendu. Une
     // règle ici le surchargerait en silence (vérifié en navigateur sur le site servi).
+    // Anciens noms (search-bar + nav-bar-size, html-reset-button-navbar) acceptés le
+    // temps du renommage des classes : la règle doit couvrir les deux.
     const css = read('shared/global-styles.css');
     const rs = rules(css);
     check('croix masquée tant que le champ est vide (le Designer ne sait pas l’exprimer)',
+        decl(rs, '#search-bar-nav:placeholder-shown + .search-bar_reset', 'display') === 'none', 'règle absente');
+    check('croix masquée aussi sous l’ancien nom, pendant la transition',
         decl(rs, '#search-bar-nav:placeholder-shown + .html-reset-button-navbar', 'display') === 'none', 'règle absente');
-    const dessin = rs.filter((r) => /search-bar\.nav-bar-size|\.html-reset-button-navbar(?![^,]*:placeholder-shown)/.test(r.selectorText) &&
+    const dessin = rs.filter((r) => /search-bar\.nav-bar-size|search-bar_input\.is-navbar|\.(html-reset-button-navbar|search-bar_reset)(?![^,]*:placeholder-shown)/.test(r.selectorText) &&
         !/:placeholder-shown/.test(r.selectorText));
     check('aucun dessin du champ ni de la croix hors Designer', dessin.length === 0, dessin.map((r) => r.selectorText).join(' | '));
     check('pas de croix dessinée en fond (elle est dans l’embed)', !/data:image\/svg\+xml/.test(css), 'fond data-URI présent');
