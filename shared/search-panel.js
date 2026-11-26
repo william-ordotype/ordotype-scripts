@@ -24,8 +24,10 @@
     ".search-panel_component.is-open{overscroll-behavior:contain}" +
     ".search-panel_clear-button:focus-visible{outline:2px solid var(--primary-500,#3454f6);outline-offset:2px}" +
     "html.ot-search-open #search-results{z-index:10002!important;top:61px!important;margin-top:1.25rem;max-height:calc(100vh - 11rem);max-height:calc(100dvh - 6.5rem);overflow-y:auto;overscroll-behavior:contain}" +
-    "html.ot-search-open #search-results .srt-menu{padding-left:.5rem}" +
-    "html.ot-search-open #search-results .srt-content{border-top:0}" +
+    // Onglets de la liste : anciens noms (srt-…) et noms Client-First (search-result_…),
+    // acceptés tous les deux le temps du renommage des classes dans le Designer.
+    "html.ot-search-open #search-results .srt-menu,html.ot-search-open #search-results .search-result_tabs-menu{padding-left:.5rem}" +
+    "html.ot-search-open #search-results .srt-content,html.ot-search-open #search-results .search-result_tabs-content{border-top:0}" +
     "html.ot-search-open #search-results .search-result{padding:1rem 0 1rem .5rem!important;font-size:1rem!important;line-height:1.5}";
 
   function dispatchError(err) {

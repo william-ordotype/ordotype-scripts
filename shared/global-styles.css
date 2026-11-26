@@ -33,12 +33,15 @@ form#wf-form-mutateDocument {
 }
 
 /* Champ de recherche de la barre de navigation (ordinateur, tablette) : son
- * dessin vit dans le Designer (combo search-bar + nav-bar-size, états Focus et
- * Placeholder, classe html-reset-button-navbar, croix cerclée dans l'embed du
+ * dessin vit dans le Designer (combo search-bar_input + is-navbar, états Focus
+ * et Placeholder, classe search-bar_reset, croix cerclée dans l'embed du
  * composant Navbar), pour que le canvas montre le vrai rendu. Reste ici la
  * seule règle que le Designer ne sait pas exprimer : la croix n'apparaît que
- * s'il y a du texte (même comportement que le panneau mobile). */
-#search-bar-nav:placeholder-shown + .html-reset-button-navbar {
+ * s'il y a du texte (même comportement que le panneau mobile).
+ * Noms de classes Client-First depuis novembre 2026 : l'ancien nom
+ * (html-reset-button-navbar) reste accepté le temps de la transition. */
+#search-bar-nav:placeholder-shown + .html-reset-button-navbar,
+#search-bar-nav:placeholder-shown + .search-bar_reset {
     display: none;
 }
 
@@ -52,15 +55,22 @@ form#wf-form-mutateDocument {
 /* Filtre actif de la recherche (liste de l'accueil, combo is-dropdown ; page
  * /search-result, combo is-page). C'est l'état « Current » de ces combos, que
  * l'API Webflow ne sait pas écrire (choix de William le 23/11/2026 : laissé ici).
- * Si quelqu'un pose un jour cet état dans le Designer, retirer ces deux règles. */
+ * Si quelqu'un pose un jour cet état dans le Designer, retirer ces deux règles.
+ * Noms Client-First depuis novembre 2026 (search-result_tab-link,
+ * search-result_tab-link-inner) ; les anciens (srt-…) restent acceptés le temps
+ * de la transition. */
 .srt-tab-link.is-dropdown.w--current,
-.srt-tab-link.is-page.w--current {
+.srt-tab-link.is-page.w--current,
+.search-result_tab-link.is-dropdown.w--current,
+.search-result_tab-link.is-page.w--current {
     border-color: transparent;
     background-color: var(--primary-50);
     color: var(--primary-600);
 }
 .srt-tab-link.is-dropdown.w--current .srt-tl-inner,
-.srt-tab-link.is-page.w--current .srt-tl-inner {
+.srt-tab-link.is-page.w--current .srt-tl-inner,
+.search-result_tab-link.is-dropdown.w--current .search-result_tab-link-inner,
+.search-result_tab-link.is-page.w--current .search-result_tab-link-inner {
     font-weight: 500;
 }
 
