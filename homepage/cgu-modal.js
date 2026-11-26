@@ -12,7 +12,8 @@
  *   cgu_modal_contournee = page clicked through the open modal.
  *   Sentry + Discord (everyone): button missing, or entirely covered 3 s
  *   after the modal opened while the modal is in front. A modal that is
- *   not in front is reported apart, once a day per browser. Nothing is
+ *   not in front is reported apart, once a day per browser, unless the
+ *   page has none of the site's styles (counted in GA4 only). Nothing is
  *   reported for a modal nobody saw, nor for a dead Memberstack session,
  *   nor while the keyboard or a zoom shifts the screen (measured later).
  */
@@ -177,12 +178,22 @@
         + ' pointer-events:' + cs.pointerEvents + ' display:' + cs.display;
     }
 
+    // All four corners on <html>: the page has none of the site's styles
+    // (stylesheet not loaded, default body margin), so the modal sits in
+    // the page flow. Seen almost only from one automated browser.
+    function unstyledPage(corners) {
+      var root = document.documentElement;
+      return corners.every(function(hit) { return hit === root; });
+    }
+
     // Not in front of the page (hidden by the browser or an extension):
-    // the page stays usable, nobody is stuck.
+    // the page stays usable, nobody is stuck. An unstyled page is counted,
+    // not reported.
     function reportMasked(corners) {
       if (masked) return;
       masked = true;
       track('cgu_modal_masquee');
+      if (unstyledPage(corners)) return;
       if (firstToday('cgu-modal-masquee-signalee')) {
         report('fenêtre CGU pas au premier plan, page utilisable (' + details(corners) + ')');
       }

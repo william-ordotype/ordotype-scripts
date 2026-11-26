@@ -225,6 +225,32 @@ async function cas(avecReporter) {
     verifier('masquée déjà signalée aujourd’hui : mesurée quand même' + suffixe,
         p.evenements.includes('cgu_modal_masquee'));
 
+    // 7c bis. Les 4 coins sur <html> : page sans la feuille du site (marge par défaut du body),
+    // fenêtre dans le flux de la page. Comptée, pas signalée, et la case « déjà signalée
+    // aujourd'hui » reste libre pour un vrai cas.
+    p = await P();
+    const racine = p.w.document.documentElement;
+    p.poserBouton(() => racine, racine);
+    p.controlerAccessibilite();
+    verifier('page sans styles (4 coins sur html) : cgu_modal_masquee' + suffixe,
+        p.evenements.includes('cgu_modal_masquee'));
+    verifier('page sans styles : pas de signalement' + suffixe, p.signalements.length === 0);
+    verifier('page sans styles : « déjà signalée aujourd’hui » non posé' + suffixe,
+        p.w.localStorage.getItem('cgu-modal-masquee-signalee') === null);
+    p.horloge.t += 60000;
+    p.quitter();
+    verifier('page sans styles : départ pas compté comme bloqué' + suffixe, !p.evenements.includes('cgu_modal_leave'));
+
+    // 7c ter. Témoin : coins du haut sur html, coins du bas sur la page = fenêtre masquée,
+    // toujours signalée.
+    p = await P();
+    const racine2 = p.w.document.documentElement;
+    const page2 = p.w.document.querySelector('#crisp');
+    p.poserBouton(() => page2, (y) => (y < 400 ? racine2 : page2));
+    p.controlerAccessibilite();
+    verifier('coins mêlés html / page : toujours signalée « pas au premier plan »' + suffixe, !r
+        || (p.signalements.length === 1 && /pas au premier plan/.test(p.signalements[0][1])));
+
     // 7d. Masquée alors que la carte dépasse l'écran (petit téléphone) : vue quand même.
     p = await P();
     p.poserBouton(() => page1, page1);
