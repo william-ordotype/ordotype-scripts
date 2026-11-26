@@ -11,11 +11,11 @@
   function handleTooltip(e, type) {
     e.stopPropagation();
 
-    var popup = document.querySelector('.tooltip-ipp-popup');
+    var popup = document.querySelector('.tooltip-ipp-popup, .tooltip-ipp_popup');
     var wrapper = document.querySelector(
       type === 'ipp'
-        ? '.tooltip-ipp-block-wrapper.new-styling:not(.hbpm)'
-        : '.tooltip-ipp-block-wrapper.new-styling.hbpm'
+        ? '.tooltip-ipp-block-wrapper.new-styling:not(.hbpm), .tooltip-ipp_wrapper.new-styling:not(.hbpm)'
+        : '.tooltip-ipp-block-wrapper.new-styling.hbpm, .tooltip-ipp_wrapper.new-styling.hbpm'
     );
 
     if (!popup || !wrapper) return;
@@ -28,7 +28,7 @@
     wrapper.style.display = 'block';
 
     currentCloseHandler = function(event) {
-      var rcWrapper = document.querySelector('.rc-wrapper');
+      var rcWrapper = document.querySelector('.rc-wrapper, .rappels-cliniques_wrapper');
       var triggers = rcWrapper ? rcWrapper.querySelectorAll('.tooltip-ipp, .tooltip-hbpm') : [];
       var clickedTrigger = Array.from(triggers).some(function(t) {
         return t.contains(event.target);
@@ -48,7 +48,7 @@
   function init() {
     if (initialized) return true;
 
-    var rcWrapper = document.querySelector('.rc-wrapper');
+    var rcWrapper = document.querySelector('.rc-wrapper, .rappels-cliniques_wrapper');
     if (!rcWrapper) return false;
 
     var tooltips = rcWrapper.querySelectorAll('.tooltip-ipp, .tooltip-hbpm');

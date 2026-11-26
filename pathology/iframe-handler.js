@@ -38,7 +38,7 @@
   // instead of a missing embed. Returns the fully rebuilt items.
   function addMissingIframeMeta() {
     var rebuilt = [];
-    var items = document.querySelectorAll('.pathologies_tab .content-item[data-iframe-id]');
+    var items = document.querySelectorAll('.pathologies_tab .content-item[data-iframe-id], .pathologie_tabs .content-item[data-iframe-id]');
     Array.prototype.forEach.call(items, function(item) {
       if (item.querySelector('.iframe-meta')) return;
       var slug = item.getAttribute('data-iframe-slug');
@@ -56,7 +56,7 @@
   }
 
   function init() {
-    var paywallElem = $('.rappels-cliniques-content .rc_hidden_warning_wrapper');
+    var paywallElem = $('.rappels-cliniques-content .rc_hidden_warning_wrapper, .rappels-cliniques_content .paywall_warning-wrapper');
     var spinnerSafetyTimeout = null;
 
     var rebuiltItems = addMissingIframeMeta();
@@ -70,7 +70,7 @@
       // a 50ms setTimeout after DCL. If init runs before that timeout, the
       // original still has opacity:0 inline-empty and the clone inherits the
       // hidden state — .show() flips display but the clone stays invisible.
-      $('.pathologies_tab_col-right').append($(paywallElem).clone().css('opacity', '1').hide());
+      $('.pathologies_tab_col-right, .pathologie_tab-col-right').append($(paywallElem).clone().css('opacity', '1').hide());
     }
 
     // A broken item (embed removed in the Designer, missing attributes)
@@ -105,7 +105,7 @@
     }
 
     // Open corresponding iframe on collection item click
-    $('.pathologies_tab .content-item[data-iframe-id]').click(function(ev) {
+    $('.pathologies_tab .content-item[data-iframe-id], .pathologie_tabs .content-item[data-iframe-id]').click(function(ev) {
       // The item title is now a real <a href> to the ordonnance page (SEO:
       // crawlable internal links). Modified clicks (cmd/ctrl/shift/alt)
       // fall through so the browser opens a new tab/window; a plain click
@@ -155,8 +155,8 @@
         target.find('.loading-spinner').show();
         if (spinnerSafetyTimeout) clearTimeout(spinnerSafetyTimeout);
         spinnerSafetyTimeout = setTimeout(function() {
-          $('.pathologies_tab .loading-spinner').hide();
-          $('.pathologies_tab .tab_right-icon').show();
+          $('.pathologies_tab .loading-spinner, .pathologie_tabs .loading-spinner').hide();
+          $('.pathologies_tab .tab_right-icon, .pathologie_tabs .tab_right-icon').show();
           spinnerSafetyTimeout = null;
         }, 1000);
       }
@@ -172,7 +172,7 @@
           // string, a name containing markup would be parsed as HTML.
           $('#' + currentIframeId).next().show().prepend($('<h3 class="job-post-title-ordo-display">').text(target.find('.content-item_name').first().text()));
           target.find('.tab_right-icon').show();
-          $('.pathologies_tab .loading-spinner').hide();
+          $('.pathologies_tab .loading-spinner, .pathologie_tabs .loading-spinner').hide();
           return;
         }
 
@@ -193,13 +193,13 @@
 
         if ($(paywallElem).css("display") === "block") {
           // Users are not premium
-          var hasPaywallOpened = target.next(".rc_hidden_warning_wrapper");
-          $(".pathologies_tab .content-item").next().remove();
+          var hasPaywallOpened = target.next(".rc_hidden_warning_wrapper, .paywall_warning-wrapper");
+          $(".pathologies_tab .content-item, .pathologie_tabs .content-item").next().remove();
           target.find(".tab_right-icon").show();
 
           if (hasPaywallOpened.length) {
             // Remove paywall if already opened
-            $(".pathologies_tab .loading-spinner").hide();
+            $(".pathologies_tab .loading-spinner, .pathologie_tabs .loading-spinner").hide();
             target.next().remove();
             target.removeClass("is-active");
             return;
@@ -212,7 +212,7 @@
             // Name inserted as text, as on desktop.
             paywallMobile.prepend($('<h3 class="job-post-title-ordo-display">').text(target.find(".content-item_name").first().text()))
           );
-          $(".pathologies_tab .loading-spinner").hide();
+          $(".pathologies_tab .loading-spinner, .pathologie_tabs .loading-spinner").hide();
           return;
         }
 
@@ -221,8 +221,8 @@
 
         if (hasIframe.length) {
           // Act as toggle: if iframe exists, remove it
-          $(".pathologies_tab .loading-spinner").hide();
-          $(".pathologies_tab .tab_right-icon").show();
+          $(".pathologies_tab .loading-spinner, .pathologie_tabs .loading-spinner").hide();
+          $(".pathologies_tab .tab_right-icon, .pathologie_tabs .tab_right-icon").show();
           target.removeClass("is-active");
           return;
         }
@@ -241,8 +241,8 @@
             clearTimeout(spinnerSafetyTimeout);
             spinnerSafetyTimeout = null;
           }
-          $('.pathologies_tab .loading-spinner').hide();
-          $('.pathologies_tab .tab_right-icon').show();
+          $('.pathologies_tab .loading-spinner, .pathologie_tabs .loading-spinner').hide();
+          $('.pathologies_tab .tab_right-icon, .pathologie_tabs .tab_right-icon').show();
           if (window.pathologyId) {
             var prescriptionTypeFr = iframe.closest('[data-w-tab]').getAttribute('data-w-tab');
             var prescriptionType = prescriptionTypeFr === "Conseil patient" ? "recommendation" : "prescription";
@@ -271,7 +271,7 @@
     // before the click event fires. No bandwidth waste — only the button
     // the user committed to pressing triggers a load.
     // Mobile creates iframes dynamically on click, so prefetch doesn't apply.
-    $('.pathologies_tab .content-item[data-iframe-id]').on('mousedown', function(ev) {
+    $('.pathologies_tab .content-item[data-iframe-id], .pathologie_tabs .content-item[data-iframe-id]').on('mousedown', function(ev) {
       if (window.innerWidth <= 767) return;        // desktop only
       if (ev.button !== 0) return;                  // primary (left) button only
       if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return; // opening in a new tab: don't waste an iframe load
@@ -296,10 +296,10 @@
 
     // Refresh iframe when switching subtab
     $('.tabs-menu-docs').on('click', function() {
-      $('.pathologies_tab_col-left iframe').remove();
-      $('.pathologies_tab_col-right iframe').attr('src', '');
-      $('.pathologies_tab_col-right .rc_hidden_warning_wrapper').hide();
-      $('.pathologies_tab_col-left .rc_hidden_warning_wrapper').remove();
+      $('.pathologies_tab_col-left iframe, .pathologie_tab-col-left iframe').remove();
+      $('.pathologies_tab_col-right iframe, .pathologie_tab-col-right iframe').attr('src', '');
+      $('.pathologies_tab_col-right .rc_hidden_warning_wrapper, .pathologie_tab-col-right .paywall_warning-wrapper').hide();
+      $('.pathologies_tab_col-left .rc_hidden_warning_wrapper, .pathologie_tab-col-left .paywall_warning-wrapper').remove();
       $('.content-item').removeClass('is-active');
     });
 
@@ -314,8 +314,8 @@
         clearTimeout(spinnerSafetyTimeout);
         spinnerSafetyTimeout = null;
       }
-      $('.pathologies_tab .loading-spinner').hide();
-      $('.pathologies_tab .tab_right-icon').show();
+      $('.pathologies_tab .loading-spinner, .pathologie_tabs .loading-spinner').hide();
+      $('.pathologies_tab .tab_right-icon, .pathologie_tabs .tab_right-icon').show();
 
       if (window.pathologyId) {
         var prescriptionTypeFr = tab.getAttribute('data-w-tab');
@@ -333,7 +333,7 @@
     // Show always first visible tab
     var Webflow = window.Webflow || [];
     Webflow.push(function() {
-      var tabButtons = document.querySelectorAll('.pathologies_tab .career_tab-link');
+      var tabButtons = document.querySelectorAll('.pathologies_tab .career_tab-link, .pathologie_tabs .career_tab-link');
       var firstVisibleButton = Array.from(tabButtons).find(function(button) {
         return !button.classList.contains('w-condition-invisible');
       });
@@ -346,7 +346,7 @@
 
     // Subnav toggle
     $('.subnav_header').on('click', function(ev) {
-      $(ev.currentTarget).next('.sb_holder').slideToggle(300);
+      $(ev.currentTarget).next('.sb_holder, .subnav_holder').slideToggle(300);
     });
 
     console.log('[IframeHandler] Initialized');

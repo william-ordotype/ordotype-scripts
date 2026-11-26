@@ -15,8 +15,8 @@
     var BODY_CLASS = 'ord-fin-internat';
     var SAU_BODY_CLASS = 'ord-ip-restricted';
     var STYLE_ID = 'ord-fin-internat-paywall-style';
-    var HOST_SELECTOR = '.rappels-cliniques-content';
-    var INNER_SELECTOR = '.rc_hidden_warning_wrapper .rc_premium_hidden_warning';
+    var HOST_SELECTOR = '.rappels-cliniques-content, .rappels-cliniques_content';
+    var INNER_SELECTOR = '.rc_hidden_warning_wrapper .rc_premium_hidden_warning, .paywall_warning-wrapper .paywall_warning';
     // Not sau-paywall.js's data-ordo-injected: its unapply() removes those wrappers.
     var INJECTED_ATTRIBUTE = 'data-ordo-fin-internat';
     var CARD_SELECTOR = '[data-ordo-card="fin-internat"]';
@@ -67,10 +67,10 @@
     function createWrapper() {
         var wrapper = document.createElement('div');
         wrapper.id = 'RC_hidden_warning';
-        wrapper.className = 'rc_hidden_warning_wrapper';
+        wrapper.className = 'rc_hidden_warning_wrapper paywall_warning-wrapper';
         wrapper.setAttribute(INJECTED_ATTRIBUTE, '1');
         var inner = document.createElement('div');
-        inner.className = 'rc_premium_hidden_warning';
+        inner.className = 'rc_premium_hidden_warning paywall_warning';
         wrapper.appendChild(inner);
         return wrapper;
     }
@@ -80,7 +80,7 @@
     // keeps the one it found at init. Without its data-ms-content attribute,
     // Memberstack leaves it alone.
     function ensureWrapper(host) {
-        var current = host.querySelector('.rc_hidden_warning_wrapper');
+        var current = host.querySelector('.rc_hidden_warning_wrapper, .paywall_warning-wrapper');
         if (current) {
             if (!wrapperNode) wrapperNode = current;
             current.removeAttribute('data-ms-content');
@@ -109,7 +109,7 @@
     function pageHasGatedContent() {
         var nodes = document.querySelectorAll('[data-ms-content="premium-pages"]');
         for (var i = 0; i < nodes.length; i++) {
-            if (!nodes[i].closest('.rc_hidden_warning_wrapper')) return true;
+            if (!nodes[i].closest('.rc_hidden_warning_wrapper, .paywall_warning-wrapper')) return true;
         }
         return false;
     }
