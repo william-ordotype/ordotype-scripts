@@ -81,7 +81,7 @@
         }
         if (!isPaused && !endDate) return;
 
-        var inners = document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning');
+        var inners = document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning, .paywall_warning-wrapper .paywall_warning');
         if (!inners.length) {
             console.warn(PREFIX, 'No paywall inner containers found');
             return;

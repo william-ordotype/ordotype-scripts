@@ -65,9 +65,9 @@
     trigger: 'domcontentloaded',
     selectors: [
       '.rc-html.opacity-0',
-      '.redac-and-ref.patho',
-      '.premium-content-component.new-paywall',
-      '.rc_hidden_warning_wrapper',
+      '.redac-and-ref.patho, .sources_component.patho',
+      '.premium-content-component.new-paywall, .paywall_component.new-paywall',
+      '.rc_hidden_warning_wrapper, .paywall_warning-wrapper',
       '.rappels-cliniques_row',
       '#update-clock'
     ]

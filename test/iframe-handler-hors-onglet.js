@@ -48,7 +48,8 @@ function monter() {
             on(type, fn) { els.forEach((el) => el.addEventListener(type, (ev) => fn(ev))); return api; },
             click() { return api; },
             css() { return undefined; },
-            hide() { if (sel === '.pathologies_tab .loading-spinner') appels.spinnerCache++; return api; },
+            // Le sélecteur peut lister l'ancien et le nouveau nom de classe (renommage Client-First).
+            hide() { if (String(sel).split(',').map((s) => s.trim()).includes('.pathologies_tab .loading-spinner')) appels.spinnerCache++; return api; },
             show() { return api; },
             removeClass() { return api; },
             slideToggle() { return api; },

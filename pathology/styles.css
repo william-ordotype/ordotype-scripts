@@ -107,7 +107,7 @@
 }
 
 @media screen and (min-width: 767px) {
-    .pathologies_tab_col-left .rc_hidden_warning_wrapper {
+    .pathologies_tab_col-left .rc_hidden_warning_wrapper, .pathologie_tab-col-left .paywall_warning-wrapper {
         display: none;
     }
 }
@@ -444,7 +444,9 @@ ul {
        767px, qui l'emporte sur align-self. Tout enfant qui contient un
        tableau est étiré. */
     .rc-wrapper > .rc-html,
-    .rappels-cliniques-content {
+    .rappels-cliniques_wrapper > .rc-html,
+    .rappels-cliniques-content,
+    .rappels-cliniques_content {
         width: 100%;
     }
 
@@ -541,7 +543,8 @@ ul {
    plafonds Webflow à 400px de ce palier. */
 @media only screen and (max-width: 479px) {
     .rc-html,
-    .redac-and-ref.patho {
+    .redac-and-ref.patho,
+    .sources_component.patho {
         max-width: none;
     }
 }
@@ -591,25 +594,27 @@ ul {
    - le libellé a 5px de marge au-dessus sous 992px.
    Sur téléphone les deux colonnes sont empilées : rien ne change. */
 @media only screen and (min-width: 480px) {
-    .sources-internal-grid .author-bio-text-block {
+    .sources-internal-grid .author-bio-text-block, .sources_grid .sources_author-bio {
         margin-top: 0;
         margin-bottom: 0;
         padding-top: 1.5px;
         padding-bottom: 1.5px;
     }
 
-    .sources-internal-grid .collection-item-11:first-child {
+    .sources-internal-grid .collection-item-11:first-child, .sources_grid .sources_item:first-child {
         margin-top: 0;
     }
 
     /* Source vide (« Aucune » du CMS, tout le contenu masqué par Webflow) :
        sans marge, elle décalait la liste de 1,5px (lipome). */
-    .sources-internal-grid .collection-item-11:has(> .flex_horizontal.w-condition-invisible) {
+    .sources-internal-grid .collection-item-11:has(> .flex_horizontal.w-condition-invisible), .sources_grid .sources_item:has(> .flex_horizontal.w-condition-invisible) {
         margin-top: 0;
     }
 
     .sources-internal-grid > .sources-div > :first-child,
-    .sources-internal-grid > :not(.sources-div) {
+    .sources_grid > .sources_column > :first-child,
+    .sources-internal-grid > :not(.sources-div),
+    .sources_grid > :not(.sources_column) {
         margin-top: 0;
     }
 }
@@ -622,7 +627,7 @@ ul {
    coupures dans le titre et entre deux auteurs, jamais autour du tiret
    (« (2025) - HAS » reste ensemble). Vérifié à 10 largeurs (1920 à 320px) :
    0 tiret en début ou en fin de ligne, 0 débordement, texte inchangé. */
-.sources-internal-grid .collection-item-11 > .flex_horizontal {
+.sources-internal-grid .collection-item-11 > .flex_horizontal, .sources_grid .sources_item > .flex_horizontal {
     display: block;
     font-size: 12px;
     line-height: 1.3;
@@ -630,27 +635,34 @@ ul {
 }
 
 .sources-internal-grid .collection-item-11 > .flex_horizontal > div,
+.sources_grid .sources_item > .flex_horizontal > div,
 .sources-internal-grid .collection-item-11 > .flex_horizontal > div > div,
+.sources_grid .sources_item > .flex_horizontal > div > div,
 .sources-internal-grid .collection-item-11 .w-dyn-items,
+.sources_grid .sources_item .w-dyn-items,
 .sources-internal-grid .collection-item-11 .w-dyn-item,
-.sources-internal-grid .collection-item-11 .auteur-ref-html {
+.sources_grid .sources_item .w-dyn-item,
+.sources-internal-grid .collection-item-11 .auteur-ref-html,
+.sources_grid .sources_item .sources_author-html {
     display: inline;
 }
 
 /* Le clearfix Webflow des .w-embed (::before/::after en display: table)
    forcerait un retour à la ligne. */
 .sources-internal-grid .collection-item-11 .w-embed::before,
-.sources-internal-grid .collection-item-11 .w-embed::after {
+.sources_grid .sources_item .w-embed::before,
+.sources-internal-grid .collection-item-11 .w-embed::after,
+.sources_grid .sources_item .w-embed::after {
     display: none;
 }
 
 /* Les retours à la ligne du code des auteurs deviendraient des espaces en
    plus (« -  ESC », « CEMV  CFCVE ») : largeur nulle hors du nom. */
-.sources-internal-grid .collection-item-11 .auteur-ref-html > a {
+.sources-internal-grid .collection-item-11 .auteur-ref-html > a, .sources_grid .sources_item .sources_author-html > a {
     font-size: 0;
 }
 
-.sources-internal-grid .collection-item-11 .auteur-ref-html .tooltip {
+.sources-internal-grid .collection-item-11 .auteur-ref-html .tooltip, .sources_grid .sources_item .sources_author-html .tooltip {
     font-size: 12px;
 }
 
@@ -662,12 +674,15 @@ ul {
    à la ligne et sortait de l'encadré (jusqu'à 103px à 390px, 12/11). La bulle
    d'un auteur coupe son texte. */
 .sources-internal-grid .collection-item-11 > .flex_horizontal > :not(.w-dyn-list),
+.sources_grid .sources_item > .flex_horizontal > :not(.w-dyn-list),
 .sources-internal-grid .collection-item-11 .w-dyn-items,
-.sources-internal-grid .collection-item-11 .tooltiptext {
+.sources_grid .sources_item .w-dyn-items,
+.sources-internal-grid .collection-item-11 .tooltiptext,
+.sources_grid .sources_item .tooltiptext {
     white-space: normal;
 }
 
-.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list) {
+.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list), .sources_grid .sources_item > .flex_horizontal > :has(+ .w-dyn-list) {
     white-space: nowrap;
 }
 
@@ -678,13 +693,17 @@ ul {
    (paralysie-faciale-idiopathique, 19/11 : 9 fiches, 8 sources). On masque
    les deux : la ligne finit sur l'année. */
 .sources-internal-grid .collection-item-11 > .flex_horizontal > .w-dyn-list > .w-dyn-empty,
-.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list > .w-dyn-empty) {
+.sources_grid .sources_item > .flex_horizontal > .w-dyn-list > .w-dyn-empty,
+.sources-internal-grid .collection-item-11 > .flex_horizontal > :has(+ .w-dyn-list > .w-dyn-empty),
+.sources_grid .sources_item > .flex_horizontal > :has(+ .w-dyn-list > .w-dyn-empty) {
     display: none;
 }
 
 @media only screen and (min-width: 1440px) {
     .sources-internal-grid .collection-item-11 > .flex_horizontal,
-    .sources-internal-grid .collection-item-11 .auteur-ref-html .tooltip {
+    .sources_grid .sources_item > .flex_horizontal,
+    .sources-internal-grid .collection-item-11 .auteur-ref-html .tooltip,
+    .sources_grid .sources_item .sources_author-html .tooltip {
         font-size: 14.4px;
     }
 }
@@ -697,7 +716,7 @@ ul {
    plus grand avec l'écran). La carte se cale ensuite à 1px de chaque côté,
    comme les tableaux et le bloc Sommaire. */
 @media only screen and (max-width: 479px) {
-    .rappels-cliniques-content {
+    .rappels-cliniques-content, .rappels-cliniques_content {
         width: 100%;
     }
 
@@ -795,11 +814,11 @@ ul {
         overflow: visible;
     }
 
-    .rappels-cliniques-content.sidebar-open {
+    .rappels-cliniques-content.sidebar-open, .rappels-cliniques_content.sidebar-open {
         margin-left: 1px;
     }
 
-    .sources-collection-list-wrapper.no-padding-bottom {
+    .sources-collection-list-wrapper.no-padding-bottom, .sources_list.no-padding-bottom {
         padding-bottom: 0;
     }
 

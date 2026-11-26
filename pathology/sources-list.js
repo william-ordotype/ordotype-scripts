@@ -23,7 +23,7 @@
   // rouvrait la fiche dans un nouvel onglet. On retire la bulle vide ou qui
   // répète le nom, et le lien vide.
   function cleanAuthors() {
-    document.querySelectorAll('.auteur-ref-html').forEach(function(author) {
+    document.querySelectorAll('.auteur-ref-html, .sources_author-html').forEach(function(author) {
       const link = author.querySelector('a');
       if (link && !link.getAttribute('href')) {
         link.removeAttribute('href');
@@ -42,9 +42,9 @@
   function init() {
     cleanAuthors();
 
-    const list = document.querySelector('.collection-list.w-dyn-items');
+    const list = document.querySelector('.collection-list.w-dyn-items, .sources_collection.w-dyn-items');
     const items = Array.prototype.slice
-      .call(document.querySelectorAll('.collection-item-11.w-dyn-item'))
+      .call(document.querySelectorAll('.collection-item-11.w-dyn-item, .sources_item.w-dyn-item'))
       .sort(function(a, b) {
         return Number(b.getAttribute('data-year')) - Number(a.getAttribute('data-year'));
       });

@@ -240,7 +240,7 @@
     }
 
     function refreshCards() {
-        document.querySelectorAll('.rc_hidden_warning_wrapper [data-ordo-sau-card]').forEach(fillCard);
+        document.querySelectorAll('.rc_hidden_warning_wrapper [data-ordo-sau-card], .paywall_warning-wrapper [data-ordo-sau-card]').forEach(fillCard);
     }
 
     /**
@@ -277,27 +277,27 @@
      * display:block, and our stylesheet keys on #RC_hidden_warning.
      */
     function ensureWrapper() {
-        if (document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper')) {
+        if (document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper, .rappels-cliniques_content .paywall_warning-wrapper')) {
             return;
         }
-        var host = document.querySelector('.rappels-cliniques-content');
+        var host = document.querySelector('.rappels-cliniques-content, .rappels-cliniques_content');
         if (!host) {
             console.warn(PREFIX, 'No .rappels-cliniques-content host, cannot inject paywall');
             return;
         }
         var wrapper = document.createElement('div');
         wrapper.id = 'RC_hidden_warning';
-        wrapper.className = 'rc_hidden_warning_wrapper';
+        wrapper.className = 'rc_hidden_warning_wrapper paywall_warning-wrapper';
         wrapper.setAttribute('data-ordo-injected', '1');
         var inner = document.createElement('div');
-        inner.className = 'rc_premium_hidden_warning';
+        inner.className = 'rc_premium_hidden_warning paywall_warning';
         wrapper.appendChild(inner);
         host.appendChild(wrapper);
         console.log(PREFIX, 'Injected paywall wrapper (Memberstack removed the original)');
     }
 
     function swapCard() {
-        var inners = document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning');
+        var inners = document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning, .paywall_warning-wrapper .paywall_warning');
         if (!inners.length) {
             console.warn(PREFIX, 'No paywall inner containers found');
             return;
@@ -367,12 +367,12 @@
         document.body.classList.remove(BODY_CLASS);
         // Wrappers WE injected (incl. any clones iframe-handler made of them)
         // have no business existing once the restriction lifts — remove them.
-        document.querySelectorAll('.rc_hidden_warning_wrapper[data-ordo-injected="1"]')
+        document.querySelectorAll('.rc_hidden_warning_wrapper[data-ordo-injected="1"], .paywall_warning-wrapper[data-ordo-injected="1"]')
             .forEach(function(el) { el.remove(); });
         // Restore the original card content (signup/upgrade variant) in any
         // genuine Webflow wrapper so a visitor for whom Memberstack shows it
         // never reads the SAU message after the restriction lifted.
-        document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning')
+        document.querySelectorAll('.rc_hidden_warning_wrapper .rc_premium_hidden_warning, .paywall_warning-wrapper .paywall_warning')
             .forEach(function(el) {
                 if (el.__ordoOriginalCard !== undefined) {
                     el.innerHTML = el.__ordoOriginalCard;

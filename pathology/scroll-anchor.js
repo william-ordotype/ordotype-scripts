@@ -32,7 +32,7 @@
     });
 
     // Handle Webflow tab clicks to scroll to #tab-anchor
-    $('.pat_tabs-link.w-inline-block.w-tab-link').on('click', function() {
+    $('.pat_tabs-link.w-inline-block.w-tab-link, .pathologie_tab-link.w-inline-block.w-tab-link').on('click', function() {
       setTimeout(function() {
         scrollToAnchor('#tab-anchor');
       }, 200);

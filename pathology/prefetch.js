@@ -23,14 +23,14 @@
   var MAX_PAR_ONGLET = 8;
   var EN_PARALLELE = 2;
   var DELAI_ONGLET_MS = 300;
-  var LIGNE = '.pathologies_tab .content-item[data-iframe-id]';
+  var LIGNE = '.pathologies_tab .content-item[data-iframe-id], .pathologie_tabs .content-item[data-iframe-id]';
 
   var dejaDemandees = {};
   var file = [];
   var enCours = 0;
 
   function paywallAffiche() {
-    var p = document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper');
+    var p = document.querySelector('.rappels-cliniques-content .rc_hidden_warning_wrapper, .rappels-cliniques_content .paywall_warning-wrapper');
     return !!p && window.getComputedStyle(p).display === 'block';
   }
 
@@ -132,7 +132,7 @@
 
   document.addEventListener('click', function(ev) {
     var cible = ev.target;
-    if (cible && cible.closest && cible.closest('.pathologies_tab .w-tab-link')) {
+    if (cible && cible.closest && cible.closest('.pathologies_tab .w-tab-link, .pathologie_tabs .w-tab-link')) {
       setTimeout(prechargerOngletOuvert, DELAI_ONGLET_MS);
     }
   }, true);
