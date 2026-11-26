@@ -13,7 +13,8 @@
  *   Sentry + Discord (everyone): button missing, or entirely covered 3 s
  *   after the modal opened while the modal is in front. A modal that is
  *   not in front is reported apart, once a day per browser. Nothing is
- *   reported for a modal nobody saw, nor for a dead Memberstack session.
+ *   reported for a modal nobody saw, nor for a dead Memberstack session,
+ *   nor while the keyboard or a zoom shifts the screen (measured later).
  */
 (function() {
   'use strict';
@@ -187,12 +188,26 @@
       }
     }
 
+    // Keyboard up or zoomed in (iOS): the points measured no longer match
+    // the screen. With the keyboard up, the bottom corners and the button
+    // fall on the page (search results) although nothing covers them.
+    function viewportShifted() {
+      var vv = window.visualViewport;
+      return !!vv && (vv.offsetTop > 1 || vv.scale > 1.01 || vv.height < window.innerHeight * 0.8);
+    }
+
+    var checksLeft = 0; // measures still allowed while the screen is shifted
+
     // Blocked = modal in front and no point of the button can be clicked.
     // Off screen is fine: the modal scrolls. Partly covered is fine: the
-    // rest still works.
+    // rest still works. Screen shifted: measured again 2 s later, a few times.
     function checkReachable() {
       try {
         if (!openedAt || !seen || !document.elementFromPoint) return;
+        if (viewportShifted()) {
+          if (checksLeft-- > 0) setTimeout(checkReachable, 2000);
+          return;
+        }
         var corners = probeCorners();
         if (!inFront(corners)) {
           reportMasked(corners);
@@ -230,6 +245,29 @@
       }
     }, true);
 
+    // A text field of the page, under the modal (the chat bubble sits above it).
+    function isPageField(el) {
+      if (!el || !el.tagName || inModal(el)) return false;
+      if (el.closest && el.closest('.crisp-client')) return false;
+      var tag = el.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
+    }
+
+    // Search tapped just before the modal arrived: the keyboard stays up and
+    // the person types blind under it. Let go of the field so the keyboard
+    // closes and the modal shows whole. Not when the modal is not in front
+    // (hidden by the browser): then the page is all there is.
+    function releaseFocus(el) {
+      try {
+        if (!openedAt || bypassed || !document.elementFromPoint) return;
+        el = el || document.activeElement;
+        if (isPageField(el) && inFront(probeCorners())) el.blur();
+      } catch (e) {
+        console.error('[CGUModal] focus release failed:', e);
+      }
+    }
+    document.addEventListener('focusin', function(e) { releaseFocus(e.target); });
+
     function showModal() {
       if (!modalEls.length) return;
       modalEls.forEach(function(el) {
@@ -237,6 +275,8 @@
       });
       openedAt = Date.now();
       seen = false;
+      checksLeft = 5;
+      releaseFocus();
       setTimeout(function() { if (isVisible()) markSeen(); }, 1000);
     }
 

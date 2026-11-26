@@ -39,7 +39,7 @@ const fenetre = (bouton = BOUTON) => '<div id="modale-info-indicative" ms-code-e
  */
 async function page({
     corps = fenetre(), stockage = {}, membre = null, jsonMembre = {}, stockageInterdit = false, reporter = true,
-    resteUneSeconde = true, visible = true,
+    resteUneSeconde = true, visible = true, avantScript = null,
 } = {}) {
     const dom = new JSDOM(`<!doctype html><body>${corps}</body>`, {
         url: 'https://www.ordotype.fr/', runScripts: 'outside-only', virtualConsole: new VirtualConsole(),
@@ -91,6 +91,7 @@ async function page({
     if (stockageInterdit) {
         Object.defineProperty(w, 'localStorage', { get() { throw new Error('SecurityError'); } });
     }
+    if (avantScript) avantScript(w); // état de la page à l'arrivée du script
     w.eval(SCRIPT);
     if (w.document.readyState === 'loading') {
         await new Promise((r) => w.document.addEventListener('DOMContentLoaded', r));
@@ -110,14 +111,18 @@ async function page({
         quitter: () => w.dispatchEvent(new w.Event('pagehide')),
         // Bouton à l'écran (y 600-644) ; `recouvre(x)` dit ce qu'il y a au point x
         // (0..1 de sa largeur), `coins` ce qu'il y a aux coins de l'écran
-        // (la fenêtre elle-même quand elle est au premier plan).
+        // (la fenêtre elle-même quand elle est au premier plan), ou `coins(y)`.
         poserBouton: (recouvre, coins = el) => {
             bouton().getBoundingClientRect = () => ({ left: 100, width: 400, top: 600, height: 44, bottom: 644 });
             w.innerHeight = 800;
-            w.document.elementFromPoint = (x, y) => (y > 600 && y < 644 ? recouvre((x - 100) / 400) : coins);
+            w.document.elementFromPoint = (x, y) => (y > 600 && y < 644 ? recouvre((x - 100) / 400)
+                : typeof coins === 'function' ? coins(y) : coins);
         },
-        // 3 s après l'ouverture : 1 s avant la vue, puis 2 s.
+        // Zone visible du téléphone (visualViewport), écran de 800 px de haut.
+        zoneVisible: (height, offsetTop = 0, scale = 1) => { w.visualViewport = { width: 375, height, offsetTop, scale }; },
+        // 3 s après l'ouverture : 1 s avant la vue, puis 2 s (et chaque nouvelle mesure, 2 s plus tard).
         controlerAccessibilite: () => lancer(2000),
+        mesuresPrevues: () => minuteries.filter((m) => m.ms === 2000).length,
         uneSeconde: () => { horloge.t += 1000; lancer(1000); },
         mettreAuPremierPlan: () => { onglet.visible = true; w.document.dispatchEvent(new w.Event('visibilitychange')); },
     };
@@ -398,6 +403,89 @@ async function cas(avecReporter) {
     p.uneSeconde();
     verifier('contournée avant 1 s : vue puis contournée' + suffixe,
         p.evenements.join() === 'cgu_modal_view,cgu_modal_contournee');
+
+    // 20. 🔴 Clavier de l'iPhone ouvert (recherche touchée juste avant l'arrivée de la fenêtre) :
+    // zone visible réduite et décalée, les coins du bas et le bouton tombent sur la page
+    // (résultats de recherche) sans que rien ne les recouvre. Jamais « recouvert » ni « masquée ».
+    const RECHERCHE = '<input id="search-bar-main" type="text">'
+        + '<div id="search-results"><div class="search-row_title">Angine</div></div>';
+    p = await P({ corps: fenetre() + RECHERCHE });
+    const titre = p.w.document.querySelector('.search-row_title');
+    p.poserBouton(() => titre, (y) => (y < 400 ? p.el : titre));
+    p.zoneVisible(303, 316);
+    p.controlerAccessibilite();
+    verifier('clavier ouvert : pas de signalement' + suffixe, p.signalements.length === 0);
+    verifier('clavier ouvert : pas de cgu_modal_masquee' + suffixe, !p.evenements.includes('cgu_modal_masquee'));
+    p.zoneVisible(800);
+    p.poserBouton(() => p.w.document.querySelector('#cgu-accepted div'));
+    p.controlerAccessibilite();
+    verifier('clavier refermé, bouton atteignable : toujours rien' + suffixe, p.signalements.length === 0);
+
+    // 20b. 🔴 Témoin : clavier ouvert au contrôle, puis refermé avec le bouton VRAIMENT recouvert
+    // (bulle de chat) : signalé « recouvert » à la mesure suivante.
+    p = await P({ corps: fenetre() + RECHERCHE });
+    const bulle = p.w.document.querySelector('#crisp');
+    p.poserBouton(() => bulle);
+    p.zoneVisible(303, 316);
+    p.controlerAccessibilite();
+    verifier('témoin : rien tant que le clavier est ouvert' + suffixe, p.signalements.length === 0);
+    p.zoneVisible(800);
+    p.controlerAccessibilite();
+    verifier('témoin : clavier refermé, bouton recouvert : signalé « recouvert »' + suffixe, !r
+        || (p.signalements.length === 1 && /recouvert par div#crisp/.test(p.signalements[0][1])));
+
+    // 20c. Clavier sans décalage (champ en haut de page) ou zoom du doigt : pas de signalement.
+    p = await P();
+    p.poserBouton(() => p.w.document.querySelector('#crisp'));
+    p.zoneVisible(360);
+    p.controlerAccessibilite();
+    verifier('clavier sans décalage : pas de signalement' + suffixe, p.signalements.length === 0);
+    p = await P();
+    p.poserBouton(() => p.w.document.querySelector('#crisp'));
+    p.zoneVisible(533, 120, 1.5);
+    p.controlerAccessibilite();
+    verifier('zoom du doigt : pas de signalement' + suffixe, p.signalements.length === 0);
+
+    // 20d. Clavier resté ouvert : 5 nouvelles mesures au plus (13 s après l'ouverture), puis rien.
+    p = await P();
+    p.poserBouton(() => p.w.document.querySelector('#crisp'));
+    p.zoneVisible(303, 316);
+    for (let i = 0; i < 10; i++) p.controlerAccessibilite();
+    verifier('clavier resté ouvert : 5 nouvelles mesures au plus, aucun signalement' + suffixe,
+        p.signalements.length === 0 && p.mesuresPrevues() === 6);
+
+    // 21. 🔴 Recherche touchée juste avant l'ouverture : la fenêtre, au premier plan, retire le
+    // focus au champ (le clavier se ferme, la fenêtre se voit en entier).
+    const focusAvant = (coins) => (w) => {
+        w.document.querySelector('#search-bar-main').focus();
+        w.document.elementFromPoint = () => w.document.querySelector(coins);
+    };
+    p = await P({ corps: fenetre() + RECHERCHE, avantScript: focusAvant('#modale-info-indicative') });
+    let champ = p.w.document.querySelector('#search-bar-main');
+    verifier('champ focalisé avant l’ouverture : focus retiré' + suffixe, p.w.document.activeElement !== champ);
+
+    // 21b. Fenêtre pas au premier plan (masquée par le navigateur) : la page est tout ce qui
+    // reste, le champ garde le focus.
+    p = await P({ corps: fenetre() + RECHERCHE, avantScript: focusAvant('#search-results') });
+    champ = p.w.document.querySelector('#search-bar-main');
+    verifier('fenêtre pas au premier plan : le champ garde le focus' + suffixe, p.w.document.activeElement === champ);
+
+    // 21c. Champ qui prend le focus sous la fenêtre ouverte : relâché ; après « J’ai compris », libre.
+    p = await P({ corps: fenetre() + RECHERCHE });
+    p.poserBouton(() => p.w.document.querySelector('#cgu-accepted div'));
+    champ = p.w.document.querySelector('#search-bar-main');
+    champ.focus();
+    verifier('focus pris sous la fenêtre ouverte : relâché' + suffixe, p.w.document.activeElement !== champ);
+    p.cliquer();
+    champ.focus();
+    verifier('après « J’ai compris » : la recherche garde le focus' + suffixe, p.w.document.activeElement === champ);
+
+    // 21d. Message tapé dans la bulle de chat (au-dessus de la fenêtre) : focus gardé.
+    p = await P({ corps: fenetre() + '<div class="crisp-client"><textarea></textarea></div>' });
+    p.poserBouton(() => p.w.document.querySelector('#cgu-accepted div'));
+    const message = p.w.document.querySelector('.crisp-client textarea');
+    message.focus();
+    verifier('message dans la bulle de chat : focus gardé' + suffixe, p.w.document.activeElement === message);
 }
 
 (async () => {
