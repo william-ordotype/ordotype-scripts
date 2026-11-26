@@ -30,7 +30,9 @@
     ['css_webflow', /website-files\.com\/[^/]+\/css\/[^/]+\.css/],
     ['css_global', /\/shared\/global-styles\.css/],
     ['css_page', /\/(ordonnances|conseils-patients)\/styles\.css/],
-    ['js_auth', /ordotype-auth-cdn@[^/]+\/auth-bundle\.js/],
+    // auth-bundle.js jusqu'en novembre 2026, puis authentication.js seul
+    // (monitoring.js en defer ne bloque plus l'affichage : pas mesuré ici).
+    ['js_auth', /ordotype-auth-cdn@[^/]+\/(?:auth-bundle|authentication)\.js/],
     ['js_memberstack', /static\.memberstack\.com\/scripts\/v2\/memberstack\.js/]
   ];
 
