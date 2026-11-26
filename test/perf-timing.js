@@ -116,6 +116,16 @@ const versObjet = (evs) => Object.fromEntries(evs.map(([n, a]) => [n, a && a['se
         verifier('valeur négative ou non numérique ignorée', ['ordo_html_wait' in o, 'ordo_html_end' in o, o.ordo_dom_interactive], [false, false, 100]);
     }
     {
+        // Head de novembre 2026 : authentication.js synchrone, monitoring.js en defer.
+        const nouveauHead = RESSOURCES.map((r) => (/auth-bundle/.test(r.name)
+            ? { ...r, name: 'https://cdn.jsdelivr.net/gh/Ordotype/ordotype-auth-cdn@4.5.24/authentication.js' } : r))
+            .concat([{ name: 'https://cdn.jsdelivr.net/gh/Ordotype/ordotype-auth-cdn@4.5.24/monitoring.js', responseEnd: 300, duration: 90 }]);
+        const ctx = monter({ ressources: nouveauHead }); await declencher();
+        const o = versObjet(ctx.evenements);
+        verifier('authentication.js mesuré comme auth-bundle.js', [o.ordo_js_auth_end, o.ordo_js_auth_dur], [140, 40]);
+        verifier('monitoring.js en defer hors des bloquants', o.ordo_blocking_end, 176);
+    }
+    {
         const ctx = monter({ etat: 'interactive' }); await attendre(20);
         verifier('script arrivé après le DOMContentLoaded : mesures quand même', ctx.evenements.length, 15);
     }
